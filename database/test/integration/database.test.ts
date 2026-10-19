@@ -92,6 +92,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       "0045_revoke_bindings_on_robot_change.sql",
       "0046_organizations.sql",
       "0047_user_deletion_tombstone.sql",
+      "0048_organizations_backup_sequence_grant.sql",
     ]);
   });
 
@@ -1222,6 +1223,11 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       backup.unsafe("DELETE FROM app.document_import_runs"),
       "42501",
     );
+    // ADR-081 / 迁移 0046+0048：identity 序列同样需要只读权限，
+    // 否则 pg_dump 读取序列 last_value 时会失败。
+    await expect(
+      backup.unsafe("SELECT last_value FROM app.organizations_id_seq"),
+    ).resolves.toHaveLength(1);
     await expect(
       backup.unsafe("SELECT count(*) FROM app.projects"),
     ).resolves.toHaveLength(1);
