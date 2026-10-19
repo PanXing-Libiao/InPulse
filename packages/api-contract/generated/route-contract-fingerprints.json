@@ -331,6 +331,10 @@
     {
       "version": "1.0.0",
       "fingerprint": "47856890c6f00c76d72fe2a24e0b866fa1a8a662569cba41bb55e99f6e1daf88"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "1fed1cb3f8831d6171cc797ab74ad7872040525e1e54ae398b402315259b3ea5"
     }
   ],
   "enableUser": [

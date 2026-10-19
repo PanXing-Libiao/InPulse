@@ -118,18 +118,6 @@ describe("admin user query", () => {
     expect(adminUserErrorMessage(emailConflict)).toContain("邮箱已被使用");
   });
 
-  it("uses the open task count from the disable rejection details", () => {
-    const blocked = new ApiError(409, {
-      code: "ADMIN_USER_HAS_OPEN_TASKS",
-      message: "该账号仍有未完成任务",
-      details: { openTaskCount: 7 },
-      requestId: "t",
-    });
-    expect(adminUserErrorMessage(blocked)).toBe(
-      "该账号仍有 7 个未完成任务，请先转分配或删除任务后再停用。",
-    );
-  });
-
   it("dispatches force deletion with the same CSRF and versioned headers", async () => {
     const listAdminUsers = vi.fn().mockResolvedValue({ items: [user] });
     const issueCsrfToken = vi

@@ -30,6 +30,32 @@ import { PostgresUserCredentialRepository } from "../src/auth/user-credential.re
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
+import { AdminUserOffboardingRepository } from "../src/admin-users/admin-user-offboarding.repository.js";
+import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
+import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
+import { PostgresProjectsWritePort } from "../src/modules/projects/postgres-projects-write-port.js";
+import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
+import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
+import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
+import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
+import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
+import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
+import { TasksManagementService } from "../src/modules/tasks/tasks-management.service.js";
+import { ProjectMemberTaskCommandPort } from "../src/modules/tasks/project-member-task.command-port.js";
+import { SqlTaskDeletionCommandPort } from "../src/modules/tasks/task-deletion.command-port.js";
+import { ExternalLinksRepository } from "../src/modules/external-links/external-links.repository.js";
+import { ExternalLinksCommandPort } from "../src/modules/external-links/external-links.port.js";
+import { RecordLifecycleService } from "../src/modules/change-records/record-lifecycle.service.js";
+import { RecordLifecycleRepository } from "../src/modules/change-records/record-lifecycle.repository.js";
+import { RecordPublicationRepository } from "../src/modules/change-records/record-publication.repository.js";
+import { PublishedRecordRepository } from "../src/modules/change-records/published-record.repository.js";
+import { LeftoverSearchProjectionSync } from "../src/modules/change-records/leftover-search-projection.js";
+import { RecordLifecycleTaskRecordVoidPort } from "../src/modules/change-records/task-record-void.port.js";
+import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
+import { PostgresTaskBranchQueryPort } from "../src/modules/task-groups/task-branch-query.port.js";
+import { SqlTaskGroupDeletionPort } from "../src/modules/task-groups/task-group-deletion.port.js";
+import { TaskDeletionWorkflow } from "../src/workflows/task-deletion.workflow.js";
 import { PostgresUserSessionRepository } from "../src/auth/user-session.repository.js";
 import { ApiExceptionFilter } from "../src/http/api-exception.filter.js";
 import { ContractResponseInterceptor } from "../src/http/contract-response.interceptor.js";
@@ -61,6 +87,9 @@ let repository: AdminUserRepository;
 let audit: PostgresAuditWritePort;
 let userService: AdminUserService;
 let credentials: PostgresUserCredentialRepository;
+let taskManagement: TasksManagementService;
+let taskDeletionCommands: SqlTaskDeletionCommandPort;
+let taskDeletionWorkflow: TaskDeletionWorkflow;
 
 const key = randomBytes(32);
 
@@ -207,9 +236,29 @@ async function createTargetSession(userId: number, authVersion: number) {
   return { sessionId, cookie: `__Host-session=${cookie}`, csrf: csrfToken };
 }
 
-async function createOpenTaskForUser(userId: number): Promise<number> {
-  const project = await createProject(client.sql, userId);
-  const code = project.code + "-T-" + Date.now();
+async function addProjectMember(
+  projectId: number,
+  userId: number,
+): Promise<void> {
+  await client.sql`
+    INSERT INTO app.project_members (project_id, user_id, role)
+    VALUES (${projectId}, ${userId}, ${"MEMBER"})
+  `;
+}
+
+let taskSequence = 0;
+
+async function createOpenTaskForAssignees(
+  project: {
+    readonly projectId: number;
+    readonly moduleId: number;
+    readonly code: string;
+  },
+  creatorId: number,
+  assigneeIds: readonly number[],
+  title: string,
+): Promise<{ readonly taskId: number; readonly rowVersion: number }> {
+  taskSequence += 1;
   return client.sql.begin(async (tx) => {
     const rows = (await tx`
       INSERT INTO app.tasks (
@@ -229,17 +278,20 @@ async function createOpenTaskForUser(userId: number): Promise<number> {
         ${project.moduleId},
         NULL,
         ${"MODULE"},
-        ${code},
-        ${"未完成任务"},
-        ${userId},
+        ${project.code + "-T-" + taskSequence},
+        ${title},
+        ${creatorId},
         ${"NORMAL"},
         ${"TODO"},
         ${"ACTIVE"}
       )
-      RETURNING id
-    `) as unknown as readonly { id: number }[];
-    const taskId = rows[0]?.id;
-    if (taskId === undefined) {
+      RETURNING id, row_version AS "rowVersion"
+    `) as unknown as readonly {
+      readonly id: number;
+      readonly rowVersion: number;
+    }[];
+    const task = rows[0];
+    if (task === undefined) {
       throw new Error("task fixture insert returned no row");
     }
     await tx`
@@ -251,17 +303,27 @@ async function createOpenTaskForUser(userId: number): Promise<number> {
         completed_at_snapshot,
         changed_by
       )
-      VALUES (${taskId}, ${project.projectId}, NULL, ${"TODO"}, NULL, ${userId})
+      VALUES (${task.id}, ${project.projectId}, NULL, ${"TODO"}, NULL, ${creatorId})
     `;
-    await tx`
-      INSERT INTO app.task_assignees (task_id, user_id, project_id)
-      VALUES (${taskId}, ${userId}, ${project.projectId})
-    `;
-    return taskId;
+    for (const assigneeId of assigneeIds) {
+      await tx`
+        INSERT INTO app.task_assignees (task_id, user_id, project_id)
+        VALUES (${task.id}, ${assigneeId}, ${project.projectId})
+      `;
+    }
+    return { taskId: task.id, rowVersion: task.rowVersion };
   });
 }
 
-let taskSequence = 0;
+async function taskAssigneeIds(taskId: number): Promise<number[]> {
+  const rows = (await client.sql`
+    SELECT user_id AS "userId"
+      FROM app.task_assignees
+     WHERE task_id = ${taskId}
+     ORDER BY user_id
+  `) as unknown as readonly { userId: number }[];
+  return rows.map((row) => row.userId);
+}
 
 async function createTask(
   project: {
@@ -360,13 +422,70 @@ beforeAll(async () => {
     keyFor: () => key,
   });
   repository = new AdminUserRepository();
+  const access = new PostgresProjectAccessQueryPort(client);
+  const activity = new PostgresActivityWritePort();
+  const search = new PostgresSearchProjectionWritePort();
+  taskManagement = new TasksManagementService(
+    access,
+    new PostgresModuleQueryPort(),
+    new PostgresFeatureQueryPort(),
+    new PostgresFeatureReadPort(),
+    new PostgresProjectCodePort(),
+    new PostgresProjectMembersQueryPort(),
+    uow,
+    new TaskManagementRepository(),
+    audit,
+    activity,
+    search,
+    new PostgresNotificationWritePort(),
+    new PostgresModuleReadPort(),
+    new PostgresProjectsWritePort(),
+    new PostgresUserReadPort(),
+  );
+  taskDeletionCommands = new SqlTaskDeletionCommandPort(
+    taskManagement,
+    new TaskManagementRepository(),
+  );
+  taskDeletionWorkflow = new TaskDeletionWorkflow(
+    uow,
+    taskDeletionCommands,
+    audit,
+    activity,
+    search,
+    new ExternalLinksCommandPort(new ExternalLinksRepository()),
+    new RecordLifecycleTaskRecordVoidPort(
+      new RecordLifecycleService(
+        access,
+        new PostgresModuleQueryPort(),
+        new PostgresFeatureQueryPort(),
+        new RecordPublicationRepository(),
+        new PublishedRecordRepository(),
+        new RecordLifecycleRepository(),
+        audit,
+        activity,
+        search,
+        new LeftoverSearchProjectionSync(search),
+      ),
+    ),
+    new SqlTaskGroupDeletionPort(
+      new PostgresTaskBranchQueryPort(new TaskGroupRepository()),
+      new TaskGroupRepository(),
+    ),
+  );
   userService = new AdminUserService(
     repository,
+    new AdminUserOffboardingRepository(),
     sessions,
     highRisk,
     audit,
     new PostgresProjectMembersQueryPort(),
-    new PostgresActivityWritePort(),
+    activity,
+    new ProjectMemberTaskCommandPort(
+      new TaskManagementRepository(),
+      taskManagement,
+    ),
+    taskDeletionCommands,
+    taskDeletionWorkflow,
   );
   const http = new AdminUsersHttpService(
     auth,
@@ -464,6 +583,7 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       actor,
       {
         version: updated.rowVersion,
+        body: { tasks: [] },
       },
     );
     expect(disable.status).toBe(204);
@@ -529,10 +649,16 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
     expect(response.status).toBe(404);
   });
 
-  it("有未完成任务时拒绝停用并返回 openTaskCount", async () => {
+  it("唯一负责人任务未处理时拒绝停用", async () => {
     const actor = await seedUser({ admin: true });
     const target = await seedUser({ admin: false });
-    await createOpenTaskForUser(target.userId);
+    const project = await createProject(client.sql, target.userId);
+    await createOpenTaskForAssignees(
+      project,
+      target.userId,
+      [target.userId],
+      "唯一负责人任务",
+    );
     const before = await userState(target.userId);
     await createTargetSession(target.userId, before.authVersion);
 
@@ -540,20 +666,171 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       `/admin/users/${target.userId}/disable`,
       "POST",
       actor,
-      { version: before.rowVersion },
+      { version: before.rowVersion, body: { tasks: [] } },
     );
 
-    expect(response.status).toBe(409);
-    const body = (await response.json()) as {
-      readonly code: string;
-      readonly details: { readonly openTaskCount: number };
-    };
-    expect(body.code).toBe("ADMIN_USER_HAS_OPEN_TASKS");
-    expect(body.details.openTaskCount).toBe(1);
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { readonly code: string };
+    expect(body.code).toBe("ADMIN_USER_OFFBOARDING_TASK_REQUIRED");
     expect(await userState(target.userId)).toMatchObject({
       status: "ACTIVE",
       openTaskCount: 1,
       activeSessions: 2,
+    });
+  });
+
+  it("多负责人任务默认保留其他负责人并完成停用", async () => {
+    const actor = await seedUser({ admin: true });
+    const target = await seedUser({ admin: false });
+    const peer = await seedUser({ admin: false });
+    const project = await createProject(client.sql, target.userId);
+    await addProjectMember(project.projectId, peer.userId);
+    const task = await createOpenTaskForAssignees(
+      project,
+      target.userId,
+      [target.userId, peer.userId],
+      "多人协作任务",
+    );
+    const before = await userState(target.userId);
+    await createTargetSession(target.userId, before.authVersion);
+
+    const response = await request(
+      `/admin/users/${target.userId}/disable`,
+      "POST",
+      actor,
+      { version: before.rowVersion, body: { tasks: [] } },
+    );
+
+    expect(response.status).toBe(204);
+    expect(await taskAssigneeIds(task.taskId)).toEqual([peer.userId]);
+    expect(await userState(target.userId)).toMatchObject({
+      status: "DISABLED",
+      openTaskCount: 0,
+      activeSessions: 0,
+    });
+    const [disabledAudit] = (await auditReader.sql`
+      SELECT event_payload AS "eventPayload"
+        FROM app.audit_logs
+       WHERE action = ${"admin.user.disable"}
+         AND target_id = ${String(target.userId)}
+       ORDER BY sequence_no DESC
+       LIMIT 1
+    `) as unknown as readonly {
+      readonly eventPayload: {
+        readonly reassignedTaskIds: readonly number[];
+        readonly deletedTaskIds: readonly number[];
+      };
+    }[];
+    expect(disabledAudit?.eventPayload.reassignedTaskIds).toEqual([
+      task.taskId,
+    ]);
+    expect(disabledAudit?.eventPayload.deletedTaskIds).toEqual([]);
+  });
+
+  it("唯一负责人任务可增补多名接手人，也可标记删除", async () => {
+    const actor = await seedUser({ admin: true });
+    const transferTarget = await seedUser({ admin: false });
+    const peerA = await seedUser({ admin: false });
+    const peerB = await seedUser({ admin: false });
+    const transferProject = await createProject(
+      client.sql,
+      transferTarget.userId,
+    );
+    await addProjectMember(transferProject.projectId, peerA.userId);
+    await addProjectMember(transferProject.projectId, peerB.userId);
+    const transferTask = await createOpenTaskForAssignees(
+      transferProject,
+      transferTarget.userId,
+      [transferTarget.userId],
+      "需要多人接手",
+    );
+    const transferBefore = await userState(transferTarget.userId);
+    await createTargetSession(
+      transferTarget.userId,
+      transferBefore.authVersion,
+    );
+    const transferAssignees = [peerA.userId, peerB.userId].sort(
+      (left, right) => left - right,
+    );
+
+    const transferResponse = await request(
+      `/admin/users/${transferTarget.userId}/disable`,
+      "POST",
+      actor,
+      {
+        version: transferBefore.rowVersion,
+        body: {
+          tasks: [
+            {
+              projectId: transferProject.projectId,
+              moduleId: transferProject.moduleId,
+              featureId: null,
+              taskId: transferTask.taskId,
+              rowVersion: transferTask.rowVersion,
+              assigneeIds: transferAssignees,
+              delete: false,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(transferResponse.status).toBe(204);
+    expect(await taskAssigneeIds(transferTask.taskId)).toEqual(
+      transferAssignees,
+    );
+    expect(await userState(transferTarget.userId)).toMatchObject({
+      status: "DISABLED",
+      openTaskCount: 0,
+      activeSessions: 0,
+    });
+
+    const deleteTarget = await seedUser({ admin: false });
+    const peerC = await seedUser({ admin: false });
+    const deleteProject = await createProject(client.sql, deleteTarget.userId);
+    await addProjectMember(deleteProject.projectId, peerC.userId);
+    const deleteTask = await createOpenTaskForAssignees(
+      deleteProject,
+      deleteTarget.userId,
+      [deleteTarget.userId],
+      "标记删除任务",
+    );
+    const deleteBefore = await userState(deleteTarget.userId);
+    await createTargetSession(deleteTarget.userId, deleteBefore.authVersion);
+
+    const deleteResponse = await request(
+      `/admin/users/${deleteTarget.userId}/disable`,
+      "POST",
+      actor,
+      {
+        version: deleteBefore.rowVersion,
+        body: {
+          tasks: [
+            {
+              projectId: deleteProject.projectId,
+              moduleId: deleteProject.moduleId,
+              featureId: null,
+              taskId: deleteTask.taskId,
+              rowVersion: deleteTask.rowVersion,
+              assigneeIds: [],
+              delete: true,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(deleteResponse.status).toBe(204);
+    const [deletedTask] = (await client.sql`
+      SELECT deleted_at AS "deletedAt"
+        FROM app.tasks
+       WHERE id = ${deleteTask.taskId}
+    `) as unknown as readonly { readonly deletedAt: string | null }[];
+    expect(deletedTask?.deletedAt).not.toBeNull();
+    expect(await userState(deleteTarget.userId)).toMatchObject({
+      status: "DISABLED",
+      openTaskCount: 0,
+      activeSessions: 0,
     });
   });
 
@@ -583,7 +860,7 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       `/admin/users/${target.userId}/disable`,
       "POST",
       actor,
-      { version: original.rowVersion },
+      { version: original.rowVersion, body: { tasks: [] } },
     );
     expect(disable.status).toBe(204);
     let state = await userState(target.userId);
@@ -885,11 +1162,18 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
     } as never;
     const failingService = new AdminUserService(
       repository,
+      new AdminUserOffboardingRepository(),
       sessions,
       highRisk,
       failingAudit,
       new PostgresProjectMembersQueryPort(),
       new PostgresActivityWritePort(),
+      new ProjectMemberTaskCommandPort(
+        new TaskManagementRepository(),
+        taskManagement,
+      ),
+      taskDeletionCommands,
+      taskDeletionWorkflow,
     );
     await expect(
       uow.run((tx) =>

@@ -160,10 +160,23 @@ export class ProjectMemberTaskCommandPort {
         );
       }
       // 多负责人平权（ADR-040）：只摘掉被移除的成员，其余人继续负责；
-      // 唯一负责人时才由接手人顶上（2026-09-24 起可同时指定多位接手人）。
+      // 调用方额外指定的接手人会与剩余负责人合并，唯一负责人时才完全由接手人顶上。
       const retained = current.assigneeIds.filter(
         (userId) => userId !== input.targetUserId,
       );
+      const additions = assignment.assigneeIds.filter(
+        (userId) => userId !== input.targetUserId,
+      );
+      const nextAssigneeIds = [...new Set([...retained, ...additions])].sort(
+        (left, right) => left - right,
+      );
+      if (nextAssigneeIds.length === 0) {
+        throw new ProjectMemberTaskCommandError(
+          422,
+          "PROJECT_MEMBER_REASSIGNMENT_REQUIRED",
+          "该任务没有其他负责人，必须指定接手人或删除任务",
+        );
+      }
       try {
         await this.tasks.execute(tx, {
           operation:
@@ -178,8 +191,7 @@ export class ProjectMemberTaskCommandPort {
             title: current.title,
             description: current.description,
             priority: current.priority,
-            assigneeIds:
-              retained.length > 0 ? retained : [...assignment.assigneeIds],
+            assigneeIds: nextAssigneeIds,
             dueAt: current.dueAt,
           },
           ...(current.featureId === null

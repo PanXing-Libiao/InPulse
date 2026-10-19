@@ -15,8 +15,8 @@ import type { AdminUserService } from "../src/admin-users/admin-user.service.js"
 import type { AdminUserRepository } from "../src/admin-users/admin-user.repository.js";
 import { AdminUsersHttpService } from "../src/admin-users/admin-user-http.service.js";
 import {
-  adminUserOpenTasks,
   adminUserActiveProjectMembership,
+  adminUserOffboardingInvalid,
   adminUserSelfMutation,
 } from "../src/admin-users/admin-user.error.js";
 
@@ -59,6 +59,10 @@ function validRequest() {
   };
 }
 
+function disableRequest() {
+  return { ...validRequest(), body: { tasks: [] } };
+}
+
 function setup() {
   const resolveActor = vi.fn().mockResolvedValue(actor);
   const mutationVerify = vi.fn().mockResolvedValue(actor);
@@ -70,6 +74,7 @@ function setup() {
   const create = vi.fn().mockResolvedValue(item);
   const update = vi.fn().mockResolvedValue({ ...item, rowVersion: 2 });
   const disable = vi.fn().mockResolvedValue(undefined);
+  const offboarding = vi.fn().mockResolvedValue({ user: item, projects: [] });
   const enable = vi.fn().mockResolvedValue(undefined);
   const deleteUser = vi.fn().mockResolvedValue(undefined);
   const replay = vi.fn().mockResolvedValue(undefined);
@@ -98,6 +103,7 @@ function setup() {
       create,
       update,
       disable,
+      offboarding,
       enable,
       delete: deleteUser,
       replay,
@@ -117,6 +123,7 @@ function setup() {
     create,
     update,
     disable,
+    offboarding,
     enable,
     deleteUser,
     replay,
@@ -216,7 +223,7 @@ describe("F-03 AdminUsersHttpService", () => {
 
   it("重放前重新验证管理员重认证与结果资源仍存在", async () => {
     const s = setup();
-    await s.service.handle("disableUser", validRequest());
+    await s.service.handle("disableUser", disableRequest());
     const authorizer = s.command().replayAuthorizer!;
     await authorizer(
       { replayAuthContext: { actorUserId: userId, userId: item.id } } as never,
@@ -229,15 +236,42 @@ describe("F-03 AdminUsersHttpService", () => {
     });
   });
 
-  it("停用被未完成任务阻断时返回 409 和任务数量", async () => {
+  it("停用把交接动作传给业务服务，并映射唯一负责人未处理错误", async () => {
     const s = setup();
-    s.disable.mockRejectedValueOnce(adminUserOpenTasks(4));
-    const result = await s.service.handle("disableUser", validRequest());
-    expect(result.status).toBe(409);
-    expect(result.body).toMatchObject({
-      code: "ADMIN_USER_HAS_OPEN_TASKS",
-      details: { reason: "open-tasks", openTaskCount: 4 },
+    const request = disableRequest();
+    const result = await s.service.handle("disableUser", request);
+    expect(result.status).toBe(204);
+    expect(s.disable).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ actorId: userId }),
+      item.id,
+      1,
+      { tasks: [] },
+    );
+
+    s.disable.mockRejectedValueOnce(
+      adminUserOffboardingInvalid(
+        "ADMIN_USER_OFFBOARDING_TASK_REQUIRED",
+        "唯一负责人任务必须交接",
+      ),
+    );
+    const rejected = await s.service.handle("disableUser", request);
+    expect(rejected.status).toBe(422);
+    expect(rejected.body).toMatchObject({
+      code: "ADMIN_USER_OFFBOARDING_TASK_REQUIRED",
+      details: { reason: "offboarding" },
     });
+  });
+
+  it("管理员可读取停用交接清单", async () => {
+    const s = setup();
+    const result = await s.service.handle(
+      "getAdminUserOffboarding",
+      validRequest(),
+    );
+    expect(result.status).toBe(200);
+    expect(s.offboarding).toHaveBeenCalledWith(tx, item.id);
+    expect(result.body).toMatchObject({ user: item, projects: [] });
   });
 
   it("数据库和未知错误统一 500，不泄露内部信息", async () => {

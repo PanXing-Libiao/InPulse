@@ -336,6 +336,17 @@ export const permissionMatrix = [
     },
   })),
   {
+    operationId: "getAdminUserOffboarding",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: { kind: "deny", status: 403 },
+      其他项目成员: { kind: "deny", status: 403 },
+      已移除成员: { kind: "deny", status: 403 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: { kind: "allow" },
+    },
+  },
+  {
     operationId: "listAdminUsers",
     outcomes: {
       匿名: { kind: "deny", status: 401 },

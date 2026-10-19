@@ -56,6 +56,7 @@ import { ScopeDeletionController } from "./scope-deletion.controller.js";
     ScopeDeletionWorkflow,
     ScopeDeletionHttpService,
   ],
+  exports: [TaskDeletionWorkflow],
   controllers: [
     TaskCompletionController,
     TaskStatusCompatibilityController,

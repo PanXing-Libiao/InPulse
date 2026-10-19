@@ -72,6 +72,12 @@ const noBodyWritePolicy = {
   idempotencyReplayPolicy: noBodyReplayPolicy,
 } as const;
 
+/** 停用请求新增任务交接 body，旧幂等 Key 在新契约下返回 409。 */
+const disableWritePolicy = {
+  ...noBodyWritePolicy,
+  idempotencyContractVersion: "2.0.0",
+} as const;
+
 /**
  * createUser / updateUser 的响应为 AdminUserItem：ADR-081 新增
  * organizationId 与 openTaskCount，ADR-082 新增 deletedAt，响应 Schema 因此变化。
@@ -125,6 +131,33 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     },
     responses: { "200": json("AdminUserListResponse"), ...errors },
     authPolicy: "session",
+    csrfPolicy: "none",
+    idempotencyPolicy: "none",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "none",
+    idempotencyFingerprintVersion: "none",
+    behaviorHeaders: "none",
+    idempotencyReplayPolicy: "none",
+    replayAuthorizationPolicy: "none",
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "none",
+  },
+  {
+    method: "GET",
+    path: "/admin/users/{userId}/offboarding",
+    operationId: "getAdminUserOffboarding",
+    summary:
+      "系统管理员读取待停用账号的交接清单：按项目分组返回未完成任务、当前负责人与可接手的项目成员；无任务时返回空 projects。",
+    request: {
+      path: "AdminUserPath",
+      query: "none",
+      headers: "none",
+      body: { noBody: true },
+    },
+    responses: { "200": json("AdminUserOffboardingResponse"), ...errors },
+    authPolicy: "adminSession",
     csrfPolicy: "none",
     idempotencyPolicy: "none",
     idempotencyExceptionAdr: "none",
@@ -199,19 +232,26 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     path: "/admin/users/{userId}/disable",
     operationId: "disableUser",
     summary:
-      "系统管理员停用指定用户：同事务递增 auth_version、撤销全部 Session 并写审计；停用后所有受保护请求返回 401。",
+      "系统管理员停用指定用户：同一事务先按项目交接全部未完成任务（保留其他负责人、增补接手人或删除唯一负责人任务），再递增 auth_version、撤销全部 Session 并写审计；停用后所有受保护请求返回 401。",
     request: {
       path: "AdminUserPath",
       query: "none",
       headers: "AdminUserVersionHeaders",
-      body: { noBody: true },
+      body: {
+        contentTypes: [
+          {
+            contentType: "application/json",
+            schemaRef: "AdminUserDisableRequest",
+          },
+        ],
+      },
     },
     responses: { "204": { noBody: true }, ...errors },
     authPolicy: "adminSession",
     csrfPolicy: "required",
     idempotencyPolicy: "idempotencyRequired",
     behaviorHeaders: ["If-Match"],
-    ...noBodyWritePolicy,
+    ...disableWritePolicy,
     ...versionedWritePolicy,
     auditAction: "admin.user.disable",
   },

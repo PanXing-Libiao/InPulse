@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { projectCodeSchema } from "./projects.zod.js";
+
 /** 成员选择接口一次读取的最大活跃用户数；阶段 0 面向 10～300 人规模。 */
 export const USER_DIRECTORY_LIMIT = 300;
 
@@ -121,6 +123,140 @@ export const adminUserUpdateRequestSchema = z
 
 export type AdminUserUpdateRequest = z.infer<
   typeof adminUserUpdateRequestSchema
+>;
+
+/** 停用交接中的项目成员（仅启用且在项目内 ACTIVE 的成员）。 */
+export const adminUserOffboardingMemberSchema = z
+  .object({
+    userId: userIdSchema,
+    name: z.string().min(1).max(200),
+    avatarUrl: z.string().min(1).max(2048).nullable(),
+  })
+  .strict()
+  .meta({ id: "AdminUserOffboardingMember" });
+
+export type AdminUserOffboardingMember = z.infer<
+  typeof adminUserOffboardingMemberSchema
+>;
+
+/** 任务当前负责人；停用页据此展示交接前后的人员。 */
+export const adminUserOffboardingAssigneeSchema = z
+  .object({
+    userId: userIdSchema,
+    name: z.string().min(1).max(200),
+  })
+  .strict()
+  .meta({ id: "AdminUserOffboardingAssignee" });
+
+export type AdminUserOffboardingAssignee = z.infer<
+  typeof adminUserOffboardingAssigneeSchema
+>;
+
+/**
+ * 停用交接任务：只有 work_status = TODO、lifecycle_status = ACTIVE 且
+ * 当前账号仍是负责人的任务才会返回。assignees 含待停用账号本身；
+ * requiresHandover 表示该任务只有当前账号一个负责人。
+ */
+export const adminUserOffboardingTaskSchema = z
+  .object({
+    taskId: userIdSchema,
+    projectId: userIdSchema,
+    moduleId: userIdSchema,
+    featureId: userIdSchema.nullable(),
+    scopeType: z.enum(["FEATURE", "MODULE"]),
+    code: z.string().min(1).max(64),
+    title: z.string().min(1).max(500),
+    rowVersion: z.number().int().positive(),
+    assignees: z.array(adminUserOffboardingAssigneeSchema).min(1).max(50),
+    requiresHandover: z.boolean(),
+  })
+  .strict()
+  .meta({ id: "AdminUserOffboardingTask" });
+
+export type AdminUserOffboardingTask = z.infer<
+  typeof adminUserOffboardingTaskSchema
+>;
+
+/** 按项目分组的停用交接清单。 */
+export const adminUserOffboardingProjectSchema = z
+  .object({
+    projectId: userIdSchema,
+    projectCode: projectCodeSchema,
+    projectName: z.string().min(1).max(200),
+    tasks: z.array(adminUserOffboardingTaskSchema).max(500),
+    members: z.array(adminUserOffboardingMemberSchema).max(1000),
+  })
+  .strict()
+  .meta({ id: "AdminUserOffboardingProject" });
+
+export type AdminUserOffboardingProject = z.infer<
+  typeof adminUserOffboardingProjectSchema
+>;
+
+/** 停用前的交接清单；无未完成任务时 projects 为空数组。 */
+export const adminUserOffboardingResponseSchema = z
+  .object({
+    user: adminUserItemSchema,
+    projects: z.array(adminUserOffboardingProjectSchema).max(1000),
+  })
+  .strict()
+  .meta({ id: "AdminUserOffboardingResponse" });
+
+export type AdminUserOffboardingResponse = z.infer<
+  typeof adminUserOffboardingResponseSchema
+>;
+
+/**
+ * 停用时的单个任务交接动作。多负责人任务默认保留其余负责人；
+ * assigneeIds 为额外接手的项目成员。唯一负责人任务必须二选一：
+ * 至少指定一名接手人，或 delete = true。
+ */
+export const adminUserDisableTaskActionSchema = z
+  .object({
+    projectId: userIdSchema,
+    moduleId: userIdSchema,
+    featureId: userIdSchema.nullable(),
+    taskId: userIdSchema,
+    rowVersion: z.number().int().positive(),
+    assigneeIds: z
+      .array(userIdSchema)
+      .max(20)
+      .default([])
+      .refine(
+        (ids) =>
+          new Set(ids).size === ids.length &&
+          ids.every((id, index) => index === 0 || ids[index - 1]! < id),
+        { message: "接手人必须去重并按编号升序" },
+      ),
+    delete: z.boolean().default(false),
+  })
+  .strict()
+  .refine((value) => !value.delete || value.assigneeIds.length === 0, {
+    message: "标记删除时不能再指定接手人",
+    path: ["assigneeIds"],
+  })
+  .meta({ id: "AdminUserDisableTaskAction" });
+
+export type AdminUserDisableTaskAction = z.infer<
+  typeof adminUserDisableTaskActionSchema
+>;
+
+/** 停用请求；tasks 只列需要额外接手或删除的任务，其余任务由服务端自动保留其他负责人。 */
+export const adminUserDisableRequestSchema = z
+  .object({
+    tasks: z.array(adminUserDisableTaskActionSchema).max(500).default([]),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      new Set(value.tasks.map((task) => task.taskId)).size ===
+      value.tasks.length,
+    { message: "同一个任务不能重复提交", path: ["tasks"] },
+  )
+  .meta({ id: "AdminUserDisableRequest" });
+
+export type AdminUserDisableRequest = z.infer<
+  typeof adminUserDisableRequestSchema
 >;
 
 /** 用户管理写请求头；所有管理员写操作都必须携带同步 CSRF Token。 */

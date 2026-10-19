@@ -2278,6 +2278,15 @@
   margin: 0;
 }
 
+/* 成员状态筛选的数量只保留文字，不再套圆角底色。 */
+.member-scope-filter .segmented-count,
+.member-scope-filter .segmented button.selected .segmented-count {
+  margin-left: 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .member-row {
   transition: background 0.15s ease;
 }
@@ -3379,4 +3388,479 @@
 
 .member-org-pick.is-selected .member-org-pick-count {
   color: #5d86c2;
+}
+
+/* 停用账号 · 任务交接（D 方案）：与 D 稿 980px 弹窗 1:1 对齐。 */
+.surface-modal.disable-account-modal {
+  width: min(980px, calc(100vw - 56px));
+}
+
+.disable-account-modal > .drawer-header {
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid #eef2f6;
+  flex-shrink: 0;
+}
+
+.disable-account-modal > .modal-body {
+  padding: 18px 24px 20px;
+}
+
+.disable-account-modal > .calm-action-footer {
+  margin-top: 0;
+  padding: 14px 24px;
+  border-top: 1px solid #eef2f6;
+  background: #fbfcfe;
+  flex-shrink: 0;
+}
+
+.disable-account-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  padding: 14px 16px;
+  border: 1px solid #e4ebf3;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.disable-account-avatar {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 50%;
+  background: #e8f1fb;
+  color: #3c6e9c;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.disable-account-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.disable-account-copy strong {
+  color: #172b40;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.disable-account-copy span {
+  margin-top: 3px;
+  color: #7b8ea1;
+  font-size: 11px;
+}
+
+.disable-account-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.disable-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 21px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.disable-pill.is-green {
+  background: #e9f7ef;
+  color: #2f8f5b;
+}
+
+.disable-pill.is-amber {
+  background: #fff5e2;
+  color: #a66a12;
+}
+
+.disable-pill.is-blue {
+  background: #e7f1fd;
+  color: #2472c3;
+}
+
+.disable-pill.is-red {
+  background: #fdf0ee;
+  color: #b54334;
+}
+
+.disable-account-loading,
+.disable-account-error {
+  padding: 22px 0;
+  color: #7b8ea1;
+  font-size: 13px;
+  text-align: center;
+}
+
+.disable-account-error {
+  text-align: left;
+}
+
+.disable-account-error .ant-btn {
+  margin-top: 10px;
+}
+
+.disable-account-done {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 18px;
+  border: 1px solid #dcece4;
+  border-radius: 12px;
+  background: #f8fcfa;
+  color: #3c6551;
+}
+
+.disable-account-done > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e3f3ea;
+  color: #3e8b61;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.disable-account-done strong {
+  color: #28513b;
+  font-size: 14px;
+}
+
+.disable-account-done p {
+  margin: 4px 0 0;
+  color: #6c8276;
+  font-size: 12px;
+}
+
+.disable-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.disable-project {
+  overflow: hidden;
+  border: 1px solid #e4ebf3;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.disable-project-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-left: 3px solid #4a86c8;
+  background: #f6f9fd;
+}
+
+.disable-project.is-urgent .disable-project-head {
+  border-left-color: #d05545;
+  background: #fdf7f6;
+}
+
+.disable-project-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 9px;
+  background: #dfeafb;
+  color: #1f5f9f;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.disable-project-logo.is-red {
+  background: #fbe3df;
+  color: #a94435;
+}
+
+.disable-project-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.disable-project-copy strong {
+  color: #1c3348;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.disable-project-copy span {
+  margin-top: 3px;
+  color: #8a99aa;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.disable-project-head .disable-pill {
+  margin-left: auto;
+}
+
+.disable-task-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+}
+
+.disable-task-row td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f2f6fa;
+  vertical-align: middle;
+  color: #42586d;
+  white-space: normal;
+}
+
+.disable-task-row:last-child td {
+  border-bottom: 0;
+}
+
+.disable-task-row.is-sole td {
+  background: #fffafa;
+}
+
+.disable-task-main {
+  width: 30%;
+}
+
+.disable-task-people {
+  width: 38%;
+}
+
+.disable-task-action {
+  width: 32%;
+}
+
+.disable-task-title,
+.disable-task-code {
+  display: block;
+}
+
+.disable-task-title {
+  color: #233a50;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.disable-task-code {
+  margin-top: 2px;
+  color: #b3bfca;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.disable-person {
+  display: inline-flex;
+  align-items: center;
+  height: 23px;
+  margin: 0 4px 2px 0;
+  padding: 0 7px;
+  border: 1px solid #e2e9f1;
+  border-radius: 6px;
+  background: #f7fafd;
+  color: #42586d;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.disable-person.is-self {
+  border-color: #f0d9ae;
+  background: #fff6e6;
+  color: #a66a12;
+}
+
+.disable-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.disable-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.disable-add-button,
+.disable-delete-button,
+.disable-deleted-note button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.disable-add-button {
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid #d7e6f7;
+  border-radius: 7px;
+  background: #f3f8fe;
+  color: #2b6cb0;
+  font-size: 11px;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.disable-add-button:hover {
+  border-color: #bcd6f0;
+  background: #e8f2fd;
+}
+
+.disable-delete-button {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  color: #b54334;
+  font-size: 11px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.disable-delete-button:hover {
+  background: #fdf0ee;
+  color: #963528;
+}
+
+.disable-add-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 8px 9px;
+  border: 1px solid #e1e9f1;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.disable-add-panel .ant-checkbox-wrapper {
+  margin-inline-start: 0;
+  color: #42586d;
+  font-size: 10px;
+}
+
+.disable-add-empty {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #8a99aa;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.disable-picked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.disable-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #e7f1fd;
+  color: #2472c3;
+  font-size: 10px;
+}
+
+.disable-picker-chip button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #7fa3c9;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.disable-deleted-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8a99aa;
+  font-size: 10px;
+}
+
+.disable-deleted-note button {
+  color: #2472c3;
+}
+
+.disable-task-row.is-removed .disable-task-title {
+  color: #9aa8b5;
+  text-decoration: line-through;
+}
+
+.disable-task-row.is-removed .disable-person {
+  opacity: 0.6;
+}
+
+.disable-account-foot-note {
+  margin-right: auto;
+  align-self: center;
+  color: #7b8ea1;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .disable-account-card {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .disable-account-badges {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 54px;
+  }
+
+  .disable-task-table,
+  .disable-task-row,
+  .disable-task-row td {
+    display: block;
+    width: 100%;
+  }
+
+  .disable-task-row td {
+    padding: 9px 14px;
+    border-bottom: 0;
+  }
+
+  .disable-task-row + .disable-task-row {
+    border-top: 1px solid #f2f6fa;
+  }
+
+  .disable-task-row td:first-child {
+    padding-bottom: 2px;
+  }
+
+  .disable-task-row td:last-child {
+    padding-top: 6px;
+    padding-bottom: 14px;
+  }
 }

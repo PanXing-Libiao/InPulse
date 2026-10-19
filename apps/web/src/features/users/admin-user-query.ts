@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   createApiClient,
+  type AdminUserDisableRequest,
   type AdminUserItem,
   type AdminUserUpdateRequest,
   type InpulseApiClient,
@@ -16,7 +17,12 @@ export type AdminUserChange =
       readonly body: AdminUserUpdateRequest;
     }
   | {
-      readonly action: "disable" | "enable" | "delete";
+      readonly action: "disable";
+      readonly user: AdminUserItem;
+      readonly body: AdminUserDisableRequest;
+    }
+  | {
+      readonly action: "enable" | "delete";
       readonly user: AdminUserItem;
     };
 
@@ -30,12 +36,22 @@ export function adminUserErrorMessage(error: unknown): string {
         return "用户信息已在其他窗口被修改，请加载最新版本后重试。";
       if (error.code === "ADMIN_USER_SELF_MUTATION_REJECTED")
         return "不能对当前管理员自己执行停用、降级或删除。";
-      if (error.code === "ADMIN_USER_HAS_OPEN_TASKS") {
-        const count = error.details.openTaskCount;
-        return typeof count === "number"
-          ? `该账号仍有 ${count} 个未完成任务，请先转分配或删除任务后再停用。`
-          : "该账号仍有未完成任务，请先转分配或删除任务后再停用。";
-      }
+      if (error.code === "ADMIN_USER_OFFBOARDING_TASK_REQUIRED")
+        return "还有仅该账号负责的任务未处理，请指定接手人或删除任务。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_VERSION_CONFLICT")
+        return "任务已在其他窗口被修改，请关闭弹窗后重新打开再处理。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_INCOMPLETE")
+        return "交接尚未完成，请刷新任务清单后重试。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_TASK_NOT_FOUND")
+        return "待交接任务不存在或已归属他人，请刷新后重试。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_SELF_ASSIGNEE")
+        return "不能把待停用账号继续设为接手人。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_DELETE_NOT_ALLOWED")
+        return "只有唯一负责人任务可以删除；多负责人任务请保留其他人继续负责。";
+      if (error.code === "TASK_GROUP_MAIN_LOCKED")
+        return "该任务是任务组主任务，请先解除合并后再删除。";
+      if (error.code === "TASK_ASSIGNEE_INVALID")
+        return "接手人不在项目成员中或已停用，请重新选择。";
       if (error.code === "ADMIN_USER_LOGIN_CONFLICT")
         return "登录名已存在，请更换后重试。";
       if (error.code === "ADMIN_USER_EMAIL_CONFLICT")
@@ -46,7 +62,11 @@ export function adminUserErrorMessage(error: unknown): string {
         return "不能停用、降级或移除最后一名可用管理员，请先指定其他管理员。";
       return "用户当前状态不允许此操作，请检查列表后重试。";
     }
-    if (error.status === 422) return "请检查姓名或邮箱。";
+    if (error.status === 422) {
+      if (error.code === "PROJECT_MEMBER_REASSIGNMENT_REQUIRED")
+        return "该任务没有其他负责人，必须指定接手人或删除任务。";
+      return "请检查姓名、邮箱或任务交接设置。";
+    }
     if (error.status === 429) return "请求过于频繁，请稍后重试。";
   }
   return "用户管理服务暂时不可用，请重试。";
@@ -114,7 +134,7 @@ export function useAdminUsers(
       if (change.action === "update")
         return api.updateUser(change.user.id, change.body, init);
       if (change.action === "disable")
-        return api.disableUser(change.user.id, init);
+        return api.disableUser(change.user.id, change.body, init);
       if (change.action === "enable")
         return api.enableUser(change.user.id, init);
       return api.deleteUser(change.user.id, init);

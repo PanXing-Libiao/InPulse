@@ -28,6 +28,15 @@ export class AdminUsersController {
     return this.respond("listAdminUsers", request, response);
   }
 
+  @Get(":userId/offboarding")
+  @Operation("getAdminUserOffboarding")
+  async offboarding(
+    @Req() request: AdminUsersHttpRequest,
+    @Res({ passthrough: true }) response: AdminUsersControllerResponse,
+  ) {
+    return this.respond("getAdminUserOffboarding", request, response);
+  }
+
   @Post()
   @Operation("createUser")
   async create(
