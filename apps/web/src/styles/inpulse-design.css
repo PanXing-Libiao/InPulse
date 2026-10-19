@@ -2360,11 +2360,14 @@
   font-size: 11px;
 }
 
-.member-self {
+.member-row .member-self {
+  display: inline;
+  margin-top: 0;
   margin-left: 4px;
   color: #8191a2;
   font-weight: 400;
   font-size: 11px;
+  vertical-align: baseline;
 }
 
 .member-meta {

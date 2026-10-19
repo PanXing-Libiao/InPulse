@@ -81,6 +81,45 @@ test("管理员完成用户编辑、停用/离职筛选、启用、强退与删�
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "新增用户" })).toHaveCount(0);
 
+    const selfRow = page
+      .locator(".member-row")
+      .filter({ hasText: admin.account.name })
+      .first();
+    const selfMark = selfRow
+      .locator(".member-self")
+      .filter({ hasText: "（当前账号）" });
+    await expect(selfMark).toBeVisible();
+    const selfMarkPosition = await selfRow
+      .locator(".member-id strong")
+      .evaluate((strong, name) => {
+        const nameNode = Array.from(strong.childNodes).find(
+          (node) => node.nodeType === 3 && node.textContent?.trim() === name,
+        );
+        const mark = strong.querySelector(".member-self");
+        if (nameNode === undefined || mark === null) {
+          throw new Error("当前账号标签或姓名节点不存在");
+        }
+        const range = document.createRange();
+        range.selectNodeContents(nameNode);
+        const nameRect = range.getBoundingClientRect();
+        const markRect = mark.getBoundingClientRect();
+        return {
+          nameRight: nameRect.right,
+          nameTop: nameRect.top,
+          nameBottom: nameRect.bottom,
+          markLeft: markRect.left,
+          markTop: markRect.top,
+          markBottom: markRect.bottom,
+        };
+      }, admin.account.name);
+    expect(selfMarkPosition.markLeft).toBeGreaterThan(
+      selfMarkPosition.nameRight,
+    );
+    expect(selfMarkPosition.markTop).toBeLessThan(selfMarkPosition.nameBottom);
+    expect(selfMarkPosition.markBottom).toBeGreaterThan(
+      selfMarkPosition.nameTop,
+    );
+
     const scope = page.getByRole("group", { name: "成员状态筛选" });
     await expect(
       scope.getByRole("button", { name: "启用", exact: true }),
