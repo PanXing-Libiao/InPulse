@@ -4,6 +4,8 @@ import {
   routeRegistry,
   schemaRegistry,
   type AdminUserCreateRequest,
+  type AdminUserDisableRequest,
+  type AdminUserOffboardingResponse,
   type AdminUserUpdateRequest,
 } from "@inpulse/api-contract";
 
@@ -29,6 +31,7 @@ import { AdminUserService } from "./admin-user.service.js";
 
 export type AdminUserOperation =
   | "listAdminUsers"
+  | "getAdminUserOffboarding"
   | "createUser"
   | "updateUser"
   | "disableUser"
@@ -88,7 +91,9 @@ export class AdminUsersHttpService {
       const route = routeRegistry.find(
         (entry) => entry.operationId === operation,
       )!;
-      const write = operation !== "listAdminUsers";
+      const write =
+        operation !== "listAdminUsers" &&
+        operation !== "getAdminUserOffboarding";
       if (
         write &&
         mutationSameOriginValidationError(request.headers) !== undefined
@@ -108,14 +113,23 @@ export class AdminUsersHttpService {
       );
       const path = parsedPath as { readonly userId?: number };
       if (!write) {
-        const items = await this.uow.run(async (tx) => {
+        return await this.uow.run(async (tx) => {
           await this.assertReadAdmin(tx, request.headers);
-          return this.repository.list(tx);
+          if (operation === "getAdminUserOffboarding") {
+            const body = await this.users.offboarding(tx, path.userId!);
+            return {
+              status: 200,
+              body: schemaRegistry.AdminUserOffboardingResponse.schema.parse(
+                body satisfies AdminUserOffboardingResponse,
+              ),
+            };
+          }
+          const items = await this.repository.list(tx);
+          return {
+            status: 200,
+            body: schemaRegistry.AdminUserListResponse.schema.parse({ items }),
+          };
         });
-        return {
-          status: 200,
-          body: schemaRegistry.AdminUserListResponse.schema.parse({ items }),
-        };
       }
 
       const parsedHeaders = this.parseRouteValue(
@@ -158,7 +172,13 @@ export class AdminUsersHttpService {
           return userResult(updated, actorId, updated.id);
         }
         if (operation === "disableUser") {
-          await this.users.disable(tx, meta, userId, version!);
+          await this.users.disable(
+            tx,
+            meta,
+            userId,
+            version!,
+            body as AdminUserDisableRequest,
+          );
           return noBodyResult(actorId, userId);
         }
         if (operation === "enableUser") {

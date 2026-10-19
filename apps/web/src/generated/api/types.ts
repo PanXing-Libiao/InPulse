@@ -78,6 +78,20 @@ export type AdminUserCreateRequest = {
   readonly isAdmin: boolean;
 };
 
+export type AdminUserDisableRequest = {
+  readonly tasks: readonly AdminUserDisableTaskAction[];
+};
+
+export type AdminUserDisableTaskAction = {
+  readonly projectId: number;
+  readonly moduleId: number;
+  readonly featureId: (number | null);
+  readonly taskId: number;
+  readonly rowVersion: number;
+  readonly assigneeIds: readonly number[];
+  readonly delete: boolean;
+};
+
 export type AdminUserItem = {
   readonly id: number;
   readonly loginName: string;
@@ -101,6 +115,43 @@ export type AdminUserListResponse = {
 
 export type AdminUserMutationHeaders = {
   readonly "x-csrf-token": string;
+};
+
+export type AdminUserOffboardingAssignee = {
+  readonly userId: number;
+  readonly name: string;
+};
+
+export type AdminUserOffboardingMember = {
+  readonly userId: number;
+  readonly name: string;
+  readonly avatarUrl: (string | null);
+};
+
+export type AdminUserOffboardingProject = {
+  readonly projectId: number;
+  readonly projectCode: ProjectCode;
+  readonly projectName: string;
+  readonly tasks: readonly AdminUserOffboardingTask[];
+  readonly members: readonly AdminUserOffboardingMember[];
+};
+
+export type AdminUserOffboardingResponse = {
+  readonly user: AdminUserItem;
+  readonly projects: readonly AdminUserOffboardingProject[];
+};
+
+export type AdminUserOffboardingTask = {
+  readonly taskId: number;
+  readonly projectId: number;
+  readonly moduleId: number;
+  readonly featureId: (number | null);
+  readonly scopeType: ("FEATURE" | "MODULE");
+  readonly code: string;
+  readonly title: string;
+  readonly rowVersion: number;
+  readonly assignees: readonly AdminUserOffboardingAssignee[];
+  readonly requiresHandover: boolean;
 };
 
 export type AdminUserPath = {

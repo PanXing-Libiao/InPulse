@@ -132,7 +132,7 @@ describe("F-03 admin users page", () => {
     fireEvent.click(
       within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
         "button",
-        { name: "已停用/离职" },
+        { name: "已停用" },
       ),
     );
     const carol = userCard("Carol");
@@ -224,7 +224,7 @@ describe("F-03 admin users page", () => {
     );
   });
 
-  it("disables a target user and keeps self actions protected", async () => {
+  it("disables a target user through the handover dialog and keeps self actions protected", async () => {
     const listAdminUsers = vi
       .fn()
       .mockResolvedValue({ items: [admin, member] });
@@ -232,21 +232,29 @@ describe("F-03 admin users page", () => {
       .fn()
       .mockResolvedValue({ csrfToken: "a".repeat(43) });
     const disableUser = vi.fn().mockResolvedValue(undefined);
+    const getAdminUserOffboarding = vi
+      .fn()
+      .mockResolvedValue({ user: member, projects: [] });
     const client = {
       listAdminUsers,
       issueCsrfToken,
       disableUser,
+      getAdminUserOffboarding,
     } as unknown as InpulseApiClient;
     mount(client);
     await screen.findByText("Bob");
     fireEvent.click(
       within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
     );
-    const confirm = screen.getByRole("dialog", { name: /停\s*用\s*用\s*户/ });
-    fireEvent.click(within(confirm).getByRole("button", { name: /确\s*认/ }));
+    const confirm = screen.getByRole("dialog", {
+      name: "停用账号 · 任务交接",
+    });
+    await within(confirm).findByText("全部项目已完成。");
+    fireEvent.click(within(confirm).getByRole("button", { name: /确认停用/ }));
     await waitFor(() => expect(disableUser).toHaveBeenCalledTimes(1));
     expect(disableUser).toHaveBeenCalledWith(
       2,
+      { tasks: [] },
       expect.objectContaining({
         headers: expect.objectContaining({
           "If-Match": '"1"',
@@ -255,6 +263,40 @@ describe("F-03 admin users page", () => {
       }),
     );
     await screen.findByText("用户已停用");
+  });
+
+  it("does not claim there are no open tasks when the handover list fails to load", async () => {
+    const listAdminUsers = vi
+      .fn()
+      .mockResolvedValue({ items: [admin, member] });
+    const getAdminUserOffboarding = vi.fn().mockRejectedValue(
+      new ApiError(404, {
+        code: "ADMIN_USER_NOT_FOUND",
+        message: "用户不存在",
+        details: {},
+        requestId: "t",
+      }),
+    );
+    const client = {
+      listAdminUsers,
+      getAdminUserOffboarding,
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "停用账号 · 任务交接",
+    });
+    await within(dialog).findByText("任务清单未加载");
+    expect(
+      within(dialog).queryByText("没有未完成任务"),
+    ).not.toBeInTheDocument();
+    await within(dialog).findByText("任务清单加载失败，请重试后再停用。");
+    expect(
+      within(dialog).getByRole("button", { name: /确认停用/ }),
+    ).toBeDisabled();
   });
 
   it("reuses the idempotency key when retrying a rejected update", async () => {
@@ -341,15 +383,14 @@ describe("F-03 admin users page", () => {
     expect(
       scope.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(within(scope).getByRole("button", { name: "启用" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(
+      within(scope).getByRole("button", { name: "启用中" }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.queryByText("离职成员")).not.toBeInTheDocument();
     expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
 
-    fireEvent.click(within(scope).getByRole("button", { name: "已停用/离职" }));
+    fireEvent.click(within(scope).getByRole("button", { name: "已停用" }));
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
     expect(screen.getByText("离职成员")).toBeInTheDocument();
@@ -383,7 +424,7 @@ describe("F-03 admin users page", () => {
     fireEvent.click(
       within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
         "button",
-        { name: "已停用/离职" },
+        { name: "已停用" },
       ),
     );
     fireEvent.click(
@@ -451,7 +492,7 @@ describe("F-03 admin users page", () => {
     fireEvent.click(
       within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
         "button",
-        { name: "已停用/离职" },
+        { name: "已停用" },
       ),
     );
     expect(screen.getByText("离职成员")).toBeInTheDocument();
@@ -781,7 +822,7 @@ describe("ADR-081 organizations", () => {
     fireEvent.click(
       within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
         "button",
-        { name: "已停用/离职" },
+        { name: "已停用" },
       ),
     );
     expect(screen.getByText("Carol")).toBeInTheDocument();
@@ -995,25 +1036,188 @@ describe("ADR-081 organizations", () => {
     await screen.findByText(/已把 1 名成员移出，变为未分配/);
   });
 
-  it("blocks direct disabling when the account still owns open tasks", async () => {
+  it("keeps sole-owner tasks unresolved until a handover member or deletion is chosen", async () => {
+    const target: AdminUserItem = { ...member, openTaskCount: 3 };
     const disableUser = vi.fn().mockResolvedValue(undefined);
+    const getAdminUserOffboarding = vi.fn().mockResolvedValue({
+      user: target,
+      projects: [
+        {
+          projectId: 12,
+          projectCode: "DATA_BI",
+          projectName: "数据看板自助分析平台",
+          members: [
+            { userId: 1, name: "Alice", avatarUrl: null },
+            { userId: 3, name: "Carol", avatarUrl: null },
+          ],
+          tasks: [
+            {
+              taskId: 70,
+              projectId: 12,
+              moduleId: 4,
+              featureId: null,
+              scopeType: "MODULE",
+              code: "DATA_BI-T-6",
+              title: "定时任务与推送模板",
+              rowVersion: 3,
+              assignees: [{ userId: 2, name: "Bob" }],
+              requiresHandover: true,
+            },
+            {
+              taskId: 71,
+              projectId: 12,
+              moduleId: 4,
+              featureId: null,
+              scopeType: "MODULE",
+              code: "DATA_BI-T-7",
+              title: "指标口径复核",
+              rowVersion: 2,
+              assignees: [
+                { userId: 2, name: "Bob" },
+                { userId: 1, name: "Alice" },
+              ],
+              requiresHandover: false,
+            },
+          ],
+        },
+      ],
+    });
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({
-        items: [{ ...member, openTaskCount: 2 }, admin],
+        items: [target, admin],
       }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [] }),
       issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
       disableUser,
+      getAdminUserOffboarding,
     } as unknown as InpulseApiClient;
     mount(client);
     await screen.findByText("Bob");
     fireEvent.click(
       within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
     );
-    expect(
-      screen.getByText(/仍有 2 个未完成任务，请先转分配或删除任务后再停用/),
-    ).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", {
+      name: "停用账号 · 任务交接",
+    });
+    await within(dialog).findByText("定时任务与推送模板");
+    const confirm = within(dialog).getByRole("button", {
+      name: /确认停用/,
+    });
+    expect(confirm).toBeDisabled();
     expect(disableUser).not.toHaveBeenCalled();
+
+    const soleRow = within(dialog)
+      .getByText("定时任务与推送模板")
+      .closest("tr");
+    if (!soleRow) throw new Error("sole task row missing");
+    fireEvent.click(
+      within(soleRow as HTMLElement).getByRole("button", {
+        name: "＋ 添加成员",
+      }),
+    );
+    fireEvent.click(within(soleRow as HTMLElement).getByLabelText("Alice"));
+    expect(confirm).toBeEnabled();
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(disableUser).toHaveBeenCalledTimes(1));
+    expect(disableUser).toHaveBeenCalledWith(
+      2,
+      {
+        tasks: [
+          {
+            projectId: 12,
+            moduleId: 4,
+            featureId: null,
+            taskId: 70,
+            rowVersion: 3,
+            assigneeIds: [1],
+            delete: false,
+          },
+        ],
+      },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "If-Match": '"1"',
+          "Idempotency-Key": expect.stringContaining("admin-user-"),
+        }),
+      }),
+    );
+  });
+
+  it("lists projects and tasks that require handover first", async () => {
+    const target: AdminUserItem = { ...member, openTaskCount: 3 };
+    const task = (
+      projectId: number,
+      taskId: number,
+      title: string,
+      requiresHandover: boolean,
+    ) => ({
+      taskId,
+      projectId,
+      moduleId: 4,
+      featureId: null,
+      scopeType: "MODULE" as const,
+      code: "T-" + taskId,
+      title,
+      rowVersion: 1,
+      assignees: requiresHandover
+        ? [{ userId: 2, name: "Bob" }]
+        : [
+            { userId: 2, name: "Bob" },
+            { userId: 1, name: "Alice" },
+          ],
+      requiresHandover,
+    });
+    const getAdminUserOffboarding = vi.fn().mockResolvedValue({
+      user: target,
+      projects: [
+        {
+          projectId: 30,
+          projectCode: "NORMAL",
+          projectName: "普通项目",
+          members: [{ userId: 1, name: "Alice", avatarUrl: null }],
+          tasks: [task(30, 90, "普通项目多负责人任务", false)],
+        },
+        {
+          projectId: 20,
+          projectCode: "URGENT",
+          projectName: "必须处理项目",
+          members: [{ userId: 1, name: "Alice", avatarUrl: null }],
+          tasks: [
+            task(20, 82, "第二优先唯一任务", true),
+            task(20, 81, "普通多负责人任务", false),
+            task(20, 80, "第一优先唯一任务", true),
+          ],
+        },
+      ],
+    });
+    const client = {
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [target, admin] }),
+      getAdminUserOffboarding,
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "停用账号 · 任务交接",
+    });
+    await within(dialog).findByText("必须处理项目");
+    expect(
+      Array.from(dialog.querySelectorAll(".disable-project-copy strong")).map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["必须处理项目", "普通项目"]);
+    const urgent = Array.from(dialog.querySelectorAll(".disable-project")).find(
+      (node) => node.textContent?.includes("必须处理项目"),
+    );
+    if (!urgent) throw new Error("urgent project card missing");
+    expect(
+      Array.from(urgent.querySelectorAll(".disable-task-title")).map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(["第一优先唯一任务", "第二优先唯一任务", "普通多负责人任务"]);
   });
 
   it("shows disabled accounts only in the departed filter and keeps them gray", async () => {
@@ -1035,7 +1239,7 @@ describe("ADR-081 organizations", () => {
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
 
     const scope = screen.getByRole("group", { name: "成员状态筛选" });
-    fireEvent.click(within(scope).getByRole("button", { name: "已停用/离职" }));
+    fireEvent.click(within(scope).getByRole("button", { name: "已停用" }));
     const rows = [...document.querySelectorAll(".member-row")];
     expect(rows).toHaveLength(1);
     expect(rows[0]?.textContent).toContain("Bob");

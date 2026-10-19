@@ -185,6 +185,7 @@ export class HealthController {
       scan.bindings.map((binding) => `${binding.method} ${binding.path}`),
     ).toEqual([
       "GET /api/v1/admin/users",
+      "GET /api/v1/admin/users/{userId}/offboarding",
       "POST /api/v1/admin/users",
       "PATCH /api/v1/admin/users/{userId}",
       "POST /api/v1/admin/users/{userId}/disable",

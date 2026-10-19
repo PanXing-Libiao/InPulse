@@ -143,9 +143,11 @@ import {
 } from "./contracts/projects.zod.js";
 import {
   adminUserCreateRequestSchema,
+  adminUserDisableRequestSchema,
   adminUserItemSchema,
   adminUserListResponseSchema,
   adminUserMutationHeadersSchema,
+  adminUserOffboardingResponseSchema,
   adminUserPathSchema,
   adminUserReplayContextSchema,
   adminUserUpdateRequestSchema,
@@ -739,6 +741,18 @@ export const schemaRegistry = {
   AdminUserUpdateRequest: {
     schema: adminUserUpdateRequestSchema,
     summary: "用户资料与管理员角色编辑请求",
+    sensitiveFieldPaths: [],
+  },
+  AdminUserOffboardingResponse: {
+    schema: adminUserOffboardingResponseSchema,
+    summary:
+      "停用账号前的按项目交接清单；包含未完成任务、负责人和可接手的项目成员",
+    sensitiveFieldPaths: [],
+  },
+  AdminUserDisableRequest: {
+    schema: adminUserDisableRequestSchema,
+    summary:
+      "停用账号时的任务接手与删除动作；未列出的多负责人任务由服务端保留其他负责人",
     sensitiveFieldPaths: [],
   },
   AdminUserMutationHeaders: {

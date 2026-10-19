@@ -306,7 +306,7 @@ GitHub Actions 已通过（F-03 PR #72，run 34345191090）。
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
-| DISABLE-API-001 | 真实 PostgreSQL 集成 + 单元 | 有未完成任务时停用被拒 | `disableUser` 返回 409 `ADMIN_USER_HAS_OPEN_TASKS`，`details.openTaskCount` 为任务数；账号仍 `ACTIVE`，会话未被撤销；HTTP 编排把 `reason=open-tasks` 与数量透传到统一错误体 | 本地通过（`admin-users-api.integration.test.ts`、`admin-users-http.test.ts`） |
+| DISABLE-API-001 | 真实 PostgreSQL 集成 + 单元 | 停用前完成任务交接 | 唯一负责人任务未指定接手人且未标记删除时返回 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED`，账号仍 `ACTIVE`、会话未撤销；多负责人任务默认保留其他负责人；唯一负责人任务可增补多名接手人或标记删除；全部任务清理后账号 `DISABLED`、Session 撤销、审计含 `reassignedTaskIds` / `deletedTaskIds`；任一任务失败整单回滚 | 本地通过（`admin-users-api.integration.test.ts` 7/7、`admin-users-http.test.ts` 9/9） |
 | DISABLE-UI-001 | Web 单元 | 停用账号筛选与行内操作 | 默认「启用」列表不显示停用账号；切换到「已停用/离职」后可见，整行 `is-disabled`、状态显示「停用」，行内提供「启用、编辑、强制删除」；启用账号行内提供「停用、编辑」且停用位于编辑左侧；当前账号保留隐藏的同宽停用占位槽，状态和编辑列与普通成员对齐 | 本地通过（`AdminUsersPageView.test.tsx`） |
 | DISABLE-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 | `contract:drift` 无漂移；`contract:validate` 与 `permissions:check` 恢复为 125 条操作 / 125 条路由；`db:migrations:check` 通过 | 待重跑（2026-10-19 清理后） |
 
@@ -6736,6 +6736,16 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR082-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:drift` 6 产物一致；`permissions:check` 126 条操作 / 126 条路由；迁移 `0047` 已在 `app_ci` 应用；typecheck / lint / format:check 通过 | 本地通过（2026-10-19；Web 单测 957；API 单测 512；API 集成 618；DB 集成 28） |
 
 已知偏差（本批）：① 真实生产数据未执行删除演练；② 历史业务表不做姓名物理回写；审计列表不改写原始载荷，优先显示事件当时姓名，历史业务记录按当前用户表显示墓碑名。
+
+## ADR-084 停用账号前的任务交接（2026-10-19）
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR083-API-001 | API 单元 | 交接清单读取与停用请求体 | `getAdminUserOffboarding` 经管理员读路径返回 `AdminUserOffboardingResponse`；`disableUser` 将 `AdminUserDisableRequest` 传给业务服务；`ADMIN_USER_OFFBOARDING_TASK_REQUIRED` 映射为 422 且保留 `reason: offboarding` | 本地通过（2026-10-19，`admin-users-http.test.ts` 9/9） |
+| ADR083-API-002 | 真实 PostgreSQL 集成（真实 HTTP） | 唯一负责人拒绝、多负责人默认保留、多人接手与删除 | 唯一负责人任务未处理返回 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED` 且账号保持 ACTIVE、Session 不撤销；多负责人任务默认摘掉目标账号并保留其他负责人；唯一负责人任务可增补多名接手人；唯一负责人任务可标记删除；全部处理成功后账号 DISABLED、开放任务 0、Session 0，审计含 `reassignedTaskIds` / `deletedTaskIds` | 本地通过（2026-10-19，`admin-users-api.integration.test.ts` 7/7） |
+| ADR083-UI-001 | Web 单元 | D 方案停用弹窗 | 含必须处理任务的项目与项目内唯一负责人任务排在最前；无任务显示「全部项目已完成」并允许停用；唯一负责人任务未处理时「确认停用」禁用；添加接手人后可提交；多负责人任务无动作时不进入请求体；停用请求携带 `If-Match`、CSRF 与 `Idempotency-Key` | 本地通过（2026-10-19，`AdminUsersPageView.test.tsx` 与 `admin-user-query.test.tsx` 34/34） |
+| ADR083-E2E-001 | Playwright 浏览器 | 成员生命周期改走交接弹窗 | 点击行内「停用」打开「停用账号 · 任务交接」；无任务目标显示「全部项目已完成」，点击「确认停用」后从启用列表消失 | 本地通过（2026-10-19，全量 Browser E2E 88/88） |
+| ADR083-GATE-001 | 静态门禁 | 契约 / 权限 / 类型 / 构建 | `contract:drift` 6 产物一致；`permissions:check` 127 条操作 / 127 条路由；typecheck / lint / format:check / build 通过 | 本地通过（2026-10-19） |
 
 ## 审计动作码候选面板对齐（2026-10-19）
 

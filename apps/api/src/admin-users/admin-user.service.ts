@@ -2,7 +2,10 @@ import { Inject, Injectable } from "@nestjs/common";
 import {
   adminUserReplayContextSchema,
   type AdminUserCreateRequest,
+  type AdminUserDisableRequest,
   type AdminUserItem,
+  type AdminUserOffboardingProject,
+  type AdminUserOffboardingResponse,
   type AdminUserUpdateRequest,
 } from "@inpulse/api-contract";
 
@@ -14,11 +17,21 @@ import { PostgresUserSessionRepository } from "../auth/user-session.repository.j
 import { AuditWritePort } from "../audit/index.js";
 import { ActivityWritePort } from "../modules/activity/index.js";
 import { ProjectMembersQueryPort } from "../modules/projects/index.js";
+import {
+  ProjectMemberTaskCommandError,
+  ProjectMemberTaskCommandPort,
+} from "../modules/tasks/index.js";
+import { TaskDeletionCommandPort } from "../modules/tasks/task-deletion.command-port.js";
+import { TaskManagementError } from "../modules/tasks/tasks-management.service.js";
+import { TaskDeletionWorkflow } from "../workflows/task-deletion.workflow.js";
 import { AdminUserRepository } from "./admin-user.repository.js";
+import { AdminUserOffboardingRepository } from "./admin-user-offboarding.repository.js";
 import {
   adminUserActiveProjectMembership,
   adminUserNotFound,
-  adminUserOpenTasks,
+  adminUserOffboardingConflict,
+  adminUserOffboardingInvalid,
+  adminUserOffboardingTaskNotFound,
   adminUserSelfMutation,
   adminUserStateConflict,
   adminUserVersionConflict,
@@ -38,12 +51,31 @@ export interface AdminUserMutationMeta {
 export class AdminUserService {
   constructor(
     private readonly repository: AdminUserRepository,
+    private readonly offboardingRepository: AdminUserOffboardingRepository,
     private readonly sessions: PostgresUserSessionRepository,
     private readonly highRisk: AdminHighRiskAuthService,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     private readonly projectMembers: ProjectMembersQueryPort,
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
+    @Inject(ProjectMemberTaskCommandPort)
+    private readonly projectMemberTasks: ProjectMemberTaskCommandPort,
+    @Inject(TaskDeletionCommandPort)
+    private readonly taskDeletionCommands: TaskDeletionCommandPort,
+    @Inject(TaskDeletionWorkflow)
+    private readonly taskDeletion: TaskDeletionWorkflow,
   ) {}
+
+  async offboarding(
+    tx: TransactionContext,
+    userId: number,
+  ): Promise<AdminUserOffboardingResponse> {
+    const user = await this.repository.find(tx, userId);
+    if (user === undefined) throw adminUserNotFound();
+    return {
+      user,
+      projects: await this.offboardingRepository.load(tx, userId),
+    };
+  }
 
   async create(
     tx: TransactionContext,
@@ -101,6 +133,7 @@ export class AdminUserService {
     meta: AdminUserMutationMeta,
     userId: number,
     version: number,
+    request: AdminUserDisableRequest = { tasks: [] },
   ): Promise<void> {
     await this.verifyBeforeLocks(tx, meta.headers);
     const candidate = await this.repository.find(tx, userId);
@@ -112,9 +145,50 @@ export class AdminUserService {
     if (current.rowVersion !== version) throw adminUserVersionConflict();
     if (current.status !== "ACTIVE") throw adminUserStateConflict();
     if (current.id === meta.actorId) throw adminUserSelfMutation();
-    if (current.openTaskCount > 0) {
-      throw adminUserOpenTasks(current.openTaskCount);
+
+    // 用户行先锁住，再读交接清单：此后新任务再尝试把该账号设为负责人时，
+    // checkAssignableMember 会等待本事务并在停用提交后失败。
+    const projects = await this.offboardingRepository.load(tx, userId);
+    this.assertHandoverPlan(projects, userId, request);
+
+    const actions = new Map(
+      request.tasks.map((action) => [action.taskId, action] as const),
+    );
+    const tasks = projects
+      .flatMap((project) => project.tasks)
+      .sort((left, right) => left.taskId - right.taskId);
+    const reassignedTaskIds: number[] = [];
+    const deletedTaskIds: number[] = [];
+
+    for (const task of tasks) {
+      const action = actions.get(task.taskId);
+      if (action?.delete === true) {
+        await this.deleteHandoverTask(tx, meta, current.name, task);
+        deletedTaskIds.push(task.taskId);
+        continue;
+      }
+      await this.reassignHandoverTask(
+        tx,
+        meta,
+        userId,
+        task,
+        action?.assigneeIds ?? [],
+      );
+      reassignedTaskIds.push(task.taskId);
     }
+
+    const remaining = await this.offboardingRepository.load(tx, userId);
+    if (remaining.length > 0) {
+      const count = remaining.reduce(
+        (total, project) => total + project.tasks.length,
+        0,
+      );
+      throw adminUserOffboardingConflict(
+        "ADMIN_USER_OFFBOARDING_INCOMPLETE",
+        `交接期间仍有 ${count} 个未完成任务，请刷新后重试`,
+      );
+    }
+
     if (requiresAdminGuard) await this.ensureOtherActiveAdmin(tx, current);
     const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
     this.assertActor(actor.userId, meta.actorId);
@@ -125,7 +199,148 @@ export class AdminUserService {
       before: this.summary(current),
       after: this.summary(disabled),
       revokedSessionCount: revoked,
+      reassignedTaskIds,
+      deletedTaskIds,
     });
+  }
+
+  private assertHandoverPlan(
+    projects: readonly AdminUserOffboardingProject[],
+    userId: number,
+    request: AdminUserDisableRequest,
+  ): void {
+    const tasks = new Map(
+      projects
+        .flatMap((project) => project.tasks)
+        .map((task) => [task.taskId, task] as const),
+    );
+    const seen = new Set<number>();
+    for (const action of request.tasks) {
+      if (seen.has(action.taskId)) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_DUPLICATE_TASK",
+          "同一个任务不能重复提交",
+        );
+      }
+      seen.add(action.taskId);
+      const task = tasks.get(action.taskId);
+      if (task === undefined) throw adminUserOffboardingTaskNotFound();
+      if (
+        task.projectId !== action.projectId ||
+        task.moduleId !== action.moduleId ||
+        task.featureId !== action.featureId
+      ) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_TASK_SCOPE_MISMATCH",
+          "任务归属与交接清单不一致，请刷新后重试",
+        );
+      }
+      if (task.rowVersion !== action.rowVersion) {
+        throw adminUserOffboardingConflict(
+          "ADMIN_USER_OFFBOARDING_VERSION_CONFLICT",
+          "任务已在其他窗口被修改，请刷新后重试",
+        );
+      }
+      if (action.assigneeIds.includes(userId)) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_SELF_ASSIGNEE",
+          "不能把待停用账号继续设为接手人",
+        );
+      }
+      if (action.delete && !task.requiresHandover) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_DELETE_NOT_ALLOWED",
+          "只有唯一负责人任务可以删除；多负责人任务请保留其他人继续负责",
+        );
+      }
+    }
+    for (const task of tasks.values()) {
+      if (!task.requiresHandover) continue;
+      const action = request.tasks.find(
+        (candidate) => candidate.taskId === task.taskId,
+      );
+      if (
+        action === undefined ||
+        (!action.delete && action.assigneeIds.length === 0)
+      ) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_TASK_REQUIRED",
+          `任务 ${task.code} 只有该账号一个负责人，请指定接手人或删除任务`,
+        );
+      }
+    }
+  }
+
+  private async reassignHandoverTask(
+    tx: TransactionContext,
+    meta: AdminUserMutationMeta,
+    userId: number,
+    task: AdminUserOffboardingProject["tasks"][number],
+    assigneeIds: readonly number[],
+  ): Promise<void> {
+    try {
+      await this.projectMemberTasks.reassign(tx, {
+        actorId: meta.actorId,
+        projectId: task.projectId,
+        targetUserId: userId,
+        assignments: [
+          {
+            taskId: task.taskId,
+            moduleId: task.moduleId,
+            featureId: task.featureId,
+            rowVersion: task.rowVersion,
+            assigneeIds,
+          },
+        ],
+        requestId: meta.requestId,
+      });
+    } catch (error) {
+      this.rethrowHandoverError(error);
+    }
+  }
+
+  private async deleteHandoverTask(
+    tx: TransactionContext,
+    meta: AdminUserMutationMeta,
+    userName: string,
+    task: AdminUserOffboardingProject["tasks"][number],
+  ): Promise<void> {
+    const scope = {
+      projectId: task.projectId,
+      moduleId: task.moduleId,
+      featureId: task.featureId,
+    };
+    try {
+      await this.taskDeletionCommands.authorize(
+        tx,
+        meta.actorId,
+        scope,
+        task.taskId,
+      );
+      await this.taskDeletion.deleteWithinTransaction(tx, {
+        projectId: task.projectId,
+        taskId: task.taskId,
+        rowVersion: task.rowVersion,
+        actorId: meta.actorId,
+        reason: `账号 ${userName} 停用前交接：删除无人接手任务`,
+        requestId: meta.requestId,
+      });
+    } catch (error) {
+      this.rethrowHandoverError(error);
+    }
+  }
+
+  private rethrowHandoverError(error: unknown): never {
+    if (
+      error instanceof ProjectMemberTaskCommandError ||
+      error instanceof TaskManagementError
+    ) {
+      if (error.status === 404) throw adminUserOffboardingTaskNotFound();
+      if (error.status === 422)
+        throw adminUserOffboardingInvalid(error.code, error.message);
+      throw adminUserOffboardingConflict(error.code, error.message);
+    }
+    throw error;
   }
 
   async enable(

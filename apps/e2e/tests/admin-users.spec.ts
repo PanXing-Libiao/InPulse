@@ -94,7 +94,7 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
       ),
     ).toBeLessThan(2);
     await expect(
-      scope.getByRole("button", { name: "启用", exact: true }),
+      scope.getByRole("button", { name: "启用中", exact: true }),
     ).toHaveAttribute("aria-pressed", "true");
 
     const currentCard = page
@@ -149,13 +149,14 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await expect(card.getByText(updatedName, { exact: true })).toBeVisible();
 
     await stopButton.click();
-    const disableDialog = page.getByRole("dialog", { name: "停用用户" });
-    await disableDialog.getByRole("button", { name: /确\s*认/ }).click();
+    const disableDialog = page.getByRole("dialog", {
+      name: "停用账号 · 任务交接",
+    });
+    await expect(disableDialog.getByText("全部项目已完成。")).toBeVisible();
+    await disableDialog.getByRole("button", { name: /确认停用/ }).click();
     await expect(disableDialog).toBeHidden();
     await expect(card).toHaveCount(0);
-    await scope
-      .getByRole("button", { name: "已停用/离职", exact: true })
-      .click();
+    await scope.getByRole("button", { name: "已停用", exact: true }).click();
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
     await expect(card.getByRole("button", { name: /启\s*用/ })).toBeVisible();
     await expect(card.getByRole("button", { name: "强制删除" })).toBeVisible();
@@ -167,17 +168,20 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await enableDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(enableDialog).toBeHidden();
     await expect(card).toHaveCount(0);
-    await scope.getByRole("button", { name: "启用", exact: true }).click();
+    await scope.getByRole("button", { name: "启用中", exact: true }).click();
     await expect(card.getByText("启用", { exact: true })).toBeVisible();
 
     await stopButton.click();
-    const disableAgainDialog = page.getByRole("dialog", { name: "停用用户" });
-    await disableAgainDialog.getByRole("button", { name: /确\s*认/ }).click();
+    const disableAgainDialog = page.getByRole("dialog", {
+      name: "停用账号 · 任务交接",
+    });
+    await expect(
+      disableAgainDialog.getByText("全部项目已完成。"),
+    ).toBeVisible();
+    await disableAgainDialog.getByRole("button", { name: /确认停用/ }).click();
     await expect(disableAgainDialog).toBeHidden();
     await expect(card).toHaveCount(0);
-    await scope
-      .getByRole("button", { name: "已停用/离职", exact: true })
-      .click();
+    await scope.getByRole("button", { name: "已停用", exact: true }).click();
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
 
     await card.getByRole("button", { name: "强制删除" }).click();
@@ -193,11 +197,9 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     ).toBeVisible();
 
     await expect(card).toHaveCount(0);
-    await scope.getByRole("button", { name: "启用", exact: true }).click();
+    await scope.getByRole("button", { name: "启用中", exact: true }).click();
     await expect(card).toHaveCount(0);
-    await scope
-      .getByRole("button", { name: "已停用/离职", exact: true })
-      .click();
+    await scope.getByRole("button", { name: "已停用", exact: true }).click();
     await expect(card).toHaveCount(0);
     await expect(
       page.locator(".member-row").filter({ hasText: `账号 #${targetId}` }),

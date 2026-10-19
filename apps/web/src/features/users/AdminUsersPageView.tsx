@@ -4,6 +4,7 @@ import { AppModal as Modal } from "@features/common/components/AppModal";
 import { Controller, useForm } from "react-hook-form";
 import {
   ApiError,
+  type AdminUserDisableRequest,
   type AdminUserItem,
   type InpulseApiClient,
 } from "@generated/api";
@@ -19,6 +20,7 @@ import { WecomRobotSettingsPanel } from "@features/settings/WecomRobotSettingsPa
 import { NotificationPolicyPanel } from "@features/settings/NotificationPolicyPanel";
 import { PermissionMatrixPanel } from "@features/settings/PermissionMatrixPanel";
 import { adminUserErrorMessage, useAdminUsers } from "./admin-user-query";
+import { DisableAccountModal } from "./DisableAccountModal";
 import { MyOrganizationPanel } from "./MyOrganizationPanel";
 import {
   organizationErrorMessage,
@@ -27,7 +29,7 @@ import {
 } from "./organization-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
-type LifecycleAction = "disable" | "enable" | "delete";
+type LifecycleAction = "enable" | "delete";
 type MemberScope = "active" | "departed";
 
 /** 设计师稿 latest-version/views/settings.tsx L9-11：左栏区块导航。 */
@@ -47,11 +49,6 @@ type OrgMode = "browse" | "join" | "manage";
 const lifecycleCopy: Readonly<
   Record<LifecycleAction, { title: string; description: string }>
 > = {
-  disable: {
-    title: "停用用户",
-    description:
-      "停用会撤销该用户全部会话并记录审计；有未完成任务时必须先转分配或删除。停用后账号仍保留在成员列表中，以灰色状态显示，可随时重新启用。",
-  },
   enable: {
     title: "启用用户",
     description: "启用后用户可重新登录；历史与已撤销会话不会恢复。",
@@ -76,6 +73,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     action: LifecycleAction;
     user: AdminUserItem;
   } | null>(null);
+  const [disableTarget, setDisableTarget] = useState<AdminUserItem | null>(
+    null,
+  );
   const [success, setSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
@@ -107,6 +107,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   const openUpdate = (user: AdminUserItem) => {
     setEditor(user);
     setLifecycle(null);
+    setDisableTarget(null);
     setSuccess(null);
     setFormError(null);
     setReloadError(null);
@@ -120,6 +121,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 
   const openLifecycle = (action: LifecycleAction, user: AdminUserItem) => {
     setEditor(null);
+    setDisableTarget(null);
     setLifecycle({ action, user });
     setSuccess(null);
     setFormError(null);
@@ -127,21 +129,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     mutation.reset();
   };
 
-  const disableBlockedMessage = (user: AdminUserItem) =>
-    (user.openTaskCount ?? 0) > 0
-      ? "该账号仍有 " +
-        user.openTaskCount +
-        " 个未完成任务，请先转分配或删除任务后再停用。"
-      : null;
-
-  const requestDisable = (user: AdminUserItem) => {
-    const blockedMessage = disableBlockedMessage(user);
-    if (blockedMessage !== null) {
-      openUpdate(user);
-      setFormError(blockedMessage);
-      return;
-    }
-    openLifecycle("disable", user);
+  const openDisable = (user: AdminUserItem) => {
+    setEditor(null);
+    setLifecycle(null);
+    setDisableTarget(user);
+    setSuccess(null);
+    setFormError(null);
+    setReloadError(null);
+    mutation.reset();
   };
 
   const closeEditor = () => {
@@ -156,6 +151,23 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     if (submitting.current) return;
     setLifecycle(null);
     mutation.reset();
+  };
+
+  const closeDisable = () => {
+    if (mutation.isPending) return;
+    setDisableTarget(null);
+    mutation.reset();
+  };
+
+  const confirmDisable = async (body: AdminUserDisableRequest) => {
+    if (disableTarget === null || mutation.isPending) return;
+    await mutation.mutateAsync({
+      action: "disable",
+      user: disableTarget,
+      body,
+    });
+    setSuccess("用户已停用");
+    setDisableTarget(null);
   };
 
   const save = handleSubmit(async (values) => {
@@ -226,11 +238,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         user: lifecycle.user,
       });
       setSuccess(
-        lifecycle.action === "disable"
-          ? "用户已停用"
-          : lifecycle.action === "enable"
-            ? "用户已启用"
-            : "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
+        lifecycle.action === "enable"
+          ? "用户已启用"
+          : "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
       );
       setLifecycle(null);
     } catch {
@@ -255,7 +265,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       : activeTab;
 
   // 成员排序：当前账号置顶，其后未分配组织、已分配组织；是否停用由上方
-  // 「启用 / 已停用/离职」筛选分桶，不再把两类账号混排在同一列表。
+  // 「启用中 / 已停用」筛选分桶，不再把两类账号混排在同一列表。
   const members = useMemo(() => {
     const items = (query.data?.items ?? []).filter(
       (user) => user.deletedAt === null,
@@ -615,12 +625,12 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                     options={[
                       {
                         value: "active",
-                        label: "启用",
+                        label: "启用中",
                         count: activeMembers.length,
                       },
                       {
                         value: "departed",
-                        label: "已停用/离职",
+                        label: "已停用",
                         count: departedMembers.length,
                       },
                     ]}
@@ -763,9 +773,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               <CalmEmptyState
                 icon="users"
                 title={
-                  memberScope === "active"
-                    ? "暂无启用成员"
-                    : "暂无已停用/离职成员"
+                  memberScope === "active" ? "暂无启用成员" : "暂无已停用成员"
                 }
                 description={
                   memberScope === "active"
@@ -877,7 +885,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                         <Button
                           className="text-button"
                           htmlType="button"
-                          onClick={() => requestDisable(user)}
+                          onClick={() => openDisable(user)}
                         >
                           停用
                         </Button>
@@ -1061,38 +1069,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               <CalmBadge tone={editor?.status === "ACTIVE" ? "green" : "gray"}>
                 {editor?.status === "ACTIVE" ? "启用" : "停用"}
               </CalmBadge>
-              {editor !== null && (editor.openTaskCount ?? 0) > 0 ? (
-                <CalmBadge tone="amber">
-                  {editor.openTaskCount + " 个未完成任务"}
-                </CalmBadge>
-              ) : null}
             </div>
-            {editor !== null &&
-            editor.status === "ACTIVE" &&
-            (editor.openTaskCount ?? 0) > 0 ? (
-              <Alert
-                type="warning"
-                title={
-                  "仍有 " +
-                  editor.openTaskCount +
-                  " 个未完成任务；停用前请先转分配或删除这些任务。"
-                }
-              />
-            ) : null}
             {editor !== null && !selfAdmin(editor) ? (
               <Space wrap>
                 {editor.status === "ACTIVE" ? (
                   <Button
                     htmlType="button"
                     danger
-                    onClick={() => {
-                      const blockedMessage = disableBlockedMessage(editor);
-                      if (blockedMessage !== null) {
-                        setFormError(blockedMessage);
-                        return;
-                      }
-                      openLifecycle("disable", editor);
-                    }}
+                    onClick={() => openDisable(editor)}
                   >
                     停用账号
                   </Button>
@@ -1143,6 +1127,16 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           </Space>
         </form>
       </Modal>
+
+      <DisableAccountModal
+        open={disableTarget !== null}
+        client={client}
+        user={disableTarget}
+        pending={mutation.isPending}
+        error={mutation.isError ? mutation.error : null}
+        onClose={closeDisable}
+        onConfirm={confirmDisable}
+      />
 
       <Modal
         className="catalog-modal"

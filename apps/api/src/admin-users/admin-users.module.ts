@@ -6,7 +6,10 @@ import { DatabaseModule } from "../database/database.module.js";
 import { IdempotencyModule } from "../idempotency/idempotency.module.js";
 import { ActivityProjectionModule } from "../modules/activity/activity-projection.module.js";
 import { ProjectsModule } from "../modules/projects/projects.module.js";
+import { TasksManagementModule } from "../modules/tasks/index.js";
+import { TaskCompletionModule } from "../workflows/task-completion.module.js";
 import { AdminUsersController } from "./admin-user.controller.js";
+import { AdminUserOffboardingRepository } from "./admin-user-offboarding.repository.js";
 import { AdminUserRepository } from "./admin-user.repository.js";
 import { AdminUserService } from "./admin-user.service.js";
 import { AdminUsersHttpService } from "./admin-user-http.service.js";
@@ -20,8 +23,15 @@ import { AdminUsersHttpService } from "./admin-user-http.service.js";
     IdempotencyModule,
     ActivityProjectionModule,
     ProjectsModule,
+    TasksManagementModule,
+    TaskCompletionModule,
   ],
-  providers: [AdminUserRepository, AdminUserService, AdminUsersHttpService],
+  providers: [
+    AdminUserRepository,
+    AdminUserOffboardingRepository,
+    AdminUserService,
+    AdminUsersHttpService,
+  ],
   controllers: [AdminUsersController],
 })
 export class AdminUsersModule {}

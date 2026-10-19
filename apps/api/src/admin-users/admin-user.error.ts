@@ -5,11 +5,12 @@ export type AdminUserErrorReason =
   | "self-mutation"
   | "last-active-admin"
   | "open-tasks"
-  | "active-project-membership";
+  | "active-project-membership"
+  | "offboarding";
 
 export class AdminUserError extends Error {
   constructor(
-    readonly status: 404 | 409,
+    readonly status: 404 | 409 | 422,
     readonly code: string,
     message: string,
     readonly reason: AdminUserErrorReason,
@@ -56,16 +57,6 @@ export function adminUserSelfMutation(): AdminUserError {
   );
 }
 
-export function adminUserOpenTasks(openTaskCount: number): AdminUserError {
-  return new AdminUserError(
-    409,
-    "ADMIN_USER_HAS_OPEN_TASKS",
-    "该账号仍有未完成任务，请先转分配或删除任务后再停用",
-    "open-tasks",
-    { openTaskCount },
-  );
-}
-
 export function adminUserActiveProjectMembership(): AdminUserError {
   return new AdminUserError(
     409,
@@ -81,5 +72,31 @@ export function lastActiveAdmin(): AdminUserError {
     "LAST_ACTIVE_ADMIN_REQUIRED",
     "不能移除或停用最后一名可用管理员，请先指定另一名管理员",
     "last-active-admin",
+  );
+}
+
+/** 停用交接清单与服务端实时任务不一致：要求刷新后重新处理。 */
+export function adminUserOffboardingConflict(
+  code: string,
+  message: string,
+): AdminUserError {
+  return new AdminUserError(409, code, message, "offboarding");
+}
+
+/** 停用交接动作不合法（例如唯一负责人任务没有接手人）。 */
+export function adminUserOffboardingInvalid(
+  code: string,
+  message: string,
+): AdminUserError {
+  return new AdminUserError(422, code, message, "offboarding");
+}
+
+/** 停用交接引用了已被删除或不再属于该账号的任务。 */
+export function adminUserOffboardingTaskNotFound(): AdminUserError {
+  return new AdminUserError(
+    404,
+    "ADMIN_USER_OFFBOARDING_TASK_NOT_FOUND",
+    "待交接任务不存在或已不再由该账号负责",
+    "offboarding",
   );
 }
