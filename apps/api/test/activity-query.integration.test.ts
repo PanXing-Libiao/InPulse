@@ -225,6 +225,7 @@ describe("ActivityQueryService (real PostgreSQL)", () => {
     expect(Object.keys(page.items[0]!).sort()).toEqual([
       "activityType",
       "actorId",
+      "actorName",
       "id",
       "occurredAt",
       "projectId",

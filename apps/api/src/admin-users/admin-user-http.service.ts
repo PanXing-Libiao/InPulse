@@ -33,6 +33,7 @@ export type AdminUserOperation =
   | "updateUser"
   | "disableUser"
   | "enableUser"
+  | "deleteUser"
   | "forceLogoutUser";
 
 export interface AdminUsersHttpRequest {
@@ -162,6 +163,10 @@ export class AdminUsersHttpService {
         }
         if (operation === "enableUser") {
           await this.users.enable(tx, meta, userId, version!);
+          return noBodyResult(actorId, userId);
+        }
+        if (operation === "deleteUser") {
+          await this.users.delete(tx, meta, userId, version!);
           return noBodyResult(actorId, userId);
         }
         await this.users.forceLogout(tx, meta, userId, version!);

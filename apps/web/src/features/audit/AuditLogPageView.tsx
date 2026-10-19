@@ -108,18 +108,29 @@ function readText(value: unknown): string | null {
 }
 
 /**
- * 事件载荷里的实体编号与名称：优先 after、其次 before，最后读平铺载荷
- * （演示种子数据是平铺结构）。读不到时由调用方回退到「类型 #id」。
+ * 事件载荷里的实体编号与名称：默认优先 after、其次 before；删除用户时需要
+ * 保留删除前的姓名，因此改为优先 before。最后读平铺载荷（演示种子数据是
+ * 平铺结构）。读不到时由调用方回退到「类型 #id」。
  */
-function payloadIdentity(item: AuditLogItem): {
+function payloadIdentity(
+  item: AuditLogItem,
+  preferBefore = false,
+): {
   readonly code: string | null;
   readonly name: string | null;
 } {
-  for (const candidate of [
-    item.eventPayload["after"],
-    item.eventPayload["before"],
-    item.eventPayload,
-  ]) {
+  const candidates = preferBefore
+    ? [
+        item.eventPayload["before"],
+        item.eventPayload["after"],
+        item.eventPayload,
+      ]
+    : [
+        item.eventPayload["after"],
+        item.eventPayload["before"],
+        item.eventPayload,
+      ];
+  for (const candidate of candidates) {
     if (typeof candidate !== "object" || candidate === null) {
       continue;
     }
@@ -217,6 +228,8 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
     ];
     return options;
   }, [projects]);
+  // 审计展示只使用启用账号目录与事件载荷里的历史姓名。墓碑化不会让旧审计行
+  // 突然改名，也不会把本不属于事件当时的信息回写到界面上。
   const directoryNames = useMemo(
     () =>
       new Map(
@@ -281,12 +294,25 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
       if (!Number.isSafeInteger(numeric) || numeric <= 0) {
         return typeLabel + " " + item.targetId;
       }
-      if (item.targetType === "USER" || item.targetType === "PROJECT") {
-        const name =
-          item.targetType === "USER"
-            ? directoryNames.get(numeric)
-            : (projectNameOf(numeric) ?? undefined);
+      if (item.targetType === "USER") {
+        const identity = payloadIdentity(
+          item,
+          item.action === "admin.user.delete",
+        );
+        if (identity.name !== null) {
+          return typeLabel + " " + identity.name;
+        }
+        if (identity.code !== null) {
+          return typeLabel + " " + identity.code;
+        }
+        const name = directoryNames.get(numeric);
         if (name !== undefined) {
+          return typeLabel + " " + name;
+        }
+      }
+      if (item.targetType === "PROJECT") {
+        const name = projectNameOf(numeric);
+        if (name !== null) {
           return typeLabel + " " + name;
         }
       }

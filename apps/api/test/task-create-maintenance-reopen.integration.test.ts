@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { TaskStatusRequest } from "@inpulse/api-contract";
 import {
@@ -55,6 +56,7 @@ beforeAll(() => {
     new PostgresNotificationWritePort(),
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
+    new PostgresUserReadPort(),
   );
 });
 

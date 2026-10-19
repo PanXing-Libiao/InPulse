@@ -1,8 +1,10 @@
 import type { TransactionContext } from "../../database/transaction-context.js";
 import {
   ActivityWritePort,
+  validateActivityUserRenameInput,
   validateActivityVisibilityUpdateInput,
   validateActivityWriteInput,
+  type ActivityUserRenameInput,
   type ActivityVisibilityUpdateInput,
   type ActivityWriteInput,
 } from "./activity.write-port.js";
@@ -50,6 +52,26 @@ export class PostgresActivityWritePort extends ActivityWritePort {
       )
       ON CONFLICT (source_chain_id, source_sequence) DO NOTHING
     `;
+  }
+
+  async renameUserReferences(
+    tx: TransactionContext,
+    input: ActivityUserRenameInput,
+  ): Promise<number> {
+    validateActivityUserRenameInput(input);
+    const previous = "用户 " + input.previousName;
+    const replacement = "用户 " + input.replacementName;
+    const rows = (await tx.sql`
+      UPDATE app.activity_projection
+         SET summary = replace(summary, ${previous}, ${replacement})
+       WHERE position(${previous} in summary) > 0
+         AND (
+           actor_id = ${input.userId}
+           OR metadata->>'userId' = ${String(input.userId)}
+         )
+      RETURNING id
+    `) as unknown as readonly { id: string }[];
+    return rows.length;
   }
 
   async updateEntityVisibility(

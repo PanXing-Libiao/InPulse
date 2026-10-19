@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { Module, type INestApplication } from "@nestjs/common";
@@ -297,6 +298,7 @@ beforeAll(async () => {
     notifications,
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
+    new PostgresUserReadPort(),
   );
   memberService = new ProjectMemberManagementService(
     new PostgresProjectsWritePort(),

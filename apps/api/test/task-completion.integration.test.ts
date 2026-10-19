@@ -194,6 +194,7 @@ beforeAll(async () => {
               notifications,
               new PostgresModuleReadPort(),
               new PostgresProjectsWritePort(),
+              new PostgresUserReadPort(),
             ),
           ),
         ),
@@ -276,9 +277,9 @@ async function unchanged(
   beforeDraft?: Awaited<ReturnType<typeof draft>>,
 ) {
   expect(await uow.run((tx) => tasks.find(tx, f, f.task.id))).toEqual(f.task);
-  expect(
-    (await uow.run((tx) => tasks.history(tx, f, f.task.id))).items,
-  ).toHaveLength(1);
+  expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
+    1,
+  );
   if (beforeDraft)
     expect(
       await uow.run((tx) => records.find(tx, f.projectId, beforeDraft.id)),
@@ -370,7 +371,7 @@ it("completes without a new record, preserving multiple historical records and n
   });
   expect(result.record).toBeNull();
   expect(
-    (await uow.run((tx) => tasks.history(tx, f, f.task.id))).items[1]!
+    (await uow.run((tx) => tasks.history(tx, f, f.task.id)))[1]!
       .completionNoteSnapshot,
   ).toBe("测试验证，不涉及功能变化：无需代码变化");
   expect(
@@ -1038,9 +1039,9 @@ for (const feature of [false, true]) {
       ).toEqual(changed);
       version++;
     }
-    expect(
-      (await uow.run((tx) => tasks.history(tx, f, f.task.id))).items,
-    ).toHaveLength(5);
+    expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
+      5,
+    );
     await removeMember(db.sql, f.projectId, f.actor);
     expect((await legacyPost(f, actor, legacyCommand, 1, key)).status).toBe(
       404,
@@ -1057,9 +1058,9 @@ for (const feature of [false, true]) {
     await db.sql`UPDATE app.idempotency_records SET idempotency_contract_version='1.0.0',replay_auth_policy_version='1.0.0' WHERE actor_id=${f.actor} AND operation_id=${operation} AND idempotency_key=${key}`;
     const retry = await legacyPost(f, actor, legacyCommand, 1, key);
     expect(retry.status, await retry.clone().text()).toBe(409);
-    expect(
-      (await uow.run((tx) => tasks.history(tx, f, f.task.id))).items,
-    ).toHaveLength(2);
+    expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
+      2,
+    );
   });
 }
 it("applies SOURCE/HISTORICAL and current replay gates to the legacy endpoint while allowing MAIN and ACTIVE", async () => {
@@ -1103,9 +1104,9 @@ it("serializes competing legacy and new completion requests into one successful 
     }),
   ]);
   expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-  expect(
-    (await uow.run((tx) => tasks.history(tx, f, f.task.id))).items,
-  ).toHaveLength(2);
+  expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
+    2,
+  );
   const count = results[1]!.status === 200 ? 1 : 0;
   expect(
     await db.sql`SELECT id FROM app.change_records WHERE project_id=${f.projectId}`,

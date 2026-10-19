@@ -59,6 +59,8 @@ export interface ActivityProjectionItem {
   readonly sourceEntityId: number;
   readonly activityType: string;
   readonly actorId: number | null;
+  /** 当前用户展示名；墓碑账号由 app.users.name 固定返回「删除用户」。 */
+  readonly actorName: string | null;
   readonly summary: string;
   readonly occurredAt: string;
 }
@@ -88,6 +90,7 @@ interface ActivityProjectionRow {
   readonly source_entity_id: number;
   readonly activity_type: string;
   readonly actor_id: number | null;
+  readonly actor_name: string | null;
   readonly summary: string;
   readonly occurred_at: string;
 }
@@ -118,6 +121,7 @@ export class PostgresActivityProjectionReader {
          source_entity_id,
          activity_type,
          actor_id,
+         (SELECT u.name FROM app.users AS u WHERE u.id = activity_projection.actor_id) AS actor_name,
          summary,
          to_char(occurred_at AT TIME ZONE 'UTC',
                  'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at
@@ -155,6 +159,7 @@ export class PostgresActivityProjectionReader {
         sourceEntityId: row.source_entity_id,
         activityType: row.activity_type,
         actorId: row.actor_id,
+        actorName: row.actor_name,
         summary: row.summary,
         occurredAt: row.occurred_at,
       })),

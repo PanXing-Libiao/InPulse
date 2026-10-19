@@ -31,8 +31,11 @@ test("普通成员可进入成员与设置并只读查看同组织成员", async
   }
 });
 
-test("管理员完成用户编辑、停用、启用与强制退出", async ({ browser, admin }) => {
-  test.setTimeout(120_000);
+test("管理员完成用户编辑、停用/离职筛选、启用、强退与删除", async ({
+  browser,
+  admin,
+}) => {
+  test.setTimeout(180_000);
   const runtime = await loadRuntime();
   const context = await browser.newContext({
     baseURL: runtime.webBaseUrl,
@@ -42,15 +45,35 @@ test("管理员完成用户编辑、停用、启用与强制退出", async ({ br
   const loginName = `f03_${suffix}`;
   const name = `F-03 用户 ${suffix}`;
   // 新增用户入口已按「将来只用单点登录」的口径从管理页移除，目标账号改由夹具
-  // 直接预置（与 SSO JIT 开通一致：password_hash 为空）；`f03_` 前缀由
-  // global-teardown 的夹具清理统一物理删除。
+  // 直接预置（与 SSO JIT 开通一致：password_hash 为空）；sso_subject 保留夹具
+  // 前缀，使墓碑化后的账号仍能被 global-teardown 的 fixture-cleanup 识别。
   const sql = postgres(requiredE2eDatabaseUrl(), {
     max: 1,
     onnotice: () => undefined,
   });
 
   try {
-    await sql`INSERT INTO app.users (login_name, name, password_hash, is_admin, status) VALUES (${loginName}, ${name}, NULL, false, 'ACTIVE')`;
+    const [created] = await sql<{ id: number }[]>`
+      INSERT INTO app.users (
+        login_name,
+        name,
+        password_hash,
+        is_admin,
+        status,
+        sso_subject
+      )
+      VALUES (
+        ${loginName},
+        ${name},
+        NULL,
+        false,
+        'ACTIVE',
+        ${"e2e_" + suffix}
+      )
+      RETURNING id
+    `;
+    if (!created) throw new Error("E2E user fixture insert returned no row");
+    const targetId = created.id;
     await loginAdminViaUi(page, runtime, admin);
     await page.goto("/settings");
     await expect(
@@ -58,6 +81,10 @@ test("管理员完成用户编辑、停用、启用与强制退出", async ({ br
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "新增用户" })).toHaveCount(0);
 
+    const scope = page.getByRole("group", { name: "成员状态筛选" });
+    await expect(
+      scope.getByRole("button", { name: "启用", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
     const card = page.locator(".member-row").filter({ hasText: loginName });
     await expect(card.getByText(name, { exact: true })).toBeVisible();
 
@@ -73,12 +100,20 @@ test("管理员完成用户编辑、停用、启用与强制退出", async ({ br
     const disableDialog = page.getByRole("dialog", { name: "停用用户" });
     await disableDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(disableDialog).toBeHidden();
+    await expect(card).toHaveCount(0);
+    await scope
+      .getByRole("button", { name: "已停用/离职", exact: true })
+      .click();
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: "强制退出" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "批量管理" })).toHaveCount(0);
 
     await card.getByRole("button", { name: /启\s*用/ }).click();
     const enableDialog = page.getByRole("dialog", { name: "启用用户" });
     await enableDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(enableDialog).toBeHidden();
+    await expect(card).toHaveCount(0);
+    await scope.getByRole("button", { name: "启用", exact: true }).click();
     await expect(card.getByText("启用", { exact: true })).toBeVisible();
 
     await card.getByRole("button", { name: "强制退出" }).click();
@@ -88,6 +123,37 @@ test("管理员完成用户编辑、停用、启用与强制退出", async ({ br
     await expect(
       page.getByText("已强制退出该用户", { exact: true }),
     ).toBeVisible();
+
+    await card.getByRole("button", { name: /停\s*用/ }).click();
+    const disableAgainDialog = page.getByRole("dialog", { name: "停用用户" });
+    await disableAgainDialog.getByRole("button", { name: /确\s*认/ }).click();
+    await expect(disableAgainDialog).toBeHidden();
+    await expect(card).toHaveCount(0);
+    await scope
+      .getByRole("button", { name: "已停用/离职", exact: true })
+      .click();
+    await expect(card).toBeVisible();
+
+    await card.getByRole("button", { name: "强制删除" }).click();
+    const deleteDialog = page.getByRole("dialog", { name: /强制删除/ });
+    await expect(deleteDialog).toContainText("删除不可撤销");
+    await deleteDialog.getByRole("button", { name: "确认删除" }).click();
+    await expect(deleteDialog).toBeHidden();
+    await expect(
+      page.getByText(
+        "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
+        {
+          exact: true,
+        },
+      ),
+    ).toBeVisible();
+
+    // 删除后墓碑账号不再进入任何成员筛选，也不能继续执行管理动作。
+    await expect(card).toHaveCount(0);
+    await expect(
+      page.locator(".member-row").filter({ hasText: `账号 #${targetId}` }),
+    ).toHaveCount(0);
+    await expect(page.getByText("删除用户", { exact: true })).toHaveCount(0);
   } finally {
     await sql.end({ timeout: 5 });
     await context.close();

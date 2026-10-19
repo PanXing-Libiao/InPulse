@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import type { UserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { TimeCursorService } from "../src/cursors/time-cursor.js";
@@ -42,6 +43,7 @@ function publishedService(
     uowStub(),
     repository,
     new TimeCursorService(ring, "CHANGE_RECORDS"),
+    { listByIds: async () => [] } as unknown as UserReadPort,
   );
 }
 

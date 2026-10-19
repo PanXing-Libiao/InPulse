@@ -14,7 +14,10 @@ import type {
 import type { AdminUserService } from "../src/admin-users/admin-user.service.js";
 import type { AdminUserRepository } from "../src/admin-users/admin-user.repository.js";
 import { AdminUsersHttpService } from "../src/admin-users/admin-user-http.service.js";
-import { adminUserSelfMutation } from "../src/admin-users/admin-user.error.js";
+import {
+  adminUserActiveProjectMembership,
+  adminUserSelfMutation,
+} from "../src/admin-users/admin-user.error.js";
 
 const tx = {} as TransactionContext;
 const userId = 7;
@@ -31,6 +34,7 @@ const item = {
   status: "ACTIVE",
   rowVersion: 1,
   disabledAt: null,
+  deletedAt: null,
   createdAt: "2026-09-09T00:00:00.000Z",
   updatedAt: "2026-09-09T00:00:00.000Z",
 } as const;
@@ -66,6 +70,7 @@ function setup() {
   const disable = vi.fn().mockResolvedValue(undefined);
   const enable = vi.fn().mockResolvedValue(undefined);
   const forceLogout = vi.fn().mockResolvedValue(undefined);
+  const deleteUser = vi.fn().mockResolvedValue(undefined);
   const replay = vi.fn().mockResolvedValue(undefined);
   const run = vi.fn(
     async (callback: (tx: TransactionContext) => Promise<unknown>) =>
@@ -94,6 +99,7 @@ function setup() {
       disable,
       enable,
       forceLogout,
+      delete: deleteUser,
       replay,
     } as unknown as AdminUserService,
     {
@@ -113,6 +119,7 @@ function setup() {
     disable,
     enable,
     forceLogout,
+    deleteUser,
     replay,
     idempotencyRun,
     command: () => command!,
@@ -184,6 +191,27 @@ describe("F-03 AdminUsersHttpService", () => {
     expect(result.status).toBe(409);
     expect(result.body).toMatchObject({
       code: "ADMIN_USER_SELF_MUTATION_REJECTED",
+    });
+  });
+
+  it("删除用户使用 If-Match、幂等键与 CSRF，并映射活跃项目成员冲突", async () => {
+    const s = setup();
+    const result = await s.service.handle("deleteUser", validRequest());
+    expect(result.status).toBe(204);
+    expect(s.command().operationId).toBe("deleteUser");
+    expect(s.deleteUser).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ actorId: userId }),
+      item.id,
+      1,
+    );
+    expect(s.mutationVerify).toHaveBeenCalledWith(tx, validRequest().headers);
+
+    s.deleteUser.mockRejectedValueOnce(adminUserActiveProjectMembership());
+    const conflict = await s.service.handle("deleteUser", validRequest());
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toMatchObject({
+      code: "ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP",
     });
   });
 

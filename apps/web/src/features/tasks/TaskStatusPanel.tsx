@@ -54,15 +54,12 @@ export function TaskStatusPanel({
   writable,
   action,
   onClose,
-  nameOf,
 }: {
   item: TaskViewItem;
   api: InpulseApiClient;
   writable: boolean;
   action: TaskStatusRequest["action"] | null;
   onClose: () => void;
-  /** 状态历史操作人的姓名解析；缺省时回退中性编号。 */
-  nameOf?: ((id: number) => string) | undefined;
 }) {
   const cache = useQueryClient();
   const [base, setBase] = useState(item);
@@ -279,8 +276,7 @@ export function TaskStatusPanel({
                 → {statuses[entry.toWorkStatus]}
               </strong>
               <p>
-                {time(entry.changedAt)} · 操作人{" "}
-                {(nameOf ?? ((id: number) => "用户 #" + id))(entry.changedBy)}
+                {time(entry.changedAt)} · 操作人 {entry.changedByName}
               </p>
               {entry.completedAtSnapshot && (
                 <p>完成时间快照：{time(entry.completedAtSnapshot)}</p>

@@ -131,6 +131,34 @@ const documentImportItem: AuditLogItem = {
   eventPayload: { digest: "d".repeat(16), addedMemberCount: 3 },
 };
 
+// ADR-082：删除不可逆，但审计列表仍展示删除前的姓名；原始快照保留删除后的墓碑载荷。
+const deleteUserItem: AuditLogItem = {
+  ...systemItem,
+  sequenceNo: 20,
+  action: "admin.user.delete",
+  targetType: "USER",
+  targetId: "9",
+  eventPayload: {
+    before: { id: 9, loginName: "xiaowu", name: "小吴" },
+    after: { id: 9, loginName: "deleted-user-9", name: "删除用户" },
+  },
+};
+
+// ADR-062：项目已物理删除，列表只能从审计载荷还原删除前的编码和名称。
+const deletedProjectItem: AuditLogItem = {
+  ...systemItem,
+  sequenceNo: 21,
+  action: "project.delete",
+  targetType: "PROJECT",
+  targetId: "41",
+  eventPayload: {
+    code: "E2EDEL523528EA0480",
+    name: "交付平台",
+    status: "ACTIVE",
+    rowVersion: 3,
+  },
+};
+
 const project = {
   id: 7,
   code: "AGV",
@@ -295,6 +323,43 @@ describe("F-08 audit page", () => {
     expect(codes).toContain("admin.wecomRobot.update");
     expect(codes).toContain("admin.aiAssistSettings.update");
     expect(codes).toContain("project.documentImport");
+  });
+
+  it("删除用户动作显示中文，并保留审计载荷中的删除前姓名", async () => {
+    const user = userEvent.setup();
+    const getAuditLogs = vi.fn().mockResolvedValue(page([deleteUserItem]));
+    const listProjects = vi.fn().mockResolvedValue({ items: [project] });
+    mount({ getAuditLogs, listProjects } as unknown as InpulseApiClient);
+
+    const row = await screen.findByTestId("audit-item-SYSTEM-20");
+    expect(within(row).getByText("强制删除用户")).toBeInTheDocument();
+    expect(within(row).getByText("对象：用户 小吴")).toBeInTheDocument();
+    expect(
+      within(row).queryByText("admin.user.delete"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByText("对象：用户 删除用户"),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(row).getByRole("button", { name: "查看原始快照 第 20 条" }),
+    );
+    const payload = screen.getByTestId("audit-snapshot-payload");
+    expect(payload.textContent ?? "").toContain('"name": "小吴"');
+    expect(payload.textContent ?? "").toContain('"name": "删除用户"');
+  });
+
+  it("已删除项目仍显示审计载荷中的项目编码和名称，不回退为项目 null", async () => {
+    const getAuditLogs = vi.fn().mockResolvedValue(page([deletedProjectItem]));
+    const listProjects = vi.fn().mockResolvedValue({ items: [project] });
+    mount({ getAuditLogs, listProjects } as unknown as InpulseApiClient);
+
+    const row = await screen.findByTestId("audit-item-SYSTEM-21");
+    expect(within(row).getByText("删除项目")).toBeInTheDocument();
+    expect(
+      within(row).getByText("对象：项目 E2EDEL523528EA0480「交付平台」"),
+    ).toBeInTheDocument();
+    expect(within(row).queryByText("对象：项目 null")).not.toBeInTheDocument();
   });
 
   it("labels entity targets with the code and name carried by the payload", async () => {

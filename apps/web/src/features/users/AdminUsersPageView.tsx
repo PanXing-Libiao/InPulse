@@ -11,6 +11,7 @@ import {
   CalmBadge,
   CalmEmptyState,
   CalmSectionTitle,
+  CalmSegmented,
 } from "@features/common/components/Calm";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { AiAssistSettingsPanel } from "@features/settings/AiAssistSettingsPanel";
@@ -27,7 +28,8 @@ import {
 } from "./organization-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
-type LifecycleAction = "disable" | "enable" | "forceLogout";
+type LifecycleAction = "disable" | "enable" | "forceLogout" | "delete";
+type MemberScope = "active" | "departed";
 
 /** 设计师稿 latest-version/views/settings.tsx L9-11：左栏区块导航。 */
 export type SettingsTab =
@@ -96,6 +98,11 @@ const lifecycleCopy: Readonly<
     title: "强制退出",
     description: "将立即撤销该用户全部会话并记录审计，账号保持启用状态。",
   },
+  delete: {
+    title: "强制删除",
+    description:
+      "删除不可撤销：账号会被墓碑化，登录名与个人资料清除，历史业务记录中的显示名改为「删除用户」。原始审计快照保持不可变。",
+  },
 };
 
 export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
@@ -119,6 +126,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     initialTab ?? "members",
   );
   const [memberSearch, setMemberSearch] = useState("");
+  const [memberScope, setMemberScope] = useState<MemberScope>("active");
   const submitting = useRef(false);
   const organizations = useOrganizations(client, { enabled: isAdmin });
   const organizationMutation = useOrganizationMutations(client);
@@ -248,7 +256,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           ? "用户已停用"
           : lifecycle.action === "enable"
             ? "用户已启用"
-            : "已强制退出该用户",
+            : lifecycle.action === "delete"
+              ? "账号已强制删除，历史业务记录中的显示名已改为「删除用户」"
+              : "已强制退出该用户",
       );
       setLifecycle(null);
     } catch {
@@ -273,8 +283,11 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       : activeTab;
 
   // 当前登录账号置顶（便于先确认自身身份与权限），其后是其他系统管理员，最后是普通成员；同组内保持服务端顺序。
-  const members = useMemo(() => {
-    const items = query.data?.items ?? [];
+  // 墓碑账号不再属于成员管理范围：即使旧缓存仍返回，也同时在启用与已停用筛选中隐藏。
+  const allMembers = useMemo(() => {
+    const items = (query.data?.items ?? []).filter(
+      (user) => user.deletedAt === null,
+    );
     const rank = (user: AdminUserItem) => {
       if (currentUserId !== undefined && user.id === currentUserId) return 0;
       return user.isAdmin ? 1 : 2;
@@ -282,12 +295,26 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     return [...items].sort((left, right) => rank(left) - rank(right));
   }, [query.data, currentUserId]);
 
+  const activeMembers = useMemo(
+    () =>
+      allMembers.filter(
+        (user) => user.status === "ACTIVE" && user.deletedAt === null,
+      ),
+    [allMembers],
+  );
+  const departedMembers = useMemo(
+    () => allMembers.filter((user) => user.status === "DISABLED"),
+    [allMembers],
+  );
+  const scopedMembers =
+    memberScope === "active" ? activeMembers : departedMembers;
+
   // 本地搜索（2026-10-16 用户指示）：按姓名、登录名或邮箱筛选当前成员列表，不走全局搜索。
   const memberKeyword = memberSearch.trim().toLocaleLowerCase();
   const visibleMembers =
     memberKeyword === ""
-      ? members
-      : members.filter(
+      ? scopedMembers
+      : scopedMembers.filter(
           (user) =>
             user.name.toLocaleLowerCase().includes(memberKeyword) ||
             user.loginName.toLocaleLowerCase().includes(memberKeyword) ||
@@ -305,11 +332,20 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   };
 
   const selfOrganizationId =
-    members.find((user) => user.id === currentUserId)?.organizationId ?? null;
+    activeMembers.find((user) => user.id === currentUserId)?.organizationId ??
+    null;
   const memberGroups = groupMembersByOrganization(
     visibleMembers,
     selfOrganizationId,
   );
+
+  const switchMemberScope = (next: MemberScope) => {
+    setMemberScope(next);
+    setBatchMode(false);
+    setSelectedUserIds(new Set());
+    setAssignDialog(null);
+    setSuccess(null);
+  };
 
   const toggleUserSelection = (userId: number, checked: boolean) => {
     setSelectedUserIds((current) => {
@@ -448,10 +484,12 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
             <CalmSectionTitle
               title="成员与角色"
               hint={
-                query.data ? `共 ${members.length} 位成员` : "正在加载成员列表"
+                query.data
+                  ? `启用 ${activeMembers.length} 位 · 已停用/离职 ${departedMembers.length} 位`
+                  : "正在加载成员列表"
               }
             >
-              {members.length > 0 ? (
+              {scopedMembers.length > 0 ? (
                 <div className="task-search">
                   <InpulseIcon name="search" size={15} />
                   <input
@@ -463,6 +501,26 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 </div>
               ) : null}
             </CalmSectionTitle>
+
+            <div className="member-scope-filter">
+              <CalmSegmented
+                label="成员状态筛选"
+                value={memberScope}
+                options={[
+                  {
+                    value: "active",
+                    label: "启用",
+                    count: activeMembers.length,
+                  },
+                  {
+                    value: "departed",
+                    label: "已停用/离职",
+                    count: departedMembers.length,
+                  },
+                ]}
+                onChange={switchMemberScope}
+              />
+            </div>
 
             <div className="member-toolbar">
               {batchMode ? (
@@ -515,15 +573,19 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               ) : (
                 <>
                   <span className="member-toolbar-info">
-                    需要把多名成员加入或移出组织时，进入批量管理勾选成员。
+                    {memberScope === "active"
+                      ? "需要把多名启用成员加入或移出组织时，进入批量管理勾选成员。"
+                      : "已停用/离职账号不参与批量组织调整；如需调整组织，请先启用账号并回到「启用」页签。"}
                   </span>
                   <span className="member-toolbar-actions">
-                    <Button
-                      className="secondary-button"
-                      onClick={() => setBatchMode(true)}
-                    >
-                      批量管理
-                    </Button>
+                    {memberScope === "active" ? (
+                      <Button
+                        className="secondary-button"
+                        onClick={() => setBatchMode(true)}
+                      >
+                        批量管理
+                      </Button>
+                    ) : null}
                     <Button
                       className="secondary-button"
                       onClick={() => setOrganizationManagerOpen(true)}
@@ -557,11 +619,25 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                   重试
                 </Button>
               </CalmEmptyState>
-            ) : !members.length ? (
+            ) : !allMembers.length ? (
               <CalmEmptyState
                 icon="users"
                 title="暂无用户"
                 description="账号由统一身份认证在首次登录时自动创建，无需在此新增。"
+              />
+            ) : !scopedMembers.length ? (
+              <CalmEmptyState
+                icon="users"
+                title={
+                  memberScope === "active"
+                    ? "暂无启用成员"
+                    : "暂无已停用/离职账号"
+                }
+                description={
+                  memberScope === "active"
+                    ? "已停用或已删除的账号可在「已停用/离职」页签查看。"
+                    : "停用账号会出现在这里；删除后仍保留墓碑记录用于历史归属。"
+                }
               />
             ) : !visibleMembers.length ? (
               <CalmEmptyState
@@ -587,7 +663,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                     {group.members.map((user) => (
                       <div
                         className={
-                          "member-row" + (batchMode ? " is-selectable" : "")
+                          "member-row" +
+                          (batchMode ? " is-selectable" : "") +
+                          (user.deletedAt === null ? "" : " is-deleted")
                         }
                         key={user.id}
                       >
@@ -601,72 +679,113 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                           />
                         ) : null}
                         <span className="person-avatar">
-                          {user.name.trim().charAt(0) || "成"}
+                          {user.deletedAt === null
+                            ? user.name.trim().charAt(0) || "成"
+                            : "删"}
                         </span>
                         <div className="member-id">
                           <strong>
-                            {user.name}
+                            {user.deletedAt === null ? user.name : "删除用户"}
+                            {user.deletedAt === null ? null : (
+                              <span className="member-self">（已删除）</span>
+                            )}
                             {selfAdmin(user) ? (
                               <span className="member-self">（当前账号）</span>
                             ) : null}
                           </strong>
                           <small>
-                            {user.loginName}
-                            {user.email ? " · " + user.email : ""}
+                            {user.deletedAt === null
+                              ? user.loginName +
+                                (user.email ? " · " + user.email : "")
+                              : "账号 #" + user.id + " · 历史归属保留"}
                           </small>
                         </div>
                         <div className="member-meta">
-                          <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
-                            {user.isAdmin ? "系统管理员" : "项目成员"}
-                          </CalmBadge>
-                          <CalmBadge
-                            tone={
-                              user.organizationId === null ||
-                              user.organizationId === undefined
-                                ? "gray"
-                                : "cyan"
-                            }
-                          >
-                            {organizationName(user.organizationId)}
-                          </CalmBadge>
+                          {user.deletedAt === null ? (
+                            <>
+                              <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
+                                {user.isAdmin ? "系统管理员" : "项目成员"}
+                              </CalmBadge>
+                              <CalmBadge
+                                tone={
+                                  user.organizationId === null ||
+                                  user.organizationId === undefined
+                                    ? "gray"
+                                    : "cyan"
+                                }
+                              >
+                                {organizationName(user.organizationId)}
+                              </CalmBadge>
+                            </>
+                          ) : (
+                            <CalmBadge tone="gray">已删除账号</CalmBadge>
+                          )}
                           <span
                             className={
                               "member-status" +
-                              (user.status === "ACTIVE" ? "" : " is-disabled")
+                              (user.deletedAt === null
+                                ? user.status === "ACTIVE"
+                                  ? ""
+                                  : " is-disabled"
+                                : " is-deleted")
                             }
                           >
-                            {user.status === "ACTIVE" ? "启用" : "停用"}
+                            {user.deletedAt === null
+                              ? user.status === "ACTIVE"
+                                ? "启用"
+                                : "停用"
+                              : "已删除"}
                           </span>
                         </div>
                         <div className="member-actions">
-                          <Button
-                            className="text-button"
-                            onClick={() => openUpdate(user)}
-                          >
-                            编辑
-                          </Button>
-                          {!selfAdmin(user) && (
-                            <Button
-                              className="text-button"
-                              onClick={() =>
-                                openLifecycle(
-                                  user.status === "ACTIVE"
-                                    ? "disable"
-                                    : "enable",
-                                  user,
-                                )
-                              }
-                            >
-                              {user.status === "ACTIVE" ? "停用" : "启用"}
-                            </Button>
-                          )}
-                          {!selfAdmin(user) && (
-                            <Button
-                              className="text-button"
-                              onClick={() => openLifecycle("forceLogout", user)}
-                            >
-                              强制退出
-                            </Button>
+                          {user.deletedAt === null ? (
+                            <>
+                              <Button
+                                className="text-button"
+                                onClick={() => openUpdate(user)}
+                              >
+                                编辑
+                              </Button>
+                              {!selfAdmin(user) && (
+                                <Button
+                                  className="text-button"
+                                  onClick={() =>
+                                    openLifecycle(
+                                      user.status === "ACTIVE"
+                                        ? "disable"
+                                        : "enable",
+                                      user,
+                                    )
+                                  }
+                                >
+                                  {user.status === "ACTIVE" ? "停用" : "启用"}
+                                </Button>
+                              )}
+                              {!selfAdmin(user) && user.status === "ACTIVE" && (
+                                <Button
+                                  className="text-button"
+                                  onClick={() =>
+                                    openLifecycle("forceLogout", user)
+                                  }
+                                >
+                                  强制退出
+                                </Button>
+                              )}
+                              {!selfAdmin(user) &&
+                              user.status === "DISABLED" ? (
+                                <Button
+                                  className="text-button"
+                                  danger
+                                  onClick={() => openLifecycle("delete", user)}
+                                >
+                                  强制删除
+                                </Button>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="member-actions-note">
+                              仅保留历史归属
+                            </span>
                           )}
                         </div>
                       </div>
@@ -791,7 +910,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           lifecycle ? "账号 · " + lifecycle.user.loginName : "账号生命周期"
         }
         title={lifecycle ? lifecycleCopy[lifecycle.action].title : ""}
-        // 停用是破坏性动作（红）、强制退出是告警（橙）、启用是挽回（绿）。
+        // 停用与强制删除是破坏性动作（红）、强制退出是告警（橙）、启用是挽回（绿）。
         tone={
           lifecycle !== null && lifecycle.action === "enable"
             ? "success"
@@ -800,7 +919,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               : "danger"
         }
         icon={
-          lifecycle === null || lifecycle.action === "disable"
+          lifecycle === null ||
+          lifecycle.action === "disable" ||
+          lifecycle.action === "delete"
             ? "alert"
             : lifecycle.action === "forceLogout"
               ? "logout"
@@ -828,10 +949,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               </Button>
               <Button
                 type="primary"
+                danger={
+                  lifecycle.action === "disable" ||
+                  lifecycle.action === "delete"
+                }
                 loading={mutation.isPending}
                 onClick={() => void confirmLifecycle()}
               >
-                确认
+                {lifecycle.action === "delete" ? "确认删除" : "确认"}
               </Button>
             </Space>
           </>
@@ -915,7 +1040,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       <OrganizationManagerModal
         open={organizationManagerOpen}
         onClose={() => setOrganizationManagerOpen(false)}
-        members={members}
+        members={activeMembers}
         client={client}
         onChanged={(message) => setSuccess(message)}
       />

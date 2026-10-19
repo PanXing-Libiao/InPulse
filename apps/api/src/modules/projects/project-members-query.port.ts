@@ -11,6 +11,12 @@ export interface ActiveProjectMemberProfile extends AssignableProjectMember {
   readonly role: "MEMBER" | "LEADER";
   readonly joinedAt: string;
 }
+export interface UserProjectMembership {
+  readonly projectId: number;
+  readonly projectName: string;
+  readonly role: "MEMBER" | "LEADER";
+}
+
 export abstract class ProjectMembersQueryPort {
   /** Reauthorizes inside tx; undefined means project missing or inaccessible. */
   abstract listActiveMembers(
@@ -41,6 +47,14 @@ export abstract class ProjectMembersQueryPort {
     tx: TransactionContext,
     input: { projectId: number; userId: number },
   ): Promise<"MEMBER" | "LEADER" | undefined>;
+  /**
+   * ADR-082：用户墓碑化前检查是否仍属于任一项目的 ACTIVE 成员。
+   * 调用方持有目标用户行锁；这里按 project_id 升序并锁定成员行。
+   */
+  abstract listActiveMembershipsForUser(
+    tx: TransactionContext,
+    input: { readonly userId: number },
+  ): Promise<readonly UserProjectMembership[]>;
   /** Caller already authorizes and locks project/module/feature, then locks task for edits.
    * Locks user then membership FOR SHARE; only for creation or changed assignee.
    * Never use this to invalidate an unchanged historical assignee.

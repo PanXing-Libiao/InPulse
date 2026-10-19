@@ -40,6 +40,7 @@ function activityItem(patch: Partial<ActivityItem>): ActivityItem {
     sourceEntityId: 3,
     activityType: "task.complete",
     actorId: 1,
+    actorName: "Alice",
     summary: "任务完成：完成任务",
     occurredAt: "2026-09-08T00:00:00.000Z",
     ...patch,

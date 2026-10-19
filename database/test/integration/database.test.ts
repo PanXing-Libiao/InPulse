@@ -90,7 +90,158 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       "0043_wecom_robot_profile_url.sql",
       "0044_project_wecom_groups.sql",
       "0045_revoke_bindings_on_robot_change.sql",
+      "0046_organizations.sql",
+      "0047_user_deletion_tombstone.sql",
     ]);
+  });
+
+  test("user tombstones are irreversible and schema-enforced", async () => {
+    const userId = await createUser(runtime);
+    await runtime`
+      UPDATE app.users
+         SET status = 'DISABLED',
+             disabled_at = now(),
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${userId}
+    `;
+    await runtime`
+      UPDATE app.users
+         SET login_name = 'deleted-user-' || id::text,
+             name = '删除用户',
+             email = NULL,
+             avatar_url = NULL,
+             password_hash = NULL,
+             organization_id = NULL,
+             is_admin = false,
+             status = 'DISABLED',
+             disabled_at = COALESCE(disabled_at, now()),
+             deleted_at = COALESCE(deleted_at, now()),
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${userId}
+         AND deleted_at IS NULL
+    `;
+
+    const [tombstone] = (await runtime`
+      SELECT login_name AS "loginName",
+             name,
+             email,
+             password_hash IS NULL AS "passwordCleared",
+             is_admin AS "isAdmin",
+             organization_id AS "organizationId",
+             status,
+             disabled_at IS NOT NULL AS "disabled",
+             deleted_at IS NOT NULL AS "deleted"
+        FROM app.users
+       WHERE id = ${userId}
+    `) as unknown as readonly {
+      readonly loginName: string;
+      readonly name: string;
+      readonly email: string | null;
+      readonly passwordCleared: boolean;
+      readonly isAdmin: boolean;
+      readonly organizationId: number | null;
+      readonly status: string;
+      readonly disabled: boolean;
+      readonly deleted: boolean;
+    }[];
+    expect(tombstone).toEqual({
+      loginName: `deleted-user-${userId}`,
+      name: "删除用户",
+      email: null,
+      passwordCleared: true,
+      isAdmin: false,
+      organizationId: null,
+      status: "DISABLED",
+      disabled: true,
+      deleted: true,
+    });
+
+    await expectPostgresError(
+      runtime`
+        UPDATE app.users
+           SET name = '仍可修改',
+               row_version = row_version + 1,
+               updated_at = now()
+         WHERE id = ${userId}
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        UPDATE app.users
+           SET deleted_at = NULL,
+               row_version = row_version + 1,
+               updated_at = now()
+         WHERE id = ${userId}
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        UPDATE app.users
+           SET login_name = 'another-name',
+               row_version = row_version + 1,
+               updated_at = now()
+         WHERE id = ${userId}
+      `,
+      "23514",
+    );
+
+    const [schema] = (await bootstrap`
+      SELECT
+        EXISTS (
+          SELECT 1
+            FROM pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'app'
+             AND c.relname = 'users'
+             AND a.attname = 'deleted_at'
+             AND a.attnum > 0
+             AND NOT a.attisdropped
+        ) AS "columnExists",
+        EXISTS (
+          SELECT 1
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+           WHERE n.nspname = 'app'
+             AND t.relname = 'users'
+             AND c.conname = 'users_deleted_state_check'
+             AND c.contype = 'c'
+             AND c.convalidated
+        ) AS "constraintValidated",
+        EXISTS (
+          SELECT 1
+            FROM pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'app'
+             AND p.proname = 'enforce_users_immutable_columns'
+        ) AS "functionExists",
+        EXISTS (
+          SELECT 1
+            FROM pg_trigger t
+            JOIN pg_class c ON c.oid = t.tgrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'app'
+             AND c.relname = 'users'
+             AND t.tgname = 'users_immutable_columns'
+             AND t.tgfoid = 'app.enforce_users_immutable_columns()'::regprocedure
+        ) AS "triggerBound"
+    `) as unknown as readonly {
+      readonly columnExists: boolean;
+      readonly constraintValidated: boolean;
+      readonly functionExists: boolean;
+      readonly triggerBound: boolean;
+    }[];
+    expect(schema).toEqual({
+      columnExists: true,
+      constraintValidated: true,
+      functionExists: true,
+      triggerBound: true,
+    });
   });
 
   test("project bootstrap requires creator history and allows an empty module list", async () => {

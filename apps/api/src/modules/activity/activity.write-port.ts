@@ -57,6 +57,12 @@ export class ActivityWriteValidationError extends Error {
  * 项目动态投影维护边界。调用方必须持有业务事务与脱敏后的白名单字段；
  * 本 Port 只负责校验、写入和按来源实体同步派生可见性，不读取业务表。
  */
+export interface ActivityUserRenameInput {
+  readonly userId: number;
+  readonly previousName: string;
+  readonly replacementName: string;
+}
+
 export abstract class ActivityWritePort {
   abstract append(
     tx: TransactionContext,
@@ -67,6 +73,15 @@ export abstract class ActivityWritePort {
     tx: TransactionContext,
     input: ActivityVisibilityUpdateInput,
   ): Promise<void>;
+
+  /**
+   * ADR-082：账号墓碑化时改写该用户参与的人员类动态摘要。
+   * 只改项目动态投影，不触碰审计原始事件载荷或 HMAC 哈希链。
+   */
+  abstract renameUserReferences(
+    tx: TransactionContext,
+    input: ActivityUserRenameInput,
+  ): Promise<number>;
 }
 
 export function validateActivityWriteInput(input: ActivityWriteInput): void {
@@ -147,6 +162,22 @@ export function validateActivityVisibilityUpdateInput(
   }
   if (!positiveInteger(input.sourceRowVersion)) {
     invalid("sourceRowVersion must be a positive integer");
+  }
+}
+
+export function validateActivityUserRenameInput(
+  input: ActivityUserRenameInput,
+): void {
+  if (!positiveInteger(input.userId)) {
+    invalid("userId must be a positive integer");
+  }
+  if (
+    input.previousName.trim().length === 0 ||
+    input.previousName.length > 200 ||
+    input.replacementName.trim().length === 0 ||
+    input.replacementName.length > 200
+  ) {
+    invalid("user names must contain 1 to 200 characters");
   }
 }
 

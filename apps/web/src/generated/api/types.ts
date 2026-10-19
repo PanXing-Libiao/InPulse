@@ -33,6 +33,7 @@ export type ActivityItem = {
   readonly sourceEntityId: number;
   readonly activityType: string;
   readonly actorId: (number | null);
+  readonly actorName: (string | null);
   readonly summary: string;
   readonly occurredAt: string;
 };
@@ -88,6 +89,7 @@ export type AdminUserItem = {
   readonly status: ("ACTIVE" | "DISABLED");
   readonly rowVersion: number;
   readonly disabledAt: (string | null);
+  readonly deletedAt: (string | null);
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -792,6 +794,8 @@ export type ModuleTaskItem = {
   readonly code: string;
   readonly assigneeId: number;
   readonly creatorId: number;
+  readonly creatorName?: string;
+  readonly assigneeNames?: readonly string[];
   readonly workStatus: ("TODO" | "DONE" | "CANCELED");
   readonly lifecycleStatus: ("ACTIVE" | "INVALID");
   readonly rowVersion: number;
@@ -2068,6 +2072,8 @@ export type TaskItem = {
   readonly code: string;
   readonly assigneeId: number;
   readonly creatorId: number;
+  readonly creatorName?: string;
+  readonly assigneeNames?: readonly string[];
   readonly workStatus: ("TODO" | "DONE" | "CANCELED");
   readonly lifecycleStatus: ("ACTIVE" | "INVALID");
   readonly rowVersion: number;
@@ -2157,6 +2163,7 @@ export type TaskStatusHistoryResponse = {
     readonly completionNoteSnapshot: (string | null);
     readonly reason: (string | null);
     readonly changedBy: number;
+    readonly changedByName: string;
     readonly changedAt: string;
   })[];
 };

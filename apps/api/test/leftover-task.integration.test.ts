@@ -197,6 +197,7 @@ beforeAll(async () => {
         notifications,
         new PostgresModuleReadPort(),
         new PostgresProjectsWritePort(),
+        new PostgresUserReadPort(),
       ),
     ),
     new PostgresLeftoverRecordCommandPort(
@@ -247,6 +248,7 @@ beforeAll(async () => {
               notifications,
               new PostgresModuleReadPort(),
               new PostgresProjectsWritePort(),
+              new PostgresUserReadPort(),
             ),
           ),
         ),

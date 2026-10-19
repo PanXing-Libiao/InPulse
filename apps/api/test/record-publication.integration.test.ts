@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   beforeAll,
@@ -145,6 +146,7 @@ beforeAll(async () => {
             uow,
             new PublishedRecordRepository(),
             new TimeCursorService(ring, "CHANGE_RECORDS"),
+            new PostgresUserReadPort(),
           ),
         ),
       },

@@ -12,8 +12,11 @@ import { AdminHighRiskAuthService } from "../auth/admin-high-risk.service.js";
 import { notAdmin } from "../auth/admin-high-risk.error.js";
 import { PostgresUserSessionRepository } from "../auth/user-session.repository.js";
 import { AuditWritePort } from "../audit/index.js";
+import { ActivityWritePort } from "../modules/activity/index.js";
+import { ProjectMembersQueryPort } from "../modules/projects/index.js";
 import { AdminUserRepository } from "./admin-user.repository.js";
 import {
+  adminUserActiveProjectMembership,
   adminUserNotFound,
   adminUserSelfMutation,
   adminUserStateConflict,
@@ -37,6 +40,8 @@ export class AdminUserService {
     private readonly sessions: PostgresUserSessionRepository,
     private readonly highRisk: AdminHighRiskAuthService,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
+    private readonly projectMembers: ProjectMembersQueryPort,
+    @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
   ) {}
 
   async create(
@@ -76,6 +81,7 @@ export class AdminUserService {
       input.isAdmin !== candidate.isAdmin;
     const current = await this.lockTarget(tx, userId, requiresAdminGuard);
     if (current.rowVersion !== version) throw adminUserVersionConflict();
+    if (current.deletedAt !== null) throw adminUserStateConflict();
     this.rejectSelfRoleRemoval(current, input, meta.actorId);
     if (requiresAdminGuard) await this.ensureOtherActiveAdmin(tx, current);
     const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
@@ -128,7 +134,9 @@ export class AdminUserService {
     const current = await this.lockTarget(tx, userId, false);
     if (current === undefined) throw adminUserNotFound();
     if (current.rowVersion !== version) throw adminUserVersionConflict();
-    if (current.status !== "DISABLED") throw adminUserStateConflict();
+    if (current.status !== "DISABLED" || current.deletedAt !== null) {
+      throw adminUserStateConflict();
+    }
     const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
     this.assertActor(actor.userId, meta.actorId);
     const enabled = await this.repository.enable(tx, current);
@@ -151,6 +159,7 @@ export class AdminUserService {
     if (candidate.id === meta.actorId) throw adminUserSelfMutation();
     const current = await this.lockTarget(tx, userId, false);
     if (current.rowVersion !== version) throw adminUserVersionConflict();
+    if (current.deletedAt !== null) throw adminUserStateConflict();
     if (current.id === meta.actorId) throw adminUserSelfMutation();
     const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
     this.assertActor(actor.userId, meta.actorId);
@@ -161,6 +170,42 @@ export class AdminUserService {
       before: this.summary(current),
       after: this.summary(loggedOut),
       revokedSessionCount: revoked,
+    });
+  }
+
+  async delete(
+    tx: TransactionContext,
+    meta: AdminUserMutationMeta,
+    userId: number,
+    version: number,
+  ): Promise<void> {
+    await this.verifyBeforeLocks(tx, meta.headers);
+    if (userId === meta.actorId) throw adminUserSelfMutation();
+    const current = await this.lockTarget(tx, userId, false);
+    if (current.rowVersion !== version) throw adminUserVersionConflict();
+    if (current.status !== "DISABLED" || current.deletedAt !== null) {
+      throw adminUserStateConflict();
+    }
+    const memberships = await this.projectMembers.listActiveMembershipsForUser(
+      tx,
+      { userId },
+    );
+    if (memberships.length > 0) throw adminUserActiveProjectMembership();
+    const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
+    this.assertActor(actor.userId, meta.actorId);
+    const deleted = await this.repository.delete(tx, current);
+    if (deleted === undefined) throw adminUserVersionConflict();
+    const revoked = await this.sessions.revokeAllForUser(tx, userId);
+    const renamedActivityCount = await this.activity.renameUserReferences(tx, {
+      userId,
+      previousName: current.name,
+      replacementName: "删除用户",
+    });
+    await this.appendAudit(tx, meta, "admin.user.delete", deleted.id, {
+      before: this.summary(current),
+      after: this.summary(deleted),
+      revokedSessionCount: revoked,
+      renamedActivityCount,
     });
   }
 
@@ -271,6 +316,7 @@ export class AdminUserService {
       isAdmin: user.isAdmin,
       organizationId: user.organizationId,
       status: user.status,
+      deletedAt: user.deletedAt,
       rowVersion: user.rowVersion,
     };
   }

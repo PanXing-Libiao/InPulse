@@ -34,6 +34,7 @@ class FakeActivityService {
         sourceEntityId: 9,
         activityType: "TASK_COMPLETED",
         actorId: 7,
+        actorName: "成员",
         summary: "完成登录任务",
         occurredAt: "2026-09-08T00:00:00.000Z",
       },

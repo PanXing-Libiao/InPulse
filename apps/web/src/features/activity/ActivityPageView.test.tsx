@@ -41,6 +41,7 @@ const ACTIVITY: ActivityPage = {
       sourceEntityId: 3,
       activityType: "task.complete",
       actorId: 1,
+      actorName: "特哥",
       summary: "任务完成：F-01 用户登录与会话管理 交付",
       occurredAt: "2026-09-08T04:05:00.000Z",
     },

@@ -157,6 +157,7 @@ export interface InpulseApiClient {
   deleteProjectWecomGroup(projectId: number, init?: ApiRequestInit): Promise<void>;
   deleteRecordDraft(projectId: number, recordId: number, init?: ApiRequestInit): Promise<RecordDraftDeleteResult>;
   deleteTask(projectId: number, moduleId: number, featureId: number, taskId: number, body: DeleteTaskRequest, init?: ApiRequestInit): Promise<TaskDeletionResponse>;
+  deleteUser(userId: number, init?: ApiRequestInit): Promise<void>;
   deleteWecomBinding(init?: ApiRequestInit): Promise<void>;
   disableUser(userId: number, init?: ApiRequestInit): Promise<void>;
   enableUser(userId: number, init?: ApiRequestInit): Promise<void>;
@@ -345,6 +346,9 @@ export function createApiClient(
     },
     deleteTask(projectId: number, moduleId: number, featureId: number, taskId: number, body: DeleteTaskRequest, init?: ApiRequestInit) {
       return send<TaskDeletionResponse>(options, "POST", `/projects/${encodeURIComponent(String(projectId))}/modules/${encodeURIComponent(String(moduleId))}/features/${encodeURIComponent(String(featureId))}/tasks/${encodeURIComponent(String(taskId))}/delete`, "", init, body);
+    },
+    deleteUser(userId: number, init?: ApiRequestInit) {
+      return sendEmpty(options, "POST", `/admin/users/${encodeURIComponent(String(userId))}/delete`, "", init);
     },
     deleteWecomBinding(init?: ApiRequestInit) {
       return sendEmpty(options, "DELETE", "/me/wecom-binding", "", init);

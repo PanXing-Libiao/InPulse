@@ -19,7 +19,9 @@ const taskFields = [
   "description",
   "assigneeId",
   "assigneeIds[]",
+  "assigneeNames[]",
   "creatorId",
+  "creatorName",
   "priority",
   "workStatus",
   "lifecycleStatus",
@@ -62,7 +64,8 @@ export const taskCompletionRoutes: readonly RouteDefinition[] = [
       },
     },
     // ADR-040：响应内嵌 TaskItem 新增 assigneeIds，属破坏性契约变更，主版本递增。
-    idempotencyContractVersion: "2.0.0",
+    // ADR-082：TaskItem 新增墓碑账号展示名，重放字段变化再次递增主版本。
+    idempotencyContractVersion: "3.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: {
       version: "1.0.0",

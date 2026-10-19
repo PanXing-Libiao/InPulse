@@ -201,6 +201,46 @@ describe("登录纵切片（真实 PostgreSQL）", () => {
     expect(sessions[0]?.count).toBe(0);
   });
 
+  test("墓碑化账号登录返回 401 且不签发 Session", async () => {
+    const user = await createLoginUser();
+    await client!.sql`
+      UPDATE app.users
+         SET status = 'DISABLED',
+             disabled_at = now(),
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${user.id}
+    `;
+    const tombstoneLoginName = `deleted-user-${user.id}`;
+    await client!.sql`
+      UPDATE app.users
+         SET login_name = ${tombstoneLoginName},
+             name = '删除用户',
+             password_hash = NULL,
+             deleted_at = now(),
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${user.id}
+    `;
+    const preauth = await issuePreauth();
+    await expect(
+      loginService.login({
+        loginName: tombstoneLoginName,
+        password: LOGIN_FIXTURE_PASSWORD,
+        clientIp: "198.51.100.12",
+        cookieHeader: `__Host-preauth=${preauth.sessionToken}`,
+        csrfToken: preauth.csrfToken,
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+
+    const sessions = (await client!.sql`
+      SELECT count(*)::int AS count
+        FROM app.user_sessions
+       WHERE user_id = ${user.id}
+    `) as unknown as readonly { count: number }[];
+    expect(sessions[0]?.count).toBe(0);
+  });
+
   test("管理员带历史 TOTP 因子时直接获得完整认证 Session（ADR-031）", async () => {
     const user = await createLoginUser({ admin: true });
     await client!.sql`

@@ -48,6 +48,9 @@ export const taskItemSchema = taskEditRequestSchema
      */
     assigneeId: id,
     creatorId: id,
+    /** 服务端派生展示名；墓碑账号固定为「删除用户」，不依赖前端活跃目录。 */
+    creatorName: z.string().min(1).max(200).optional(),
+    assigneeNames: z.array(z.string().min(1).max(200)).max(20).optional(),
     workStatus: z.enum(["TODO", "DONE", "CANCELED"]),
     // ADR-054：任务层面下线归档，ARCHIVED 不可达；INVALID 保留「标记无效」语义。
     lifecycleStatus: z.enum(["ACTIVE", "INVALID"]),
@@ -153,6 +156,7 @@ export const taskStatusHistoryResponseSchema = z
           completionNoteSnapshot: z.string().max(10000).nullable(),
           reason: z.string().max(10000).nullable(),
           changedBy: id,
+          changedByName: z.string().min(1).max(200),
           changedAt: z.iso.datetime(),
         })
         .strict(),

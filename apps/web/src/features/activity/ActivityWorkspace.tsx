@@ -202,11 +202,15 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
   });
 
   const actorNameOf = useCallback(
-    (actorId: number | null): string => {
-      if (actorId === null) {
+    (item: ActivityItem): string => {
+      if (item.actorId === null) {
         return "系统";
       }
-      return actorNames.get(actorId) ?? `用户 #${actorId}`;
+      return (
+        item.actorName ??
+        actorNames.get(item.actorId) ??
+        `用户 #${item.actorId}`
+      );
     },
     [actorNames],
   );
@@ -220,9 +224,16 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
       if (record.actorId === null) {
         return "未知用户";
       }
+      if (
+        snapshotItem !== null &&
+        snapshotItem.actorId === record.actorId &&
+        snapshotItem.actorName !== null
+      ) {
+        return snapshotItem.actorName;
+      }
       return actorNames.get(record.actorId) ?? `用户 #${record.actorId}`;
     },
-    [actorNames],
+    [actorNames, snapshotItem],
   );
 
   const items = useMemo(
@@ -248,7 +259,7 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
         activityDescription(item),
         activityActionLabel(item.activityType),
         activityEntityLabel(item.sourceEntityType),
-        actorNameOf(item.actorId),
+        actorNameOf(item),
         activityTargetLabel(item),
       ]
         .join(" ")
@@ -371,7 +382,7 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
                 {collapsed
                   ? null
                   : group.items.map((item) => {
-                      const actorName = actorNameOf(item.actorId);
+                      const actorName = actorNameOf(item);
                       return (
                         <div
                           className="audit-row"

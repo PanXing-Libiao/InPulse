@@ -20,6 +20,7 @@ const user: AdminUserItem = {
   status: "ACTIVE",
   rowVersion: 3,
   disabledAt: null,
+  deletedAt: null,
   createdAt: "2026-09-09T00:00:00.000Z",
   updatedAt: "2026-09-09T00:00:00.000Z",
 };
@@ -114,5 +115,42 @@ describe("admin user query", () => {
     });
     expect(adminUserErrorMessage(loginConflict)).toContain("登录名已存在");
     expect(adminUserErrorMessage(emailConflict)).toContain("邮箱已被使用");
+  });
+
+  it("dispatches force deletion with the same CSRF and versioned headers", async () => {
+    const listAdminUsers = vi.fn().mockResolvedValue({ items: [user] });
+    const issueCsrfToken = vi
+      .fn()
+      .mockResolvedValue({ csrfToken: "a".repeat(43) });
+    const deleteUser = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      listAdminUsers,
+      issueCsrfToken,
+      deleteUser,
+    } as unknown as InpulseApiClient;
+    const { result } = renderHook(() => useAdminUsers(client), {
+      wrapper: wrapper(),
+    });
+    await result.current.mutation.mutateAsync({ action: "delete", user });
+    expect(deleteUser).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-csrf-token": "a".repeat(43),
+          "Idempotency-Key": expect.stringContaining("admin-user-"),
+          "If-Match": `"3"`,
+        }),
+      }),
+    );
+  });
+
+  it("explains active project membership blockers for deletion", () => {
+    const membership = new ApiError(409, {
+      code: "ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP",
+      message: "internal-membership",
+      details: {},
+      requestId: "m",
+    });
+    expect(adminUserErrorMessage(membership)).toContain("项目活跃成员");
   });
 });

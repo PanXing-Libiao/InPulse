@@ -37,6 +37,8 @@ export const users = appSchema.table(
       .notNull()
       .defaultNow(),
     disabledAt: timestamptz("disabled_at"),
+    /** ADR-082：非空表示不可逆墓碑化；此时名称固定为“删除用户”。 */
+    deletedAt: timestamptz("deleted_at"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
@@ -90,6 +92,12 @@ export const users = appSchema.table(
       "users_disabled_state_check",
       sql.raw(
         "(status = 'ACTIVE' AND disabled_at IS NULL) OR (status = 'DISABLED' AND disabled_at IS NOT NULL)",
+      ),
+    ),
+    check(
+      "users_deleted_state_check",
+      sql.raw(
+        "deleted_at IS NULL OR (status = 'DISABLED' AND disabled_at IS NOT NULL AND login_name = 'deleted-user-' || id::text AND name = '删除用户' AND email IS NULL AND avatar_url IS NULL AND password_hash IS NULL AND organization_id IS NULL AND is_admin = false)",
       ),
     ),
   ],

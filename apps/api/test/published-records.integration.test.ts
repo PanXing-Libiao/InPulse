@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes } from "node:crypto";
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
 import { RecordPublicationAccess } from "../src/modules/change-records/record-publication-access.js";
@@ -54,6 +55,7 @@ beforeAll(() => {
     uow,
     new PublishedRecordRepository(),
     new TimeCursorService(ring, "CHANGE_RECORDS"),
+    new PostgresUserReadPort(),
   );
   http = new PublishedRecordsHttpService(
     new SessionAuthService(

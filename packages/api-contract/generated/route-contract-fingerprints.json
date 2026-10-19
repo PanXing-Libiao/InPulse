@@ -69,6 +69,10 @@
     {
       "version": "2.0.0",
       "fingerprint": "d5a359d4f97db77acbebc03122a4c0926fc01d37cf80a59f20dd3bff11646bbb"
+    },
+    {
+      "version": "3.0.0",
+      "fingerprint": "8030f2972580026c9fa55f47c353b4482f0db4478ee643f3733edfff76e57bec"
     }
   ],
   "convertLeftoverToTask": [
@@ -169,6 +173,10 @@
     {
       "version": "3.0.0",
       "fingerprint": "ed3ba71fc4d637ce0a7a2a193c39694daea7241cbe7095c84f65c2f8617386a8"
+    },
+    {
+      "version": "4.0.0",
+      "fingerprint": "ee7b40d66fce9c1a38363e4bf2a4ea09cbefab301190ef1c7a69a00926e43309"
     }
   ],
   "createOrganization": [
@@ -211,6 +219,10 @@
     {
       "version": "3.0.0",
       "fingerprint": "d10010779bc4eb8b011d07d7a1f8ad0364c19565c06d10c9dc4e9bfb60596a88"
+    },
+    {
+      "version": "4.0.0",
+      "fingerprint": "d070df084e4dcca113b2422e92000429877d9785f8d5656ef197aa2e7cbc5225"
     }
   ],
   "createTaskRecordDraft": [
@@ -241,6 +253,10 @@
     {
       "version": "1.1.0",
       "fingerprint": "f295d99cbadc91b843c880678b018eb79577ab2d7bd21e2d39c023e947e8a24f"
+    },
+    {
+      "version": "1.2.0",
+      "fingerprint": "00f2dc64d841947323b68676d834e106957f5e234cdab9db279196334f9fb801"
     }
   ],
   "deleteFeature": [
@@ -293,6 +309,12 @@
     {
       "version": "1.0.0",
       "fingerprint": "bd4d18286ad83b2cc0c5bc6133d2c559b7eb8d2e5e8707c0777533badefa26e3"
+    }
+  ],
+  "deleteUser": [
+    {
+      "version": "1.0.0",
+      "fingerprint": "f7892bc48ada41ae9d32aaed3610a904ee98132415c4b1373be5cc40e1d782e0"
     }
   ],
   "deleteWecomBinding": [
@@ -431,6 +453,10 @@
     {
       "version": "4.0.0",
       "fingerprint": "65fbe2d5552a7d834948709264614963f67aa13a7d5f78c30e68c566da63085e"
+    },
+    {
+      "version": "5.0.0",
+      "fingerprint": "3a6b7c8d8a593d32ca05374c397ff84ce3e09bac619e86cdd7e78413b76abcef"
     }
   ],
   "transitionTask": [
@@ -449,6 +475,10 @@
     {
       "version": "4.0.0",
       "fingerprint": "be7859d154d73dbb1ef41ab17eb9b42872a179fa3b45330cb620a0c2428741d9"
+    },
+    {
+      "version": "5.0.0",
+      "fingerprint": "3a10c6d84a7a1eb53b725572859ea281ef06a2e172456a9fec191159b3cad970"
     }
   ],
   "unmergeTaskGroup": [
@@ -539,6 +569,10 @@
     {
       "version": "3.0.0",
       "fingerprint": "a98a0f95a42161b25107d66a316f3a547bd8509288d1a7df073c1d0a6a80546e"
+    },
+    {
+      "version": "4.0.0",
+      "fingerprint": "5dcb58c06fcaf920374f9fc2c8a9099cda0ef634d577d096f60fe9e37e39826c"
     }
   ],
   "updateOrganization": [
@@ -589,6 +623,10 @@
     {
       "version": "3.0.0",
       "fingerprint": "fa8574c33bc94406ad17ce457fe5f58fce42564e327be29d76970d3baae69de3"
+    },
+    {
+      "version": "4.0.0",
+      "fingerprint": "4e80b3f98e0099464ae0f30a88a8cabe82392d96685f17f782624ed59fcb87f6"
     }
   ],
   "updateTaskRecordDraft": [
@@ -613,6 +651,10 @@
     {
       "version": "1.1.0",
       "fingerprint": "caea4f588fef400f52968b4f71c047450b01fd1792dca4e35f034601e191b58f"
+    },
+    {
+      "version": "1.2.0",
+      "fingerprint": "fada8c3daf7b239db8898e6b386afd79fb018ff3500930fb8e900549eb085f09"
     }
   ],
   "updateWecomRobotConfig": [

@@ -128,6 +128,7 @@ beforeAll(async () => {
     notifications,
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
+    new PostgresUserReadPort(),
   );
   const mutation = new AuthenticatedMutationService(auth, csrf, tokens);
   const idempotency = new IdempotencyHttpService(

@@ -2179,8 +2179,20 @@
   }
 }
 
+.member-scope-filter {
+  margin: 0 20px 12px;
+}
+
 .member-row {
   transition: background 0.15s ease;
+}
+
+.member-row.is-deleted {
+  background: #fbfcfd;
+}
+
+.member-row.is-deleted .member-id strong {
+  color: #61788e;
 }
 
 .member-row:hover {
@@ -2382,6 +2394,16 @@
 
 .member-row .member-status.is-disabled {
   color: #b4554f;
+}
+
+.member-row .member-status.is-deleted {
+  color: #7b8794;
+}
+
+.member-actions-note {
+  color: #8191a2;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .member-actions {

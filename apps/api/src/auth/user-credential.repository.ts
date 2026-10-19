@@ -96,6 +96,7 @@ export class PostgresUserCredentialRepository implements UserCredentialRepositor
        WHERE id = ${userId}
          AND status = 'ACTIVE'
          AND disabled_at IS NULL
+         AND deleted_at IS NULL
          AND auth_version = ${expectedAuthVersion}
        FOR SHARE
     `) as unknown as readonly UserSessionIssueSnapshot[];
@@ -113,6 +114,7 @@ export class PostgresUserCredentialRepository implements UserCredentialRepositor
              row_version = row_version + 1,
              updated_at = now()
        WHERE id = ${userId}
+         AND deleted_at IS NULL
       RETURNING id
     `) as unknown as readonly { id: number }[];
     return rows.length > 0;
