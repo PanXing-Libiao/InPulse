@@ -339,12 +339,6 @@
       "fingerprint": "c159a7ec6eb02013e211b7ffd0d57ed9c98f160c3063aa291a218822905c90a1"
     }
   ],
-  "forceLogoutUser": [
-    {
-      "version": "1.0.0",
-      "fingerprint": "b829a35bc59f1d42318222e611b664c0ec5ebb6efe5a014d91c18fdfc611e2bb"
-    }
-  ],
   "importProject": [
     {
       "version": "1.0.0",

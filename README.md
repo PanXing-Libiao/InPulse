@@ -30,7 +30,7 @@ InPulse 面向国内单企业、单实例的软件研发团队，目标规模为
 
 > 2026-09-09 F-12 已合入主线；模块创建/编辑/归档/恢复已接入审计、活动与搜索投影，新增 100 个真实 `createModule` 并发业务事务同项目审计链证据，F-12 API 集成 10/10 本地通过。
 
-> 2026-09-09 阶段 1 A 域 F-03 用户管理已本地落库：新增管理员用户列表与创建/编辑/停用/启用/强制退出，写操作要求管理员密码+当前 TOTP 5 分钟双因子重认证、CSRF 与幂等键，停用/强退同事务递增 `auth_version` 并撤销 Session；已合并 `origin/main` `8386b29` 到 F-03 交付分支，本地 API 单测 256 例、真实 PostgreSQL 集成 152 例、Web 单测 87 例、Playwright 18/18 通过；GitHub Actions 尚未执行。
+> 2026-09-09 阶段 1 A 域 F-03 用户管理已本地落库：新增管理员用户列表与创建/编辑/停用/启用/强制退出，写操作要求管理员密码+当前 TOTP 5 分钟双因子重认证、CSRF 与幂等键，停用同事务递增 `auth_version` 并撤销 Session（2026-10-19 更新：强制退出已按 ADR-083 移除）；已合并 `origin/main` `8386b29` 到 F-03 交付分支，本地 API 单测 256 例、真实 PostgreSQL 集成 152 例、Web 单测 87 例、Playwright 18/18 通过；GitHub Actions 尚未执行。
 
 > 2026-09-10 阶段 1 F-05 项目成员管理 Playwright E2E 已补齐：新增 `apps/e2e/tests/project-members.spec.ts` 两个用例（普通成员访问 `/projects/:id/members` 被 `RequireAdmin` 拦截显示 403 空态；管理员登录后完成 5 分钟重认证，经页面添加与移除成员并校验不存在项目的读取失败边界）。分支 rebase 到 `origin/main` `5020c0a` 后本地 `pnpm test:e2e` 29/29 通过（4.7m），`pnpm lint`、`pnpm format:check`、`pnpm --filter @inpulse/e2e typecheck` 均通过；分支 `codex/c-member-e2e` 尚未推送，GitHub Actions 待运行。
 

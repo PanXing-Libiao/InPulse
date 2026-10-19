@@ -116,7 +116,7 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     path: "/admin/users",
     operationId: "listAdminUsers",
     summary:
-      "系统管理员读取未删除的用户账号，用于编辑、启停、角色与强制退出；墓碑账号不再出现在成员列表，不返回任何认证材料。",
+      "系统管理员读取未删除的用户账号，用于编辑、启停与角色管理；墓碑账号不再出现在成员列表，不返回任何认证材料。",
     request: {
       path: "none",
       query: "none",
@@ -256,26 +256,5 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     ...noBodyWritePolicy,
     ...versionedWritePolicy,
     auditAction: "admin.user.delete",
-  },
-  {
-    method: "POST",
-    path: "/admin/users/{userId}/force-logout",
-    operationId: "forceLogoutUser",
-    summary:
-      "系统管理员强制退出指定用户：同事务递增 auth_version、撤销全部 Session 并写审计。",
-    request: {
-      path: "AdminUserPath",
-      query: "none",
-      headers: "AdminUserVersionHeaders",
-      body: { noBody: true },
-    },
-    responses: { "204": { noBody: true }, ...errors },
-    authPolicy: "adminSession",
-    csrfPolicy: "required",
-    idempotencyPolicy: "idempotencyRequired",
-    behaviorHeaders: ["If-Match"],
-    ...noBodyWritePolicy,
-    ...versionedWritePolicy,
-    auditAction: "admin.user.force_logout",
   },
 ];

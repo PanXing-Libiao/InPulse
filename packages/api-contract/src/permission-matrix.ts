@@ -353,7 +353,6 @@ export const permissionMatrix = [
       "disableUser",
       "enableUser",
       "deleteUser",
-      "forceLogoutUser",
     ] as const
   ).map((operationId): PermissionMatrixEntry => ({
     operationId,
@@ -366,7 +365,7 @@ export const permissionMatrix = [
       系统管理员: {
         kind: "conditional",
         allowedWhen:
-          "完整系统管理员 Session；删除前目标必须已停用且没有任何活跃项目成员关系；移除或停用管理员时仍须保留至少一名可用管理员，且禁止自移除/自停用/自删除/自强退",
+          "完整系统管理员 Session；删除前目标必须已停用且没有任何活跃项目成员关系；移除或停用管理员时仍须保留至少一名可用管理员，且禁止自移除/自停用/自删除",
         deniedWith: 403,
       },
     },

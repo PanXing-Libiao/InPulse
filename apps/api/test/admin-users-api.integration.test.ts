@@ -402,7 +402,7 @@ afterAll(async () => {
 });
 
 describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
-  it("管理员完成用户生命周期，幂等不重复创建，停用/强退同事务撤销 Session 并写审计", async () => {
+  it("管理员完成用户生命周期，幂等不重复创建，停用同事务撤销 Session 并写审计", async () => {
     const actor = await seedUser({ admin: true });
     await seedUser({ admin: true });
     const normal = await seedUser({ admin: false });
@@ -498,20 +498,6 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       rowVersion: 4,
     });
 
-    const forceLogout = await request(
-      `/admin/users/${created.id}/force-logout`,
-      "POST",
-      actor,
-      { version: 4 },
-    );
-    expect(forceLogout.status).toBe(204);
-    expect(await userState(created.id)).toMatchObject({
-      status: "ACTIVE",
-      authVersion: targetAuthVersion + 2,
-      rowVersion: 5,
-      activeSessions: 0,
-    });
-
     const auditRows = (await auditReader.sql`
       SELECT action AS "action"
         FROM app.audit_logs
@@ -520,8 +506,7 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
            'admin.user.create',
            'admin.user.update',
            'admin.user.disable',
-           'admin.user.enable',
-           'admin.user.force_logout'
+           'admin.user.enable'
          )
     `) as unknown as readonly { action: string }[];
     expect(new Set(auditRows.map((row) => row.action))).toEqual(
@@ -530,9 +515,18 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
         "admin.user.update",
         "admin.user.disable",
         "admin.user.enable",
-        "admin.user.force_logout",
       ]),
     );
+  });
+
+  it("强制退出路由已移除，旧路径返回 404", async () => {
+    const actor = await seedUser({ admin: true });
+    const response = await request(
+      `/admin/users/${actor.userId}/force-logout`,
+      "POST",
+      actor,
+    );
+    expect(response.status).toBe(404);
   });
 
   it("有未完成任务时拒绝停用并返回 openTaskCount", async () => {
@@ -764,7 +758,6 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
     for (const [path, method, body] of [
       [`/admin/users/${target.userId}/enable`, "POST", undefined],
       [`/admin/users/${target.userId}`, "PATCH", { name: "不能恢复" }],
-      [`/admin/users/${target.userId}/force-logout`, "POST", undefined],
       [`/admin/users/${target.userId}/delete`, "POST", undefined],
     ] as const) {
       const response = await request(path, method, actor, {

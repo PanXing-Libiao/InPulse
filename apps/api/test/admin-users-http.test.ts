@@ -71,7 +71,6 @@ function setup() {
   const update = vi.fn().mockResolvedValue({ ...item, rowVersion: 2 });
   const disable = vi.fn().mockResolvedValue(undefined);
   const enable = vi.fn().mockResolvedValue(undefined);
-  const forceLogout = vi.fn().mockResolvedValue(undefined);
   const deleteUser = vi.fn().mockResolvedValue(undefined);
   const replay = vi.fn().mockResolvedValue(undefined);
   const run = vi.fn(
@@ -100,7 +99,6 @@ function setup() {
       update,
       disable,
       enable,
-      forceLogout,
       delete: deleteUser,
       replay,
     } as unknown as AdminUserService,
@@ -120,7 +118,6 @@ function setup() {
     update,
     disable,
     enable,
-    forceLogout,
     deleteUser,
     replay,
     idempotencyRun,

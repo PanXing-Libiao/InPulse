@@ -111,7 +111,6 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
 
     const card = page.locator(".member-row").filter({ hasText: loginName });
     await expect(card.getByText(name, { exact: true })).toBeVisible();
-    await expect(card.getByRole("button", { name: "强制退出" })).toHaveCount(0);
     const editButton = card.getByRole("button", { name: /编\s*辑/ });
     const stopButton = card.getByRole("button", { name: /停\s*用/ });
     const statusBox = await card.locator(".member-status").boundingBox();
@@ -159,7 +158,6 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
     await expect(card.getByRole("button", { name: /启\s*用/ })).toBeVisible();
     await expect(card.getByRole("button", { name: "强制删除" })).toBeVisible();
-    await expect(card.getByRole("button", { name: "强制退出" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "加入组织" })).toHaveCount(0);
 
     await card.getByRole("button", { name: /启\s*用/ }).click();

@@ -33,8 +33,7 @@ export type AdminUserOperation =
   | "updateUser"
   | "disableUser"
   | "enableUser"
-  | "deleteUser"
-  | "forceLogoutUser";
+  | "deleteUser";
 
 export interface AdminUsersHttpRequest {
   readonly headers: HttpHeaderBag;
@@ -169,8 +168,7 @@ export class AdminUsersHttpService {
           await this.users.delete(tx, meta, userId, version!);
           return noBodyResult(actorId, userId);
         }
-        await this.users.forceLogout(tx, meta, userId, version!);
-        return noBodyResult(actorId, userId);
+        throw new Error("unhandled admin user operation: " + operation);
       };
       const result = await this.idempotency.run({
         operationId: operation,

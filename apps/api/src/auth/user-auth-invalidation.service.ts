@@ -6,7 +6,7 @@ import { PostgresUserCredentialRepository } from "./user-credential.repository.j
 import { PostgresUserSessionRepository } from "./user-session.repository.js";
 
 /**
- * 用户停用、改密或管理员强制退出时复用的事务内失效切片：
+ * 用户停用或改密时复用的事务内失效切片：
  * 1. 递增 `users.auth_version`（并满足 row_version 触发器）；
  * 2. 撤销该用户全部未撤销 Session。
  *

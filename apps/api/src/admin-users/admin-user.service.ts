@@ -151,32 +151,6 @@ export class AdminUserService {
     });
   }
 
-  async forceLogout(
-    tx: TransactionContext,
-    meta: AdminUserMutationMeta,
-    userId: number,
-    version: number,
-  ): Promise<void> {
-    await this.verifyBeforeLocks(tx, meta.headers);
-    const candidate = await this.repository.find(tx, userId);
-    if (candidate === undefined) throw adminUserNotFound();
-    if (candidate.id === meta.actorId) throw adminUserSelfMutation();
-    const current = await this.lockTarget(tx, userId, false);
-    if (current.rowVersion !== version) throw adminUserVersionConflict();
-    if (current.deletedAt !== null) throw adminUserStateConflict();
-    if (current.id === meta.actorId) throw adminUserSelfMutation();
-    const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
-    this.assertActor(actor.userId, meta.actorId);
-    const loggedOut = await this.repository.forceLogout(tx, current);
-    if (loggedOut === undefined) throw adminUserVersionConflict();
-    const revoked = await this.sessions.revokeAllForUser(tx, userId);
-    await this.appendAudit(tx, meta, "admin.user.force_logout", loggedOut.id, {
-      before: this.summary(current),
-      after: this.summary(loggedOut),
-      revokedSessionCount: revoked,
-    });
-  }
-
   async delete(
     tx: TransactionContext,
     meta: AdminUserMutationMeta,

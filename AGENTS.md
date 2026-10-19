@@ -244,7 +244,7 @@
 按用户明确要求，本期移除全部 TOTP 验证（连管理员高风险重认证一并取消），并以 ADR-031 取代 ADR-016；数据库本期只停用不删除（保留 `user_totp_factors`、`mfa_recovery_codes` 表与 `user_sessions.mfa_verified_at` 等列），后续 contract 迁移再删。因此：
 
 - 登录只做密码验证（Argon2id + 登录限流），成功后直接签发自 `AUTHENTICATED` 的完整认证 Session 与新 CSRF；不存在 MFA 注册/验证/恢复码挑战与受限 Session。
-- 管理员高风险操作（`listAdminUsers`/`createUser`/`updateUser`/`disableUser`/`enableUser`/`forceLogoutUser`、`getAuditLogs`、`getProjectArchivePreview`/`archiveProject`/`restoreProject`、`archiveModule`/`restoreModule`、`archiveFeature`/`restoreFeature`、`addProjectMember`/`removeProjectMember`、`voidChangeRecord`/`restoreChangeRecord`）只要求当前有效的完整管理员 Session、`is_admin`、写操作 CSRF 与数据库级幂等；不再要求管理员密码 + TOTP 重认证，错误码收敛为 401 `ADMIN_SESSION_REQUIRED`、403 `ADMIN_REQUIRED` 与 401 `ADMIN_CSRF_REJECTED`。
+- 管理员高风险操作（`listAdminUsers`/`createUser`/`updateUser`/`disableUser`/`enableUser`、`getAuditLogs`、`getProjectArchivePreview`/`archiveProject`/`restoreProject`、`archiveModule`/`restoreModule`、`archiveFeature`/`restoreFeature`、`addProjectMember`/`removeProjectMember`、`voidChangeRecord`/`restoreChangeRecord`）只要求当前有效的完整管理员 Session、`is_admin`、写操作 CSRF 与数据库级幂等；不再要求管理员密码 + TOTP 重认证，错误码收敛为 401 `ADMIN_SESSION_REQUIRED`、403 `ADMIN_REQUIRED` 与 401 `ADMIN_CSRF_REJECTED`。
 - 删除 7 条 MFA 认证路由后 Route Registry 为 95 条；`securityFlow` allowlist 收敛为 `issueCsrfToken`/`login`/`logout` 三条。
 - 管理员最后一名保护由「最后一名可用 MFA 管理员」改为「最后一名可用管理员」（`LAST_ACTIVE_ADMIN_REQUIRED`）。
 - 本文件上文历史条目中出现的 TOTP/MFA/重认证描述均为当时事实，与本节冲突时以 ADR-031 与本节的现行规则为准。
@@ -1151,4 +1151,4 @@
 - 「停用账号」即撤销该账号全部 Session、递增 `auth_version`，账号不可登录；用户目录与项目成员候选只返回 `ACTIVE`，停用账号不能再被选为新任务负责人或导入成员；历史任务、迭代记录、审计与活动引用全部保留，不做物理删除或级联。
 - 有未完成任务时 `disableUser` 返回 409 `ADMIN_USER_HAS_OPEN_TASKS`，`details.openTaskCount` 给出数量，不撤销会话、不改状态。
 - 前端成员列表把停用账号保留在「全部」里，整行灰色、状态显示「停用」，并统一排在列表最后；不提供单独的「停用 / 已隐藏」标签页，行内只保留「编辑」，停用与启用都在编辑弹窗的「账号状态」区。
-- `forceLogoutUser` 路由为兼容保留，但不再有独立 UI 入口。
+- `forceLogoutUser` 已按 [ADR-083](docs/adr/ADR-083.md) 整体移除：路由、Controller、Service、Repository、权限矩阵、OpenAPI、生成客户端与前端入口均不存在；管理员撤销目标会话只能通过停用账号完成。历史审计中的 `admin.user.force_logout` 动作码仍保留中文展示标签。

@@ -51,7 +51,7 @@ export function adminUserSelfMutation(): AdminUserError {
   return new AdminUserError(
     409,
     "ADMIN_USER_SELF_MUTATION_REJECTED",
-    "不能对当前管理员自己执行停用、降级、删除或强制退出",
+    "不能对当前管理员自己执行停用、降级或删除",
     "self-mutation",
   );
 }
