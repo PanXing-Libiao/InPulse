@@ -57,8 +57,9 @@ const replayAuthorization = {
 } as const;
 
 /**
- * ADR-062：删除是物理删除——项目行与它的全部下级数据、项目自己的审计链一并消失。
- * 响应仍然无正文，因此重放策略只有 noBody 分支；载荷本身不携带任何项目字段。
+ * ADR-062 / ADR-085：删除是物理删除——项目行与全部下级业务数据消失，但项目
+ * 自己的审计链作为只读历史保留。响应仍然无正文，因此重放策略只有 noBody 分支；
+ * 载荷本身不携带任何项目字段。
  */
 const deleteReplayPolicy = {
   version: "1.0.0",
@@ -66,10 +67,10 @@ const deleteReplayPolicy = {
 } as const;
 
 /**
- * 项目删除的幂等重放授权（ADR-062 的 `actorOnly` 例外）：物理删除之后项目行、
- * 成员关系与项目自己的 PROJECT 审计链全部消失，任何资源级复核都不再成立——
- * 复核项目可读性会把合法重放变成 404，复核「保留的成员关系」也已无数据可依。
- * 因此重放只复核当前认证（Session 有效、用户未被停用，由 HTTP 层在重放前完成），
+ * 项目删除的幂等重放授权（ADR-062 的 `actorOnly` 例外）：物理删除之后项目行与
+ * 成员关系消失，项目审计链虽按 ADR-085 保留但已冻结，不参与资源级复核——复核
+ * 项目可读性会把合法重放变成 404，复核「保留的成员关系」也已无数据可依。因此
+ * 重放只复核当前认证（Session 有效、用户未被停用，由 HTTP 层在重放前完成），
  * 同 Key、同摘要与同契约版本直接重放已存的 204。
  */
 const deleteReplayAuthorization = {
@@ -171,7 +172,7 @@ export const projectRoutes: readonly RouteDefinition[] = [
     path: "/projects/{projectId}",
     operationId: "deleteProject",
     summary:
-      "F-06.4 删除项目（ADR-062，替代 ADR-049/ADR-051 的软删除与彻底删除两步）：只有本项目组长与系统管理员可以删除，普通成员 403 PROJECT_DELETE_FORBIDDEN，非成员与不存在一律 404。删除是物理删除——项目行、模块、功能、任务、聚合组、迭代记录、遗留项、外部链接、成员关系、通知、动态、搜索投影与项目自己的 PROJECT 审计链在同一事务内一并清空，不可撤销且没有还原入口；项目编码随之释放，可以被新建项目复用。SYSTEM 审计链新增一条 project.delete（操作者、项目编码与名称、删除行数），这是本操作唯一保留的记录，只对系统管理员可见。If-Match 版本不符 409 PROJECT_VERSION_CONFLICT，CSRF 与数据库幂等必填，同 Key 重放直接返回已存的 204。",
+      "F-06.4 删除项目（ADR-062，项目审计链保留口径由 ADR-085 修订，替代 ADR-049/ADR-051 的软删除与彻底删除两步）：只有本项目组长与系统管理员可以删除，普通成员 403 PROJECT_DELETE_FORBIDDEN，非成员与不存在一律 404。删除是物理删除——项目行、模块、功能、任务、聚合组、迭代记录、遗留项、外部链接、成员关系、通知、动态与搜索投影在同一事务内一并清空，不可撤销且没有还原入口；项目自己的 PROJECT 审计日志与链头保留为只读历史，项目编码随之释放、可以被新建项目复用。SYSTEM 审计链新增一条 project.delete（操作者、项目编码与名称、删除行数与保留审计行数），只对系统管理员可见。If-Match 版本不符 409 PROJECT_VERSION_CONFLICT，CSRF 与数据库幂等必填，同 Key 重放直接返回已存的 204。",
     request: {
       path: "ProjectPath",
       query: "none",

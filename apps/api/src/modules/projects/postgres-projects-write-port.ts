@@ -323,9 +323,10 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
   }
 
   /**
-   * ADR-062：`app_runtime` 对业务表没有 DELETE 权限，物理删除只能经
+   * ADR-062 / ADR-085：`app_runtime` 对业务表没有 DELETE 权限，物理删除只能经
    * `app.purge_project` 这个 SECURITY DEFINER 窄口完成；函数内部按外键顺序
-   * 删除全部下级数据、项目自己的审计链与项目行本身，项目行不存在时 fail closed。
+   * 删除全部下级业务数据与项目行本身，但保留项目自己的审计日志与链头；项目行
+   * 不存在时 fail closed。
    */
   async purgeProject(
     tx: TransactionContext,
@@ -350,7 +351,7 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
       features: row.features,
       tasks: row.tasks,
       changeRecords: row.change_records,
-      auditLogs: row.audit_logs,
+      retainedAuditLogs: row.audit_logs,
       members: row.members,
       total: row.total,
     };

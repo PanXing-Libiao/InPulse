@@ -389,7 +389,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                 showIcon
                 type="warning"
                 title={`确认删除项目「${project.name}」？`}
-                description="删除不可撤销，会一并物理删除该项目下的全部模块、功能、任务、迭代记录、GitHub 链接、通知、项目动态与项目的审计链，项目编码将可以被重新使用。删除后仅在系统审计链留下一条「删除项目」记录，系统管理员可在审计日志中查看。"
+                description="删除不可撤销，会物理删除该项目下的全部模块、功能、任务、迭代记录、GitHub 链接、通知与项目动态，项目编码将可以被重新使用；该项目的历史审计链会保留，仅供系统管理员在审计日志中查看。"
               />
               {deleteMutation.error ? (
                 <Alert

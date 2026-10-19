@@ -364,13 +364,14 @@ export class ProjectManagementService {
    * 删除完全交给数据库的 `app.purge_project`：`app_runtime` 没有业务表的
    * DELETE 权限，只有这个 SECURITY DEFINER 窄口能在同一事务内按外键顺序清空
    * 模块、功能、任务、聚合组、迭代记录、遗留项、外部链接、成员关系、通知、
-   * 动态、搜索投影与项目自己的 `PROJECT:<id>` 审计链，最后删除项目行本身。
+   * 动态与搜索投影，最后删除项目行本身。
    *
-   * 项目行消失后不再写项目动态与搜索投影（它们都在被清空的表里），**不发通知**：
-   * 通知的深链指向已不存在的项目，发出去就是死链。唯一保留的记录是 SYSTEM 审计
-   * 链上的 `project.delete`（操作者、项目编码与名称、删除时的状态与各表行数），
-   * 因此删除之后仍可在审计日志中查到「谁在什么时候删掉了哪个项目」（仅管理员可见）；
-   * 项目编码随行释放，可以被后续新项目复用。
+   * ADR-085：项目自己的 `PROJECT:<id>` 审计日志与链头不随项目删除，继续作为
+   * 只读历史保留；项目行消失后不再写项目动态与搜索投影（它们都在被清空的表里），
+   * **不发通知**：通知的深链指向已不存在的项目，发出去就是死链。SYSTEM 审计链
+   * 新增 `project.delete`（操作者、项目编码与名称、删除时的状态、删除行数与保留
+   * 审计行数），因此删除之后仍可查到「谁在什么时候删掉了哪个项目」并回看项目链
+   * （仅管理员可见）；项目编码随行释放，可以被后续新项目复用。
    */
   async deleteProject(
     tx: TransactionContext,
@@ -400,7 +401,7 @@ export class ProjectManagementService {
       projectId: input.projectId,
     });
     await this.audit.append(tx, {
-      // 项目链已随项目一起删除，本操作只能记在 SYSTEM 链上。
+      // 项目链按 ADR-085 保留，不写入已冻结的项目历史；本次操作记在 SYSTEM 链。
       projectId: null,
       actorType: "USER",
       actorId: input.actorId,

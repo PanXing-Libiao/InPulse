@@ -166,8 +166,8 @@ export function useChangeProjectStatus(
 /**
  * ADR-062：只有本项目组长或系统管理员可以删除项目（服务端 `projectDeleterRole`
  * 二次判定，非成员与不存在一律 404、普通成员 403）。
- * 删除是物理删除且不可撤销：项目与其模块、功能、任务、迭代记录、链接、通知、
- * 搜索投影与项目审计链一并消失，编码可被重新使用；成功返回 204 无正文，
+ * 删除是物理删除且不可撤销：项目与其模块、功能、任务、迭代记录、链接、通知与
+ * 搜索投影一并消失，项目历史审计链保留，编码可被重新使用；成功返回 204 无正文，
  * 重复提交靠幂等键重放同一个 204。
  */
 export function useDeleteProject(projectId: number, client?: InpulseApiClient) {

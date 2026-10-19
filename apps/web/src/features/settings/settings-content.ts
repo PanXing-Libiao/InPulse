@@ -65,7 +65,7 @@ export const permissionMatrixRows: readonly PermissionMatrixRow[] = [
     feature: "删除项目",
     admin: true,
     member: "leader",
-    note: "物理删除且不可撤销，仅系统审计链保留一条记录",
+    note: "物理删除且不可撤销，业务数据清除但项目历史审计链保留",
   },
   {
     feature: "导入文档到项目",

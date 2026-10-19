@@ -11,7 +11,9 @@ import postgres from "postgres";
  * 集成 spec 的既有命名）以及 `backup_` / `archive_`（`apps/ops` 备份与审计归档
  * 集成测试）前缀。本模块按前缀识别夹具用户，再按其 `created_by`
  * 识别夹具项目，然后按依赖顺序物理删除全部关联业务数据、PROJECT 审计链
- * 与夹具账号，供 `global-teardown.ts` 与集成测试收尾后手动调用。
+ * 与夹具账号；ADR-085 后，被 API 删除的项目仍保留项目审计链，清理只按夹具
+ * 账号写入的 `project.create` 识别并删除这些遗留链。供 `global-teardown.ts`
+ * 与集成测试收尾后手动调用。
  *
  * 数据库不变量禁止物理删除任何项目的 UNCLASSIFIED 模块
  * （`app.protect_unclassified_module`），因此删除只在清理会话内以
@@ -98,6 +100,23 @@ export async function cleanupFixtures(
         `CREATE TEMP TABLE _cleanup_projects ON COMMIT DROP AS
            SELECT id FROM app.projects
             WHERE created_by IN (SELECT id FROM _cleanup_users)`,
+      );
+
+      // ADR-085：经 API 删除的夹具项目已不存在于 app.projects，项目链仍保留。
+      // 只认由夹具账号写入 project.create、且目标就是该项目的链，避免误删其他历史。
+      await transaction.unsafe(
+        `CREATE TEMP TABLE _cleanup_orphan_projects ON COMMIT DROP AS
+           SELECT DISTINCT l.project_id AS id
+             FROM app.audit_logs l
+            WHERE l.project_id IS NOT NULL
+              AND l.chain_id = 'PROJECT:' || l.project_id::text
+              AND l.action = 'project.create'
+              AND l.target_type = 'PROJECT'
+              AND l.target_id = l.project_id::text
+              AND l.actor_id IN (SELECT id FROM _cleanup_users)
+              AND NOT EXISTS (
+                SELECT 1 FROM app.projects p WHERE p.id = l.project_id
+              )`,
       );
 
       const userRows = await transaction.unsafe(
@@ -451,6 +470,20 @@ export async function cleanupFixtures(
             )`,
       );
 
+      // ADR-085：夹具项目经 API 删除后，项目行消失但项目链保留。上面已在夹具账号
+      // 仍存在时按 project.create 事件收集这些项目；这里只删除该集合，绝不按
+      // “项目不存在且 actor 已消失”推断历史归属。
+      const orphanProjectAuditRows = await remove(
+        `DELETE FROM app.audit_logs l
+           USING _cleanup_orphan_projects p
+          WHERE l.project_id = p.id`,
+      );
+      const orphanProjectChainHeads = await remove(
+        `DELETE FROM app.audit_chain_heads h
+           USING _cleanup_orphan_projects p
+          WHERE h.project_id = p.id`,
+      );
+
       const orphansRemoved = await sweepOrphanReferences();
 
       const rewind = await transaction.unsafe(
@@ -587,7 +620,12 @@ export async function cleanupFixtures(
         fixtureUsers,
         fixtureProjects,
         deletedRows,
-        auditRowsDeleted: projectChainRows + systemRows + strayRows,
+        auditRowsDeleted:
+          projectChainRows +
+          systemRows +
+          strayRows +
+          orphanProjectAuditRows +
+          orphanProjectChainHeads,
         orphansRemoved,
         systemChainRewound,
         systemChainBroken,

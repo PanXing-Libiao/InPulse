@@ -93,6 +93,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       "0046_organizations.sql",
       "0047_user_deletion_tombstone.sql",
       "0048_organizations_backup_sequence_grant.sql",
+      "0049_project_delete_audit_retention.sql",
     ]);
   });
 

@@ -574,6 +574,61 @@ describe("GET /api/v1/audit-logs with HTTP and real PostgreSQL", () => {
     expect(page.hasMore).toBe(false);
   });
 
+  test("项目物理删除后管理员仍可按 projectId 与 chain=all 读取保留的项目审计链", async () => {
+    const project = await createProject(runtime!, fixture.memberUserId);
+    const action = `PROJECT_DELETE_RETENTION_${randomBytes(4).toString("hex").toUpperCase()}`;
+    const writerClient = createDatabaseClient(urls.runtime, {
+      applicationName: "inpulse-audit-logs-retention-test",
+    });
+    try {
+      const uow = new PostgresUnitOfWork(writerClient);
+      const port = new PostgresAuditWritePort({
+        currentVersion: HMAC_KEY_VERSION,
+        keyFor: () => randomBytes(32),
+      });
+      await uow.run((tx) =>
+        port.append(tx, {
+          projectId: project.projectId,
+          actorType: "USER",
+          actorId: fixture.memberUserId,
+          action,
+          targetType: "PROJECT",
+          targetId: String(project.projectId),
+          eventPayload: { code: project.code, phase: "before-delete" },
+          requestId: `audit-retention-${randomBytes(4).toString("hex")}`,
+        }),
+      );
+    } finally {
+      await writerClient.close();
+    }
+
+    await runtime!`SELECT * FROM app.purge_project(${project.projectId})`;
+
+    const byProject = await expectAuditPage(
+      await requestAuditLogs(baseUrl, {
+        cookie: fixture.adminCookie,
+        query: { projectId: project.projectId, action },
+      }),
+    );
+    expect(byProject.items).toHaveLength(1);
+    expect(byProject.items[0]?.chainId).toBe(
+      `PROJECT:${String(project.projectId)}`,
+    );
+    expect(byProject.items[0]?.action).toBe(action);
+    expect(byProject.items[0]?.eventPayload["code"]).toBe(project.code);
+
+    const allChains = await expectAuditPage(
+      await requestAuditLogs(baseUrl, {
+        cookie: fixture.adminCookie,
+        query: { chain: "all", action },
+      }),
+    );
+    expect(allChains.items).toHaveLength(1);
+    expect(allChains.items[0]?.chainId).toBe(
+      `PROJECT:${String(project.projectId)}`,
+    );
+  });
+
   test("chain=all 跨链读取：并列时间排序稳定且分页不重不漏（ADR-061）", async () => {
     const all = await expectAuditPage(
       await requestAuditLogs(baseUrl, {

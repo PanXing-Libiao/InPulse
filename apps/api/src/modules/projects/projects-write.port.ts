@@ -126,13 +126,13 @@ export interface ProjectStatRecord {
   readonly completedTaskCount: number;
 }
 
-/** 物理删除实际删除的行数；只用于审计留痕，不参与幂等摘要。 */
+/** 物理删除实际删除的业务行数与保留的审计行数；只用于审计留痕，不参与幂等摘要。 */
 export interface ProjectPurgeCounts {
   readonly modules: number;
   readonly features: number;
   readonly tasks: number;
   readonly changeRecords: number;
-  readonly auditLogs: number;
+  readonly retainedAuditLogs: number;
   readonly members: number;
   readonly total: number;
 }
@@ -197,9 +197,10 @@ export abstract class ProjectsWritePort {
   ): Promise<ProjectChangeRecord | undefined>;
 
   /**
-   * ADR-062：调用 `app.purge_project` 物理删除项目及其全部下级数据与
-   * `PROJECT:<id>` 审计链，返回实际删除行数。项目行不存在或已被并发删除时
-   * 数据库抛错；调用方必须先在同一事务内锁定并校验项目行。
+   * ADR-062 / ADR-085：调用 `app.purge_project` 物理删除项目及其全部下级
+   * 业务数据，但保留 `PROJECT:<id>` 审计日志与链头；返回实际删除行数和保留的
+   * 审计行数。项目行不存在或已被并发删除时数据库抛错；调用方必须先在同一事务
+   * 内锁定并校验项目行。
    */
   abstract purgeProject(
     tx: TransactionContext,

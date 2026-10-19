@@ -10,14 +10,13 @@ import { createProjectViaUi } from "../helpers/project-create.js";
 import { loadRuntime } from "../helpers/runtime.js";
 
 /**
- * ADR-062：项目删除是物理删除且不可撤销。
+ * ADR-062 / ADR-085：项目删除是物理删除且不可撤销，但项目历史审计链保留。
  *
- * 确认弹窗必须把级联范围讲清楚（下级数据与项目审计链一并清除、编码可复用、
- * 系统审计链留一条供管理员追溯），删除后项目从列表与刷新后的接口里都消失，
- * 唯一留痕是 SYSTEM 链上的 `project.delete`（仅管理员可读）。
+ * 确认弹窗必须把级联范围讲清楚（下级业务数据清除、编码可复用、项目审计链保留、
+ * 系统审计链另留一条供管理员追溯），删除后项目从列表与刷新后的接口里都消失。
  */
 const DELETE_WARNING =
-  "删除不可撤销，会一并物理删除该项目下的全部模块、功能、任务、迭代记录、GitHub 链接、通知、项目动态与项目的审计链，项目编码将可以被重新使用。删除后仅在系统审计链留下一条「删除项目」记录，系统管理员可在审计日志中查看。";
+  "删除不可撤销，会物理删除该项目下的全部模块、功能、任务、迭代记录、GitHub 链接、通知与项目动态，项目编码将可以被重新使用；该项目的历史审计链会保留，仅供系统管理员在审计日志中查看。";
 
 test("普通成员在编辑项目弹窗里看不到删除入口", async ({ browser }) => {
   test.setTimeout(180_000);
@@ -86,7 +85,7 @@ test("组长删除项目后列表不再出现，管理员在审计日志看到�
   await expect(confirm).toBeHidden();
   await expect(editor).toBeHidden();
   await expect(page.getByTestId("project-management-success")).toContainText(
-    `项目「${project.name}」已彻底删除`,
+    `项目「${project.name}」已删除，其业务数据已清除`,
   );
   await expect(card).toHaveCount(0);
 
@@ -131,7 +130,7 @@ test("组长删除项目后列表不再出现，管理员在审计日志看到�
     await expect(row).toContainText("删除项目");
     await expect(row).toContainText(runtime.user.name);
     await expect(row.getByText("用户操作", { exact: true })).toBeVisible();
-    // 项目链随项目一起删除，留痕只能落在 SYSTEM 链上。
+    // SYSTEM 链上另有一条删除留痕；项目自己的审计链仍按 ADR-085 保留。
     await expect(row).toContainText("系统链");
 
     await row.getByRole("button", { name: /查看原始快照/ }).click();
@@ -150,6 +149,40 @@ test("组长删除项目后列表不再出现，管理员在审计日志看到�
     await expect(payload).toContainText("actorRole");
     await auditPage.keyboard.press("Escape");
     await expect(snapshot).toBeHidden();
+
+    // ADR-085：项目行删除后，原项目链必须仍能在审计页读到，不能只剩 SYSTEM
+    // 链的 project.delete。按 project.create 过滤可稳定命中删除前的历史。
+    await auditPage
+      .getByRole("combobox", { name: "动作码" })
+      .fill("project.create");
+    const retainedRequest = auditPage.waitForRequest(
+      (request) =>
+        request.url().includes("/api/v1/audit-logs?") &&
+        request.url().includes("action=project.create"),
+      { timeout: 30_000 },
+    );
+    await auditPage.getByRole("button", { name: "查询" }).click();
+    await retainedRequest;
+
+    const retainedRow = auditPage
+      .locator(".audit-row")
+      .filter({ hasText: project.code })
+      .first();
+    await expect(retainedRow).toBeVisible();
+    await expect(retainedRow).toContainText("创建项目");
+    await expect(retainedRow).toContainText(project.name);
+    await expect(retainedRow).toContainText("项目 #");
+    await retainedRow.getByRole("button", { name: /查看原始快照/ }).click();
+    const retainedSnapshot = auditPage.getByRole("dialog", {
+      name: "原始审计快照",
+    });
+    await expect(retainedSnapshot).toBeVisible();
+    await expect(auditPage.getByTestId("audit-snapshot")).toContainText(
+      "project.create",
+    );
+    await expect(auditPage.getByTestId("audit-snapshot")).toContainText(
+      "PROJECT:",
+    );
   } finally {
     await adminContext.close();
   }

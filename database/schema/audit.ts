@@ -16,7 +16,6 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { users } from "./identity.js";
-import { projects } from "./projects.js";
 import { appSchema, bytea } from "./shared.js";
 
 const timestamptz = (name: string) =>
@@ -26,9 +25,7 @@ export const auditChainHeads = appSchema.table(
   "audit_chain_heads",
   {
     chainId: text("chain_id").primaryKey(),
-    projectId: integer("project_id").references(() => projects.id, {
-      onDelete: "restrict",
-    }),
+    projectId: integer("project_id"),
     lastSequence: bigint("last_sequence", { mode: "number" })
       .notNull()
       .default(0),
@@ -59,9 +56,7 @@ export const auditLogs = appSchema.table(
   {
     chainId: text("chain_id").notNull(),
     sequenceNo: bigint("sequence_no", { mode: "number" }).notNull(),
-    projectId: integer("project_id").references(() => projects.id, {
-      onDelete: "restrict",
-    }),
+    projectId: integer("project_id"),
     actorType: text("actor_type").notNull(),
     actorId: integer("actor_id").references(() => users.id, {
       onDelete: "restrict",

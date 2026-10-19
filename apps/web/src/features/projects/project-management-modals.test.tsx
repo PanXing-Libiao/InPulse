@@ -344,6 +344,7 @@ describe("EditProjectModal", () => {
     expect(
       within(confirm).getByText("确认删除项目「商城系统」？"),
     ).toBeTruthy();
+    expect(within(confirm).getByText(/该项目的历史审计链会保留/)).toBeTruthy();
     await userEvent.click(
       within(confirm).getByRole("button", { name: "确认删除" }),
     );

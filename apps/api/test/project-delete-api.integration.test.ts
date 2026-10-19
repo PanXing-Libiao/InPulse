@@ -45,10 +45,10 @@ import {
 } from "./database.helpers.js";
 
 /**
- * ADR-062：项目删除是**物理删除**——一个事务内清空项目与全部下级数据，并连同
- * `PROJECT:<id>` 审计链一起删除；唯一保留的记录是 SYSTEM 链上的一条
- * `project.delete`（操作者、编码、名称、状态与各表行数），仅系统管理员可在审计
- * 日志中查看。因此本项目删除后不做通知（深链必成死链），项目编码随行释放。
+ * ADR-062 / ADR-085：项目删除是**物理删除**——一个事务内清空项目行与全部下级业务
+ * 数据，但项目自己的 `PROJECT:<id>` 审计日志与链头保留为只读历史；SYSTEM 链另写
+ * 一条 `project.delete`（操作者、编码、名称、状态、删除行数与保留审计行数），仅
+ * 系统管理员可在审计日志中查看。项目删除后不写动态、不发通知，项目编码随行释放。
  *
  * ADR-051 的还原（`restoreProject`）与彻底删除（`purgeProject`）两条命令、删除
  * 台账（`listProjectDeletions`）与 ADR-055 的保留期自动清理都已整体下线，本文件
@@ -56,6 +56,7 @@ import {
  */
 let client: DatabaseClient;
 let auditReader: DatabaseClient;
+let auditWriter: PostgresAuditWritePort;
 let unitOfWork: PostgresUnitOfWork;
 let access: PostgresProjectAccessQueryPort;
 let members: PostgresProjectMembersQueryPort;
@@ -234,6 +235,25 @@ async function projectExists(projectId: number): Promise<boolean> {
   return rows[0]!.count !== "0";
 }
 
+/** 在项目链写一条审计，验证项目删除只清业务数据、不抹审计历史。 */
+async function seedProjectAudit(
+  project: ProjectFixture,
+  actorId: number,
+): Promise<void> {
+  await unitOfWork.run((tx) =>
+    auditWriter.append(tx, {
+      projectId: project.projectId,
+      actorType: "USER",
+      actorId,
+      action: "PROJECT_DELETE_RETENTION_SEED",
+      targetType: "PROJECT",
+      targetId: String(project.projectId),
+      eventPayload: { code: project.code },
+      requestId: `project-delete-audit-${randomUUID()}`,
+    }),
+  );
+}
+
 /**
  * 给项目造功能、任务、任务组关系与迭代记录草稿：物理删除的外键顺序与行数统计
  * 才有真实数据可删。夹具直接写表、不走命令，因此不产生通知与动态。
@@ -349,11 +369,6 @@ const PROJECT_SCOPED_TABLES = [
 /** 审计表只有 `audit_reader` 可读，运行时角色没有 SELECT。 */
 const PROJECT_AUDIT_TABLES = ["audit_logs", "audit_chain_heads"] as const;
 
-const ALL_SCOPED_TABLES = [
-  ...PROJECT_SCOPED_TABLES,
-  ...PROJECT_AUDIT_TABLES,
-] as const;
-
 /** 按项目统计各表行数；表名来自上面的常量、ID 来自夹具自增主键，不拼接外部输入。 */
 async function countProjectRows(
   sql: Sql,
@@ -376,18 +391,20 @@ async function countProjectRows(
   return Object.fromEntries(rows.map((row) => [row.table_name, row.row_count]));
 }
 
-/** 业务表与审计表分两路连接统计，调用方拿到合并后的全表行数。 */
-async function projectRowCounts(
+/** 业务表由运行时角色统计，审计表由只读角色统计，避免把保留与删除混在一起。 */
+async function projectBusinessRowCounts(
   projectId: number,
 ): Promise<Record<string, number>> {
-  const [business, audit] = await Promise.all([
-    countProjectRows(client.sql, PROJECT_SCOPED_TABLES, projectId),
-    countProjectRows(auditReader.sql, PROJECT_AUDIT_TABLES, projectId),
-  ]);
-  return { ...business, ...audit };
+  return countProjectRows(client.sql, PROJECT_SCOPED_TABLES, projectId);
 }
 
-/** `PROJECT:<id>` 审计链表头是否还在；项目物理删除后必须消失。 */
+async function projectAuditRowCounts(
+  projectId: number,
+): Promise<Record<string, number>> {
+  return countProjectRows(auditReader.sql, PROJECT_AUDIT_TABLES, projectId);
+}
+
+/** `PROJECT:<id>` 审计链表头是否还在；ADR-085 要求项目删除后仍然存在。 */
 async function projectChainHeadExists(projectId: number): Promise<boolean> {
   const rows = (await auditReader.sql`
     SELECT count(*) AS "count"
@@ -436,10 +453,14 @@ beforeAll(async () => {
     new PostgresUserSessionRepository(),
     tokens,
   );
+  auditWriter = new PostgresAuditWritePort({
+    currentVersion: 1,
+    keyFor: () => key,
+  });
   const service = new ProjectManagementService(
     new PostgresProjectsWritePort(),
     access,
-    new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key }),
+    auditWriter,
     new PostgresActivityWritePort(),
     new PostgresSearchProjectionWritePort(),
     members,
@@ -476,13 +497,15 @@ afterAll(async () => {
 });
 
 describe("ADR-062 project delete API", () => {
-  it("组长删除项目：204 无正文、下级数据与项目审计链逐表清空、SYSTEM 链留一条 project.delete", async () => {
+  it("组长删除项目：204 无正文、下级业务数据清空、项目审计链保留、SYSTEM 链留一条 project.delete", async () => {
     const value = await fixture();
     const projectId = value.project.projectId;
     const path = `/projects/${projectId}`;
     await seedPurgeableRecords(value.project, value.owner.userId);
+    await seedProjectAudit(value.project, value.owner.userId);
 
-    const before = await projectRowCounts(projectId);
+    const before = await projectBusinessRowCounts(projectId);
+    const beforeAudit = await projectAuditRowCounts(projectId);
     const expectedTotal = Object.values(before).reduce(
       (sum, count) => sum + count,
       0,
@@ -492,8 +515,7 @@ describe("ADR-062 project delete API", () => {
       SELECT status FROM app.projects WHERE id = ${projectId}
     `) as unknown as readonly { readonly status: string }[];
     expect(expectedTotal).toBeGreaterThan(0);
-    // 夹具确实在这些表里留了行，否则「全表归零」无意义；审计表为空是因为夹具
-    // 直接写表、不走命令。
+    // 业务表确实有行，项目链也确实已有一条审计；删除后分别验证归零与保留。
     expect(before).toMatchObject({
       modules: 1,
       features: 1,
@@ -503,22 +525,23 @@ describe("ADR-062 project delete API", () => {
       task_group_members: 2,
       change_records: 1,
       project_members: 1,
-      audit_logs: 0,
       notifications: 0,
       activity_projection: 0,
     });
+    expect(beforeAudit).toEqual({ audit_logs: 1, audit_chain_heads: 1 });
 
     const deleted = await request("DELETE", path, value.owner);
     expect(deleted.status).toBe(204);
     expect(await deleted.text()).toBe("");
     expect(deleted.headers.get("content-type")).toBeNull();
 
-    // 项目行与它自己的审计链都没了，全部下级数据逐表归零。
+    // 项目行与全部下级业务数据消失，但项目自己的审计日志与链头原样保留。
     expect(await projectExists(projectId)).toBe(false);
-    expect(await projectChainHeadExists(projectId)).toBe(false);
-    expect(await projectRowCounts(projectId)).toEqual(
-      Object.fromEntries(ALL_SCOPED_TABLES.map((table) => [table, 0])),
+    expect(await projectChainHeadExists(projectId)).toBe(true);
+    expect(await projectBusinessRowCounts(projectId)).toEqual(
+      Object.fromEntries(PROJECT_SCOPED_TABLES.map((table) => [table, 0])),
     );
+    expect(await projectAuditRowCounts(projectId)).toEqual(beforeAudit);
 
     // 删除后项目退出全部读取路径：组长自己也读不到、写不进、成员列表读不到。
     expect(await visibility(projectId, value.owner.userId)).toMatchObject({
@@ -527,7 +550,7 @@ describe("ADR-062 project delete API", () => {
       memberProfiles: -1,
     });
 
-    // 唯一保留的记录：SYSTEM 链上的 project.delete。
+    // SYSTEM 链上的 project.delete 记录本次操作与保留的审计行数。
     const systemLogs = (await auditReader.sql`
       SELECT project_id AS "projectId",
              actor_type AS "actorType",
@@ -572,14 +595,14 @@ describe("ADR-062 project delete API", () => {
           features: before.features,
           tasks: before.tasks,
           changeRecords: before.change_records,
-          auditLogs: 0,
+          retainedAuditLogs: beforeAudit.audit_logs,
           members: before.project_members,
           total: expectedTotal,
         },
       },
     });
 
-    // 删除自己的项目链不得影响 SYSTEM 链的完整性。
+    // 保留项目审计链不得影响 SYSTEM 链的完整性。
     expect(await systemChainHealthy()).toBe(true);
   });
 
@@ -618,7 +641,7 @@ describe("ADR-062 project delete API", () => {
       writable: "allowed",
       memberProfiles: 2,
     });
-    const counts = await projectRowCounts(projectId);
+    const counts = await projectBusinessRowCounts(projectId);
     // 失败路径零副作用：成员行仍是组长 + 成员 + 已移除成员三条。
     expect(counts).toMatchObject({ modules: 1, project_members: 3 });
     expect(await projectChainHeadExists(projectId)).toBe(false);

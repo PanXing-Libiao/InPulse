@@ -941,7 +941,7 @@ export const permissionMatrix = [
       活跃成员: {
         kind: "conditional",
         allowedWhen:
-          "ADR-062：只有本项目组长（实时成员关系中的 ACTIVE LEADER）可以删除项目；本项目普通成员一律 403 PROJECT_DELETE_FORBIDDEN。CSRF、Idempotency-Key 与 If-Match 必填，版本不符 409 PROJECT_VERSION_CONFLICT。删除为物理删除：项目、下级业务数据与项目自己的审计链一并消失且不可恢复，只有 SYSTEM 审计链上的一条 project.delete 留给管理员，项目编码可以重新使用",
+          "ADR-062 / ADR-085：只有本项目组长（实时成员关系中的 ACTIVE LEADER）可以删除项目；本项目普通成员一律 403 PROJECT_DELETE_FORBIDDEN。CSRF、Idempotency-Key 与 If-Match 必填，版本不符 409 PROJECT_VERSION_CONFLICT。删除为物理删除：项目与全部下级业务数据消失且不可恢复，项目自己的审计链保留为只读历史；SYSTEM 审计链另留一条 project.delete，项目编码可以重新使用",
         deniedWith: 403,
       },
       其他项目成员: { kind: "deny", status: 404 },
