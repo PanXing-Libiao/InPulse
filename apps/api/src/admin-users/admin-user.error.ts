@@ -3,7 +3,8 @@ export type AdminUserErrorReason =
   | "state-conflict"
   | "version-conflict"
   | "self-mutation"
-  | "last-active-admin";
+  | "last-active-admin"
+  | "open-tasks";
 
 export class AdminUserError extends Error {
   constructor(
@@ -11,6 +12,7 @@ export class AdminUserError extends Error {
     readonly code: string,
     message: string,
     readonly reason: AdminUserErrorReason,
+    readonly details: Readonly<Record<string, unknown>> = {},
   ) {
     super(message);
     this.name = "AdminUserError";
@@ -50,6 +52,16 @@ export function adminUserSelfMutation(): AdminUserError {
     "ADMIN_USER_SELF_MUTATION_REJECTED",
     "不能对当前管理员自己执行停用、降级或强制退出",
     "self-mutation",
+  );
+}
+
+export function adminUserOpenTasks(openTaskCount: number): AdminUserError {
+  return new AdminUserError(
+    409,
+    "ADMIN_USER_HAS_OPEN_TASKS",
+    "该账号仍有未完成任务，请先转分配或删除任务后再停用",
+    "open-tasks",
+    { openTaskCount },
   );
 }
 

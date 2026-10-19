@@ -26,6 +26,7 @@ const admin: AdminUserItem = {
   isAdmin: true,
   organizationId: null,
   status: "ACTIVE",
+  openTaskCount: 0,
   rowVersion: 1,
   disabledAt: null,
   createdAt: "2026-09-09T00:00:00.000Z",
@@ -79,7 +80,7 @@ function userCard(name: string): HTMLElement {
 }
 
 describe("F-03 admin users page", () => {
-  it("lists users and hides self disable/force-logout actions", async () => {
+  it("keeps lifecycle actions out of the list", async () => {
     const listAdminUsers = vi
       .fn()
       .mockResolvedValue({ items: [admin, member] });
@@ -87,17 +88,29 @@ describe("F-03 admin users page", () => {
     await screen.findByText("Alice");
     expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(
+      within(userCard("Alice")).getByRole("button", { name: /编\s*辑/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+    ).toBeInTheDocument();
+    expect(
       within(userCard("Alice")).queryByRole("button", { name: /停\s*用/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(userCard("Bob")).queryByRole("button", { name: /停\s*用/ }),
     ).not.toBeInTheDocument();
     expect(
       within(userCard("Alice")).queryByRole("button", { name: "强制退出" }),
     ).not.toBeInTheDocument();
     expect(
-      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
-    ).toBeInTheDocument();
+      within(userCard("Bob")).queryByRole("button", { name: "强制退出" }),
+    ).not.toBeInTheDocument();
     expect(
-      within(userCard("Bob")).getByRole("button", { name: "强制退出" }),
-    ).toBeInTheDocument();
+      within(userCard("Alice")).queryByRole("button", { name: /^隐\s*藏$/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(userCard("Bob")).queryByRole("button", { name: /^隐\s*藏$/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("pins the current account to the top of the list", async () => {
@@ -130,7 +143,11 @@ describe("F-03 admin users page", () => {
     const rendered = [...document.querySelectorAll(".member-row")].map(
       (row) => row.querySelector("strong")?.textContent ?? "",
     );
-    expect(rendered).toEqual(["Alice（当前账号）", "Carol", "Bob"]);
+    expect(rendered).toEqual(["Alice", "Carol", "Bob"]);
+    expect(within(userCard("Alice")).getByText("当前账号")).toHaveClass(
+      "badge",
+      "badge-violet",
+    );
   });
 
   it("edits a user and sends row version via If-Match", async () => {
@@ -183,8 +200,9 @@ describe("F-03 admin users page", () => {
     mount(client);
     await screen.findByText("Bob");
     fireEvent.click(
-      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
+      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
     );
+    fireEvent.click(screen.getByRole("button", { name: "停用账号" }));
     const confirm = screen.getByRole("dialog", { name: /停\s*用\s*用\s*户/ });
     fireEvent.click(within(confirm).getByRole("button", { name: /确\s*认/ }));
     await waitFor(() => expect(disableUser).toHaveBeenCalledTimes(1));
@@ -399,7 +417,10 @@ describe("ADR-081 organizations", () => {
     expect(listAdminUsers).not.toHaveBeenCalled();
     expect(screen.getAllByText(/研发一组/).length).toBeGreaterThan(0);
     expect(
-      screen.queryByRole("button", { name: "组织管理" }),
+      screen.queryByRole("button", { name: "加入组织" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "编辑组织" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("bob")).not.toBeInTheDocument();
   });
@@ -414,7 +435,82 @@ describe("ADR-081 organizations", () => {
     await screen.findByText("尚未加入组织");
   });
 
-  it("shows the organization column and supports batch join", async () => {
+  it("filters the member list to system administrators", async () => {
+    mount({
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, member] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Alice");
+    fireEvent.click(screen.getByRole("tab", { name: /系统管理员/ }));
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /全部/ }));
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+  });
+
+  it("hides filters with no members", async () => {
+    const emptyOrganization = {
+      id: 9,
+      name: "空组织",
+      rowVersion: 1,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    mount({
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [member] }),
+      listOrganizations: vi
+        .fn()
+        .mockResolvedValue({ items: [emptyOrganization] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Bob");
+    expect(
+      screen.queryByRole("tab", { name: /空组织/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: /系统管理员/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
+    expect(
+      screen.queryByRole("option", { name: "空组织" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("returns to all after the managed organization is emptied", async () => {
+    const assignment = {
+      id: 7,
+      name: "研发一组",
+      rowVersion: 1,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    const client = {
+      listAdminUsers: vi
+        .fn()
+        .mockResolvedValueOnce({
+          items: [{ ...member, organizationId: 7 }, admin],
+        })
+        .mockResolvedValue({ items: [member, admin] }),
+      listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
+      issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
+      assignUsersOrganization: vi.fn().mockResolvedValue({ updatedCount: 1 }),
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
+    fireEvent.click(screen.getByLabelText("选择 Bob"));
+    fireEvent.click(screen.getByRole("button", { name: "移出到未分配" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("tab", { name: /研发一组/ }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("tab", { name: /全部/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("joins unassigned members through the single organization manager", async () => {
     const organization = {
       id: 7,
       name: "研发一组",
@@ -425,25 +521,32 @@ describe("ADR-081 organizations", () => {
     const assignUsersOrganization = vi
       .fn()
       .mockResolvedValue({ updatedCount: 1 });
-    const issueCsrfToken = vi
-      .fn()
-      .mockResolvedValue({ csrfToken: "a".repeat(43) });
     const client = {
-      listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, member] }),
+      listAdminUsers: vi.fn().mockResolvedValue({
+        items: [{ ...admin, organizationId: 7 }, member],
+      }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [organization] }),
-      issueCsrfToken,
+      issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
       assignUsersOrganization,
     } as unknown as InpulseApiClient;
     mount(client);
     await screen.findByText("Bob");
     expect(within(userCard("Bob")).getByText("未分配")).toBeInTheDocument();
-    // 默认不进入批量模式：勾选框与全选只在点击「批量管理」后出现。
     expect(screen.queryByLabelText("选择 Bob")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "批量管理" }));
-    fireEvent.click(screen.getByLabelText("选择 Bob"));
+
+    expect(
+      screen.queryByRole("button", { name: "编辑组织" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
-    const dialog = await screen.findByRole("dialog", { name: /加入组织/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "研发一组" }));
+    expect(
+      screen.getByRole("button", { name: "退出调整" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("选择 Bob"));
+    fireEvent.change(screen.getByLabelText("目标组织"), {
+      target: { value: "7" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
     await waitFor(() =>
       expect(assignUsersOrganization).toHaveBeenCalledTimes(1),
     );
@@ -456,9 +559,31 @@ describe("ADR-081 organizations", () => {
       }),
     );
     await screen.findByText(/已把 1 名成员加入「研发一组」/);
+    expect(screen.queryByLabelText("选择 Bob")).not.toBeInTheDocument();
   });
 
-  it("groups members by organization with self organization first", async () => {
+  it("hides disabled members while managing organizations", async () => {
+    const disabled: AdminUserItem = {
+      ...member,
+      id: 3,
+      loginName: "carol",
+      name: "Carol",
+      status: "DISABLED",
+      disabledAt: "2026-10-19T00:00:00.000Z",
+    };
+    mount({
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [member, disabled] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Bob");
+    fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
+    expect(screen.getByLabelText("选择 Bob")).toBeInTheDocument();
+    expect(screen.queryByLabelText("选择 Carol")).not.toBeInTheDocument();
+    expect(screen.queryByText("Carol")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "退出调整" }));
+    expect(screen.getByText("Carol")).toBeInTheDocument();
+  });
+
+  it("orders current account, unassigned, then assigned members", async () => {
     const firstOrganization = {
       id: 3,
       name: "先建部门",
@@ -493,21 +618,23 @@ describe("ADR-081 organizations", () => {
     } as unknown as InpulseApiClient;
     mount(client, admin.id);
     await screen.findByText("Carol");
-    const titles = [...document.querySelectorAll(".member-group-title")].map(
-      (element) => element.textContent,
-    );
-    expect(titles).toEqual([
-      "研发一组 · 1 人",
-      "先建部门 · 1 人",
-      "未分配 · 1 人",
-    ]);
+    expect(document.querySelector(".member-group-title")).toBeNull();
     const rendered = [...document.querySelectorAll(".member-row")].map(
-      (row) => row.querySelector("strong")?.textContent ?? "",
+      (row) => [
+        row.querySelector("strong")?.textContent ?? "",
+        [...row.querySelectorAll(".member-meta .badge")]
+          .filter((badge) => !badge.classList.contains("badge-violet"))
+          .at(1)?.textContent ?? "",
+      ],
     );
-    expect(rendered).toEqual(["Alice（当前账号）", "Carol", "Bob"]);
+    expect(rendered).toEqual([
+      ["Alice", "研发一组"],
+      ["Bob", "未分配"],
+      ["Carol", "先建部门"],
+    ]);
   });
 
-  it("opens the organization manager and creates an organization", async () => {
+  it("creates an organization from the batch bar and puts selected members in it", async () => {
     const createOrganization = vi.fn().mockResolvedValue({
       id: 8,
       name: "研发二组",
@@ -515,20 +642,27 @@ describe("ADR-081 organizations", () => {
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     });
+    const assignUsersOrganization = vi
+      .fn()
+      .mockResolvedValue({ updatedCount: 1 });
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, member] }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [] }),
       issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
       createOrganization,
+      assignUsersOrganization,
     } as unknown as InpulseApiClient;
     mount(client);
     await screen.findByText("Bob");
-    fireEvent.click(screen.getByRole("button", { name: "组织管理" }));
-    const dialog = await screen.findByRole("dialog", { name: /组织管理/ });
-    fireEvent.change(within(dialog).getByLabelText("新组织名称"), {
+    fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
+    fireEvent.click(screen.getByLabelText("选择 Bob"));
+    fireEvent.change(screen.getByLabelText("目标组织"), {
+      target: { value: "new" },
+    });
+    fireEvent.change(screen.getByLabelText("新组织名称"), {
       target: { value: "研发二组" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "新建组织" }));
+    fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
     await waitFor(() => expect(createOrganization).toHaveBeenCalledTimes(1));
     expect(createOrganization).toHaveBeenCalledWith(
       { name: "研发二组" },
@@ -538,5 +672,171 @@ describe("ADR-081 organizations", () => {
         }),
       }),
     );
+    await waitFor(() =>
+      expect(assignUsersOrganization).toHaveBeenCalledWith(
+        { userIds: [2], organizationId: 8 },
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "Idempotency-Key": expect.stringContaining("organization-"),
+          }),
+        }),
+      ),
+    );
+    await screen.findByText(/已把 1 名成员加入「研发二组」/);
+  });
+
+  it("only lets members of the managed organization be selected", async () => {
+    const assignment = {
+      id: 7,
+      name: "研发一组",
+      rowVersion: 1,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    const client = {
+      listAdminUsers: vi.fn().mockResolvedValue({
+        items: [{ ...member, organizationId: 7 }, admin],
+      }),
+      listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
+    expect(
+      screen.queryByRole("button", { name: "加入组织" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
+    expect(screen.getByLabelText("选择 Bob")).toBeInTheDocument();
+    expect(screen.queryByLabelText("选择 Alice")).not.toBeInTheDocument();
+  });
+
+  it("renames the organization from the edit entry", async () => {
+    const assignment = {
+      id: 7,
+      name: "研发一组",
+      rowVersion: 3,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    const updateOrganization = vi.fn().mockResolvedValue({
+      ...assignment,
+      name: "研发二组",
+      rowVersion: 4,
+    });
+    const client = {
+      listAdminUsers: vi.fn().mockResolvedValue({
+        items: [{ ...admin, organizationId: 7 }, member],
+      }),
+      listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
+      issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
+      updateOrganization,
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
+    fireEvent.change(screen.getByLabelText("组织名称"), {
+      target: { value: "研发二组" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+    await waitFor(() => expect(updateOrganization).toHaveBeenCalledTimes(1));
+    expect(updateOrganization).toHaveBeenCalledWith(
+      7,
+      { name: "研发二组" },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "Idempotency-Key": expect.stringContaining("organization-"),
+          "If-Match": JSON.stringify("3"),
+        }),
+      }),
+    );
+  });
+
+  it("moves selected members back to unassigned from the organization manager", async () => {
+    const assignment = {
+      id: 7,
+      name: "研发一组",
+      rowVersion: 1,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    const assignUsersOrganization = vi
+      .fn()
+      .mockResolvedValue({ updatedCount: 1 });
+    const client = {
+      listAdminUsers: vi.fn().mockResolvedValue({
+        items: [{ ...member, organizationId: 7 }, admin],
+      }),
+      listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
+      issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
+      assignUsersOrganization,
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
+    fireEvent.click(screen.getByLabelText("选择 Bob"));
+    fireEvent.click(screen.getByRole("button", { name: "移出到未分配" }));
+    await waitFor(() =>
+      expect(assignUsersOrganization).toHaveBeenCalledTimes(1),
+    );
+    expect(assignUsersOrganization).toHaveBeenCalledWith(
+      { userIds: [2], organizationId: null },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "Idempotency-Key": expect.stringContaining("organization-"),
+        }),
+      }),
+    );
+    await screen.findByText(/已把 1 名成员移出，变为未分配/);
+  });
+
+  it("blocks disabling from the editor when the account still owns open tasks", async () => {
+    const disableUser = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      listAdminUsers: vi.fn().mockResolvedValue({
+        items: [{ ...member, openTaskCount: 2 }, admin],
+      }),
+      listOrganizations: vi.fn().mockResolvedValue({ items: [] }),
+      issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
+      disableUser,
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "停用账号" }));
+    expect(
+      screen.getByText(/仍有 2 个未完成任务，请先转分配或删除任务后再停用/),
+    ).toBeInTheDocument();
+    expect(disableUser).not.toHaveBeenCalled();
+  });
+
+  it("keeps disabled accounts in the all list, gray and sorted last", async () => {
+    const disabled: AdminUserItem = {
+      ...member,
+      status: "DISABLED",
+      disabledAt: "2026-10-19T00:00:00.000Z",
+    };
+    mount({
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [disabled, admin] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Bob");
+    const rows = [...document.querySelectorAll(".member-row")];
+    expect(
+      rows.map((row) => row.querySelector("strong")?.textContent ?? ""),
+    ).toEqual(["Alice", "Bob"]);
+    expect(rows[1]?.className).toContain("is-disabled");
+    expect(within(userCard("Bob")).getByText("停用")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("tab", { name: /停用|已隐藏/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+    );
+    expect(
+      screen.getByRole("button", { name: "启用账号" }),
+    ).toBeInTheDocument();
   });
 });

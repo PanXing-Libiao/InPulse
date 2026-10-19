@@ -24,7 +24,7 @@ test("普通成员可进入成员与设置并只读查看同组织成员", async
     await expect(
       page.getByRole("heading", { name: "成员与角色" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "组织管理" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "加入组织" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "批量管理" })).toHaveCount(0);
   } finally {
     await context.close();

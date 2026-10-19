@@ -445,6 +445,22 @@
   font-size: 12px;
 }
 
+.calm-field > label .member-count {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #eaf2fb;
+  color: #3f6c98;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.calm-select.ant-select-multiple .ant-select-selection-item-disabled {
+  color: inherit;
+  cursor: default;
+}
+
 /* 设计契约的 `.check-list` 是 `flex-wrap: wrap` 的紧凑内联列表（design-system.css L1779），
  * 其原生 `<label>` / `<span>` 由 `.check-list label`（L5245）排成单行复选框。
  * 仓库沿用设计稿的原生 `<input type="checkbox">`，不再用 antd `Checkbox` 包装层；同时
@@ -2187,6 +2203,44 @@
   background: #f7fafd;
 }
 
+.member-row.is-disabled {
+  background: #f7f8fa;
+  color: #8a96a5;
+}
+
+.member-row.is-disabled:hover {
+  background: #f2f4f7;
+}
+
+.member-row.is-disabled .member-id strong {
+  color: #7f8d9c;
+}
+
+.member-row.is-disabled .person-avatar {
+  background: #e9edf2;
+  color: #96a2b1;
+}
+
+.member-row.is-disabled .member-meta {
+  opacity: 0.78;
+}
+
+.admin-user-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #e8eef5;
+}
+
+.admin-user-status-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .identity-chip {
   align-self: center;
 }
@@ -2348,11 +2402,9 @@
   font-size: 11px;
 }
 
-.member-self {
-  margin-left: 4px;
-  color: #8191a2;
-  font-weight: 400;
-  font-size: 11px;
+.settings-members-panel .calm-section-title h3 {
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .member-meta {
@@ -2371,7 +2423,7 @@
   font-size: 11px;
 }
 
-/* 状态点：启用绿、停用红，颜色随 currentColor 联动。 */
+/* 状态点：启用绿、停用灰，颜色随 currentColor 联动。 */
 .member-row .member-status::before {
   content: "";
   width: 7px;
@@ -2381,7 +2433,7 @@
 }
 
 .member-row .member-status.is-disabled {
-  color: #b4554f;
+  color: #8a96a5;
 }
 
 .member-actions {
@@ -2897,7 +2949,7 @@
   margin-bottom: 14px;
 }
 
-/* ADR-081 成员批量归属：工具条与组织列。 */
+/* ADR-081 组织管理：成员与角色页的工具条（2026-10-16 起只保留「组织管理」一个入口）。 */
 .member-toolbar {
   display: flex;
   align-items: center;
@@ -2925,27 +2977,233 @@
   gap: 10px;
 }
 
-.organization-pick-list {
+/* ADR-081 组织管理弹窗（2026-10-16 改机制）：① 选成员 ② 加入组织 ③ 组织维护 三段。 */
+.organization-step {
+  margin-top: 16px;
+}
+
+.organization-step-title {
+  margin: 0 0 8px;
+  color: #23384c;
+  font-size: 13px;
+}
+
+/* ADR-081 组织管理（2026-10-16 第二轮）：不再用弹窗，就地展开在「成员与角色」页内。 */
+.organization-manager {
+  margin: 0 20px 14px;
+  padding: 14px 16px 16px;
+  background: #fbfdff;
+  border: 1px solid #edf1f5;
+  border-radius: 10px;
+}
+
+.organization-manager-head {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.organization-manager-title {
+  margin: 0;
+  color: #132238;
+  font-size: 14px;
+}
+
+/* 组织候选竖排，长组织名不互相挤压。 */
+.organization-target-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 2026-10-19 成员与角色：标题行工具、组织标签、批量条与隐藏确认。 */
+.member-head-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.member-org-bar {
+  display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  padding: 8px 20px 6px;
 }
 
-/* ADR-081 成员列表按组织分组：组标题把同组织成员聚成一块。 */
-.member-group-title {
-  padding: 12px 20px 4px;
-  color: #61788e;
+.member-org-bar .member-org-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+
+.member-org-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.member-org-tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #6c8094;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.member-org-tab:hover {
+  background: #f4f8fd;
+  color: #3f78b5;
+}
+
+.member-org-tab b {
+  color: #97a6b6;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  background: #fbfdff;
-  border-top: 1px solid #edf1f5;
 }
 
-.member-list > .member-group-title:first-child {
-  border-top: none;
-  padding-top: 6px;
+.member-org-tab.is-active {
+  background: #e9f2fd;
+  color: #1467d8;
+  font-weight: 600;
+}
+
+.member-org-tab.is-active b {
+  color: #4a83c2;
+}
+
+.member-rename-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 20px 2px;
+  padding: 6px 12px;
+  border: 1px solid #e3edf8;
+  border-radius: 10px;
+  background: #f7fbff;
+  color: #314c65;
+  font-size: 12px;
+}
+
+.member-rename-bar label {
+  font-weight: 600;
+}
+
+.member-rename-bar input {
+  min-width: 180px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #d7e1ec;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #23384c;
+  font-size: 12px;
+}
+
+.member-rename-bar input:focus {
+  border-color: #9dc4ea;
+  outline: none;
+  box-shadow: 0 0 0 2px #e3f0fb;
+}
+
+.member-rename-bar .ant-btn {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.settings-members-panel .permission-note {
+  margin: 12px 20px 14px;
+  padding: 10px 14px;
+  border: 1px solid #e3edf8;
+  border-radius: 10px;
+  background: #f5f9fe;
+}
+
+.settings-members-panel .member-row {
+  padding: 12px 20px;
+}
+
+.settings-members-panel .member-meta {
+  gap: 9px;
+}
+
+.settings-members-panel .member-meta .badge {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+
+@media (min-width: 901px) {
+  .settings-members-panel .member-actions {
+    min-width: 52px;
+  }
+}
+
+.member-batchbar {
+  position: sticky;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 4px 20px 14px;
+  padding: 10px 14px;
+  border: 1px solid #d7e6f7;
+  border-radius: 12px;
+  background: #f3f8fe;
+  color: #314c65;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.member-batchbar select {
+  min-width: 190px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #cfdae6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #42586d;
+  font-size: 12px;
+}
+
+.member-batchbar .ant-input {
+  width: 180px;
+  height: 34px;
+  border-radius: 8px;
+}
+
+.member-batchbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.member-task-count {
+  color: #b25e12;
+  font-size: 11px;
+}
+
+.member-check-placeholder {
+  display: inline-block;
+  width: 16px;
+}
+
+.danger-text {
+  color: #c0392b !important;
 }
 
 /* ADR-081 选择器按组织整组选择：组织按钮显示已选 / 总数。 */

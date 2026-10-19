@@ -37,6 +37,7 @@ export class AdminUserRepository {
              status,
              row_version AS "rowVersion",
              disabled_at AS "disabledAt",
+             (SELECT count(*)::int FROM app.task_assignees AS ta JOIN app.tasks AS t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.user_id = users.id AND t.work_status = 'TODO' AND t.lifecycle_status = 'ACTIVE' AND t.deleted_at IS NULL) AS "openTaskCount",
              created_at AS "createdAt",
              updated_at AS "updatedAt"
         FROM app.users
@@ -63,6 +64,7 @@ export class AdminUserRepository {
                  status,
                  row_version AS "rowVersion",
                  disabled_at AS "disabledAt",
+             (SELECT count(*)::int FROM app.task_assignees AS ta JOIN app.tasks AS t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.user_id = users.id AND t.work_status = 'TODO' AND t.lifecycle_status = 'ACTIVE' AND t.deleted_at IS NULL) AS "openTaskCount",
                  created_at AS "createdAt",
                  updated_at AS "updatedAt"
             FROM app.users
@@ -81,6 +83,7 @@ export class AdminUserRepository {
                  status,
                  row_version AS "rowVersion",
                  disabled_at AS "disabledAt",
+             (SELECT count(*)::int FROM app.task_assignees AS ta JOIN app.tasks AS t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.user_id = users.id AND t.work_status = 'TODO' AND t.lifecycle_status = 'ACTIVE' AND t.deleted_at IS NULL) AS "openTaskCount",
                  created_at AS "createdAt",
                  updated_at AS "updatedAt"
             FROM app.users

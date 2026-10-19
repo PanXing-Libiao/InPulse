@@ -194,6 +194,38 @@ describe("CalmSelect", () => {
     expect(view.container.querySelector(".ant-select-input")).not.toBeNull();
   });
 
+  it("multiple 形态：disabled 选项渲染成不可移除的标签", () => {
+    const view = mount(
+      <CalmSelect
+        value={[5, 7]}
+        onChange={() => {}}
+        options={[
+          { value: 5, label: "林晚晴", disabled: true },
+          { value: 7, label: "周子昂" },
+        ]}
+        appearance="member"
+        multiple
+        ariaLabel="选择成员"
+      />,
+    );
+    const tags = [
+      ...view.container.querySelectorAll(".ant-select-selection-item"),
+    ];
+    expect(tags).toHaveLength(2);
+    const locked = tags.find((tag) =>
+      (tag.textContent ?? "").includes("林晚晴"),
+    );
+    const removable = tags.find((tag) =>
+      (tag.textContent ?? "").includes("周子昂"),
+    );
+    expect(
+      locked?.querySelector(".ant-select-selection-item-remove"),
+    ).toBeNull();
+    expect(
+      removable?.querySelector(".ant-select-selection-item-remove"),
+    ).not.toBeNull();
+  });
+
   it("rich 形态：渲染副标题与状态徽标", () => {
     const view = mount(
       <CalmSelect

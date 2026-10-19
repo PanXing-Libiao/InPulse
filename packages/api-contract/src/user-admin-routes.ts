@@ -24,6 +24,7 @@ const safeUserFields = [
   "isAdmin",
   "organizationId",
   "status",
+  "openTaskCount",
   "rowVersion",
   "disabledAt",
   "createdAt",
@@ -77,7 +78,7 @@ const noBodyWritePolicy = {
  */
 const userBodyWritePolicy = {
   ...writePolicy,
-  idempotencyContractVersion: "1.1.0",
+  idempotencyContractVersion: "1.2.0",
 } as const;
 
 const versionedWritePolicy = {

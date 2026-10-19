@@ -241,6 +241,10 @@
     {
       "version": "1.1.0",
       "fingerprint": "f295d99cbadc91b843c880678b018eb79577ab2d7bd21e2d39c023e947e8a24f"
+    },
+    {
+      "version": "1.2.0",
+      "fingerprint": "7e7effd07ed1bb12b3fbf32fd6d618c03bb2b38fee982bc054c792489b287819"
     }
   ],
   "deleteFeature": [
@@ -613,6 +617,10 @@
     {
       "version": "1.1.0",
       "fingerprint": "caea4f588fef400f52968b4f71c047450b01fd1792dca4e35f034601e191b58f"
+    },
+    {
+      "version": "1.2.0",
+      "fingerprint": "fc5966dbe89caec786362f67f641ef450dff223b1c858376e7185e5c3d9d4121"
     }
   ],
   "updateWecomRobotConfig": [

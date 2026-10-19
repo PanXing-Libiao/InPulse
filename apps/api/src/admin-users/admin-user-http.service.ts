@@ -323,6 +323,7 @@ export class AdminUsersHttpService {
     if (error instanceof AdminUserError) {
       return errorBody(error.status, error.code, error.message, {
         reason: error.reason,
+        ...error.details,
         requestId,
       });
     }

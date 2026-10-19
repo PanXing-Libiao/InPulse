@@ -18,6 +18,7 @@ const user: AdminUserItem = {
   isAdmin: true,
   organizationId: null,
   status: "ACTIVE",
+  openTaskCount: 0,
   rowVersion: 3,
   disabledAt: null,
   createdAt: "2026-09-09T00:00:00.000Z",
@@ -114,5 +115,17 @@ describe("admin user query", () => {
     });
     expect(adminUserErrorMessage(loginConflict)).toContain("登录名已存在");
     expect(adminUserErrorMessage(emailConflict)).toContain("邮箱已被使用");
+  });
+
+  it("uses the open task count from the disable rejection details", () => {
+    const blocked = new ApiError(409, {
+      code: "ADMIN_USER_HAS_OPEN_TASKS",
+      message: "该账号仍有未完成任务",
+      details: { openTaskCount: 7 },
+      requestId: "t",
+    });
+    expect(adminUserErrorMessage(blocked)).toBe(
+      "该账号仍有 7 个未完成任务，请先转分配或删除任务后再停用。",
+    );
   });
 });

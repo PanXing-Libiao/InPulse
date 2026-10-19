@@ -14,7 +14,10 @@ import type {
 import type { AdminUserService } from "../src/admin-users/admin-user.service.js";
 import type { AdminUserRepository } from "../src/admin-users/admin-user.repository.js";
 import { AdminUsersHttpService } from "../src/admin-users/admin-user-http.service.js";
-import { adminUserSelfMutation } from "../src/admin-users/admin-user.error.js";
+import {
+  adminUserOpenTasks,
+  adminUserSelfMutation,
+} from "../src/admin-users/admin-user.error.js";
 
 const tx = {} as TransactionContext;
 const userId = 7;
@@ -29,6 +32,7 @@ const item = {
   isAdmin: false,
   organizationId: null,
   status: "ACTIVE",
+  openTaskCount: 0,
   rowVersion: 1,
   disabledAt: null,
   createdAt: "2026-09-09T00:00:00.000Z",
@@ -199,6 +203,17 @@ describe("F-03 AdminUsersHttpService", () => {
     expect(s.replay).toHaveBeenCalledWith(tx, userId, {
       actorUserId: userId,
       userId: item.id,
+    });
+  });
+
+  it("停用被未完成任务阻断时返回 409 和任务数量", async () => {
+    const s = setup();
+    s.disable.mockRejectedValueOnce(adminUserOpenTasks(4));
+    const result = await s.service.handle("disableUser", validRequest());
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({
+      code: "ADMIN_USER_HAS_OPEN_TASKS",
+      details: { reason: "open-tasks", openTaskCount: 4 },
     });
   });
 

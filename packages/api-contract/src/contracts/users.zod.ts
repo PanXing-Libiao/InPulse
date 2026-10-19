@@ -58,6 +58,7 @@ export const adminUserItemSchema = z
     isAdmin: z.boolean(),
     organizationId: z.number().int().positive().max(2147483647).nullable(),
     status: z.enum(["ACTIVE", "DISABLED"]),
+    openTaskCount: z.number().int().min(0),
     rowVersion: z.number().int().positive(),
     disabledAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
