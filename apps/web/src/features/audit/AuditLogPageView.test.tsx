@@ -227,6 +227,18 @@ function pickSelectOption(label: string, optionTitle: string) {
   fireEvent.click(screen.getByTitle(optionTitle));
 }
 
+/** 打开动作码候选面板并读出当前候选的原始码（2026-10-19 起为自绘 listbox）。 */
+async function openActionOptions() {
+  fireEvent.focus(screen.getByLabelText("动作码"));
+  const listbox = await screen.findByRole("listbox", { name: "动作码候选" });
+  return {
+    listbox,
+    codes: Array.from(
+      listbox.querySelectorAll<HTMLElement>("[role=option]"),
+    ).map((option) => option.dataset.code ?? ""),
+  };
+}
+
 describe("F-08 audit page", () => {
   it("默认读取「全部记录（所有链）」并渲染原始审计行（ADR-061）", async () => {
     const getAuditLogs = vi.fn().mockResolvedValue(page([systemItem]));
@@ -269,11 +281,7 @@ describe("F-08 audit page", () => {
     mount({ getAuditLogs, listProjects } as unknown as InpulseApiClient);
 
     await screen.findByText("创建用户");
-    const codes = Array.from(
-      document.querySelectorAll<HTMLOptionElement>(
-        "#audit-action-options option",
-      ),
-    ).map((option) => option.value);
+    const { codes } = await openActionOptions();
     // 已下线动作码 + 仅测试写入的 SYSTEM_TEST 都不再是筛选候选。
     for (const retired of [
       "project.archive",
@@ -298,6 +306,51 @@ describe("F-08 audit page", () => {
     expect(codes).toContain("project.delete");
   });
 
+  it("动作码候选支持中文或原始码过滤、点选回填与自由输入", async () => {
+    const user = userEvent.setup();
+    const getAuditLogs = vi.fn().mockResolvedValue(page([systemItem]));
+    const listProjects = vi.fn().mockResolvedValue({ items: [project] });
+    mount({ getAuditLogs, listProjects } as unknown as InpulseApiClient);
+
+    await screen.findByText("创建用户");
+    const input = screen.getByLabelText("动作码");
+    await user.click(input);
+    const listbox = await screen.findByRole("listbox", {
+      name: "动作码候选",
+    });
+
+    await user.type(input, "删除");
+    const filteredCodes = within(listbox)
+      .getAllByRole("option")
+      .map((option) => option.getAttribute("data-code"));
+    expect(filteredCodes).toContain("admin.user.delete");
+    expect(filteredCodes).not.toContain("project.create");
+
+    await user.click(within(listbox).getByText("强制删除用户"));
+    expect(input).toHaveValue("admin.user.delete");
+    expect(
+      screen.queryByRole("listbox", { name: "动作码候选" }),
+    ).not.toBeInTheDocument();
+
+    await user.clear(input);
+    await user.type(input, "custom.raw.action");
+    expect(
+      screen.queryByRole("listbox", { name: "动作码候选" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开动作码候选" }));
+    expect(
+      screen.getByText("没有匹配的动作码，可直接查询当前输入"),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "查询" }));
+    await waitFor(() =>
+      expect(getAuditLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ action: "custom.raw.action" }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it("管理配置动作显示中文标签与目标类型（机器人 / AI / 文档导入）", async () => {
     const getAuditLogs = vi
       .fn()
@@ -315,11 +368,7 @@ describe("F-08 audit page", () => {
     expect(screen.getByText("对象：项目 AGV 智能搬运平台")).toBeInTheDocument();
 
     // 三个动作码同时进入筛选候选（option 以原始码为 value）。
-    const codes = Array.from(
-      document.querySelectorAll<HTMLOptionElement>(
-        "#audit-action-options option",
-      ),
-    ).map((option) => option.value);
+    const { codes } = await openActionOptions();
     expect(codes).toContain("admin.wecomRobot.update");
     expect(codes).toContain("admin.aiAssistSettings.update");
     expect(codes).toContain("project.documentImport");

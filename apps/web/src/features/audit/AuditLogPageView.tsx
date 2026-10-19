@@ -23,12 +23,12 @@ import {
 import { useProjects } from "@features/projects/project-query";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
 import {
-  AUDIT_ACTION_OPTIONS,
   auditActionLabel,
   auditActionWithCode,
   auditTargetTypeLabel,
   auditTargetTypeWithCode,
 } from "./audit-labels";
+import { AuditActionFilter } from "./AuditActionFilter";
 import {
   AUDIT_PAGE_LIMIT,
   EMPTY_AUDIT_FILTERS,
@@ -576,27 +576,10 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
             options={projectChainOptions}
             animated
           />
-          <div className="task-search">
-            <InpulseIcon name="search" size={16} />
-            <input
-              value={draftFilters.action}
-              placeholder="动作：选择或输入原始动作码"
-              aria-label="动作码"
-              list="audit-action-options"
-              onChange={(event) =>
-                updateDraft({ action: event.currentTarget.value })
-              }
-            />
-            <datalist id="audit-action-options">
-              {AUDIT_ACTION_OPTIONS.map((option) => (
-                <option
-                  key={option.code}
-                  value={option.code}
-                  label={option.label}
-                />
-              ))}
-            </datalist>
-          </div>
+          <AuditActionFilter
+            value={draftFilters.action}
+            onChange={(action) => updateDraft({ action })}
+          />
           <CalmSelect
             ariaLabel="操作人"
             appearance="member"
