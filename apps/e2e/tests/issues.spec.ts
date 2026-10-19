@@ -52,6 +52,35 @@ test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ 
     // 列表直接挂在页面下，不再有标题行。
     await expect(page.getByText(/按发布时间倒序/)).toHaveCount(0);
     await expect(page.locator(".issues-page > .issue-list")).toBeVisible();
+
+    // 2026-10-19 用户反馈「布局放中间点，右边留白太多了」：宽屏下 1020px 定宽
+    // 列表必须在内容区内水平居中，左右留白差值不超过 1px；随后恢复默认视口继续交互。
+    await page.setViewportSize({ width: 1680, height: 900 });
+    const listSpacing = await page.evaluate(() => {
+      const pageRoot = document.querySelector(".issues-page");
+      const list = document.querySelector(".issues-page > .issue-list");
+      if (
+        !(pageRoot instanceof HTMLElement) ||
+        !(list instanceof HTMLElement)
+      ) {
+        throw new Error("遗留问题页缺少页面或列表容器");
+      }
+      const pageRect = pageRoot.getBoundingClientRect();
+      const listRect = list.getBoundingClientRect();
+      return {
+        pageWidth: pageRect.width,
+        listWidth: listRect.width,
+        left: listRect.left - pageRect.left,
+        right: pageRect.right - listRect.right,
+      };
+    });
+    expect(listSpacing.pageWidth).toBeGreaterThan(1020);
+    expect(listSpacing.listWidth).toBeLessThanOrEqual(1020);
+    expect(Math.abs(listSpacing.left - listSpacing.right)).toBeLessThanOrEqual(
+      1,
+    );
+    await page.setViewportSize({ width: 1280, height: 720 });
+
     const row = page
       .getByTestId(/^leftover-item-/)
       .filter({ hasText: leftover });
@@ -112,6 +141,30 @@ test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ 
 
     const closed = page.locator("details.history-block");
     await expect(closed.locator("summary")).toContainText("已闭环");
+
+    // 已闭环折叠区与列表使用同一条居中内容列：宽屏下左右留白同样对称。
+    await page.setViewportSize({ width: 1680, height: 900 });
+    const historySpacing = await page.evaluate(() => {
+      const pageRoot = document.querySelector(".issues-page");
+      const history = document.querySelector(".issues-page > .history-block");
+      if (
+        !(pageRoot instanceof HTMLElement) ||
+        !(history instanceof HTMLElement)
+      ) {
+        throw new Error("遗留问题页缺少页面或已闭环折叠区");
+      }
+      const pageRect = pageRoot.getBoundingClientRect();
+      const historyRect = history.getBoundingClientRect();
+      return {
+        left: historyRect.left - pageRect.left,
+        right: pageRect.right - historyRect.right,
+      };
+    });
+    expect(
+      Math.abs(historySpacing.left - historySpacing.right),
+    ).toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 1280, height: 720 });
+
     await closed.locator("summary").click();
     const closedRow = closed
       .getByTestId(/^leftover-item-/)

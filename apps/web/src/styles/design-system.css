@@ -4699,11 +4699,22 @@ td.due-overdue {
   margin: 24px 0 0;
 }
 
+/* 2026-10-19 用户反馈「布局放中间点，右边留白太多了」：卡片保留 1020px 的
+ * 阅读宽度，但在内容区内水平居中，避免定宽列表全部贴左、把空白堆到右侧。
+ * 窄于 1020px 时宽度仍由容器决定，左右自动外边距自然为 0。 */
 .issue-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
   max-width: 1020px;
+  margin-inline: auto;
+}
+
+/* 已闭环折叠区与上方定宽列表同宽同中心：折叠标题和展开后的卡片都跟随
+ * 同一内容列，不再次贴回内容区左缘。 */
+.issues-page > .history-block {
+  max-width: 1020px;
+  margin-inline: auto;
 }
 .issue-row {
   display: flex;

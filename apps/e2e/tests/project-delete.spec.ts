@@ -111,7 +111,9 @@ test("组长删除项目后列表不再出现，管理员在审计日志看到�
     ).toBeVisible();
 
     // 按动作码过滤「删除项目」，请求必须带上该过滤条件。
-    await auditPage.getByLabel("动作码").fill("project.delete");
+    await auditPage
+      .getByRole("combobox", { name: "动作码" })
+      .fill("project.delete");
     const filteredRequest = auditPage.waitForRequest(
       (request) =>
         request.url().includes("/api/v1/audit-logs?") &&

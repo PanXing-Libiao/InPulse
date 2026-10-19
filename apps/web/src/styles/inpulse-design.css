@@ -807,6 +807,84 @@
   box-shadow: 0 0 0 3px rgba(45, 132, 230, 0.13);
 }
 
+/* 2026-10-19 用户反馈「这个下拉框没对齐」：浏览器原生 datalist 的候选面板由浏览器
+ * 绘制，无法保证与输入框同宽、同左缘。动作码筛选改为自绘候选面板，锚定在
+ * .task-search 的边框盒上：绝对定位的包含块是 padding box，left/right 取 -1px
+ * 正好补掉 1px 外边框，面板外边缘与输入框外边缘严格对齐。 */
+.audit-action-search {
+  position: relative;
+}
+
+.audit-action-toggle {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: #8191a2;
+  cursor: pointer;
+}
+
+.audit-action-toggle:hover {
+  background: #eff4f8;
+  color: #2469b5;
+}
+
+.audit-action-options {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: -1px;
+  right: -1px;
+  z-index: 30;
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid #e1e8f0;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 14px 34px #16324d26;
+}
+
+.audit-action-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.audit-action-option strong {
+  color: #26394d;
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.audit-action-option span {
+  color: #8294a7;
+  font-size: 11px;
+}
+
+.audit-action-option.is-active {
+  background: #f2f7fc;
+}
+
+.audit-action-option[aria-selected="true"] {
+  background: #eef4fc;
+}
+
+.audit-action-empty {
+  padding: 9px;
+  color: #8294a7;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .activity-admin-toggle {
   margin-left: auto;
 }

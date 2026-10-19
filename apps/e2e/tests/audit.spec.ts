@@ -108,8 +108,27 @@ test("管理员读取项目审计链、按动作与操作人过滤、查看快�
       project.name,
     );
 
-    // 按动作码过滤并选中创建者作为操作人：动作码与 actorIds 必须同时进入请求。
-    await page.getByLabel("动作码").fill("project.create");
+    // 动作码候选是自绘 listbox（2026-10-19 修复原生 datalist 与输入框不对齐）：
+    // 面板外边缘必须与 .audit-action-search 外边框重合，且支持过滤与点选原始码。
+    const actionInput = page.getByRole("combobox", { name: "动作码" });
+    await actionInput.click();
+    const actionPanel = page.getByRole("listbox", { name: "动作码候选" });
+    await expect(actionPanel).toBeVisible();
+    const actionBox = await page.locator(".audit-action-search").boundingBox();
+    const panelBox = await actionPanel.boundingBox();
+    if (actionBox === null || panelBox === null) {
+      throw new Error("动作码候选面板缺少布局盒");
+    }
+    expect(Math.abs(panelBox.x - actionBox.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(panelBox.width - actionBox.width)).toBeLessThanOrEqual(1);
+
+    await actionInput.fill("project.cr");
+    await expect(actionPanel.getByRole("option")).toHaveCount(1);
+    await actionPanel.getByRole("option").click();
+    await expect(actionInput).toHaveValue("project.create");
+    await expect(actionPanel).toHaveCount(0);
+
+    // 选中创建者作为操作人：动作码与 actorIds 必须同时进入请求。
     await pickCalmSelectOption(page, "操作人", runtime.user.name);
     const filteredRequest = page.waitForRequest(
       (request) =>
@@ -148,7 +167,9 @@ test("管理员读取项目审计链、按动作与操作人过滤、查看快�
     await expect(snapshot).toBeHidden();
 
     await page.getByRole("button", { name: "重置" }).click();
-    await expect(page.getByLabel("动作码")).toHaveValue("");
+    await expect(page.getByRole("combobox", { name: "动作码" })).toHaveValue(
+      "",
+    );
     // 重置回到「全员」：操作人多选清空。
     await expect(
       page.getByText("全员（可勾选多人）", { exact: true }),
