@@ -980,14 +980,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 )}
               </div>
             ) : null}
-
-            <div className="permission-note">
-              <InpulseIcon name="shield" size={16} />
-              <span>
-                <strong>权限提示</strong>
-                系统管理员与项目组长可以删除项目（物理删除且不可撤销）、作废与恢复记录、查看原始审计快照；高风险操作需要二次确认。项目成员在已加入项目内拥有全部普通研发操作权限。
-              </span>
-            </div>
           </section>
         ) : null}
       </div>
