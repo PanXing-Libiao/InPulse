@@ -279,17 +279,17 @@ API 集成 48 文件 444 例、database 单测 15/15 + 集成 26/26 通过。本
 
 ## F-03 用户管理（A，2026-09-09 本地交付）
 
-阶段 1 A 域用户管理纵切片：`/api/v1/admin/users` 六条路由，覆盖管理员列表、新增、编辑、
-启停、启用与强制退出；无新数据库迁移，复用现有 `users`/`user_sessions`/审计与密钥机制。
+阶段 1 A 域用户管理纵切片：`/api/v1/admin/users` 六条路由，覆盖管理员列表、新增、编辑、启停与删除；2026-10-19 按 ADR-083 移除强制退出。无新数据库迁移，复用现有 `users`/`user_sessions`/审计与密钥机制。
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
 | F03-CONTRACT-001 | 契约与 CI | 六条路由登记 | Schema Registry、Route Registry、Controller 绑定、OpenAPI、Web 客户端与权限矩阵一致；41 条路由全部由 `contract:drift`/`contract:validate`/`permissions:check` 覆盖 | 本地通过（`contract:drift`、`contract:validate`、`permissions:check`，41/41） |
 | F03-API-001 | 单元 | HTTP 编排 | `listAdminUsers` 允许管理员、普通用户 403、匿名 401；create 的事务外 Argon2id 哈希、CSRF/幂等键/`If-Match` 传递、失败映射与幂等回放授权回调 | 本地通过（`admin-users-http.test.ts`，API 单测 55 文件 256 例） |
-| F03-API-002 | HTTP + PostgreSQL | 完整生命周期 | 管理员创建用户后同 Key 重放不重复；编辑、停用、启用、强退分别递增版本；停用/强退同事务递增 `auth_version` 并撤销 Session；停用后旧 Session 请求 401；五类审计事件齐全；审计失败时创建整体回滚 | 本地通过（`admin-users-api.integration.test.ts`；API 集成 31 文件 152 例，PostgreSQL 18.6 + PGroonga） |
+| F03-API-002 | HTTP + PostgreSQL | 完整生命周期 | 管理员创建用户后同 Key 重放不重复；编辑、停用、启用分别递增版本；停用同事务递增 `auth_version` 并撤销 Session；停用后旧 Session 请求 401；审计事件齐全；审计失败时创建整体回滚；强制退出步骤已由 ADR-083 移除 | 本地通过（历史口径；2026-10-19 按移除后代码重跑） |
 | F03-API-003 | 权限与边界 | 拒绝与保护 | 缺管理员身份 403、缺幂等键 400、非法字段 422、旧版本/状态冲突与自停用/最后一名可用管理员 409（`LAST_ACTIVE_ADMIN_REQUIRED`）；错误响应不泄露 SQL 或约束名；普通成员访问管理页 403 | 本地通过（HTTP 单元、真实 PostgreSQL 与权限矩阵） |
-| F03-UI-001 | 前端单元 | 管理页关键交互 | 列表展示、当前登录账号置顶、隐藏当前管理员停用/强退入口；编辑携带 CSRF、幂等键和 `If-Match`；写失败后保留同一幂等键；错误文案统一映射 | 本地通过（`admin-user-query.test.tsx` 4 例、`AdminUsersPageView.test.tsx` 5 例）；2026-09-24 改口径后未执行 |
-| F03-E2E-001 | Playwright | 领域 E2E | 普通成员访问 `/settings` 显示 403；管理员完成编辑 → 停用 → 启用 → 强制退出真实 UI 链路（2026-09-24 起目标账号由夹具预置，管理页不再有新增入口） | 本地 18/18 通过（历史口径：含经 UI 新增）；2026-09-24 改口径后未执行 |
+| F03-UI-001 | 前端单元 | 管理页关键交互 | 列表展示、当前登录账号置顶、隐藏当前管理员停用入口；编辑携带 CSRF、幂等键和 `If-Match`；写失败后保留同一幂等键；错误文案统一映射 | 本地通过（`admin-user-query.test.tsx`、`AdminUsersPageView.test.tsx`；2026-10-19 重跑） |
+| F03-E2E-001 | Playwright | 领域 E2E | 普通成员访问 `/settings` 显示 403；管理员完成编辑 → 停用 → 启用真实 UI 链路；强制退出链路已由 ADR-083 移除（2026-09-24 起目标账号由夹具预置，管理页不再有新增入口） | 本地通过（历史口径；2026-10-19 移除强退后重跑 `admin-users.spec.ts`） |
+| F03-REMOVE-FORCELOGOUT-001 | 契约 + API + Web + E2E | 强制退出整体移除 | Route Registry 与权限矩阵无 `forceLogoutUser`；Controller 扫描无 `POST /api/v1/admin/users/{userId}/force-logout`；OpenAPI、指纹与生成客户端无该方法；旧路径真实 HTTP 请求返回 404；成员页无入口；历史审计动作码仅保留中文展示标签 | 本地通过（2026-10-19：`contract:validate` 125 条、`permissions:check` 125/125、`contract:drift` 6 产物、契约单测 102 例、API 全量单测 512 例、真实 PostgreSQL 集成 6 例、Web 全量单测 958 例、`admin-users.spec.ts` 2/2） |
 
 2026-09-09 本地实际通过（已合并 `origin/main` `8386b29`）：`pnpm typecheck`、`pnpm lint`、`pnpm format:check`、
 `pnpm test:unit`（database 5、api-contract 63、web 87、api 256）、`pnpm test:web`（30 文件 87 例）、`pnpm test:integration`（database 13、API 31 文件 152 例）、`pnpm build`、
@@ -306,9 +306,9 @@ GitHub Actions 已通过（F-03 PR #72，run 34345191090）。
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
-| DISABLE-API-001 | 真实 PostgreSQL 集成 + 单元 | 停用前完成任务交接 | 唯一负责人任务未指定接手人且未标记删除时返回 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED`，账号仍 `ACTIVE`、会话未撤销；多负责人任务默认保留其他负责人；唯一负责人任务可增补多名接手人或标记删除；全部任务清理后账号 `DISABLED`、Session 撤销、审计含 `reassignedTaskIds` / `deletedTaskIds`；任一任务失败整单回滚 | 本地通过（`admin-users-api.integration.test.ts` 7/7、`admin-users-http.test.ts` 9/9） |
+| DISABLE-API-001 | 真实 PostgreSQL 集成 + 单元 | 停用前完成任务交接 | 唯一负责人任务未指定接手人且未标记删除时返回 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED`，账号仍 `ACTIVE`、会话未撤销；多负责人任务默认保留其他负责人；唯一负责人任务可增补多名接手人或标记删除；全部任务清理后账号 `DISABLED`、Session 撤销、审计含 `reassignedTaskIds` / `deletedTaskIds`；任一任务失败整单回滚 | 本地通过（`admin-users-api.integration.test.ts` 8/8、`admin-users-http.test.ts` 9/9） |
 | DISABLE-UI-001 | Web 单元 | 停用账号筛选与行内操作 | 默认「启用」列表不显示停用账号；切换到「已停用/离职」后可见，整行 `is-disabled`、状态显示「停用」，行内提供「启用、编辑、强制删除」；启用账号行内提供「停用、编辑」且停用位于编辑左侧；当前账号保留隐藏的同宽停用占位槽，状态和编辑列与普通成员对齐 | 本地通过（`AdminUsersPageView.test.tsx`） |
-| DISABLE-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 | `contract:drift` 无漂移；`contract:validate` 与 `permissions:check` 恢复为 125 条操作 / 125 条路由；`db:migrations:check` 通过 | 待重跑（2026-10-19 清理后） |
+| DISABLE-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 | `contract:drift` 无漂移；`contract:validate` 与 `permissions:check` 恢复为 125 条操作 / 125 条路由；`db:migrations:check` 通过 | 本地通过（2026-10-19：`contract:drift` 6 产物、`contract:validate` 125 条、`permissions:check` 125/125） |
 
 未运行 / 已知偏差：全量 API 集成、`pnpm check` 整链与 GitHub Actions 未运行；Playwright 已由 ADR082-E2E-001 覆盖停用、启用与强制删除路径。
 ## 文档与仓库治理
@@ -445,11 +445,11 @@ GitHub Actions 已通过（F-03 PR #72，run 34345191090）。
 | SEC-002 | 浏览器 E2E + 部署集成 | nonce CSP | 强制模式下核心页面可用，script/style 均无 `unsafe-inline`；生产镜像逐响应签发 nonce，CSP 头与入口 meta/script 标签一致且不复用 | 已自动化（`apps/e2e/tests/csp.spec.ts` 2/2；`scripts/check-web-image-csp.sh` 在真实镜像与 Nginx 上验证 200/308/502/静态资源 7 项断言，2026-09-10；CI 已执行：Browser E2E 50 passed 与 Web 镜像 CSP 校验步骤） |
 | SEC-003 | API/浏览器 E2E | CSRF 生命周期 | 首登、轮换、刷新、多标签、过期和“仅未消费状态可最多重签一次”均符合 ADR-015；普通幂等路由保留 Key/If-Match，securityFlow 不发送业务幂等键 | 已自动化（`apps/api/test/csrf-lifecycle.integration.test.ts` 4 例：CSRF 失败不消费、重签后重试一次、单次消费、4 个上限淘汰最旧、Session 与预认证过期恢复、securityFlow 幂等例外；`apps/e2e/tests/csrf.spec.ts` 4 例：首登轮换、刷新、多标签、If-Match/CSRF/幂等键请求头；2026-09-11；CI 已执行） |
 | SEC-004 | API 集成 | ExternalLinks | 只接受规范化的 `https://github.com/...`；拒绝 HTTP、用户信息、非默认端口、`api.github.com` 与混淆域名；不配置 Token、不发远程请求；跨项目关联失败且并发不重复 | 已自动化（规范化器 `apps/api/test/github-url.test.ts` 16 例 + 数据库防线 `database/test/integration/external-links.test.ts` 13 例（2026-09-11 补齐项目/功能/记录关联的复合外键用例），2026-09-10；F-22 已交付 HTTP 关联接口并在服务端复用同一规范化器（证据见本文件「F-22 当前 GitHub 关联」章节）；CI 已执行） |
-| SEC-005 | API + PostgreSQL 并发/E2E | 一次性认证安全流程 | 登录签发路径显式赋 `AUTHENTICATED` 状态，不得依赖默认值成为完整态；同一 preauth+CSRF 只能成功登录一次；预认证消费、CSRF 轮换与停用/强退的 `auth_version` 失效只在对应条件更新成功时生效；重复 CSRF 签发允许，无效 Session 重复登出为 204；三个 securityFlow operationId（`issueCsrfToken`/`login`/`logout`）的响应丢失均按 ADR-023 路径恢复（enrollment / rotation / TOTP time-step / 恢复码相关单次消费语义已随 ADR-031 删除） | Required（2026-09-15 ADR-031 修订：登录单次消费已有用例（`login.service.test.ts`、`login.integration.test.ts`），其余单次消费语义分散在 SEC-003 与登录/会话用例；ADR-023 现行三个 operationId 逐项真库并发验证与每条响应丢失后的客户端 E2E 恢复路径仍未见完整证据，保持待补。2026-10-12：`PostgresPreauthSessionRepository.consumeOnce` 的 `consumed_at` 由 API 进程 `new Date()` 改为数据库 `now()`（原写法是跨时钟域比较，会触发 `preauth_sessions_consumed_at_check`），回归用例见 `preauth-session.integration.test.ts`） |
+| SEC-005 | API + PostgreSQL 并发/E2E | 一次性认证安全流程 | 登录签发路径显式赋 `AUTHENTICATED` 状态，不得依赖默认值成为完整态；同一 preauth+CSRF 只能成功登录一次；预认证消费、CSRF 轮换与停用的 `auth_version` 失效只在对应条件更新成功时生效；重复 CSRF 签发允许，无效 Session 重复登出为 204；三个 securityFlow operationId（`issueCsrfToken`/`login`/`logout`）的响应丢失均按 ADR-023 路径恢复（enrollment / rotation / TOTP time-step / 恢复码相关单次消费语义已随 ADR-031 删除） | Required（2026-09-15 ADR-031 修订：登录单次消费已有用例（`login.service.test.ts`、`login.integration.test.ts`），其余单次消费语义分散在 SEC-003 与登录/会话用例；ADR-023 现行三个 operationId 逐项真库并发验证与每条响应丢失后的客户端 E2E 恢复路径仍未见完整证据，保持待补。2026-10-12：`PostgresPreauthSessionRepository.consumeOnce` 的 `consumed_at` 由 API 进程 `new Date()` 改为数据库 `now()`（原写法是跨时钟域比较，会触发 `preauth_sessions_consumed_at_check`），回归用例见 `preauth-session.integration.test.ts`） |
 | SEC-006 | API 集成 | 未匹配路由的错误契约净化 | 任意未匹配路径返回 `application/json` 的统一 404 `{ code, message, details, requestId }`，message 为固定文案且不回显 method、path 或框架内部文本，响应带 `X-Request-Id` 并保留应用 CSP，不返回框架或 Express 默认 HTML；已匹配路由不受影响；见 [ADR-026](adr/ADR-026.md) | 已自动化（`apps/api/test/http-error-contract.integration.test.ts` 3 例，2026-09-10；修正点在全局异常过滤器本身，未新增 adapter 包装；API 响应的 nosniff/CSP 由生产 Nginx `location /api/v1/` 下发，另见 F09-CSP-*；CI 已执行） |
 | SEC-007 | 部署集成 | 数据库 Secret 文件缺失 | 生产模式 fail closed，不得回退到环境变量；缺失路径、越界路径、空值和权限不合规均拒绝连接串构造 | 已自动化（`database/test/unit/config.test.ts` 15 例，2026-09-10；真实 POSIX 权限位需 Linux 环境，Windows 本机不可复现，权限判定在函数级覆盖；compose secret 声明由 `check:deploy` 校验；CI 已执行） |
 | SEC-008 | API + PostgreSQL 集成 | 登录爆破限流 | 登录失败按账号 + IP + 全局三层计数，任一桶达到候选阈值返回 429 并在 Argon2 前阻断；同一进程 Argon2 并发不超过候选上限；登录成功清除账号失败计数；桶维度只保存 HMAC-SHA-256 摘要 | 已自动化（单元与真实 PostgreSQL 用例已落库；CI 已执行） |
-| SEC-009 | Application + PostgreSQL 集成 | 用户停用/改密/强退 Session 失效 | 同一事务递增 `users.auth_version`（并推进 `row_version`）后撤销该用户全部未撤销 Session；旧 Session 在下一请求因 `auth_version` 不一致或已撤销而返回 401 | 已自动化（单元与真实 PostgreSQL 用例已落库；CI 已执行） |
+| SEC-009 | Application + PostgreSQL 集成 | 用户停用/改密 Session 失效 | 同一事务递增 `users.auth_version`（并推进 `row_version`）后撤销该用户全部未撤销 Session；旧 Session 在下一请求因 `auth_version` 不一致或已撤销而返回 401 | 已自动化（单元与真实 PostgreSQL 用例已落库；CI 已执行） |
 | SEC-010 | API + PostgreSQL 集成 | ~~管理员 MFA 注册（F-02.1）~~（2026-09-15 随 ADR-031 移除，实现与用例已删除，保留历史） | 管理员登录后显式签发 `MFA_ENROLLMENT`；`start` 按 user → factor → Session 锁序条件创建/替换 pending；`confirm` 在同一事务条件激活因子、签发 Argon2id 恢复码哈希、撤销受限 Session 并轮换为 `AUTHENTICATED` Session/新 CSRF；错误验证码不启用因子且写入持久化 MFA 限流；start-vs-start、start-vs-confirm、跨 Session 与同一 TOTP time-step 并发只有一个 2xx；数据库不保存 TOTP Secret、恢复码明文 | 已自动化到本地（API 单元 47 文件 224 例，真实 PostgreSQL 集成 26 文件 118 例，数据库单测 5 例与集成 13 例；`pnpm check` 全绿；Playwright 16/16；GitHub Actions 已通过，PR #63） |
 | SEC-011 | API + PostgreSQL 集成 | ~~管理员 MFA 验证（F-02.2）~~（2026-09-15 随 ADR-031 移除，实现与用例已删除，保留历史） | 管理员登录后显式签发 `MFA_CHALLENGE`；`POST /auth/mfa/verify` 仅接受当前 time-step ±1 且未接受过的 TOTP；按 user → factor → Session 锁序条件验证；格式错误 422、CSRF 错误 401、非管理员 403、状态或验证码并发冲突 409；成功后同一事务将 Session 条件升级为 `AUTHENTICATED`、更新 `last_accepted_step` 并签发新 CSRF；错误验证码写入用户/IP/全局持久化限流，达到阈值 429；跨 Session 同一步长并发仅一个 2xx，通用幂等与日志不保存 TOTP/CSRF 明文 | 已自动化到本地（API 单元 47 文件 224 例，真实 PostgreSQL 集成 26 文件 118 例；`pnpm check` 全绿；Playwright 16/16；GitHub Actions 已通过，PR #63） |
 | SEC-012 | API + PostgreSQL 集成 | ~~管理员高风险重认证（F-02.3）~~（2026-09-15 随 ADR-031 移除，实现与用例已删除，保留历史） | 完整管理员 Session + 密码 + 当前 TOTP time-step ±1 且未使用；同一事务原子刷新 `reauthenticated_at` 与 `mfa_verified_at` 并递增 rotation generation；错误密码/验证码返回 401 且不刷新时间戳，分别写登录/MFA 限流；MFA_CHALLENGE 受限 Session 403；同一 time-step 重放 401；达到 MFA 阈值 429 | 已自动化到本地（Controller 5 例；真实 PostgreSQL 6 例；`pnpm check` 全绿；Playwright 16/16；GitHub Actions 已通过，PR #63） |
@@ -2600,7 +2600,7 @@ HTML 不允许按钮内嵌链接/按钮，因此三层卡片统一采用「容�
 | F03-UI-002 | Web 单元 | 当前登录账号置顶 | 服务端返回 `[member, admin]` 且 `currentUserId = admin.id` 时，`.member-list` 首个 `.member-row` 为当前账号、第二个为其余成员 | 本地通过（2026-09-24，`vitest run src/features/users/AdminUsersPageView.test.tsx` 7/7） |
 | F03-UI-004 | Web 单元 | 自身 → 其他管理员 → 普通成员 | 服务端返回 `[member, otherAdmin, admin]`、`currentUserId = admin.id` 时，渲染顺序为 `Alice（当前账号）→ Carol → Bob` | 本地通过（2026-09-24，同上文件用例「orders self, then other admins, then members」） |
 | F03-UI-003 | Web 单元 | 新增入口确实消失 | 管理页不再渲染「新增用户」按钮；编辑弹层只有姓名 / 邮箱 / 管理员角色三个字段，提交体不再包含 `loginName` / `password` | 未运行（同上；`AdminUsersPageView.test.tsx` 原「creates a user…」用例已随功能删除，不以 `skip` 保留） |
-| F03-E2E-002 | Playwright | 编辑 → 停用 → 启用 → 强制退出在新口径下仍成立 | 夹具预置的 `f03_` 账号可被编辑改名、停用、启用与强制退出；页面上 `getByRole('button', { name: '新增用户' })` 计数为 0 | 未运行（2026-09-24 改写 `admin-users.spec.ts`；本批未跑 Playwright） |
+| F03-E2E-002 | Playwright | 编辑 → 停用 → 启用在新口径下成立 | 夹具预置的 `f03_` 账号可被编辑改名、停用与启用；页面上 `getByRole('button', { name: '新增用户' })` 计数为 0；强制退出步骤已由 ADR-083 移除 | 本地通过（2026-10-19 重跑 `admin-users.spec.ts`） |
 | F03-BROWSER-001 | 浏览器实测 | 编辑弹层字段与排版 | 真实登录后打开「编辑用户」：无「头像地址」字段（`#admin-user-avatar` 不存在）；字段节奏为说明 12px → 标签 16px → 控件 6px → 下一字段 16px，底部按钮组距上方 16px；新增态字段顺序为登录名 / 姓名 / 邮箱 / 初始密码 / 管理员角色（本行记录移除头像字段时的实测，随后新增入口已整体删除） | 本地通过（2026-09-24，Playwright 探针 + 截图留档） |
 | F03-BROWSER-002 | 浏览器实测 | 列表排序在真实数据下成立 | 真实登录后 `/settings` 的 `.member-row` 顺序为「邵晨宇（当前账号，系统管理员）→ 特哥（系统管理员）→ 吴孟杰 / 潘兴 / 林雨妍 / 小邵 / 小吴 / 小潘（项目成员）」 | 本地通过（2026-09-24，真实 PostgreSQL + 管理员会话） |
 
@@ -6725,15 +6725,15 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | ---------------- | --------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| ADR082-API-001 | 真实 PostgreSQL 集成（真实 HTTP） | 删除前置条件、事务与墓碑结果 | 未停用 409；仍有 ACTIVE 项目成员关系 409 `ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP`；移出后删除 204；墓碑登录名/姓名/邮箱/口令/组织/管理员身份/`deleted_at` 符合固定值；`auth_version` 与 `row_version` 各递增、Session 全部撤销；活动摘要改写；任务创建人/负责人显示「删除用户」；审计 `admin.user.delete` 一次且记录前后快照与计数；同 Key 重放 204 且不重复写审计；启用/编辑/强退/再次删除 409；原登录名可复用；墓碑旧 Session 401 | 本地通过（2026-10-19） |
+| ADR082-API-001 | 真实 PostgreSQL 集成（真实 HTTP） | 删除前置条件、事务与墓碑结果 | 未停用 409；仍有 ACTIVE 项目成员关系 409 `ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP`；移出后删除 204；墓碑登录名/姓名/邮箱/口令/组织/管理员身份/`deleted_at` 符合固定值；`auth_version` 与 `row_version` 各递增、Session 全部撤销；活动摘要改写；任务创建人/负责人显示「删除用户」；审计 `admin.user.delete` 一次且记录前后快照与计数；同 Key 重放 204 且不重复写审计；启用/编辑/再次删除 409；原登录名可复用；墓碑旧 Session 401 | 本地通过（2026-10-19） |
 | ADR082-LOGIN-001 | 真实 PostgreSQL 集成 | 墓碑账号登录与 SSO 拒绝 | 墓碑账号使用本地凭据登录返回 401 且不签发 Session；SSO 按保留的 `sso_subject` 命中时按停用账号拒绝，不写回个人资料 | 本地通过（2026-10-19） |
 | ADR082-DB-001 | 真实 PostgreSQL 集成 | 墓碑不可逆数据库约束 | `app.users.deleted_at`、`users_deleted_state_check`、`app.enforce_users_immutable_columns` 与触发器存在；墓碑字段不完整时拒绝；已墓碑行不可再更新；不可清除 `deleted_at`；不可把登录名改回普通值 | 本地通过（2026-10-19） |
-| ADR082-UI-001 | Web 单元 | 成员状态筛选与行内生命周期操作 | 筛选与搜索同处标题工具行，筛选位于搜索左侧；默认显示「启用」成员，可切换到「已停用/离职」查看停用账号；行内直接提供生命周期操作：启用账号显示「停用、编辑」，停用账号显示「启用、编辑、强制删除」，「停用」位于「编辑」左侧，行内操作按钮高度为 30px、字号为 14px，操作区按内容收缩，状态与首个按钮间距不超过 20px；当前账号保留同尺寸、不可见且不可聚焦的「停用」占位槽，确保状态列与「编辑」按钮和普通成员对齐；停用账号整行灰色且无强制退出按钮；墓碑账号在两个筛选均不出现；组织调整态只显示启用账号，已停用筛选下不展示组织标签与组织操作；`admin.user.delete` 显示「强制删除用户」，审计行展示删除前姓名且原始快照保留前后载荷 | 本地通过（2026-10-19，AdminUsersPageView 27/27） |
+| ADR082-UI-001 | Web 单元 | 成员状态筛选与行内生命周期操作 | 筛选与搜索同处标题工具行，筛选位于搜索左侧；默认显示「启用」成员，可切换到「已停用/离职」查看停用账号；行内直接提供生命周期操作：启用账号显示「停用、编辑」，停用账号显示「启用、编辑、强制删除」，「停用」位于「编辑」左侧，行内操作按钮高度为 30px、字号为 14px，操作区按内容收缩，状态与首个按钮间距不超过 20px；当前账号保留同尺寸、不可见且不可聚焦的「停用」占位槽，确保状态列与「编辑」按钮和普通成员对齐；停用账号整行灰色；墓碑账号在两个筛选均不出现；组织调整态只显示启用账号，已停用筛选下不展示组织标签与组织操作；`admin.user.delete` 显示「强制删除用户」，审计行展示删除前姓名且原始快照保留前后载荷 | 本地通过（2026-10-19，AdminUsersPageView 27/27） |
 | ADR082-AUDIT-REG-001 | Web 单元 | 已删除项目的审计对象 | `project.delete` 行从平铺载荷读取删除前的项目编码与名称，显示为「项目 编码「名称」」而不是「项目 null」；项目删除 E2E 2/2 与审计页全文件 18/18 通过 | 本地通过（2026-10-19） |
 | ADR082-UI-002 | Web 单元 | 删除请求与错误文案 | 强制删除发送 `x-csrf-token`、`Idempotency-Key` 与 `If-Match`；`ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP` 显示先转移组长并移出项目的固定文案 | 本地通过（2026-10-19） |
 | ADR082-UI-003 | Playwright 浏览器 | 当前账号标识与姓名同行 | 管理员成员页的「（当前账号）」位于姓名右侧同一行；`admin-users.spec.ts` 用 Range 测量姓名文本与标签矩形，断言标签左边缘大于姓名右边缘且垂直区间重叠；2/2 通过 | 本地通过（2026-10-19） |
-| ADR082-E2E-001 | Playwright 浏览器 | 成员生命周期完整路径 | 筛选与搜索同行且位于其左侧，当前账号保留隐藏「停用」占位槽且无可访问「停用」按钮，当前账号与普通成员的状态列、「编辑」按钮 x 坐标差均不超过 2px，启用态「停用」位于「编辑」左侧，按钮高度不低于 30px、字号为 14px，状态到「停用」按钮不超过 20px → 编辑姓名 → 点行内「停用」→ 从启用列表消失并在「已停用/离职」显示「启用、编辑、强制删除」且无强制退出与组织操作 → 点行内「启用」→ 离开离职列表并回到启用列表 → 再点行内「停用」→ 点行内「强制删除」→ 墓碑账号在启用与离职两个筛选均不出现 | 本地通过（2026-10-19，admin-users.spec.ts 2/2） |
-| ADR082-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:drift` 6 产物一致；`permissions:check` 126 条操作 / 126 条路由；迁移 `0047` 已在 `app_ci` 应用；typecheck / lint / format:check 通过 | 本地通过（2026-10-19；Web 单测 957；API 单测 512；API 集成 618；DB 集成 28） |
+| ADR082-E2E-001 | Playwright 浏览器 | 成员生命周期完整路径 | 筛选与搜索同行且位于其左侧，当前账号保留隐藏「停用」占位槽且无可访问「停用」按钮，当前账号与普通成员的状态列、「编辑」按钮 x 坐标差均不超过 2px，启用态「停用」位于「编辑」左侧，按钮高度不低于 30px、字号为 14px，状态到「停用」按钮不超过 20px → 编辑姓名 → 点行内「停用」→ 从启用列表消失并在「已停用/离职」显示「启用、编辑、强制删除」且无组织操作 → 点行内「启用」→ 离开离职列表并回到启用列表 → 再点行内「停用」→ 点行内「强制删除」→ 墓碑账号在启用与离职两个筛选均不出现 | 本地通过（2026-10-19，admin-users.spec.ts 2/2） |
+| ADR082-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:drift` 6 产物一致；`permissions:check` 125 条操作 / 125 条路由；迁移 `0047` 已在 `app_ci` 应用；typecheck / lint / format:check 通过 | 本地通过（2026-10-19；历史全量 Web 957 / API 512 / API 集成 618 / DB 28；移除强退后定向复跑见 F03-REMOVE-FORCELOGOUT-001） |
 
 已知偏差（本批）：① 真实生产数据未执行删除演练；② 历史业务表不做姓名物理回写；审计列表不改写原始载荷，优先显示事件当时姓名，历史业务记录按当前用户表显示墓碑名。
 
@@ -6741,11 +6741,11 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
-| ADR083-API-001 | API 单元 | 交接清单读取与停用请求体 | `getAdminUserOffboarding` 经管理员读路径返回 `AdminUserOffboardingResponse`；`disableUser` 将 `AdminUserDisableRequest` 传给业务服务；`ADMIN_USER_OFFBOARDING_TASK_REQUIRED` 映射为 422 且保留 `reason: offboarding` | 本地通过（2026-10-19，`admin-users-http.test.ts` 9/9） |
-| ADR083-API-002 | 真实 PostgreSQL 集成（真实 HTTP） | 唯一负责人拒绝、多负责人默认保留、多人接手与删除 | 唯一负责人任务未处理返回 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED` 且账号保持 ACTIVE、Session 不撤销；多负责人任务默认摘掉目标账号并保留其他负责人；唯一负责人任务可增补多名接手人；唯一负责人任务可标记删除；全部处理成功后账号 DISABLED、开放任务 0、Session 0，审计含 `reassignedTaskIds` / `deletedTaskIds` | 本地通过（2026-10-19，`admin-users-api.integration.test.ts` 7/7） |
-| ADR083-UI-001 | Web 单元 | D 方案停用弹窗 | 含必须处理任务的项目与项目内唯一负责人任务排在最前；无任务显示「全部项目已完成」并允许停用；唯一负责人任务未处理时「确认停用」禁用；添加接手人后可提交；多负责人任务无动作时不进入请求体；停用请求携带 `If-Match`、CSRF 与 `Idempotency-Key` | 本地通过（2026-10-19，`AdminUsersPageView.test.tsx` 与 `admin-user-query.test.tsx` 34/34） |
-| ADR083-E2E-001 | Playwright 浏览器 | 成员生命周期改走交接弹窗 | 点击行内「停用」打开「停用账号 · 任务交接」；无任务目标显示「全部项目已完成」，点击「确认停用」后从启用列表消失 | 本地通过（2026-10-19，全量 Browser E2E 88/88） |
-| ADR083-GATE-001 | 静态门禁 | 契约 / 权限 / 类型 / 构建 | `contract:drift` 6 产物一致；`permissions:check` 127 条操作 / 127 条路由；typecheck / lint / format:check / build 通过 | 本地通过（2026-10-19） |
+| ADR084-API-001 | API 单元 | 交接清单读取与停用请求体 | `getAdminUserOffboarding` 经管理员读路径返回 `AdminUserOffboardingResponse`；`disableUser` 将 `AdminUserDisableRequest` 传给业务服务；`ADMIN_USER_OFFBOARDING_TASK_REQUIRED` 映射为 422 且保留 `reason: offboarding` | 本地通过（2026-10-19，`admin-users-http.test.ts` 9/9） |
+| ADR084-API-002 | 真实 PostgreSQL 集成（真实 HTTP） | 唯一负责人拒绝、多负责人默认保留、多人接手与删除 | 唯一负责人任务未处理返回 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED` 且账号保持 ACTIVE、Session 不撤销；多负责人任务默认摘掉目标账号并保留其他负责人；唯一负责人任务可增补多名接手人；唯一负责人任务可标记删除；全部处理成功后账号 DISABLED、开放任务 0、Session 0，审计含 `reassignedTaskIds` / `deletedTaskIds` | 本地通过（2026-10-19，`admin-users-api.integration.test.ts` 8/8） |
+| ADR084-UI-001 | Web 单元 | D 方案停用弹窗 | 含必须处理任务的项目与项目内唯一负责人任务排在最前；无任务显示「全部项目已完成」并允许停用；唯一负责人任务未处理时「确认停用」禁用；添加接手人后可提交；多负责人任务无动作时不进入请求体；停用请求携带 `If-Match`、CSRF 与 `Idempotency-Key` | 本地通过（2026-10-19，`AdminUsersPageView.test.tsx` 与 `admin-user-query.test.tsx` 34/34） |
+| ADR084-E2E-001 | Playwright 浏览器 | 成员生命周期改走交接弹窗 | 点击行内「停用」打开「停用账号 · 任务交接」；无任务目标显示「全部项目已完成」，点击「确认停用」后从启用列表消失 | 本地通过（2026-10-19，合并后 `admin-users.spec.ts` 2/2；全量 88/88 为合并前结果） |
+| ADR084-GATE-001 | 静态门禁 | 契约 / 权限 / 类型 / 构建 | `contract:drift` 6 产物一致；`contract:validate` 126 条路由；`permissions:check` 126 条操作 / 126 条路由；typecheck / lint / format:check / build 通过 | 本地通过（2026-10-19 合并后） |
 
 ## 审计动作码候选面板对齐（2026-10-19）
 

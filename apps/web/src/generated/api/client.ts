@@ -162,7 +162,6 @@ export interface InpulseApiClient {
   disableUser(userId: number, body: AdminUserDisableRequest, init?: ApiRequestInit): Promise<void>;
   enableUser(userId: number, init?: ApiRequestInit): Promise<void>;
   findSimilarFeatures(projectId: number, moduleId: number, query: FeatureSimilarQuery, init?: ApiRequestInit): Promise<FeatureListResponse>;
-  forceLogoutUser(userId: number, init?: ApiRequestInit): Promise<void>;
   getAdminUserOffboarding(userId: number, init?: ApiRequestInit): Promise<AdminUserOffboardingResponse>;
   getAiAssistSettings(init?: ApiRequestInit): Promise<AiAssistSettings>;
   getAuditLogs(query: AuditLogQueryRequest, init?: ApiRequestInit): Promise<AuditLogPage>;
@@ -362,9 +361,6 @@ export function createApiClient(
     },
     findSimilarFeatures(projectId: number, moduleId: number, query: FeatureSimilarQuery, init?: ApiRequestInit) {
       return send<FeatureListResponse>(options, "GET", `/projects/${encodeURIComponent(String(projectId))}/modules/${encodeURIComponent(String(moduleId))}/features/similar`, toQueryString(query), init);
-    },
-    forceLogoutUser(userId: number, init?: ApiRequestInit) {
-      return sendEmpty(options, "POST", `/admin/users/${encodeURIComponent(String(userId))}/force-logout`, "", init);
     },
     getAdminUserOffboarding(userId: number, init?: ApiRequestInit) {
       return send<AdminUserOffboardingResponse>(options, "GET", `/admin/users/${encodeURIComponent(String(userId))}/offboarding`, "", init);

@@ -203,26 +203,6 @@ export class AdminUserRepository {
     return this.find(tx, current.id);
   }
 
-  async forceLogout(
-    tx: TransactionContext,
-    current: AdminUserItem,
-  ): Promise<AdminUserItem | undefined> {
-    const rows = (await tx.sql`
-      UPDATE app.users
-         SET auth_version = auth_version + 1,
-             row_version = row_version + 1,
-             updated_at = now()
-       WHERE id = ${current.id}
-         AND deleted_at IS NULL
-         AND row_version = ${current.rowVersion}
-      RETURNING id
-    `) as unknown as readonly { id: number }[];
-    if (rows.length === 0) {
-      return undefined;
-    }
-    return this.find(tx, current.id);
-  }
-
   /**
    * 不可逆墓碑化：清除登录名、个人资料、口令、组织与管理员身份，保留主键。
    * 只有服务层校验完停用态、版本与活跃项目关系后才可调用。

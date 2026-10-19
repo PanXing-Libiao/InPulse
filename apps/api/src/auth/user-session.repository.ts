@@ -54,7 +54,7 @@ export interface UserSessionRepository {
 /**
  * 查询仍有效的用户 Session，并实时校验用户启用状态与
  * `auth_version_at_issue = users.auth_version`；停用、撤销、过期、
- * 改密或强制退出的 Session 都按无效处理。
+ * 改密后的 Session 都按无效处理。
  */
 export class PostgresUserSessionRepository implements UserSessionRepository {
   async create(

@@ -76,7 +76,6 @@ function setup() {
   const disable = vi.fn().mockResolvedValue(undefined);
   const offboarding = vi.fn().mockResolvedValue({ user: item, projects: [] });
   const enable = vi.fn().mockResolvedValue(undefined);
-  const forceLogout = vi.fn().mockResolvedValue(undefined);
   const deleteUser = vi.fn().mockResolvedValue(undefined);
   const replay = vi.fn().mockResolvedValue(undefined);
   const run = vi.fn(
@@ -106,7 +105,6 @@ function setup() {
       disable,
       offboarding,
       enable,
-      forceLogout,
       delete: deleteUser,
       replay,
     } as unknown as AdminUserService,
@@ -127,7 +125,6 @@ function setup() {
     disable,
     offboarding,
     enable,
-    forceLogout,
     deleteUser,
     replay,
     idempotencyRun,

@@ -125,9 +125,6 @@ describe("F-03 admin users page", () => {
     expect(
       within(userCard("Bob")).queryByRole("button", { name: "强制删除" }),
     ).not.toBeInTheDocument();
-    expect(
-      within(userCard("Bob")).queryByRole("button", { name: "强制退出" }),
-    ).not.toBeInTheDocument();
 
     fireEvent.click(
       within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
@@ -147,9 +144,6 @@ describe("F-03 admin users page", () => {
     ).toBeInTheDocument();
     expect(
       within(carol).queryByRole("button", { name: /停\s*用/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(carol).queryByRole("button", { name: "强制退出" }),
     ).not.toBeInTheDocument();
   });
 
@@ -395,11 +389,6 @@ describe("F-03 admin users page", () => {
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
     expect(screen.getByText("离职成员")).toBeInTheDocument();
     expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
-    expect(
-      within(userCard("离职成员")).queryByRole("button", {
-        name: "强制退出",
-      }),
-    ).not.toBeInTheDocument();
     expect(userCard("离职成员").className).toContain("is-disabled");
   });
 
@@ -1250,9 +1239,6 @@ describe("ADR-081 organizations", () => {
     ).toBeInTheDocument();
     expect(
       within(userCard("Bob")).queryByRole("button", { name: /停\s*用/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(userCard("Bob")).queryByRole("button", { name: "强制退出" }),
     ).not.toBeInTheDocument();
     fireEvent.click(
       within(userCard("Bob")).getByRole("button", { name: /启\s*用/ }),
