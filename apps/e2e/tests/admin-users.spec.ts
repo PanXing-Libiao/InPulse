@@ -80,15 +80,67 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await expect(
       page.getByText("当前账号", { exact: true }).first(),
     ).toBeVisible();
-    await expect(page.getByRole("group", { name: "成员状态筛选" })).toHaveCount(
-      0,
+    const scope = page.getByRole("group", { name: "成员状态筛选" });
+    const filterBox = await scope.boundingBox();
+    const searchBox = await page.getByLabel("搜索成员").boundingBox();
+    if (!filterBox || !searchBox)
+      throw new Error("member toolbar is not laid out");
+    expect(filterBox.x).toBeLessThan(searchBox.x);
+    expect(
+      Math.abs(
+        filterBox.y +
+          filterBox.height / 2 -
+          (searchBox.y + searchBox.height / 2),
+      ),
+    ).toBeLessThan(2);
+    await expect(
+      scope.getByRole("button", { name: "启用", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+
+    const currentCard = page
+      .locator(".member-row")
+      .filter({ hasText: "当前账号" })
+      .first();
+    await expect(currentCard).toBeVisible();
+    await expect(currentCard.locator(".member-action-placeholder")).toHaveCount(
+      1,
     );
+    await expect(
+      currentCard.getByRole("button", { name: /停\s*用/ }),
+    ).toHaveCount(0);
 
     const card = page.locator(".member-row").filter({ hasText: loginName });
     await expect(card.getByText(name, { exact: true })).toBeVisible();
     await expect(card.getByRole("button", { name: "强制退出" })).toHaveCount(0);
+    const editButton = card.getByRole("button", { name: /编\s*辑/ });
+    const stopButton = card.getByRole("button", { name: /停\s*用/ });
+    const statusBox = await card.locator(".member-status").boundingBox();
+    const stopBox = await stopButton.boundingBox();
+    const editBox = await editButton.boundingBox();
+    const currentStatusBox = await currentCard
+      .locator(".member-status")
+      .boundingBox();
+    const currentEditBox = await currentCard
+      .getByRole("button", { name: /编\s*辑/ })
+      .boundingBox();
+    if (
+      !statusBox ||
+      !stopBox ||
+      !editBox ||
+      !currentStatusBox ||
+      !currentEditBox
+    )
+      throw new Error("member actions are not laid out");
+    expect(Math.abs(currentStatusBox.x - statusBox.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(currentEditBox.x - editBox.x)).toBeLessThanOrEqual(2);
+    expect(stopBox.x).toBeLessThan(editBox.x);
+    expect(stopBox.height).toBeGreaterThanOrEqual(30);
+    expect(editBox.height).toBeGreaterThanOrEqual(30);
+    await expect(stopButton).toHaveCSS("font-size", "14px");
+    await expect(editButton).toHaveCSS("font-size", "14px");
+    expect(stopBox.x - (statusBox.x + statusBox.width)).toBeLessThanOrEqual(20);
 
-    await card.getByRole("button", { name: /编\s*辑/ }).click();
+    await editButton.click();
     const editDialog = page.getByRole("dialog", { name: "编辑用户" });
     const updatedName = `${name}-已编辑`;
     await editDialog.getByLabel("姓名").fill(updatedName);
@@ -96,29 +148,39 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await expect(editDialog).toBeHidden();
     await expect(card.getByText(updatedName, { exact: true })).toBeVisible();
 
-    await card.getByRole("button", { name: /编\s*辑/ }).click();
-    await editDialog.getByRole("button", { name: "停用账号" }).click();
+    await stopButton.click();
     const disableDialog = page.getByRole("dialog", { name: "停用用户" });
     await disableDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(disableDialog).toBeHidden();
+    await expect(card).toHaveCount(0);
+    await scope
+      .getByRole("button", { name: "已停用/离职", exact: true })
+      .click();
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: /启\s*用/ })).toBeVisible();
+    await expect(card.getByRole("button", { name: "强制删除" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "强制退出" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "加入组织" })).toHaveCount(0);
 
-    await card.getByRole("button", { name: /编\s*辑/ }).click();
-    await editDialog.getByRole("button", { name: "启用账号" }).click();
+    await card.getByRole("button", { name: /启\s*用/ }).click();
     const enableDialog = page.getByRole("dialog", { name: "启用用户" });
     await enableDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(enableDialog).toBeHidden();
+    await expect(card).toHaveCount(0);
+    await scope.getByRole("button", { name: "启用", exact: true }).click();
     await expect(card.getByText("启用", { exact: true })).toBeVisible();
 
-    await card.getByRole("button", { name: /编\s*辑/ }).click();
-    await editDialog.getByRole("button", { name: "停用账号" }).click();
+    await stopButton.click();
     const disableAgainDialog = page.getByRole("dialog", { name: "停用用户" });
     await disableAgainDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(disableAgainDialog).toBeHidden();
+    await expect(card).toHaveCount(0);
+    await scope
+      .getByRole("button", { name: "已停用/离职", exact: true })
+      .click();
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
 
-    await card.getByRole("button", { name: /编\s*辑/ }).click();
-    await editDialog.getByRole("button", { name: "强制删除" }).click();
+    await card.getByRole("button", { name: "强制删除" }).click();
     const deleteDialog = page.getByRole("dialog", { name: /强制删除/ });
     await expect(deleteDialog).toContainText("删除不可撤销");
     await deleteDialog.getByRole("button", { name: "确认删除" }).click();
@@ -130,6 +192,12 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
       ),
     ).toBeVisible();
 
+    await expect(card).toHaveCount(0);
+    await scope.getByRole("button", { name: "启用", exact: true }).click();
+    await expect(card).toHaveCount(0);
+    await scope
+      .getByRole("button", { name: "已停用/离职", exact: true })
+      .click();
     await expect(card).toHaveCount(0);
     await expect(
       page.locator(".member-row").filter({ hasText: `账号 #${targetId}` }),

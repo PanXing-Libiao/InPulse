@@ -11,6 +11,7 @@ import {
   CalmBadge,
   CalmEmptyState,
   CalmSectionTitle,
+  CalmSegmented,
 } from "@features/common/components/Calm";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { AiAssistSettingsPanel } from "@features/settings/AiAssistSettingsPanel";
@@ -27,6 +28,7 @@ import {
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
 type LifecycleAction = "disable" | "enable" | "delete";
+type MemberScope = "active" | "departed";
 
 /** 设计师稿 latest-version/views/settings.tsx L9-11：左栏区块导航。 */
 export type SettingsTab =
@@ -82,6 +84,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     initialTab ?? "members",
   );
   const [memberSearch, setMemberSearch] = useState("");
+  const [memberScope, setMemberScope] = useState<MemberScope>("active");
   const submitting = useRef(false);
   const organizations = useOrganizations(client, { enabled: isAdmin });
   const [orgView, setOrgView] = useState<OrgView>("all");
@@ -122,6 +125,23 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     setFormError(null);
     setReloadError(null);
     mutation.reset();
+  };
+
+  const disableBlockedMessage = (user: AdminUserItem) =>
+    (user.openTaskCount ?? 0) > 0
+      ? "该账号仍有 " +
+        user.openTaskCount +
+        " 个未完成任务，请先转分配或删除任务后再停用。"
+      : null;
+
+  const requestDisable = (user: AdminUserItem) => {
+    const blockedMessage = disableBlockedMessage(user);
+    if (blockedMessage !== null) {
+      openUpdate(user);
+      setFormError(blockedMessage);
+      return;
+    }
+    openLifecycle("disable", user);
   };
 
   const closeEditor = () => {
@@ -234,8 +254,8 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       ? "members"
       : activeTab;
 
-  // 成员排序：当前账号置顶，其后未分配组织、已分配组织，停用账号最后；
-  // 未分配 / 已分配两档内部仍保持系统管理员在普通成员之前，同级保持服务端顺序。
+  // 成员排序：当前账号置顶，其后未分配组织、已分配组织；是否停用由上方
+  // 「启用 / 已停用/离职」筛选分桶，不再把两类账号混排在同一列表。
   const members = useMemo(() => {
     const items = (query.data?.items ?? []).filter(
       (user) => user.deletedAt === null,
@@ -249,6 +269,17 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     return [...items].sort((left, right) => rank(left) - rank(right));
   }, [query.data, currentUserId]);
 
+  const activeMembers = useMemo(
+    () => members.filter((user) => user.status === "ACTIVE"),
+    [members],
+  );
+  const departedMembers = useMemo(
+    () => members.filter((user) => user.status === "DISABLED"),
+    [members],
+  );
+  const scopedMembers =
+    memberScope === "active" ? activeMembers : departedMembers;
+
   const memberKeyword = memberSearch.trim().toLocaleLowerCase();
   const matchesKeyword = (user: AdminUserItem) =>
     memberKeyword === "" ||
@@ -258,8 +289,8 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   // 组织管理期间只处理启用账号：停用账号不能参与组织调整，也不在管理列表里占位。
   const manageableMembers =
     orgMode === "browse"
-      ? members
-      : members.filter((user) => user.status === "ACTIVE");
+      ? scopedMembers
+      : scopedMembers.filter((user) => user.status === "ACTIVE");
   const baseMembers =
     orgMode === "join"
       ? manageableMembers.filter(
@@ -273,10 +304,11 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   const visibleMembers = baseMembers.filter(matchesKeyword);
 
   const countByOrganization = (organizationId: number | null) =>
-    members.filter((user) => (user.organizationId ?? null) === organizationId)
-      .length;
+    scopedMembers.filter(
+      (user) => (user.organizationId ?? null) === organizationId,
+    ).length;
 
-  const adminCount = members.filter((user) => user.isAdmin).length;
+  const adminCount = scopedMembers.filter((user) => user.isAdmin).length;
 
   const canSelectMember = (user: AdminUserItem) =>
     user.status === "ACTIVE" &&
@@ -318,6 +350,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     setSelectedUserIds([]);
   };
 
+  const switchMemberScope = (next: MemberScope) => {
+    if (next === memberScope) return;
+    setMemberScope(next);
+    setOrgView("all");
+    resetOrgMode();
+    setSuccess(null);
+  };
+
   const openOrganizationBatch = () => {
     setOrgMode("join");
     setOrgTarget(null);
@@ -348,12 +388,12 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   // 避免停在一个没有任何标签可返回的空列表上。
   useEffect(() => {
     if (typeof orgView !== "number" || organizations.data === undefined) return;
-    if (members.some((user) => user.organizationId === orgView)) return;
+    if (scopedMembers.some((user) => user.organizationId === orgView)) return;
     setOrgView("all");
     setOrgMode("browse");
     setOrgTarget(null);
     setSelectedUserIds([]);
-  }, [orgView, members, organizations.data]);
+  }, [orgView, scopedMembers, organizations.data]);
 
   const openManage = (organizationId: number) => {
     setOrgMode("manage");
@@ -568,7 +608,26 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           <section className="panel settings-panel settings-members-panel">
             <CalmSectionTitle title="成员与角色">
               <div className="member-head-tools">
-                {members.length > 0 ? (
+                <div className="member-scope-filter">
+                  <CalmSegmented
+                    label="成员状态筛选"
+                    value={memberScope}
+                    options={[
+                      {
+                        value: "active",
+                        label: "启用",
+                        count: activeMembers.length,
+                      },
+                      {
+                        value: "departed",
+                        label: "已停用/离职",
+                        count: departedMembers.length,
+                      },
+                    ]}
+                    onChange={switchMemberScope}
+                  />
+                </div>
+                {scopedMembers.length > 0 ? (
                   <div className="task-search">
                     <InpulseIcon name="search" size={15} />
                     <input
@@ -579,69 +638,74 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                     />
                   </div>
                 ) : null}
-                <Button
-                  className="secondary-button"
-                  aria-expanded={orgMode !== "browse"}
-                  onClick={handleOrgAction}
-                >
-                  {orgActionLabel}
-                </Button>
+                {memberScope === "active" ? (
+                  <Button
+                    className="secondary-button"
+                    aria-expanded={orgMode !== "browse"}
+                    onClick={handleOrgAction}
+                  >
+                    {orgActionLabel}
+                  </Button>
+                ) : null}
               </div>
             </CalmSectionTitle>
 
-            <div className="member-org-bar">
-              <div
-                className="member-org-tabs"
-                role="tablist"
-                aria-label="按组织筛选成员"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={orgView === "all"}
-                  className={
-                    "member-org-tab" + (orgView === "all" ? " is-active" : "")
-                  }
-                  onClick={() => switchOrgView("all")}
+            {memberScope === "active" ? (
+              <div className="member-org-bar">
+                <div
+                  className="member-org-tabs"
+                  role="tablist"
+                  aria-label="按组织筛选成员"
                 >
-                  全部 <b>{members.length}</b>
-                </button>
-                {adminCount > 0 ? (
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={orgView === "admins"}
+                    aria-selected={orgView === "all"}
                     className={
-                      "member-org-tab" +
-                      (orgView === "admins" ? " is-active" : "")
+                      "member-org-tab" + (orgView === "all" ? " is-active" : "")
                     }
-                    onClick={() => switchOrgView("admins")}
+                    onClick={() => switchOrgView("all")}
                   >
-                    系统管理员 <b>{adminCount}</b>
+                    全部 <b>{scopedMembers.length}</b>
                   </button>
-                ) : null}
-                {(organizations.data?.items ?? [])
-                  .filter(
-                    (organization) => countByOrganization(organization.id) > 0,
-                  )
-                  .map((organization) => (
+                  {adminCount > 0 ? (
                     <button
-                      key={organization.id}
                       type="button"
                       role="tab"
-                      aria-selected={orgView === organization.id}
+                      aria-selected={orgView === "admins"}
                       className={
                         "member-org-tab" +
-                        (orgView === organization.id ? " is-active" : "")
+                        (orgView === "admins" ? " is-active" : "")
                       }
-                      onClick={() => switchOrgView(organization.id)}
+                      onClick={() => switchOrgView("admins")}
                     >
-                      {organization.name}{" "}
-                      <b>{countByOrganization(organization.id)}</b>
+                      系统管理员 <b>{adminCount}</b>
                     </button>
-                  ))}
+                  ) : null}
+                  {(organizations.data?.items ?? [])
+                    .filter(
+                      (organization) =>
+                        countByOrganization(organization.id) > 0,
+                    )
+                    .map((organization) => (
+                      <button
+                        key={organization.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={orgView === organization.id}
+                        className={
+                          "member-org-tab" +
+                          (orgView === organization.id ? " is-active" : "")
+                        }
+                        onClick={() => switchOrgView(organization.id)}
+                      >
+                        {organization.name}{" "}
+                        <b>{countByOrganization(organization.id)}</b>
+                      </button>
+                    ))}
+                </div>
               </div>
-            </div>
+            ) : null}
 
             {orgMode === "manage" && typeof orgTarget === "number" ? (
               <div className="member-rename-bar">
@@ -695,6 +759,20 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 title="暂无用户"
                 description="账号由统一身份认证在首次登录时自动创建，无需在此新增。"
               />
+            ) : !scopedMembers.length ? (
+              <CalmEmptyState
+                icon="users"
+                title={
+                  memberScope === "active"
+                    ? "暂无启用成员"
+                    : "暂无已停用/离职成员"
+                }
+                description={
+                  memberScope === "active"
+                    ? "当前没有启用中的成员账号。"
+                    : "停用账号会显示在这里，可重新启用或强制删除。"
+                }
+              />
             ) : !visibleMembers.length ? (
               <CalmEmptyState
                 icon="search"
@@ -704,7 +782,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                     ? "当前没有未分配的启用账号。"
                     : orgMode === "manage"
                       ? "该组织没有可管理的启用成员。"
-                      : "调整关键词或切换组织标签后重试。"
+                      : memberScope === "departed"
+                        ? "调整搜索关键词后重试。"
+                        : "调整关键词或切换组织标签后重试。"
                 }
               >
                 {memberSearch.trim().length > 0 ? (
@@ -782,12 +862,51 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       ) : null}
                     </div>
                     <div className="member-actions">
+                      {selfAdmin(user) && user.status === "ACTIVE" ? (
+                        <Button
+                          className="text-button member-action-placeholder"
+                          htmlType="button"
+                          tabIndex={-1}
+                          disabled
+                          aria-hidden="true"
+                        >
+                          停用
+                        </Button>
+                      ) : null}
+                      {!selfAdmin(user) && user.status === "ACTIVE" ? (
+                        <Button
+                          className="text-button"
+                          htmlType="button"
+                          onClick={() => requestDisable(user)}
+                        >
+                          停用
+                        </Button>
+                      ) : null}
+                      {!selfAdmin(user) && user.status === "DISABLED" ? (
+                        <Button
+                          className="text-button"
+                          htmlType="button"
+                          onClick={() => openLifecycle("enable", user)}
+                        >
+                          启用
+                        </Button>
+                      ) : null}
                       <Button
                         className="text-button"
+                        htmlType="button"
                         onClick={() => openUpdate(user)}
                       >
                         编辑
                       </Button>
+                      {!selfAdmin(user) && user.status === "DISABLED" ? (
+                        <Button
+                          className="text-button danger-text"
+                          htmlType="button"
+                          onClick={() => openLifecycle("delete", user)}
+                        >
+                          强制删除
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -975,12 +1094,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                     htmlType="button"
                     danger
                     onClick={() => {
-                      if ((editor.openTaskCount ?? 0) > 0) {
-                        setFormError(
-                          "该账号仍有 " +
-                            editor.openTaskCount +
-                            " 个未完成任务，请先转分配或删除任务后再停用。",
-                        );
+                      const blockedMessage = disableBlockedMessage(editor);
+                      if (blockedMessage !== null) {
+                        setFormError(blockedMessage);
                         return;
                       }
                       openLifecycle("disable", editor);

@@ -81,36 +81,75 @@ function userCard(name: string): HTMLElement {
 }
 
 describe("F-03 admin users page", () => {
-  it("keeps lifecycle actions out of the list", async () => {
-    const listAdminUsers = vi
-      .fn()
-      .mockResolvedValue({ items: [admin, member] });
-    mount({ listAdminUsers } as unknown as InpulseApiClient);
+  it("shows direct lifecycle actions for other members", async () => {
+    const disabled: AdminUserItem = {
+      ...member,
+      id: 3,
+      loginName: "carol",
+      name: "Carol",
+      status: "DISABLED",
+      disabledAt: "2026-10-19T00:00:00.000Z",
+      rowVersion: 2,
+    };
+    mount({
+      listAdminUsers: vi
+        .fn()
+        .mockResolvedValue({ items: [admin, member, disabled] }),
+    } as unknown as InpulseApiClient);
     await screen.findByText("Alice");
-    expect(screen.getByText("Bob")).toBeInTheDocument();
+    const aliceEdit = within(userCard("Alice")).getByRole("button", {
+      name: /编\s*辑/,
+    });
+    expect(aliceEdit).toBeInTheDocument();
     expect(
-      within(userCard("Alice")).getByRole("button", { name: /编\s*辑/ }),
-    ).toBeInTheDocument();
-    expect(
-      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
-    ).toBeInTheDocument();
+      aliceEdit.parentElement?.querySelector(".member-action-placeholder"),
+    ).not.toBeNull();
     expect(
       within(userCard("Alice")).queryByRole("button", { name: /停\s*用/ }),
     ).not.toBeInTheDocument();
+    const bobEdit = within(userCard("Bob")).getByRole("button", {
+      name: /编\s*辑/,
+    });
+    const bobDisable = within(userCard("Bob")).getByRole("button", {
+      name: /停\s*用/,
+    });
+    expect(bobEdit).toBeInTheDocument();
+    expect(bobDisable).toBeInTheDocument();
     expect(
-      within(userCard("Bob")).queryByRole("button", { name: /停\s*用/ }),
+      bobDisable.compareDocumentPosition(bobEdit) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(userCard("Bob")).queryByRole("button", { name: /启\s*用/ }),
     ).not.toBeInTheDocument();
     expect(
-      within(userCard("Alice")).queryByRole("button", { name: "强制退出" }),
+      within(userCard("Bob")).queryByRole("button", { name: "强制删除" }),
     ).not.toBeInTheDocument();
     expect(
       within(userCard("Bob")).queryByRole("button", { name: "强制退出" }),
     ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
+        "button",
+        { name: "已停用/离职" },
+      ),
+    );
+    const carol = userCard("Carol");
     expect(
-      within(userCard("Alice")).queryByRole("button", { name: /^隐\s*藏$/ }),
+      within(carol).getByRole("button", { name: /编\s*辑/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(carol).getByRole("button", { name: /启\s*用/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(carol).getByRole("button", { name: "强制删除" }),
+    ).toBeInTheDocument();
+    expect(
+      within(carol).queryByRole("button", { name: /停\s*用/ }),
     ).not.toBeInTheDocument();
     expect(
-      within(userCard("Bob")).queryByRole("button", { name: /^隐\s*藏$/ }),
+      within(carol).queryByRole("button", { name: "强制退出" }),
     ).not.toBeInTheDocument();
   });
 
@@ -201,9 +240,8 @@ describe("F-03 admin users page", () => {
     mount(client);
     await screen.findByText("Bob");
     fireEvent.click(
-      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "停用账号" }));
     const confirm = screen.getByRole("dialog", { name: /停\s*用\s*用\s*户/ });
     fireEvent.click(within(confirm).getByRole("button", { name: /确\s*认/ }));
     await waitFor(() => expect(disableUser).toHaveBeenCalledTimes(1));
@@ -269,7 +307,7 @@ describe("F-03 admin users page", () => {
     expect(secondKey).toBe(firstKey);
   });
 
-  it("keeps disabled members visible and hides deleted accounts", async () => {
+  it("defaults to active members and shows disabled members under the departed filter", async () => {
     const disabled: AdminUserItem = {
       ...member,
       id: 3,
@@ -296,18 +334,35 @@ describe("F-03 admin users page", () => {
         .mockResolvedValue({ items: [admin, member, disabled, deleted] }),
     } as unknown as InpulseApiClient);
     await screen.findByText("Alice");
+    const scope = screen.getByRole("group", { name: "成员状态筛选" });
+    const search = screen.getByLabelText("搜索成员");
+    expect(scope.closest(".member-head-tools")).not.toBeNull();
+    expect(scope.closest(".member-head-tools")?.contains(search)).toBe(true);
+    expect(
+      scope.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(scope).getByRole("button", { name: "启用" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(screen.getByText("Bob")).toBeInTheDocument();
+    expect(screen.queryByText("离职成员")).not.toBeInTheDocument();
+    expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
+
+    fireEvent.click(within(scope).getByRole("button", { name: "已停用/离职" }));
+    expect(screen.queryByText("Alice")).not.toBeInTheDocument();
+    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
     expect(screen.getByText("离职成员")).toBeInTheDocument();
     expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("group", { name: "成员状态筛选" }),
+      within(userCard("离职成员")).queryByRole("button", {
+        name: "强制退出",
+      }),
     ).not.toBeInTheDocument();
-    const rows = [...document.querySelectorAll(".member-row")];
-    expect(rows.at(-1)?.textContent).toContain("离职成员");
-    expect(rows.at(-1)?.className).toContain("is-disabled");
+    expect(userCard("离职成员").className).toContain("is-disabled");
   });
 
-  it("confirms force deletion from the editor with CSRF, idempotency key and If-Match", async () => {
+  it("confirms force deletion from the member row with CSRF, idempotency key and If-Match", async () => {
     const disabled: AdminUserItem = {
       ...member,
       status: "DISABLED",
@@ -324,10 +379,16 @@ describe("F-03 admin users page", () => {
       deleteUser,
     } as unknown as InpulseApiClient);
     await screen.findByText("Alice");
+    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
     fireEvent.click(
-      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+      within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
+        "button",
+        { name: "已停用/离职" },
+      ),
     );
-    fireEvent.click(screen.getByRole("button", { name: "强制删除" }));
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: "强制删除" }),
+    );
     const dialog = screen.getByRole("dialog", { name: /强制删除/ });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(deleteUser).toHaveBeenCalledTimes(1));
@@ -375,16 +436,32 @@ describe("F-03 admin users page", () => {
       organizationId: 7,
     };
     mount({
-      listAdminUsers: vi
-        .fn()
-        .mockResolvedValue({ items: [admin, disabled, deleted] }),
+      listAdminUsers: vi.fn().mockResolvedValue({
+        items: [{ ...member, organizationId: 7 }, admin, disabled, deleted],
+      }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [organization] }),
     } as unknown as InpulseApiClient);
-    await screen.findByText("Alice");
-    fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
+    await screen.findByText("Bob");
+    fireEvent.click(await screen.findByRole("tab", { name: /研发一组/ }));
     fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
+    expect(screen.getByText("Bob")).toBeInTheDocument();
     expect(screen.queryByText("离职成员")).not.toBeInTheDocument();
     expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
+        "button",
+        { name: "已停用/离职" },
+      ),
+    );
+    expect(screen.getByText("离职成员")).toBeInTheDocument();
+    expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("tablist", { name: "按组织筛选成员" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "编辑组织" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -694,11 +771,19 @@ describe("ADR-081 organizations", () => {
       listAdminUsers: vi.fn().mockResolvedValue({ items: [member, disabled] }),
     } as unknown as InpulseApiClient);
     await screen.findByText("Bob");
+    expect(screen.queryByText("Carol")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
     expect(screen.getByLabelText("选择 Bob")).toBeInTheDocument();
     expect(screen.queryByLabelText("选择 Carol")).not.toBeInTheDocument();
     expect(screen.queryByText("Carol")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "退出调整" }));
+    expect(screen.queryByText("Carol")).not.toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
+        "button",
+        { name: "已停用/离职" },
+      ),
+    );
     expect(screen.getByText("Carol")).toBeInTheDocument();
   });
 
@@ -910,7 +995,7 @@ describe("ADR-081 organizations", () => {
     await screen.findByText(/已把 1 名成员移出，变为未分配/);
   });
 
-  it("blocks disabling from the editor when the account still owns open tasks", async () => {
+  it("blocks direct disabling when the account still owns open tasks", async () => {
     const disableUser = vi.fn().mockResolvedValue(undefined);
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({
@@ -923,39 +1008,64 @@ describe("ADR-081 organizations", () => {
     mount(client);
     await screen.findByText("Bob");
     fireEvent.click(
-      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "停用账号" }));
     expect(
       screen.getByText(/仍有 2 个未完成任务，请先转分配或删除任务后再停用/),
     ).toBeInTheDocument();
     expect(disableUser).not.toHaveBeenCalled();
   });
 
-  it("keeps disabled accounts in the all list, gray and sorted last", async () => {
+  it("shows disabled accounts only in the departed filter and keeps them gray", async () => {
     const disabled: AdminUserItem = {
       ...member,
       status: "DISABLED",
       disabledAt: "2026-10-19T00:00:00.000Z",
     };
+    const issueCsrfToken = vi
+      .fn()
+      .mockResolvedValue({ csrfToken: "a".repeat(43) });
+    const enableUser = vi.fn().mockResolvedValue(undefined);
     mount({
       listAdminUsers: vi.fn().mockResolvedValue({ items: [disabled, admin] }),
+      issueCsrfToken,
+      enableUser,
     } as unknown as InpulseApiClient);
-    await screen.findByText("Bob");
+    await screen.findByText("Alice");
+    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
+
+    const scope = screen.getByRole("group", { name: "成员状态筛选" });
+    fireEvent.click(within(scope).getByRole("button", { name: "已停用/离职" }));
     const rows = [...document.querySelectorAll(".member-row")];
-    expect(
-      rows.map((row) => row.querySelector("strong")?.textContent ?? ""),
-    ).toEqual(["Alice", "Bob"]);
-    expect(rows[1]?.className).toContain("is-disabled");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.textContent).toContain("Bob");
+    expect(rows[0]?.className).toContain("is-disabled");
     expect(within(userCard("Bob")).getByText("停用")).toBeInTheDocument();
     expect(
-      screen.queryByRole("tab", { name: /停用|已隐藏/ }),
+      within(userCard("Bob")).getByRole("button", { name: "强制删除" }),
+    ).toBeInTheDocument();
+    expect(
+      within(userCard("Bob")).queryByRole("button", { name: /停\s*用/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(userCard("Bob")).queryByRole("button", { name: "强制退出" }),
     ).not.toBeInTheDocument();
     fireEvent.click(
-      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+      within(userCard("Bob")).getByRole("button", { name: /启\s*用/ }),
     );
-    expect(
-      screen.getByRole("button", { name: "启用账号" }),
-    ).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", {
+      name: /启\s*用\s*用\s*户/,
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /确\s*认/ }));
+    await waitFor(() => expect(enableUser).toHaveBeenCalledTimes(1));
+    expect(enableUser).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "Idempotency-Key": expect.stringContaining("admin-user-"),
+        }),
+      }),
+    );
+    await screen.findByText("用户已启用");
   });
 });
