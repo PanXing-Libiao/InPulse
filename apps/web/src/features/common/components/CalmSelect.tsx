@@ -65,6 +65,8 @@ interface CalmSelectBaseProps {
   readonly width?: number | string | undefined;
   /** 弹层启用进入/离开动画。全局主题关闭了 antd motion，这里按需为弹层局部开启。 */
   readonly animated?: boolean | undefined;
+  /** 固定向下展开；下方空间不足时也不自动翻到触发器上方。 */
+  readonly forcePopupBelow?: boolean | undefined;
 }
 
 export interface CalmSelectProps extends CalmSelectBaseProps {
@@ -164,6 +166,7 @@ export const CalmSelect: React.FC<CalmSelectComponentProps> = (props) => {
     id,
     width,
     animated,
+    forcePopupBelow,
   } = props;
   const multiple = props.multiple === true;
   const withSearch = searchable ?? appearance === "member";
@@ -434,6 +437,20 @@ export const CalmSelect: React.FC<CalmSelectComponentProps> = (props) => {
       menuItemSelectedIcon={null}
       suffixIcon={<InpulseIcon name="chevronDown" size={14} />}
       popupMatchSelectWidth={false}
+      {...(forcePopupBelow === true
+        ? {
+            placement: "bottomLeft" as const,
+            builtinPlacements: {
+              bottomLeft: {
+                points: ["tl", "bl"] as [string, string],
+                offset: [0, 4] as [number, number],
+                overflow: { adjustX: true, adjustY: false, shiftY: true },
+                htmlRegion: "visible" as const,
+                dynamicInset: true,
+              },
+            },
+          }
+        : {})}
       {...(width === undefined ? {} : { style: { width } })}
       aria-label={ariaLabel}
       {...(id === undefined ? {} : { id })}

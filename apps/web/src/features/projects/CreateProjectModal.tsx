@@ -292,31 +292,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 />
               </Form.Item>
             </div>
-            <Controller
-              name="description"
-              control={control}
-              render={({ field }) => (
-                <Form.Item
-                  label="项目描述"
-                  validateStatus={errors.description ? "error" : ""}
-                  help={errors.description?.message ?? ""}
-                >
-                  <Input.TextArea
-                    {...field}
-                    id="project-description"
-                    aria-label="项目描述"
-                    rows={3}
-                    maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
-                    placeholder="描述项目目标、交付范围与现场背景"
-                    disabled={mutation.isPending}
-                    onChange={(event) => {
-                      field.onChange(event.currentTarget.value);
-                      clearErrors("description");
-                    }}
-                  />
-                </Form.Item>
-              )}
-            />
             <fieldset className="impact-fieldset">
               <legend>项目成员</legend>
               {!directory.isPending && !directory.isError ? (
@@ -391,6 +366,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       disabled={mutation.isPending}
                       options={memberOptions}
                       animated
+                      forcePopupBelow
                     />
                   </div>
                   {candidates.length === 0 ? (
@@ -420,6 +396,31 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 />
               )}
             </fieldset>
+            <Controller
+              name="description"
+              control={control}
+              render={({ field }) => (
+                <Form.Item
+                  label="项目描述"
+                  validateStatus={errors.description ? "error" : ""}
+                  help={errors.description?.message ?? ""}
+                >
+                  <Input.TextArea
+                    {...field}
+                    id="project-description"
+                    aria-label="项目描述"
+                    rows={3}
+                    maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
+                    placeholder="描述项目目标、交付范围与现场背景"
+                    disabled={mutation.isPending}
+                    onChange={(event) => {
+                      field.onChange(event.currentTarget.value);
+                      clearErrors("description");
+                    }}
+                  />
+                </Form.Item>
+              )}
+            />
           </div>
           <aside className="writing-context">
             <strong>创建规则</strong>

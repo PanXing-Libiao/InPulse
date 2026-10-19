@@ -195,6 +195,7 @@ F-14 业务纵切片，新增路由必须同步 Schema、Route Registry、权限
 | PROJ-CREATE-009 | Playwright E2E | 项目创建关键路径 | 登录 → `/projects` → 选择 ACTIVE 第二成员 → RHF 表单创建 → 项目动态 → 搜索到项目 → 创建者与成员站内通知 | 本地 16/16 通过（2026-09-09，新增 MFA、项目创建、搜索边界与 F-27/F-28 状态用例） |
 | PROJ-CREATE-010 | API 单元 + PostgreSQL 集成 | 用户目录接口 | `GET /api/v1/users` 从 Session 解析身份，只返回 `id/name/avatarUrl/isAdmin`，过滤 DISABLED/`disabled_at` 用户，匿名或停用 Session 返回 401，不暴露登录名、邮箱或密码字段；响应 `no-store` | 本地通过（Controller 3 例；Service/Repository 2 例；API 集成 22 文件 89 例） |
 | PROJ-CREATE-011 | 前端单元 | 成员选择 | 成员目录经生成客户端读取，创建者不可选择且被排除，选择结果去重排序后写入 `memberIds`，目录 401/429 错误不泄露内部信息 | 本地通过（`user-directory-query.test.tsx`、`CreateProjectModal.test.tsx`） |
+| PROJ-CREATE-013 | 前端单元 + Playwright E2E | 成员下拉展开方向与字段顺序 | 新建项目弹层中「项目描述」位于「项目成员」之后；成员下拉固定向下展开（`forcePopupBelow`，下方空间不足时不翻转到触发器上方），E2E 断言弹层 y 坐标不小于触发器底边 | 本地通过（2026-10-19；`CreateProjectModal.test.tsx` 8 例；`project-create.spec.ts` 1 例） |
 | PROJ-CREATE-012 | API 集成 + 控制器 / 前端单元 | 项目编码冲突明确化 | 项目 `code` 撞上 `projects_code_unique`（23505）时映射为 409 `PROJECT_CODE_CONFLICT`（`details` 为空对象、`requestId` 在 body 与响应头一致），其余 23505 不误报（按约束名精确匹配）；集成用例断言失败后该编码在 `app.projects` 中只有 1 行；前端 `describeCreateProjectError` 按码返回「项目编码已被占用，请更换项目编码后重试。」且不泄露服务端 message | 本地通过（`project-bootstrap.integration.test.ts` 5/5、`project-bootstrap.controller.test.ts` 2/2、`project-query.test.tsx` 5/5，2026-10-10） |
 
 实现文件：`apps/api/test/project-bootstrap.integration.test.ts`（4 例）与

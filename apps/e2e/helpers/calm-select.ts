@@ -38,6 +38,27 @@ export function calmSelectTrigger(
     );
 }
 
+/** 打开指定下拉并断言弹层向触发器下方展开，随后收起。 */
+export async function expectCalmSelectOpensBelow(
+  scope: Page | Locator,
+  label: string,
+): Promise<void> {
+  const page = pageOf(scope);
+  const trigger = calmSelectTrigger(scope, label);
+  const triggerBox = await trigger.boundingBox();
+  if (!triggerBox) throw new Error("calm select trigger is not laid out");
+  await trigger.click();
+  const dropdown = page.locator(".ant-select-dropdown:visible").last();
+  await expect(dropdown).toBeVisible();
+  const dropdownBox = await dropdown.boundingBox();
+  if (!dropdownBox) throw new Error("calm select dropdown is not laid out");
+  expect(dropdownBox.y).toBeGreaterThanOrEqual(
+    triggerBox.y + triggerBox.height,
+  );
+  await outsideOf(scope).dispatchEvent("mousedown");
+  await expect(dropdown).toBeHidden();
+}
+
 /** 打开下拉并返回该触发器自己的 listbox（用 aria-controls 精确匹配）。 */
 async function openListbox(
   scope: Page | Locator,

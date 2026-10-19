@@ -84,6 +84,14 @@ describe("CreateProjectModal", () => {
     const { onCreated, onClose } = renderModal(client);
 
     const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    const memberLegend = within(dialog).getByText("项目成员", {
+      selector: "legend",
+    });
+    const descriptionField = within(dialog).getByLabelText("项目描述");
+    expect(
+      memberLegend.compareDocumentPosition(descriptionField) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     await fillForm(dialog);
     const user = userEvent.setup();
     await user.click(within(dialog).getByRole("button", { name: "创建项目" }));
