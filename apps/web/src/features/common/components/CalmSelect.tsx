@@ -82,8 +82,8 @@ export interface CalmMultiSelectProps extends CalmSelectBaseProps {
   readonly multiple: true;
   readonly value: readonly (number | string)[];
   readonly onChange: (values: readonly (number | string)[]) => void;
-  /** 触发器最多展示的标签数，超出折叠为 +N；默认 2。 */
-  readonly maxTagCount?: number | undefined;
+  /** 触发器最多展示的标签数，超出折叠为 +N；默认 2；"responsive" 表示按可用宽度尽量多显示。 */
+  readonly maxTagCount?: number | "responsive" | undefined;
 }
 
 export type CalmSelectComponentProps = CalmSelectProps | CalmMultiSelectProps;

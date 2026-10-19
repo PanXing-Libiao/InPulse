@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Input, Space, Switch } from "antd";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import { Controller, useForm } from "react-hook-form";
@@ -11,7 +11,6 @@ import {
   CalmBadge,
   CalmEmptyState,
   CalmSectionTitle,
-  CalmSegmented,
 } from "@features/common/components/Calm";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { AiAssistSettingsPanel } from "@features/settings/AiAssistSettingsPanel";
@@ -20,7 +19,6 @@ import { NotificationPolicyPanel } from "@features/settings/NotificationPolicyPa
 import { PermissionMatrixPanel } from "@features/settings/PermissionMatrixPanel";
 import { adminUserErrorMessage, useAdminUsers } from "./admin-user-query";
 import { MyOrganizationPanel } from "./MyOrganizationPanel";
-import { OrganizationManagerModal } from "./OrganizationManagerModal";
 import {
   organizationErrorMessage,
   useOrganizationMutations,
@@ -28,8 +26,7 @@ import {
 } from "./organization-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
-type LifecycleAction = "disable" | "enable" | "forceLogout" | "delete";
-type MemberScope = "active" | "departed";
+type LifecycleAction = "disable" | "enable" | "delete";
 
 /** 设计师稿 latest-version/views/settings.tsx L9-11：左栏区块导航。 */
 export type SettingsTab =
@@ -41,62 +38,21 @@ type EditorValues = {
   readonly isAdmin: boolean;
 };
 
-interface MemberGroup {
-  readonly organizationId: number | null;
-  readonly members: readonly AdminUserItem[];
-}
+type OrgView = "all" | "admins" | number;
 
-/**
- * ADR-081：同组织成员放在同一分组，组间按「当前账号所在组织置顶、
- * 其余组织 id 升序、未分配最后」排列；组内保持调用方传入的顺序。
- */
-function groupMembersByOrganization(
-  members: readonly AdminUserItem[],
-  selfOrganizationId: number | null,
-): readonly MemberGroup[] {
-  const groups = new Map<number | null, AdminUserItem[]>();
-  const order: (number | null)[] = [];
-  for (const user of members) {
-    const key = user.organizationId ?? null;
-    const bucket = groups.get(key);
-    if (bucket === undefined) {
-      groups.set(key, [user]);
-      order.push(key);
-    } else {
-      bucket.push(user);
-    }
-  }
-  const rank = (key: number | null) => {
-    if (selfOrganizationId !== null && key === selfOrganizationId) return 0;
-    if (key === null) return 2;
-    return 1;
-  };
-  order.sort((left, right) => {
-    const diff = rank(left) - rank(right);
-    if (diff !== 0) return diff;
-    if (left === null || right === null) return 0;
-    return left - right;
-  });
-  return order.map((key) => ({
-    organizationId: key,
-    members: groups.get(key) ?? [],
-  }));
-}
+type OrgMode = "browse" | "join" | "manage";
 
 const lifecycleCopy: Readonly<
   Record<LifecycleAction, { title: string; description: string }>
 > = {
   disable: {
     title: "停用用户",
-    description: "停用后将撤销该用户全部会话并记录审计；历史数据不会删除。",
+    description:
+      "停用会撤销该用户全部会话并记录审计；有未完成任务时必须先转分配或删除。停用后账号仍保留在成员列表中，以灰色状态显示，可随时重新启用。",
   },
   enable: {
     title: "启用用户",
     description: "启用后用户可重新登录；历史与已撤销会话不会恢复。",
-  },
-  forceLogout: {
-    title: "强制退出",
-    description: "将立即撤销该用户全部会话并记录审计，账号保持启用状态。",
   },
   delete: {
     title: "强制删除",
@@ -126,18 +82,16 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     initialTab ?? "members",
   );
   const [memberSearch, setMemberSearch] = useState("");
-  const [memberScope, setMemberScope] = useState<MemberScope>("active");
   const submitting = useRef(false);
   const organizations = useOrganizations(client, { enabled: isAdmin });
+  const [orgView, setOrgView] = useState<OrgView>("all");
+  const [orgMode, setOrgMode] = useState<OrgMode>("browse");
+  const [orgTarget, setOrgTarget] = useState<number | null>(null);
+  const [joinTarget, setJoinTarget] = useState("");
+  const [newOrganizationName, setNewOrganizationName] = useState("");
+  const [orgRenameDraft, setOrgRenameDraft] = useState("");
+  const [selectedUserIds, setSelectedUserIds] = useState<readonly number[]>([]);
   const organizationMutation = useOrganizationMutations(client);
-  const [selectedUserIds, setSelectedUserIds] = useState<ReadonlySet<number>>(
-    () => new Set(),
-  );
-  const [assignDialog, setAssignDialog] = useState<null | {
-    readonly mode: "join" | "remove";
-  }>(null);
-  const [organizationManagerOpen, setOrganizationManagerOpen] = useState(false);
-  const [batchMode, setBatchMode] = useState(false);
   const {
     control,
     handleSubmit,
@@ -256,9 +210,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           ? "用户已停用"
           : lifecycle.action === "enable"
             ? "用户已启用"
-            : lifecycle.action === "delete"
-              ? "账号已强制删除，历史业务记录中的显示名已改为「删除用户」"
-              : "已强制退出该用户",
+            : "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
       );
       setLifecycle(null);
     } catch {
@@ -282,44 +234,60 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       ? "members"
       : activeTab;
 
-  // 当前登录账号置顶（便于先确认自身身份与权限），其后是其他系统管理员，最后是普通成员；同组内保持服务端顺序。
-  // 墓碑账号不再属于成员管理范围：即使旧缓存仍返回，也同时在启用与已停用筛选中隐藏。
-  const allMembers = useMemo(() => {
+  // 成员排序：当前账号置顶，其后未分配组织、已分配组织，停用账号最后；
+  // 未分配 / 已分配两档内部仍保持系统管理员在普通成员之前，同级保持服务端顺序。
+  const members = useMemo(() => {
     const items = (query.data?.items ?? []).filter(
       (user) => user.deletedAt === null,
     );
     const rank = (user: AdminUserItem) => {
+      if (user.status !== "ACTIVE") return 100;
       if (currentUserId !== undefined && user.id === currentUserId) return 0;
-      return user.isAdmin ? 1 : 2;
+      const organizationRank = (user.organizationId ?? null) === null ? 0 : 1;
+      return 10 + organizationRank * 10 + (user.isAdmin ? 0 : 1);
     };
     return [...items].sort((left, right) => rank(left) - rank(right));
   }, [query.data, currentUserId]);
 
-  const activeMembers = useMemo(
-    () =>
-      allMembers.filter(
-        (user) => user.status === "ACTIVE" && user.deletedAt === null,
-      ),
-    [allMembers],
-  );
-  const departedMembers = useMemo(
-    () => allMembers.filter((user) => user.status === "DISABLED"),
-    [allMembers],
-  );
-  const scopedMembers =
-    memberScope === "active" ? activeMembers : departedMembers;
-
-  // 本地搜索（2026-10-16 用户指示）：按姓名、登录名或邮箱筛选当前成员列表，不走全局搜索。
   const memberKeyword = memberSearch.trim().toLocaleLowerCase();
-  const visibleMembers =
-    memberKeyword === ""
-      ? scopedMembers
-      : scopedMembers.filter(
-          (user) =>
-            user.name.toLocaleLowerCase().includes(memberKeyword) ||
-            user.loginName.toLocaleLowerCase().includes(memberKeyword) ||
-            (user.email ?? "").toLocaleLowerCase().includes(memberKeyword),
-        );
+  const matchesKeyword = (user: AdminUserItem) =>
+    memberKeyword === "" ||
+    user.name.toLocaleLowerCase().includes(memberKeyword) ||
+    user.loginName.toLocaleLowerCase().includes(memberKeyword) ||
+    (user.email ?? "").toLocaleLowerCase().includes(memberKeyword);
+  // 组织管理期间只处理启用账号：停用账号不能参与组织调整，也不在管理列表里占位。
+  const manageableMembers =
+    orgMode === "browse"
+      ? members
+      : members.filter((user) => user.status === "ACTIVE");
+  const baseMembers =
+    orgMode === "join"
+      ? manageableMembers.filter(
+          (user) => (user.organizationId ?? null) === null,
+        )
+      : orgView === "admins"
+        ? manageableMembers.filter((user) => user.isAdmin)
+        : typeof orgView === "number"
+          ? manageableMembers.filter((user) => user.organizationId === orgView)
+          : manageableMembers;
+  const visibleMembers = baseMembers.filter(matchesKeyword);
+
+  const countByOrganization = (organizationId: number | null) =>
+    members.filter((user) => (user.organizationId ?? null) === organizationId)
+      .length;
+
+  const adminCount = members.filter((user) => user.isAdmin).length;
+
+  const canSelectMember = (user: AdminUserItem) =>
+    user.status === "ACTIVE" &&
+    ((orgMode === "join" && (user.organizationId ?? null) === null) ||
+      (orgMode === "manage" && user.organizationId === orgTarget));
+
+  const toggleUserSelection = (userId: number, checked: boolean) => {
+    setSelectedUserIds((current) =>
+      checked ? [...current, userId] : current.filter((id) => id !== userId),
+    );
+  };
 
   const organizationName = (organizationId: number | null | undefined) => {
     if (organizationId === null || organizationId === undefined) {
@@ -331,68 +299,185 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     );
   };
 
-  const selfOrganizationId =
-    activeMembers.find((user) => user.id === currentUserId)?.organizationId ??
-    null;
-  const memberGroups = groupMembersByOrganization(
-    visibleMembers,
-    selfOrganizationId,
-  );
+  const switchOrgView = (view: OrgView) => {
+    setOrgView(view);
+    setOrgMode("browse");
+    setOrgTarget(null);
+    setJoinTarget("");
+    setNewOrganizationName("");
+    setOrgRenameDraft("");
+    setSelectedUserIds([]);
+  };
 
-  const switchMemberScope = (next: MemberScope) => {
-    setMemberScope(next);
-    setBatchMode(false);
-    setSelectedUserIds(new Set());
-    setAssignDialog(null);
+  const resetOrgMode = () => {
+    setOrgMode("browse");
+    setOrgTarget(null);
+    setJoinTarget("");
+    setNewOrganizationName("");
+    setOrgRenameDraft("");
+    setSelectedUserIds([]);
+  };
+
+  const openOrganizationBatch = () => {
+    setOrgMode("join");
+    setOrgTarget(null);
+    setJoinTarget("");
+    setNewOrganizationName("");
+    setOrgView("all");
+    setSelectedUserIds([]);
     setSuccess(null);
   };
 
-  const toggleUserSelection = (userId: number, checked: boolean) => {
-    setSelectedUserIds((current) => {
-      const next = new Set(current);
-      if (checked) next.add(userId);
-      else next.delete(userId);
-      return next;
-    });
+  const handleOrgAction = () => {
+    if (orgMode !== "browse") {
+      closeOrganizationBatch();
+      return;
+    }
+    if (typeof orgView === "number") {
+      openManage(orgView);
+      return;
+    }
+    openOrganizationBatch();
   };
 
-  const allVisibleSelected =
-    visibleMembers.length > 0 &&
-    visibleMembers.every((user) => selectedUserIds.has(user.id));
-  const someVisibleSelected = visibleMembers.some((user) =>
-    selectedUserIds.has(user.id),
-  );
+  const closeOrganizationBatch = () => {
+    resetOrgMode();
+  };
 
-  const toggleAllVisible = (checked: boolean) => {
-    setSelectedUserIds((current) => {
-      const next = new Set(current);
-      for (const user of visibleMembers) {
-        if (checked) next.add(user.id);
-        else next.delete(user.id);
+  // 组织最后一名成员被移出后，对应标签会消失；若它正被查看或管理，自动回到「全部」，
+  // 避免停在一个没有任何标签可返回的空列表上。
+  useEffect(() => {
+    if (typeof orgView !== "number" || organizations.data === undefined) return;
+    if (members.some((user) => user.organizationId === orgView)) return;
+    setOrgView("all");
+    setOrgMode("browse");
+    setOrgTarget(null);
+    setSelectedUserIds([]);
+  }, [orgView, members, organizations.data]);
+
+  const openManage = (organizationId: number) => {
+    setOrgMode("manage");
+    setOrgTarget(organizationId);
+    setOrgView(organizationId);
+    setJoinTarget("");
+    setNewOrganizationName("");
+    setOrgRenameDraft(
+      organizations.data?.items.find((item) => item.id === organizationId)
+        ?.name ?? "",
+    );
+    setSelectedUserIds([]);
+    setSuccess(null);
+  };
+
+  const refreshMemberData = async () => {
+    await query.refetch();
+    await organizations.refetch();
+  };
+
+  const joinSelected = async () => {
+    if (selectedUserIds.length === 0) {
+      setSuccess("请先勾选未分配的成员。");
+      return;
+    }
+    try {
+      let organizationId = joinTarget === "" ? null : Number(joinTarget);
+      let targetName = "";
+      if (joinTarget === "new") {
+        const name = newOrganizationName.trim();
+        if (name === "") {
+          setSuccess("请先填写新组织名称。");
+          return;
+        }
+        const created = (await organizationMutation.mutateAsync({
+          action: "create",
+          name,
+        })) as { readonly id?: number } | undefined;
+        if (created === undefined || typeof created.id !== "number") {
+          setSuccess("组织已创建，但未能加入成员，请刷新后重试。");
+          return;
+        }
+        organizationId = created.id;
+        targetName = name;
       }
-      return next;
-    });
+      if (organizationId === null) {
+        setSuccess("请先选择目标组织。");
+        return;
+      }
+      await organizationMutation.mutateAsync({
+        action: "assign",
+        userIds: selectedUserIds,
+        organizationId,
+      });
+      setSuccess(
+        "已把 " +
+          selectedUserIds.length +
+          " 名成员加入「" +
+          (targetName !== "" ? targetName : organizationName(organizationId)) +
+          "」",
+      );
+      resetOrgMode();
+      await refreshMemberData();
+    } catch (error) {
+      setSuccess(organizationErrorMessage(error));
+    }
   };
 
-  const assignSelectedTo = async (
-    organizationId: number | null,
-    successText: string,
-  ) => {
-    if (selectedUserIds.size === 0) return;
-    const userIds = [...selectedUserIds];
+  const leaveSelected = async () => {
+    if (selectedUserIds.length === 0) {
+      setSuccess("请先勾选成员。");
+      return;
+    }
     try {
       await organizationMutation.mutateAsync({
         action: "assign",
-        userIds,
-        organizationId,
+        userIds: selectedUserIds,
+        organizationId: null,
       });
-      setSuccess(successText);
-      setSelectedUserIds(new Set());
-      setAssignDialog(null);
-    } catch {
-      // 失败详情由 organizationMutation.error 统一渲染。
+      setSuccess(
+        "已把 " + selectedUserIds.length + " 名成员移出，变为未分配。",
+      );
+      resetOrgMode();
+      await refreshMemberData();
+    } catch (error) {
+      setSuccess(organizationErrorMessage(error));
     }
   };
+
+  const renameOrganization = async () => {
+    if (orgTarget === null) return;
+    const organization = organizations.data?.items.find(
+      (item) => item.id === orgTarget,
+    );
+    if (!organization) {
+      setSuccess("组织不存在，或已被删除。");
+      return;
+    }
+    const name = orgRenameDraft.trim();
+    if (name === "") {
+      setSuccess("请填写组织名称。");
+      return;
+    }
+    if (name === organization.name) {
+      setSuccess("组织名称没有变化。");
+      return;
+    }
+    setSuccess(null);
+    try {
+      await organizationMutation.mutateAsync({
+        action: "rename",
+        organization,
+        name,
+      });
+      setOrgRenameDraft(name);
+      await refreshMemberData();
+    } catch (error) {
+      setSuccess(organizationErrorMessage(error));
+    }
+  };
+
+  let orgActionLabel = "加入组织";
+  if (typeof orgView === "number") orgActionLabel = "编辑组织";
+  if (orgMode !== "browse") orgActionLabel = "退出调整";
 
   return (
     <>
@@ -480,122 +565,107 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         ) : null}
 
         {effectiveTab === "members" && isAdmin ? (
-          <section className="panel settings-panel">
-            <CalmSectionTitle
-              title="成员与角色"
-              hint={
-                query.data
-                  ? `启用 ${activeMembers.length} 位 · 已停用/离职 ${departedMembers.length} 位`
-                  : "正在加载成员列表"
-              }
-            >
-              {scopedMembers.length > 0 ? (
-                <div className="task-search">
-                  <InpulseIcon name="search" size={15} />
-                  <input
-                    aria-label="搜索成员"
-                    placeholder="搜索姓名、登录名或邮箱"
-                    value={memberSearch}
-                    onChange={(event) => setMemberSearch(event.target.value)}
-                  />
-                </div>
-              ) : null}
+          <section className="panel settings-panel settings-members-panel">
+            <CalmSectionTitle title="成员与角色">
+              <div className="member-head-tools">
+                {members.length > 0 ? (
+                  <div className="task-search">
+                    <InpulseIcon name="search" size={15} />
+                    <input
+                      aria-label="搜索成员"
+                      placeholder="搜索姓名、登录名或邮箱"
+                      value={memberSearch}
+                      onChange={(event) => setMemberSearch(event.target.value)}
+                    />
+                  </div>
+                ) : null}
+                <Button
+                  className="secondary-button"
+                  aria-expanded={orgMode !== "browse"}
+                  onClick={handleOrgAction}
+                >
+                  {orgActionLabel}
+                </Button>
+              </div>
             </CalmSectionTitle>
 
-            <div className="member-scope-filter">
-              <CalmSegmented
-                label="成员状态筛选"
-                value={memberScope}
-                options={[
-                  {
-                    value: "active",
-                    label: "启用",
-                    count: activeMembers.length,
-                  },
-                  {
-                    value: "departed",
-                    label: "已停用/离职",
-                    count: departedMembers.length,
-                  },
-                ]}
-                onChange={switchMemberScope}
-              />
+            <div className="member-org-bar">
+              <div
+                className="member-org-tabs"
+                role="tablist"
+                aria-label="按组织筛选成员"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={orgView === "all"}
+                  className={
+                    "member-org-tab" + (orgView === "all" ? " is-active" : "")
+                  }
+                  onClick={() => switchOrgView("all")}
+                >
+                  全部 <b>{members.length}</b>
+                </button>
+                {adminCount > 0 ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={orgView === "admins"}
+                    className={
+                      "member-org-tab" +
+                      (orgView === "admins" ? " is-active" : "")
+                    }
+                    onClick={() => switchOrgView("admins")}
+                  >
+                    系统管理员 <b>{adminCount}</b>
+                  </button>
+                ) : null}
+                {(organizations.data?.items ?? [])
+                  .filter(
+                    (organization) => countByOrganization(organization.id) > 0,
+                  )
+                  .map((organization) => (
+                    <button
+                      key={organization.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={orgView === organization.id}
+                      className={
+                        "member-org-tab" +
+                        (orgView === organization.id ? " is-active" : "")
+                      }
+                      onClick={() => switchOrgView(organization.id)}
+                    >
+                      {organization.name}{" "}
+                      <b>{countByOrganization(organization.id)}</b>
+                    </button>
+                  ))}
+              </div>
             </div>
 
-            <div className="member-toolbar">
-              {batchMode ? (
-                <>
-                  <Checkbox
-                    indeterminate={!allVisibleSelected && someVisibleSelected}
-                    checked={allVisibleSelected}
-                    onChange={(event) => toggleAllVisible(event.target.checked)}
-                  >
-                    全选当前结果
-                  </Checkbox>
-                  <span className="member-toolbar-info">
-                    {selectedUserIds.size > 0
-                      ? "已选 " + selectedUserIds.size + " 人"
-                      : "勾选成员后可批量加入或移出组织"}
-                  </span>
-                  <span className="member-toolbar-actions">
-                    <Button
-                      className="secondary-button"
-                      disabled={selectedUserIds.size === 0}
-                      onClick={() => setAssignDialog({ mode: "join" })}
-                    >
-                      加入组织
-                    </Button>
-                    <Button
-                      className="secondary-button"
-                      disabled={selectedUserIds.size === 0}
-                      onClick={() => setAssignDialog({ mode: "remove" })}
-                    >
-                      移出组织
-                    </Button>
-                    <Button
-                      className="text-button"
-                      disabled={selectedUserIds.size === 0}
-                      onClick={() => setSelectedUserIds(new Set())}
-                    >
-                      清空选择
-                    </Button>
-                    <Button
-                      className="secondary-button"
-                      onClick={() => {
-                        setBatchMode(false);
-                        setSelectedUserIds(new Set());
-                      }}
-                    >
-                      退出批量
-                    </Button>
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="member-toolbar-info">
-                    {memberScope === "active"
-                      ? "需要把多名启用成员加入或移出组织时，进入批量管理勾选成员。"
-                      : "已停用/离职账号不参与批量组织调整；如需调整组织，请先启用账号并回到「启用」页签。"}
-                  </span>
-                  <span className="member-toolbar-actions">
-                    {memberScope === "active" ? (
-                      <Button
-                        className="secondary-button"
-                        onClick={() => setBatchMode(true)}
-                      >
-                        批量管理
-                      </Button>
-                    ) : null}
-                    <Button
-                      className="secondary-button"
-                      onClick={() => setOrganizationManagerOpen(true)}
-                    >
-                      组织管理
-                    </Button>
-                  </span>
-                </>
-              )}
-            </div>
+            {orgMode === "manage" && typeof orgTarget === "number" ? (
+              <div className="member-rename-bar">
+                <label htmlFor="member-org-rename">组织名称</label>
+                <input
+                  id="member-org-rename"
+                  value={orgRenameDraft}
+                  maxLength={80}
+                  placeholder="填写组织名称"
+                  onChange={(event) => setOrgRenameDraft(event.target.value)}
+                />
+                <Button
+                  className="secondary-button"
+                  disabled={
+                    organizationMutation.isPending ||
+                    orgRenameDraft.trim() === "" ||
+                    orgRenameDraft.trim() === organizationName(orgTarget)
+                  }
+                  onClick={() => void renameOrganization()}
+                >
+                  保存名称
+                </Button>
+              </div>
+            ) : null}
 
             {success ? (
               <div className="permission-note note-success" role="status">
@@ -619,181 +689,178 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                   重试
                 </Button>
               </CalmEmptyState>
-            ) : !allMembers.length ? (
+            ) : !members.length ? (
               <CalmEmptyState
                 icon="users"
                 title="暂无用户"
                 description="账号由统一身份认证在首次登录时自动创建，无需在此新增。"
               />
-            ) : !scopedMembers.length ? (
-              <CalmEmptyState
-                icon="users"
-                title={
-                  memberScope === "active"
-                    ? "暂无启用成员"
-                    : "暂无已停用/离职账号"
-                }
-                description={
-                  memberScope === "active"
-                    ? "已停用或已删除的账号可在「已停用/离职」页签查看。"
-                    : "停用账号会出现在这里；删除后仍保留墓碑记录用于历史归属。"
-                }
-              />
             ) : !visibleMembers.length ? (
               <CalmEmptyState
                 icon="search"
                 title="没有匹配的成员"
-                description="调整关键词后重试，或清空搜索查看全部成员。"
+                description={
+                  orgMode === "join"
+                    ? "当前没有未分配的启用账号。"
+                    : orgMode === "manage"
+                      ? "该组织没有可管理的启用成员。"
+                      : "调整关键词或切换组织标签后重试。"
+                }
               >
-                <Button
-                  className="secondary-button"
-                  onClick={() => setMemberSearch("")}
-                >
-                  清空搜索
-                </Button>
+                {memberSearch.trim().length > 0 ? (
+                  <Button
+                    className="secondary-button"
+                    onClick={() => setMemberSearch("")}
+                  >
+                    清空搜索
+                  </Button>
+                ) : null}
               </CalmEmptyState>
             ) : (
               <div className="member-list">
-                {memberGroups.map((group) => (
-                  <React.Fragment key={group.organizationId ?? "unassigned"}>
-                    <div className="member-group-title">
-                      {organizationName(group.organizationId)} ·{" "}
-                      {group.members.length} 人
+                {visibleMembers.map((user) => (
+                  <div
+                    className={
+                      "member-row" +
+                      (orgMode !== "browse" ? " is-selectable" : "") +
+                      (user.status === "ACTIVE" ? "" : " is-disabled")
+                    }
+                    key={user.id}
+                  >
+                    {orgMode !== "browse" ? (
+                      canSelectMember(user) ? (
+                        <Checkbox
+                          aria-label={"选择 " + user.name}
+                          checked={selectedUserIds.includes(user.id)}
+                          onChange={(event) =>
+                            toggleUserSelection(user.id, event.target.checked)
+                          }
+                        />
+                      ) : (
+                        <span className="member-check-placeholder" />
+                      )
+                    ) : null}
+                    <span className="person-avatar">
+                      {user.name.trim().charAt(0) || "成"}
+                    </span>
+                    <div className="member-id">
+                      <strong>{user.name}</strong>
+                      <small>
+                        {user.loginName}
+                        {user.email ? " · " + user.email : ""}
+                      </small>
                     </div>
-                    {group.members.map((user) => (
-                      <div
-                        className={
-                          "member-row" +
-                          (batchMode ? " is-selectable" : "") +
-                          (user.deletedAt === null ? "" : " is-deleted")
+                    <div className="member-meta">
+                      {selfAdmin(user) ? (
+                        <CalmBadge tone="violet">当前账号</CalmBadge>
+                      ) : null}
+                      <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
+                        {user.isAdmin ? "系统管理员" : "项目成员"}
+                      </CalmBadge>
+                      <CalmBadge
+                        tone={
+                          user.organizationId === null ||
+                          user.organizationId === undefined
+                            ? "gray"
+                            : "cyan"
                         }
-                        key={user.id}
                       >
-                        {batchMode ? (
-                          <Checkbox
-                            aria-label={"选择 " + user.name}
-                            checked={selectedUserIds.has(user.id)}
-                            onChange={(event) =>
-                              toggleUserSelection(user.id, event.target.checked)
-                            }
-                          />
-                        ) : null}
-                        <span className="person-avatar">
-                          {user.deletedAt === null
-                            ? user.name.trim().charAt(0) || "成"
-                            : "删"}
+                        {organizationName(user.organizationId)}
+                      </CalmBadge>
+                      <span
+                        className={
+                          "member-status" +
+                          (user.status === "ACTIVE" ? "" : " is-disabled")
+                        }
+                      >
+                        {user.status === "ACTIVE" ? "启用" : "停用"}
+                      </span>
+                      {(user.openTaskCount ?? 0) > 0 ? (
+                        <span className="member-task-count">
+                          {user.openTaskCount + " 个未完成任务"}
                         </span>
-                        <div className="member-id">
-                          <strong>
-                            {user.deletedAt === null ? user.name : "删除用户"}
-                            {user.deletedAt === null ? null : (
-                              <span className="member-self">（已删除）</span>
-                            )}
-                            {selfAdmin(user) ? (
-                              <span className="member-self">（当前账号）</span>
-                            ) : null}
-                          </strong>
-                          <small>
-                            {user.deletedAt === null
-                              ? user.loginName +
-                                (user.email ? " · " + user.email : "")
-                              : "账号 #" + user.id + " · 历史归属保留"}
-                          </small>
-                        </div>
-                        <div className="member-meta">
-                          {user.deletedAt === null ? (
-                            <>
-                              <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
-                                {user.isAdmin ? "系统管理员" : "项目成员"}
-                              </CalmBadge>
-                              <CalmBadge
-                                tone={
-                                  user.organizationId === null ||
-                                  user.organizationId === undefined
-                                    ? "gray"
-                                    : "cyan"
-                                }
-                              >
-                                {organizationName(user.organizationId)}
-                              </CalmBadge>
-                            </>
-                          ) : (
-                            <CalmBadge tone="gray">已删除账号</CalmBadge>
-                          )}
-                          <span
-                            className={
-                              "member-status" +
-                              (user.deletedAt === null
-                                ? user.status === "ACTIVE"
-                                  ? ""
-                                  : " is-disabled"
-                                : " is-deleted")
-                            }
-                          >
-                            {user.deletedAt === null
-                              ? user.status === "ACTIVE"
-                                ? "启用"
-                                : "停用"
-                              : "已删除"}
-                          </span>
-                        </div>
-                        <div className="member-actions">
-                          {user.deletedAt === null ? (
-                            <>
-                              <Button
-                                className="text-button"
-                                onClick={() => openUpdate(user)}
-                              >
-                                编辑
-                              </Button>
-                              {!selfAdmin(user) && (
-                                <Button
-                                  className="text-button"
-                                  onClick={() =>
-                                    openLifecycle(
-                                      user.status === "ACTIVE"
-                                        ? "disable"
-                                        : "enable",
-                                      user,
-                                    )
-                                  }
-                                >
-                                  {user.status === "ACTIVE" ? "停用" : "启用"}
-                                </Button>
-                              )}
-                              {!selfAdmin(user) && user.status === "ACTIVE" && (
-                                <Button
-                                  className="text-button"
-                                  onClick={() =>
-                                    openLifecycle("forceLogout", user)
-                                  }
-                                >
-                                  强制退出
-                                </Button>
-                              )}
-                              {!selfAdmin(user) &&
-                              user.status === "DISABLED" ? (
-                                <Button
-                                  className="text-button"
-                                  danger
-                                  onClick={() => openLifecycle("delete", user)}
-                                >
-                                  强制删除
-                                </Button>
-                              ) : null}
-                            </>
-                          ) : (
-                            <span className="member-actions-note">
-                              仅保留历史归属
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </React.Fragment>
+                      ) : null}
+                    </div>
+                    <div className="member-actions">
+                      <Button
+                        className="text-button"
+                        onClick={() => openUpdate(user)}
+                      >
+                        编辑
+                      </Button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
+
+            {orgMode !== "browse" ? (
+              <div
+                className="member-batchbar"
+                role="region"
+                aria-label="批量操作"
+              >
+                <span>{"已选 " + selectedUserIds.length + " 人"}</span>
+                {orgMode === "join" ? (
+                  <>
+                    <select
+                      aria-label="目标组织"
+                      value={joinTarget}
+                      onChange={(event) => setJoinTarget(event.target.value)}
+                    >
+                      <option value="">选择组织…</option>
+                      {(organizations.data?.items ?? [])
+                        .filter(
+                          (organization) =>
+                            countByOrganization(organization.id) > 0,
+                        )
+                        .map((organization) => (
+                          <option
+                            key={organization.id}
+                            value={String(organization.id)}
+                          >
+                            {organization.name}
+                          </option>
+                        ))}
+                      <option value="new">＋ 新建组织</option>
+                    </select>
+                    {joinTarget === "new" ? (
+                      <Input
+                        aria-label="新组织名称"
+                        placeholder="填写组织名称"
+                        value={newOrganizationName}
+                        onChange={(event) =>
+                          setNewOrganizationName(event.target.value)
+                        }
+                      />
+                    ) : null}
+                    <span className="member-batchbar-actions">
+                      <Button
+                        type="primary"
+                        loading={organizationMutation.isPending}
+                        onClick={() => void joinSelected()}
+                      >
+                        加入组织
+                      </Button>
+                      <Button onClick={resetOrgMode}>取消</Button>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>{"「" + organizationName(orgTarget) + "」"}</span>
+                    <span className="member-batchbar-actions">
+                      <Button
+                        loading={organizationMutation.isPending}
+                        onClick={() => void leaveSelected()}
+                      >
+                        移出到未分配
+                      </Button>
+                      <Button onClick={resetOrgMode}>取消</Button>
+                    </span>
+                  </>
+                )}
+              </div>
+            ) : null}
 
             <div className="permission-note">
               <InpulseIcon name="shield" size={16} />
@@ -877,6 +944,72 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               ? "不能取消自己当前的管理员角色。"
               : "开启后该账号可执行用户管理与项目删除等管理员操作。"}
           </p>
+          <div className="admin-user-status">
+            <label>账号状态</label>
+            <div className="admin-user-status-line">
+              <CalmBadge tone={editor?.status === "ACTIVE" ? "green" : "gray"}>
+                {editor?.status === "ACTIVE" ? "启用" : "停用"}
+              </CalmBadge>
+              {editor !== null && (editor.openTaskCount ?? 0) > 0 ? (
+                <CalmBadge tone="amber">
+                  {editor.openTaskCount + " 个未完成任务"}
+                </CalmBadge>
+              ) : null}
+            </div>
+            {editor !== null &&
+            editor.status === "ACTIVE" &&
+            (editor.openTaskCount ?? 0) > 0 ? (
+              <Alert
+                type="warning"
+                title={
+                  "仍有 " +
+                  editor.openTaskCount +
+                  " 个未完成任务；停用前请先转分配或删除这些任务。"
+                }
+              />
+            ) : null}
+            {editor !== null && !selfAdmin(editor) ? (
+              <Space wrap>
+                {editor.status === "ACTIVE" ? (
+                  <Button
+                    htmlType="button"
+                    danger
+                    onClick={() => {
+                      if ((editor.openTaskCount ?? 0) > 0) {
+                        setFormError(
+                          "该账号仍有 " +
+                            editor.openTaskCount +
+                            " 个未完成任务，请先转分配或删除任务后再停用。",
+                        );
+                        return;
+                      }
+                      openLifecycle("disable", editor);
+                    }}
+                  >
+                    停用账号
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      htmlType="button"
+                      onClick={() => openLifecycle("enable", editor)}
+                    >
+                      启用账号
+                    </Button>
+                    <Button
+                      htmlType="button"
+                      danger
+                      onClick={() => openLifecycle("delete", editor)}
+                    >
+                      强制删除
+                    </Button>
+                  </>
+                )}
+              </Space>
+            ) : editor !== null ? (
+              <p>当前登录账号不能停用自己。</p>
+            ) : null}
+          </div>
           {formError && <Alert type="error" title={formError} />}
           {mutation.isError && (
             <Alert type="error" title={adminUserErrorMessage(mutation.error)} />
@@ -910,22 +1043,16 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           lifecycle ? "账号 · " + lifecycle.user.loginName : "账号生命周期"
         }
         title={lifecycle ? lifecycleCopy[lifecycle.action].title : ""}
-        // 停用与强制删除是破坏性动作（红）、强制退出是告警（橙）、启用是挽回（绿）。
+        // 停用与强制删除是破坏性动作（红）、启用是挽回（绿）。
         tone={
           lifecycle !== null && lifecycle.action === "enable"
             ? "success"
-            : lifecycle !== null && lifecycle.action === "forceLogout"
-              ? "warning"
-              : "danger"
+            : "danger"
         }
         icon={
-          lifecycle === null ||
-          lifecycle.action === "disable" ||
-          lifecycle.action === "delete"
+          lifecycle === null || lifecycle.action !== "enable"
             ? "alert"
-            : lifecycle.action === "forceLogout"
-              ? "logout"
-              : "check"
+            : "check"
         }
         body
         onCancel={closeLifecycle}
@@ -949,10 +1076,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               </Button>
               <Button
                 type="primary"
-                danger={
-                  lifecycle.action === "disable" ||
-                  lifecycle.action === "delete"
-                }
+                danger={lifecycle.action !== "enable"}
                 loading={mutation.isPending}
                 onClick={() => void confirmLifecycle()}
               >
@@ -962,88 +1086,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           </>
         )}
       </Modal>
-
-      <Modal
-        className="catalog-modal"
-        open={assignDialog !== null}
-        eyebrow="批量调整组织"
-        title={assignDialog?.mode === "join" ? "加入组织" : "移出组织"}
-        body
-        onCancel={() => setAssignDialog(null)}
-        mask={{ closable: !organizationMutation.isPending }}
-      >
-        {assignDialog?.mode === "join" ? (
-          <>
-            <p>把已选 {selectedUserIds.size} 名成员加入：</p>
-            {(organizations.data?.items ?? []).length === 0 ? (
-              <p>还没有组织，先到「组织管理」里创建。</p>
-            ) : (
-              <div className="organization-pick-list">
-                {(organizations.data?.items ?? []).map((item) => (
-                  <Button
-                    key={item.id}
-                    className="secondary-button"
-                    disabled={organizationMutation.isPending}
-                    onClick={() =>
-                      void assignSelectedTo(
-                        item.id,
-                        "已把 " +
-                          selectedUserIds.size +
-                          " 名成员加入「" +
-                          item.name +
-                          "」",
-                      )
-                    }
-                  >
-                    {item.name}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </>
-        ) : (
-          <p>
-            将已选 {selectedUserIds.size}{" "}
-            名成员移出所在组织（变为未分配），操作立即生效。
-          </p>
-        )}
-        {organizationMutation.isError ? (
-          <Alert
-            type="error"
-            title={organizationErrorMessage(organizationMutation.error)}
-          />
-        ) : null}
-        <Space style={{ marginTop: 16 }}>
-          {assignDialog?.mode === "remove" ? (
-            <Button
-              type="primary"
-              loading={organizationMutation.isPending}
-              onClick={() =>
-                void assignSelectedTo(
-                  null,
-                  "已把 " + selectedUserIds.size + " 名成员移出组织",
-                )
-              }
-            >
-              确认移出
-            </Button>
-          ) : null}
-          <Button
-            onClick={() => setAssignDialog(null)}
-            disabled={organizationMutation.isPending}
-          >
-            取消
-          </Button>
-        </Space>
-      </Modal>
-
-      <OrganizationManagerModal
-        open={organizationManagerOpen}
-        onClose={() => setOrganizationManagerOpen(false)}
-        members={activeMembers}
-        client={client}
-        onChanged={(message) => setSuccess(message)}
-      />
     </>
   );
 };

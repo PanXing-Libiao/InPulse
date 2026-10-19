@@ -172,7 +172,7 @@ describe("CreateProjectModal", () => {
     fireEvent.click(await screen.findByTitle("开发者 B"));
     fireEvent.click(await screen.findByTitle("管理员 A"));
     await expect(
-      within(dialog).findByText(/已选择 2 位其他成员/),
+      within(dialog).findByText(/共 3 人/),
     ).resolves.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "创建项目" }));
 
@@ -238,10 +238,14 @@ describe("CreateProjectModal", () => {
     });
     // 创建者被排除：研发一组的候选只剩 2、3 两人。
     expect(within(groupButton).getByText("0/2")).toBeInTheDocument();
+    // 未分配不是小组，整组选择只列真实组织。
+    expect(
+      within(dialog).queryByRole("button", { name: /全选组织 未分配/ }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(groupButton);
     await expect(
-      within(dialog).findByText(/已选择 2 位其他成员/),
+      within(dialog).findByText(/共 3 人/),
     ).resolves.toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: /取消全选组织 研发一组/ }),
@@ -251,7 +255,7 @@ describe("CreateProjectModal", () => {
       within(dialog).getByRole("button", { name: /取消全选组织 研发一组/ }),
     );
     await expect(
-      within(dialog).findByText(/已选择 0 位其他成员/),
+      within(dialog).findByText(/共 1 人/),
     ).resolves.toBeInTheDocument();
 
     fireEvent.click(
@@ -309,13 +313,29 @@ describe("CreateProjectModal", () => {
     fireEvent.click(await screen.findByTitle("开发者 B"));
 
     await expect(
-      within(dialog).findByText(/已选择 1 位其他成员/),
+      within(dialog).findByText(/共 2 人/),
     ).resolves.toBeInTheDocument();
     const groupButton = within(dialog).getByRole("button", {
       name: /全选组织 研发一组（已选 1\/2 人）/,
     });
     expect(groupButton.className).toContain("is-partial");
     expect(within(groupButton).getByText("1/2")).toBeInTheDocument();
+  });
+
+  it("shows the creator as a locked member and counts it in the label", async () => {
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    const client = { getUserDirectory } as unknown as InpulseApiClient;
+    renderModal(client);
+
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    expect(await within(dialog).findByText(/共 1 人/)).toBeInTheDocument();
+    // 标签数按可用宽度自适应（maxTagCount=responsive），jsdom 没有布局宽度，
+    // 这里改断言「创建者选项是 disabled」——rc-select 正是据此不给它渲染移除按钮。
+    fireEvent.mouseDown(within(dialog).getByLabelText("选择项目成员"));
+    const creatorOption = await screen.findByTitle("开发者 C");
+    expect(creatorOption.className).toContain(
+      "ant-select-item-option-disabled",
+    );
   });
 
   it("documents the current module rule instead of the removed default module", async () => {

@@ -299,6 +299,17 @@ API 集成 48 文件 444 例、database 单测 15/15 + 集成 26/26 通过。本
 （No known vulnerabilities found）。生成客户端已重新生成并通过 `pnpm contract:drift`；
 GitHub Actions 已通过（F-03 PR #72，run 34345191090）。
 
+## 账号停用（2026-10-19 本地落库）
+
+用户确认账号只有「启用 / 停用」一种状态：停用即不可登录、从选择器与派发候选中排除，历史全部保留；停用账号仍显示在「全部」成员列表里，整行灰色并排在最后，不单独提供「隐藏」状态、企业微信删除标记或「停用 / 已隐藏」标签页。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| DISABLE-API-001 | 真实 PostgreSQL 集成 + 单元 | 有未完成任务时停用被拒 | `disableUser` 返回 409 `ADMIN_USER_HAS_OPEN_TASKS`，`details.openTaskCount` 为任务数；账号仍 `ACTIVE`，会话未被撤销；HTTP 编排把 `reason=open-tasks` 与数量透传到统一错误体 | 本地通过（`admin-users-api.integration.test.ts`、`admin-users-http.test.ts`） |
+| DISABLE-UI-001 | Web 单元 | 停用账号留在全部列表 | 停用账号仍在「全部」中，整行 `is-disabled`、状态显示「停用」并排在最后；标签栏没有「停用 / 已隐藏」独立页；编辑弹窗提供「启用账号」 | 本地通过（`AdminUsersPageView.test.tsx`） |
+| DISABLE-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 | `contract:drift` 无漂移；`contract:validate` 与 `permissions:check` 恢复为 125 条操作 / 125 条路由；`db:migrations:check` 通过 | 待重跑（2026-10-19 清理后） |
+
+未运行 / 已知偏差：Playwright E2E 未覆盖停用场景；全量 API 集成、`pnpm check` 整链与 GitHub Actions 未运行。
 ## 文档与仓库治理
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
@@ -6689,24 +6700,25 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 
 ## 组织（部门）成员分组、批量归属与同组织可见（ADR-081，2026-10-16 本地落库）
 
-需求原话要点：「管理员在成员设置可通过建立组织或部门把成员分开，成员可以看同一组织的其他成员，指派成员时可以选择一整个组织或组织里面选人」「拉取成员进入组织不能一个一个来（需批量）」「不要直接能勾选成员可批量加入或移除组织，设置一个按钮，点这个按钮才会有」「相同部门的成员要放一块」。本批落库迁移 `0046`（`app.organizations` + `app.users.organization_id`）与 6 条路由（119 → 125）；指派选择器的组织视图为第二批，不在本批。2026-10-16 同日第二批（部分）落库：新建项目「初始项目成员」选择器按组织分组并支持整组勾选（`getUserDirectory` 增加 `organizationId` / `organizationName`，未分配为 `null`）；任务创建 / 改派选择器仍待落地。同日修正 `/settings` 路由守卫（首批声明对全体成员开放但路由仍带 `requiresAdmin`，已改为 `requiresAuth`）。
+需求原话要点：「管理员在成员设置可通过建立组织或部门把成员分开，成员可以看同一组织的其他成员，指派成员时可以选择一整个组织或组织里面选人」「拉取成员进入组织不能一个一个来（需批量）」「不要直接能勾选成员可批量加入或移除组织，设置一个按钮，点这个按钮才会有」「相同部门的成员要放一块」。本批落库迁移 `0046`（`app.organizations` + `app.users.organization_id`）与 6 条路由（119 → 125）；指派选择器的组织视图为第二批，不在本批。2026-10-16 同日第二批（部分）落库：新建项目「初始项目成员」选择器按组织分组并支持整组勾选（`getUserDirectory` 增加 `organizationId` / `organizationName`，未分配为 `null`）；任务创建 / 改派选择器仍待落地。同日修正 `/settings` 路由守卫（首批声明对全体成员开放但路由仍带 `requiresAdmin`，已改为 `requiresAuth`）。同日第三轮修订（用户三条指示）：取消「批量管理」入口，工具条只保留「组织管理」；组织管理由弹窗改为在「成员与角色」页内就地展开（同一按钮切换「组织管理 / 收起组织管理」），且不再复制成员清单——勾选框直接出现在既有成员列表行上，工具条随展开提供「全选当前结果 / 已选 N 人 / 清空选择」；「加入组织」（已有组织或新建组织）与「组织维护」（改名 / 删除 / 成员数与成员一览）两段区块移到成员列表下方，「移出组织」并入其中（仍二次确认、结果同为未分配），不再提供只建空组织的独立入口。
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
 | ORGANIZATION-API-001 | 真实 PostgreSQL 集成（真实 HTTP） | 组织 CRUD、批量归属、幂等重放与审计 | 创建 200、重名（含大小写/空白差异）409 `ORGANIZATION_NAME_CONFLICT`；同 Key 重放返回同一 id；改名 rowVersion + 1、旧版本 `If-Match` 409 `ORGANIZATION_VERSION_CONFLICT`；批量加入返回真实变化行数、同 Key 重放同一结果、换 Key 重复调用 `updatedCount = 0`、`userIds` 重复去重；移出（`organizationId: null`）与删除 204 后成员归属为 `NULL`；`audit_logs` 出现 `admin.organization.create/update/delete` 与 `admin.user.organizations.assign` | 本地通过（2026-10-16） |
 | ORGANIZATION-API-002 | 真实 PostgreSQL 集成（真实 HTTP） | 同组织可见与脱敏 | 同组织成员互相可见、跨组织不可见；未分配返回 `organization: null` 与空列表；成员条目仅含 `id / name / avatarUrl / isAdmin`（不含登录名、邮箱与停用状态）；匿名 401、普通成员读管理员列表 403 | 本地通过（2026-10-16） |
 | ORGANIZATION-API-003 | 真实 PostgreSQL 集成（真实 HTTP） | 拒绝越权、越界与不存在资源 | 普通成员写管理员路由 403、匿名 401、无效 CSRF 401、`name` 空白 422、不存在组织 PATCH 404、批量归属目标组织不存在 422 `ORGANIZATION_NOT_FOUND`；错误体不泄露 SQL 细节 | 本地通过（2026-10-16） |
-| ORGANIZATION-UI-001 | Web 单元 | 批量管理按钮进入模式 | 默认渲染不含勾选框与全选；点「批量管理」后才出现勾选框 / 全选 / 加入组织 / 移出组织 / 清空选择 / 退出批量；提交携带 CSRF 与 `organization-` 前缀幂等 Key | 本地通过（2026-10-16） |
+| ORGANIZATION-UI-001 | Web 单元 | 组织管理入口与列表勾选 | 成员列表默认纯浏览、不含勾选框；搜索框右侧只保留一个组织入口（无「批量管理」）：全部 / 系统管理员标签下显示「加入组织」，进入单个组织标签后显示「编辑组织」，进入调整态后统一显示「退出调整」；点击后勾选框出现在既有成员列表行上，并在标签栏下方出现「组织名称」输入与「保存名称」（不另起一份成员清单），工具条出现「全选当前结果 / 已选 N 人 / 清空选择」；收起后区块与勾选框一起消失、再展开时勾选复位；提交携带 CSRF 与 `organization-` 前缀幂等 Key | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-002 | Web 单元 | 同组织分组显示 | 列表按组织分组（`.member-group-title` 显示名称与人数），当前账号所在组织置顶、其余按组织 id 升序、未分配最后；组内保持原有顺序 | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-003 | Web 单元 | 普通成员只读视图 | 非管理员不调用 `listAdminUsers`；只渲染同组织成员（脱敏）且看不到「组织管理」按钮；未分配显示「尚未加入组织」 | 本地通过（2026-10-16） |
-| ORGANIZATION-UI-004 | Web 单元 | 组织管理弹窗新建 | 打开弹窗、填写名称、点「新建组织」提交（CSRF + `organization-` 前缀幂等 Key） | 本地通过（2026-10-16） |
+| ORGANIZATION-UI-004 | Web 单元 | 列表下方区块新建组织并入人 | 在成员列表勾选成员 → 在列表下方区块里选「新建组织」→ 填名称 → 点「加入所选 N 人」：先 `createOrganization` 再按返回 id 调 `assignUsersOrganization`，两步都带 CSRF 与 `organization-` 前缀幂等 Key；未勾选成员或名称为空时按钮不可用 | 本地通过（2026-10-16） |
 | ORGANIZATION-API-004 | 真实 PostgreSQL 集成 | 用户目录组织字段 | 已分配用户返回 `organizationId` / `organizationName`，未分配为 `null`；条目键集合为 `avatarUrl / id / isAdmin / name / organizationId / organizationName`，仍不含登录名、邮箱与停用状态 | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-005 | Web 单元 | 新建项目选择器按组织分组与整组勾选 | `CalmSelect` 按组织分组渲染组标题、未分组选项平铺最后；`CreateProjectModal` 组织按钮整组选择提交 `memberIds`、部分选择显示 `1/2` 与部分选中样式 | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-006 | Web 路由集成 | 普通成员可进入设置页 | 普通成员访问 `/settings` 不再出现「无权访问」管理员门，渲染只读「成员与角色」与同组织成员（mock `getMyOrganizationMembers`） | 本地通过（2026-10-16） |
-| ORGANIZATION-E2E-001 | Playwright 浏览器 | 普通成员只读入口 | 普通成员打开 `/settings` 可见「成员与设置」与只读「成员与角色」，无 `admin-forbidden`、无「组织管理」「批量管理」 | 未运行（用例已改写，本地全量 E2E 待跑） |
+| ORGANIZATION-UI-007 | Web 单元 | 列表下方区块加入已有组织与移出组织二次确认 | 在成员列表勾选成员 + 在区块里选已有组织 → 「加入所选 N 人」提交 `{ userIds, organizationId }`；点「移出组织」先出确认块，确认后提交 `organizationId: null` | 本地通过（2026-10-16） |
+| ORGANIZATION-E2E-001 | Playwright 浏览器 | 普通成员只读入口 | 普通成员打开 `/settings` 可见「成员与设置」与只读「成员与角色」，无 `admin-forbidden`、无「调整组织」「批量管理」 | 未运行（用例已改写，本地全量 E2E 待跑） |
 | ORGANIZATION-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:validate` 125 条；`permissions:check` 125 条操作 / 125 条路由；`contract:drift` 5 产物无漂移；全 workspace typecheck / lint / format:check 通过；迁移 `0046` 已在 `app_ci` 应用通过 | 本地通过（2026-10-16） |
 
-未运行 / 已知偏差（本批）：① 组织管理弹窗的改名、删除二次确认与「按组织批量拉人」只有实现路径，无专门自动化用例（后续可补）；② 指派选择器的组织视图：新建项目表单已落地（ORGANIZATION-UI-005），任务创建 / 改派选择器仍待落地；③ Playwright 未新增组织管理场景；普通成员只读入口用例已改写（ORGANIZATION-E2E-001）但未运行，全量 E2E 未在本批复跑；④ `pnpm check` 整链未运行、GitHub Actions 未执行；⑤ `/settings` 普通成员入口修正由 Web 路由集成用例覆盖，未做手工浏览器复核（截至本地提交）。
+未运行 / 已知偏差（本批）：① 组织管理区块里的改名与删除组织确认流程只有实现路径，无专门自动化用例（勾选加入、新建组织并入人、移出组织二次确认已覆盖，见 ORGANIZATION-UI-001 / 004 / 007）；② 指派选择器的组织视图：新建项目表单已落地（ORGANIZATION-UI-005），任务创建 / 改派选择器仍待落地；③ Playwright 未新增组织管理场景；普通成员只读入口用例已改写（ORGANIZATION-E2E-001）但未运行，全量 E2E 未在本批复跑；④ `pnpm check` 整链未运行、GitHub Actions 未执行；⑤ `/settings` 普通成员入口修正由 Web 路由集成用例覆盖，未做手工浏览器复核（截至本地提交）；⑥ 管理员组织管理已在演示环境手工复核（列表无勾选框、工具条只剩「组织管理」、点开在页内展开且无弹窗遮罩、勾选框直接出现在成员列表行上、区块位于列表下方分「加入组织 / 组织维护」两段、勾选后按钮转可用、选「新建组织」出现名称输入；未提交真实建组 / 归属 / 改名 / 删除），Playwright 仍未覆盖组织管理场景。
 
 ## ADR-082 离职账号墓碑化删除与成员状态筛选（2026-10-19）
 
@@ -6715,14 +6727,14 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR082-API-001 | 真实 PostgreSQL 集成（真实 HTTP） | 删除前置条件、事务与墓碑结果 | 未停用 409；仍有 ACTIVE 项目成员关系 409 `ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP`；移出后删除 204；墓碑登录名/姓名/邮箱/口令/组织/管理员身份/`deleted_at` 符合固定值；`auth_version` 与 `row_version` 各递增、Session 全部撤销；活动摘要改写；任务创建人/负责人显示「删除用户」；审计 `admin.user.delete` 一次且记录前后快照与计数；同 Key 重放 204 且不重复写审计；启用/编辑/强退/再次删除 409；原登录名可复用；墓碑旧 Session 401 | 本地通过（2026-10-19） |
 | ADR082-LOGIN-001 | 真实 PostgreSQL 集成 | 墓碑账号登录与 SSO 拒绝 | 墓碑账号使用本地凭据登录返回 401 且不签发 Session；SSO 按保留的 `sso_subject` 命中时按停用账号拒绝，不写回个人资料 | 本地通过（2026-10-19） |
 | ADR082-DB-001 | 真实 PostgreSQL 集成 | 墓碑不可逆数据库约束 | `app.users.deleted_at`、`users_deleted_state_check`、`app.enforce_users_immutable_columns` 与触发器存在；墓碑字段不完整时拒绝；已墓碑行不可再更新；不可清除 `deleted_at`；不可把登录名改回普通值 | 本地通过（2026-10-19） |
-| ADR082-UI-001 | Web 单元 | 成员筛选、删除隐藏与审计中文 | 默认「启用」；停用账号出现在「已停用/离职」且无强制退出按钮；墓碑账号在两个筛选均不出现；离职页无批量管理；组织管理成员集合排除停用账号；`admin.user.delete` 显示「强制删除用户」，审计行展示删除前姓名且原始快照保留前后载荷 | 本地通过（2026-10-19） |
+| ADR082-UI-001 | Web 单元 | 成员列表与删除隐藏 | 不设「启用/停用/离职」独立筛选页：停用账号留在「全部」末尾、整行灰色且无强制退出按钮；墓碑账号不出现在任何成员列表；组织调整态只显示启用账号；`admin.user.delete` 显示「强制删除用户」，审计行展示删除前姓名且原始快照保留前后载荷 | 本地通过（2026-10-19） |
 | ADR082-AUDIT-REG-001 | Web 单元 | 已删除项目的审计对象 | `project.delete` 行从平铺载荷读取删除前的项目编码与名称，显示为「项目 编码「名称」」而不是「项目 null」；项目删除 E2E 2/2 与审计页全文件 18/18 通过 | 本地通过（2026-10-19） |
 | ADR082-UI-002 | Web 单元 | 删除请求与错误文案 | 强制删除发送 `x-csrf-token`、`Idempotency-Key` 与 `If-Match`；`ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP` 显示先转移组长并移出项目的固定文案 | 本地通过（2026-10-19） |
 | ADR082-UI-003 | Playwright 浏览器 | 当前账号标识与姓名同行 | 管理员成员页的「（当前账号）」位于姓名右侧同一行；`admin-users.spec.ts` 用 Range 测量姓名文本与标签矩形，断言标签左边缘大于姓名右边缘且垂直区间重叠；2/2 通过 | 本地通过（2026-10-19） |
-| ADR082-E2E-001 | Playwright 浏览器 | 成员生命周期完整路径 | 编辑 → 停用 → 默认启用页消失 → 已停用/离职可见且无强制退出 → 启用 → 回启用页 → 强制退出（行为不变）→ 再停用 → 强制删除 → 墓碑账号不再出现在任何成员筛选 | 本地通过（2026-10-19） |
-| ADR082-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:drift` 6 产物一致；`permissions:check` 126 条操作 / 126 条路由；迁移 `0047` 已在 `app_ci` 应用；typecheck / lint / format:check 通过 | 本地通过（2026-10-19；unit 1,638；API 集成 617；DB 集成 28） |
+| ADR082-E2E-001 | Playwright 浏览器 | 成员生命周期完整路径 | 编辑 → 停用 → 列表内显示停用态且无强制退出 → 启用 → 再停用 → 强制删除 → 墓碑账号不再出现在成员列表 | 本地通过（2026-10-19，全量 Playwright 88/88） |
+| ADR082-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:drift` 6 产物一致；`permissions:check` 126 条操作 / 126 条路由；迁移 `0047` 已在 `app_ci` 应用；typecheck / lint / format:check 通过 | 本地通过（2026-10-19；Web 单测 957；API 单测 512；API 集成 618；DB 集成 28） |
 
-已知偏差（本批）：① 成员页筛选、墓碑展示与删除项目审计对象回归已由 Web 单测和全量 Playwright 88/88 复核（2026-10-19）；② 真实生产数据未执行删除演练；③ 历史业务表不做姓名物理回写；审计列表不改写原始载荷，优先显示事件当时姓名，历史业务记录按当前用户表显示墓碑名。
+已知偏差（本批）：① 成员页不再提供独立状态筛选，停用账号按 ADR-081 口径留在「全部」末尾；墓碑展示与删除项目审计对象回归由 Web 单测覆盖；② 真实生产数据未执行删除演练；③ 历史业务表不做姓名物理回写；审计列表不改写原始载荷，优先显示事件当时姓名，历史业务记录按当前用户表显示墓碑名。
 
 ## 审计动作码候选面板对齐（2026-10-19）
 

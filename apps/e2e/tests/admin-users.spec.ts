@@ -24,17 +24,14 @@ test("普通成员可进入成员与设置并只读查看同组织成员", async
     await expect(
       page.getByRole("heading", { name: "成员与角色" }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "组织管理" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "加入组织" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "批量管理" })).toHaveCount(0);
   } finally {
     await context.close();
   }
 });
 
-test("管理员完成用户编辑、停用/离职筛选、启用、强退与删除", async ({
-  browser,
-  admin,
-}) => {
+test("管理员完成用户编辑、停用、启用与强制删除", async ({ browser, admin }) => {
   test.setTimeout(180_000);
   const runtime = await loadRuntime();
   const context = await browser.newContext({
@@ -80,52 +77,16 @@ test("管理员完成用户编辑、停用/离职筛选、启用、强退与删�
       page.getByRole("heading", { name: "成员与设置" }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "新增用户" })).toHaveCount(0);
-
-    const selfRow = page
-      .locator(".member-row")
-      .filter({ hasText: admin.account.name })
-      .first();
-    const selfMark = selfRow
-      .locator(".member-self")
-      .filter({ hasText: "（当前账号）" });
-    await expect(selfMark).toBeVisible();
-    const selfMarkPosition = await selfRow
-      .locator(".member-id strong")
-      .evaluate((strong, name) => {
-        const nameNode = Array.from(strong.childNodes).find(
-          (node) => node.nodeType === 3 && node.textContent?.trim() === name,
-        );
-        const mark = strong.querySelector(".member-self");
-        if (nameNode === undefined || mark === null) {
-          throw new Error("当前账号标签或姓名节点不存在");
-        }
-        const range = document.createRange();
-        range.selectNodeContents(nameNode);
-        const nameRect = range.getBoundingClientRect();
-        const markRect = mark.getBoundingClientRect();
-        return {
-          nameRight: nameRect.right,
-          nameTop: nameRect.top,
-          nameBottom: nameRect.bottom,
-          markLeft: markRect.left,
-          markTop: markRect.top,
-          markBottom: markRect.bottom,
-        };
-      }, admin.account.name);
-    expect(selfMarkPosition.markLeft).toBeGreaterThan(
-      selfMarkPosition.nameRight,
-    );
-    expect(selfMarkPosition.markTop).toBeLessThan(selfMarkPosition.nameBottom);
-    expect(selfMarkPosition.markBottom).toBeGreaterThan(
-      selfMarkPosition.nameTop,
-    );
-
-    const scope = page.getByRole("group", { name: "成员状态筛选" });
     await expect(
-      scope.getByRole("button", { name: "启用", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+      page.getByText("当前账号", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(page.getByRole("group", { name: "成员状态筛选" })).toHaveCount(
+      0,
+    );
+
     const card = page.locator(".member-row").filter({ hasText: loginName });
     await expect(card.getByText(name, { exact: true })).toBeVisible();
+    await expect(card.getByRole("button", { name: "强制退出" })).toHaveCount(0);
 
     await card.getByRole("button", { name: /编\s*辑/ }).click();
     const editDialog = page.getByRole("dialog", { name: "编辑用户" });
@@ -135,45 +96,29 @@ test("管理员完成用户编辑、停用/离职筛选、启用、强退与删�
     await expect(editDialog).toBeHidden();
     await expect(card.getByText(updatedName, { exact: true })).toBeVisible();
 
-    await card.getByRole("button", { name: /停\s*用/ }).click();
+    await card.getByRole("button", { name: /编\s*辑/ }).click();
+    await editDialog.getByRole("button", { name: "停用账号" }).click();
     const disableDialog = page.getByRole("dialog", { name: "停用用户" });
     await disableDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(disableDialog).toBeHidden();
-    await expect(card).toHaveCount(0);
-    await scope
-      .getByRole("button", { name: "已停用/离职", exact: true })
-      .click();
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
-    await expect(card.getByRole("button", { name: "强制退出" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "批量管理" })).toHaveCount(0);
 
-    await card.getByRole("button", { name: /启\s*用/ }).click();
+    await card.getByRole("button", { name: /编\s*辑/ }).click();
+    await editDialog.getByRole("button", { name: "启用账号" }).click();
     const enableDialog = page.getByRole("dialog", { name: "启用用户" });
     await enableDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(enableDialog).toBeHidden();
-    await expect(card).toHaveCount(0);
-    await scope.getByRole("button", { name: "启用", exact: true }).click();
     await expect(card.getByText("启用", { exact: true })).toBeVisible();
 
-    await card.getByRole("button", { name: "强制退出" }).click();
-    const logoutDialog = page.getByRole("dialog", { name: "强制退出" });
-    await logoutDialog.getByRole("button", { name: /确\s*认/ }).click();
-    await expect(logoutDialog).toBeHidden();
-    await expect(
-      page.getByText("已强制退出该用户", { exact: true }),
-    ).toBeVisible();
-
-    await card.getByRole("button", { name: /停\s*用/ }).click();
+    await card.getByRole("button", { name: /编\s*辑/ }).click();
+    await editDialog.getByRole("button", { name: "停用账号" }).click();
     const disableAgainDialog = page.getByRole("dialog", { name: "停用用户" });
     await disableAgainDialog.getByRole("button", { name: /确\s*认/ }).click();
     await expect(disableAgainDialog).toBeHidden();
-    await expect(card).toHaveCount(0);
-    await scope
-      .getByRole("button", { name: "已停用/离职", exact: true })
-      .click();
-    await expect(card).toBeVisible();
+    await expect(card.getByText("停用", { exact: true })).toBeVisible();
 
-    await card.getByRole("button", { name: "强制删除" }).click();
+    await card.getByRole("button", { name: /编\s*辑/ }).click();
+    await editDialog.getByRole("button", { name: "强制删除" }).click();
     const deleteDialog = page.getByRole("dialog", { name: /强制删除/ });
     await expect(deleteDialog).toContainText("删除不可撤销");
     await deleteDialog.getByRole("button", { name: "确认删除" }).click();
@@ -181,13 +126,10 @@ test("管理员完成用户编辑、停用/离职筛选、启用、强退与删�
     await expect(
       page.getByText(
         "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
-        {
-          exact: true,
-        },
+        { exact: true },
       ),
     ).toBeVisible();
 
-    // 删除后墓碑账号不再进入任何成员筛选，也不能继续执行管理动作。
     await expect(card).toHaveCount(0);
     await expect(
       page.locator(".member-row").filter({ hasText: `账号 #${targetId}` }),

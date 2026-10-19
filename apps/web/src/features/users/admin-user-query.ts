@@ -16,7 +16,7 @@ export type AdminUserChange =
       readonly body: AdminUserUpdateRequest;
     }
   | {
-      readonly action: "disable" | "enable" | "forceLogout" | "delete";
+      readonly action: "disable" | "enable" | "delete";
       readonly user: AdminUserItem;
     };
 
@@ -29,7 +29,13 @@ export function adminUserErrorMessage(error: unknown): string {
       if (error.code === "ADMIN_USER_VERSION_CONFLICT")
         return "用户信息已在其他窗口被修改，请加载最新版本后重试。";
       if (error.code === "ADMIN_USER_SELF_MUTATION_REJECTED")
-        return "不能对当前管理员自己执行停用、降级、删除或强制退出。";
+        return "不能对当前管理员自己执行停用、降级或删除。";
+      if (error.code === "ADMIN_USER_HAS_OPEN_TASKS") {
+        const count = error.details.openTaskCount;
+        return typeof count === "number"
+          ? `该账号仍有 ${count} 个未完成任务，请先转分配或删除任务后再停用。`
+          : "该账号仍有未完成任务，请先转分配或删除任务后再停用。";
+      }
       if (error.code === "ADMIN_USER_LOGIN_CONFLICT")
         return "登录名已存在，请更换后重试。";
       if (error.code === "ADMIN_USER_EMAIL_CONFLICT")
@@ -111,9 +117,7 @@ export function useAdminUsers(
         return api.disableUser(change.user.id, init);
       if (change.action === "enable")
         return api.enableUser(change.user.id, init);
-      if (change.action === "delete")
-        return api.deleteUser(change.user.id, init);
-      return api.forceLogoutUser(change.user.id, init);
+      return api.deleteUser(change.user.id, init);
     },
     onSuccess: async () => {
       retryKey.current = null;

@@ -1,9 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Empty, Form, Input, Typography } from "antd";
+import { Alert, Button, Form, Input, Typography } from "antd";
 import { Controller, useForm } from "react-hook-form";
 import type { CreateProjectResponse, InpulseApiClient } from "@generated/api";
 import { AppModal as Modal } from "@features/common/components/AppModal";
-import { CalmSelect } from "@features/common/components/CalmSelect";
+import {
+  CalmSelect,
+  type CalmSelectOption,
+} from "@features/common/components/CalmSelect";
 import {
   useUserDirectoryQuery,
   describeUserDirectoryError,
@@ -90,9 +93,45 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }));
   }, [candidates]);
 
-  const hasOrganizationGroups = organizationGroups.some(
+  // 整组选择只列真实组织：未分配不是小组，逐人挑选仍走下方搜索框。
+  const assignedOrganizationGroups = organizationGroups.filter(
     (group) => group.name !== "未分配",
   );
+  const hasOrganizationGroups = assignedOrganizationGroups.length > 0;
+
+  /** 创建者固定出现在「选择成员」里：值排第一位，选项标 disabled 后 rc-select 不渲染移除按钮。 */
+  const creatorEntry = (directory.data ?? []).find(
+    (user) => user.id === creatorUserId,
+  );
+  const creatorOption: CalmSelectOption | null =
+    creatorUserId === undefined
+      ? null
+      : {
+          value: creatorUserId,
+          label: creatorName,
+          avatarUrl: creatorEntry?.avatarUrl ?? null,
+          group: creatorEntry?.organizationName ?? "未分配",
+          description: "创建者",
+          disabled: true,
+        };
+  const memberOptions: CalmSelectOption[] = [
+    ...(creatorOption === null ? [] : [creatorOption]),
+    ...candidates.map((user) => ({
+      value: user.id,
+      label: user.name,
+      avatarUrl: user.avatarUrl ?? null,
+      group: user.organizationName ?? "未分配",
+      description:
+        (user.organizationName ?? "未分配") +
+        (user.isAdmin ? " · 系统管理员" : ""),
+    })),
+  ];
+  const memberSelectValues =
+    creatorUserId === undefined
+      ? selectedMemberIds
+      : [creatorUserId, ...selectedMemberIds];
+  const memberCount =
+    selectedMemberIds.length + (creatorUserId === undefined ? 0 : 1);
 
   useEffect(() => {
     if (open) {
@@ -280,12 +319,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             />
             <fieldset className="impact-fieldset">
               <legend>项目成员</legend>
-              <p className="member-hint">
-                创建者 {creatorName} 自动成为活跃成员，创建流程中不可取消。
-              </p>
-              {!directory.isPending &&
-              !directory.isError &&
-              candidates.length > 0 ? (
+              {!directory.isPending && !directory.isError ? (
                 <>
                   {hasOrganizationGroups ? (
                     <div
@@ -293,7 +327,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       role="group"
                       aria-label="按组织选择"
                     >
-                      {organizationGroups.map((group) => {
+                      {assignedOrganizationGroups.map((group) => {
                         const selectedCount = group.memberIds.filter((id) =>
                           selectedMemberIds.includes(id),
                         ).length;
@@ -337,33 +371,35 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     </div>
                   ) : null}
                   <div className="calm-field">
-                    <label htmlFor="project-member-candidates">选择成员</label>
+                    <label htmlFor="project-member-candidates">
+                      选择成员
+                      <span className="member-count">共 {memberCount} 人</span>
+                    </label>
                     <CalmSelect
                       id="project-member-candidates"
                       ariaLabel="选择项目成员"
                       appearance="member"
                       multiple
-                      value={selectedMemberIds}
+                      maxTagCount="responsive"
+                      value={memberSelectValues}
                       onChange={(next) =>
-                        setSelectedMemberIds(next.map(Number))
+                        setSelectedMemberIds(
+                          next.map(Number).filter((id) => id !== creatorUserId),
+                        )
                       }
                       placeholder="输入姓名或组织搜索，可一次选择多位启用用户"
                       disabled={mutation.isPending}
-                      options={candidates.map((user) => ({
-                        value: user.id,
-                        label: user.name,
-                        avatarUrl: user.avatarUrl ?? null,
-                        group: user.organizationName ?? "未分配",
-                        description:
-                          (user.organizationName ?? "未分配") +
-                          (user.isAdmin ? " · 系统管理员" : ""),
-                      }))}
+                      options={memberOptions}
                       animated
                     />
                   </div>
+                  {candidates.length === 0 ? (
+                    <Text type="secondary" className="member-hint">
+                      暂无其他启用用户，创建者已自动加入。
+                    </Text>
+                  ) : null}
                 </>
-              ) : null}
-              {directory.isPending ? (
+              ) : directory.isPending ? (
                 /* 占位沿用真字段的 .calm-field + label 结构，控件占位与 CalmSelect 同为 32px；
                    原先的 compact 骨架是 100px，数据到达后掉到 54px，弹层会先大后小地闪一下。 */
                 <div className="calm-field">
@@ -376,23 +412,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     正在加载成员...
                   </span>
                 </div>
-              ) : directory.isError ? (
+              ) : (
                 <Alert
                   showIcon
                   type="error"
                   message={describeUserDirectoryError(directory.error)}
                 />
-              ) : candidates.length === 0 ? (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="暂无其他启用用户"
-                />
-              ) : null}
-              <Text type="secondary" className="member-hint">
-                已选择 {selectedMemberIds.length}{" "}
-                位其他成员；创建者自动成为活跃成员，
-                系统管理员即使不在成员列表也会自动拥有项目访问权。
-              </Text>
+              )}
             </fieldset>
           </div>
           <aside className="writing-context">

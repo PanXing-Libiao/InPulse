@@ -18,6 +18,7 @@ import { AdminUserRepository } from "./admin-user.repository.js";
 import {
   adminUserActiveProjectMembership,
   adminUserNotFound,
+  adminUserOpenTasks,
   adminUserSelfMutation,
   adminUserStateConflict,
   adminUserVersionConflict,
@@ -111,6 +112,9 @@ export class AdminUserService {
     if (current.rowVersion !== version) throw adminUserVersionConflict();
     if (current.status !== "ACTIVE") throw adminUserStateConflict();
     if (current.id === meta.actorId) throw adminUserSelfMutation();
+    if (current.openTaskCount > 0) {
+      throw adminUserOpenTasks(current.openTaskCount);
+    }
     if (requiresAdminGuard) await this.ensureOtherActiveAdmin(tx, current);
     const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
     this.assertActor(actor.userId, meta.actorId);
@@ -316,6 +320,7 @@ export class AdminUserService {
       isAdmin: user.isAdmin,
       organizationId: user.organizationId,
       status: user.status,
+      openTaskCount: user.openTaskCount,
       deletedAt: user.deletedAt,
       rowVersion: user.rowVersion,
     };

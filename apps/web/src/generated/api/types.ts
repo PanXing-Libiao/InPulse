@@ -87,6 +87,7 @@ export type AdminUserItem = {
   readonly isAdmin: boolean;
   readonly organizationId: (number | null);
   readonly status: ("ACTIVE" | "DISABLED");
+  readonly openTaskCount: number;
   readonly rowVersion: number;
   readonly disabledAt: (string | null);
   readonly deletedAt: (string | null);

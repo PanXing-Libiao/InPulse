@@ -132,7 +132,8 @@ async function userState(userId: number) {
            deleted_at AS "deletedAt",
            auth_version AS "authVersion",
            row_version AS "rowVersion",
-           (SELECT count(*)::int FROM app.user_sessions WHERE user_id = ${userId} AND revoked_at IS NULL) AS "activeSessions"
+           (SELECT count(*)::int FROM app.user_sessions WHERE user_id = ${userId} AND revoked_at IS NULL) AS "activeSessions",
+           (SELECT count(*)::int FROM app.task_assignees AS ta JOIN app.tasks AS t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.user_id = ${userId} AND t.work_status = 'TODO' AND t.lifecycle_status = 'ACTIVE' AND t.deleted_at IS NULL) AS "openTaskCount"
       FROM app.users
      WHERE id = ${userId}
   `) as unknown as readonly {
@@ -148,6 +149,7 @@ async function userState(userId: number) {
     readonly authVersion: number;
     readonly rowVersion: number;
     readonly activeSessions: number;
+    readonly openTaskCount: number;
   }[];
   return rows[0]!;
 }
@@ -205,6 +207,60 @@ async function createTargetSession(userId: number, authVersion: number) {
   return { sessionId, cookie: `__Host-session=${cookie}`, csrf: csrfToken };
 }
 
+async function createOpenTaskForUser(userId: number): Promise<number> {
+  const project = await createProject(client.sql, userId);
+  const code = project.code + "-T-" + Date.now();
+  return client.sql.begin(async (tx) => {
+    const rows = (await tx`
+      INSERT INTO app.tasks (
+        project_id,
+        module_id,
+        feature_id,
+        scope_type,
+        code,
+        title,
+        creator_id,
+        priority,
+        work_status,
+        lifecycle_status
+      )
+      VALUES (
+        ${project.projectId},
+        ${project.moduleId},
+        NULL,
+        ${"MODULE"},
+        ${code},
+        ${"未完成任务"},
+        ${userId},
+        ${"NORMAL"},
+        ${"TODO"},
+        ${"ACTIVE"}
+      )
+      RETURNING id
+    `) as unknown as readonly { id: number }[];
+    const taskId = rows[0]?.id;
+    if (taskId === undefined) {
+      throw new Error("task fixture insert returned no row");
+    }
+    await tx`
+      INSERT INTO app.task_status_history (
+        task_id,
+        project_id,
+        from_work_status,
+        to_work_status,
+        completed_at_snapshot,
+        changed_by
+      )
+      VALUES (${taskId}, ${project.projectId}, NULL, ${"TODO"}, NULL, ${userId})
+    `;
+    await tx`
+      INSERT INTO app.task_assignees (task_id, user_id, project_id)
+      VALUES (${taskId}, ${userId}, ${project.projectId})
+    `;
+    return taskId;
+  });
+}
+
 let taskSequence = 0;
 
 async function createTask(
@@ -227,7 +283,8 @@ async function createTask(
         title,
         creator_id,
         work_status,
-        lifecycle_status
+        lifecycle_status,
+        completed_at
       )
       VALUES (
         ${project.projectId},
@@ -237,8 +294,9 @@ async function createTask(
         ${`${project.code}-T-${taskSequence}`},
         '删除历史姓名测试',
         ${creatorId},
-        'TODO',
-        'ACTIVE'
+        'DONE',
+        'ACTIVE',
+        now()
       )
       RETURNING id
     `;
@@ -253,9 +311,17 @@ async function createTask(
         project_id,
         from_work_status,
         to_work_status,
+        completed_at_snapshot,
         changed_by
       )
-      VALUES (${task.id}, ${project.projectId}, NULL, 'TODO', ${creatorId})
+      VALUES (
+        ${task.id},
+        ${project.projectId},
+        NULL,
+        'DONE',
+        now(),
+        ${creatorId}
+      )
     `;
     return task.id;
   });
@@ -467,6 +533,34 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
         "admin.user.force_logout",
       ]),
     );
+  });
+
+  it("有未完成任务时拒绝停用并返回 openTaskCount", async () => {
+    const actor = await seedUser({ admin: true });
+    const target = await seedUser({ admin: false });
+    await createOpenTaskForUser(target.userId);
+    const before = await userState(target.userId);
+    await createTargetSession(target.userId, before.authVersion);
+
+    const response = await request(
+      `/admin/users/${target.userId}/disable`,
+      "POST",
+      actor,
+      { version: before.rowVersion },
+    );
+
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as {
+      readonly code: string;
+      readonly details: { readonly openTaskCount: number };
+    };
+    expect(body.code).toBe("ADMIN_USER_HAS_OPEN_TASKS");
+    expect(body.details.openTaskCount).toBe(1);
+    expect(await userState(target.userId)).toMatchObject({
+      status: "ACTIVE",
+      openTaskCount: 1,
+      activeSessions: 2,
+    });
   });
 
   it("只允许墓碑化已停用且无活跃项目关系的用户，并清理历史显示名", async () => {

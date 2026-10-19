@@ -29,8 +29,8 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
 
   if (query.isPending) {
     return (
-      <section className="panel settings-panel">
-        <CalmSectionTitle title="成员与角色" hint="只读视图" />
+      <section className="panel settings-panel settings-members-panel">
+        <CalmSectionTitle title="成员与角色" />
         <CalmSkeleton variant="list" rows={4} label="正在加载同组织成员" />
       </section>
     );
@@ -38,8 +38,8 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
 
   if (query.isError) {
     return (
-      <section className="panel settings-panel">
-        <CalmSectionTitle title="成员与角色" hint="只读视图" />
+      <section className="panel settings-panel settings-members-panel">
+        <CalmSectionTitle title="成员与角色" />
         <CalmEmptyState
           icon="alert"
           title="同组织成员加载失败"
@@ -61,8 +61,8 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
 
   if (organization === null) {
     return (
-      <section className="panel settings-panel">
-        <CalmSectionTitle title="成员与角色" hint="只读视图" />
+      <section className="panel settings-panel settings-members-panel">
+        <CalmSectionTitle title="成员与角色" />
         <CalmEmptyState
           icon="users"
           title="尚未加入组织"
@@ -78,11 +78,8 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
   }
 
   return (
-    <section className="panel settings-panel">
-      <CalmSectionTitle
-        title="成员与角色"
-        hint={organization.name + " · 共 " + items.length + " 位成员"}
-      />
+    <section className="panel settings-panel settings-members-panel">
+      <CalmSectionTitle title="成员与角色" />
       <div className="member-list">
         {items.map((user) => (
           <div className="member-row" key={user.id}>
@@ -90,15 +87,13 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
               {user.name.trim().charAt(0) || "成"}
             </span>
             <div className="member-id">
-              <strong>
-                {user.name}
-                {currentUserId !== undefined && user.id === currentUserId ? (
-                  <span className="member-self">（当前账号）</span>
-                ) : null}
-              </strong>
+              <strong>{user.name}</strong>
               <small>{organization.name}</small>
             </div>
             <div className="member-meta">
+              {currentUserId !== undefined && user.id === currentUserId ? (
+                <CalmBadge tone="violet">当前账号</CalmBadge>
+              ) : null}
               <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
                 {user.isAdmin ? "系统管理员" : "项目成员"}
               </CalmBadge>

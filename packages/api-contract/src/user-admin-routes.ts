@@ -24,6 +24,7 @@ const safeUserFields = [
   "isAdmin",
   "organizationId",
   "status",
+  "openTaskCount",
   "rowVersion",
   "disabledAt",
   "deletedAt",
@@ -73,12 +74,13 @@ const noBodyWritePolicy = {
 
 /**
  * createUser / updateUser 的响应为 AdminUserItem：ADR-081 新增
- * organizationId、ADR-082 新增 deletedAt 后响应 Schema 变化，按契约要求把
- * 这两条路由的幂等契约版本升级到 1.2.0（旧 Key 在新契约下返回 409）。
+ * organizationId 与 openTaskCount，ADR-082 新增 deletedAt，响应 Schema 因此变化。
+ * origin/test 已发布 deletedAt 版本的 1.2.0，合并后的 Schema 与两者都不同，
+ * 按契约要求把这两条路由的幂等契约版本升级到 1.3.0（旧 Key 在新契约下返回 409）。
  */
 const userBodyWritePolicy = {
   ...writePolicy,
-  idempotencyContractVersion: "1.2.0",
+  idempotencyContractVersion: "1.3.0",
 } as const;
 
 const versionedWritePolicy = {
