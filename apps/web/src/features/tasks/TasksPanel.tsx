@@ -512,23 +512,34 @@ export function TasksPanel({
    * 负责人姓名。已移出项目的人用「姓名（已移出项目）」呈现——2026-10-16 实测反馈：
    * 这里原来回退成「用户 #2（历史负责人）」，把内部编号暴露给了用户，也说不清该怎么办。
    */
-  const memberName = (id: number) =>
-    withDetachedMark(personName(id), isDetachedAssignee(activeMemberIds, id));
-  /** 多负责人平权（ADR-040）：逐人解析后顺次展示。 */
-  const memberNames = (ids: readonly number[]) =>
-    ids.length === 0 ? "未指派" : ids.map(memberName).join("、");
+  const memberName = (id: number, serverName?: string) =>
+    withDetachedMark(
+      serverName ?? personName(id),
+      isDetachedAssignee(activeMemberIds, id),
+    );
+  /** 多负责人平权（ADR-040）：服务端姓名与 ID 同序返回，逐人展示。 */
+  const memberNames = (
+    ids: readonly number[],
+    names: readonly string[] = [],
+  ) =>
+    ids.length === 0
+      ? "未指派"
+      : ids.map((id, index) => memberName(id, names[index])).join("、");
   /** 这批负责人里是否有已移出项目的人：详情页据此补一行重新分配指引。 */
   const memberDetached = (ids: readonly number[]) =>
     hasDetachedAssignee(activeMemberIds, ids);
   /** hover 文案：姓名之外把「请重新分配」的处置指引一并带上。 */
-  const assigneeTitle = (ids: readonly number[]) =>
+  const assigneeTitle = (
+    ids: readonly number[],
+    names: readonly string[] = [],
+  ) =>
     ids.length === 0
       ? "负责人：未指派"
       : "负责人：" +
         ids
-          .map((id) =>
+          .map((id, index) =>
             detachedAssigneeTitle(
-              personName(id),
+              names[index] ?? personName(id),
               isDetachedAssignee(activeMemberIds, id),
             ),
           )
@@ -541,11 +552,15 @@ export function TasksPanel({
       label: member.name,
       avatarUrl: member.avatarUrl ?? null,
     }));
-    for (const currentId of selection?.item?.assigneeIds ?? [])
+    const selected = selection?.item;
+    for (const currentId of selected?.assigneeIds ?? [])
       if (!list.some((option) => option.value === currentId))
         list.unshift({
           value: currentId,
-          label: memberName(currentId),
+          label: memberName(
+            currentId,
+            selected?.assigneeNames?.[selected.assigneeIds.indexOf(currentId)],
+          ),
           description:
             activeMemberIds === null ? "可保留" : DETACHED_ASSIGNEE_HINT,
         });
@@ -982,7 +997,9 @@ export function TasksPanel({
                             {subtitle === "" ? null : <span>{subtitle}</span>}
                           </button>
                         </td>
-                        <td>{memberNames(item.assigneeIds)}</td>
+                        <td>
+                          {memberNames(item.assigneeIds, item.assigneeNames)}
+                        </td>
                         <td>
                           <CalmBadge tone={priorityTone[item.priority]}>
                             {priorityLabels[item.priority]}
@@ -1056,9 +1073,14 @@ export function TasksPanel({
                         : item.description}
                     </p>
                     <div className="calm-card-assignee">
-                      <span title={assigneeTitle(item.assigneeIds)}>
+                      <span
+                        title={assigneeTitle(
+                          item.assigneeIds,
+                          item.assigneeNames,
+                        )}
+                      >
                         <InpulseIcon name="users" size={14} />
-                        {memberNames(item.assigneeIds)}
+                        {memberNames(item.assigneeIds, item.assigneeNames)}
                       </span>
                     </div>
                     <div className="calm-card-bottom">
@@ -1549,7 +1571,7 @@ export function TasksPanel({
                     />
                     <dt>负责人</dt>
                     <dd>
-                      {memberNames(current.assigneeIds)}
+                      {memberNames(current.assigneeIds, current.assigneeNames)}
                       {memberDetached(current.assigneeIds) && (
                         <small className="assignee-detached-hint">
                           {DETACHED_ASSIGNEE_HINT}
@@ -1557,7 +1579,9 @@ export function TasksPanel({
                       )}
                     </dd>
                     <dt>创建人</dt>
-                    <dd>{personName(current.creatorId)}</dd>
+                    <dd>
+                      {current.creatorName ?? personName(current.creatorId)}
+                    </dd>
                     <dt>截止时间</dt>
                     <dd>{formatDate(current.dueAt)}</dd>
                     <dt>创建时间</dt>
@@ -1593,7 +1617,6 @@ export function TasksPanel({
                   writable={taskWritable}
                   action={statusAction}
                   onClose={() => setStatusAction(null)}
-                  nameOf={personName}
                 />
               </div>
               {mergeInto && (

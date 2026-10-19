@@ -210,6 +210,7 @@ export function PublishedRecordDetail({
         `功能 #${record.featureId}`);
   const authorName =
     labels?.author ??
+    record.authorName ??
     (directory.data ?? []).find((item) => item.id === record.authorId)?.name ??
     `用户 #${record.authorId}`;
   const impactNames =

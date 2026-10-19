@@ -1,3 +1,4 @@
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import "reflect-metadata";
 import { Module, type INestApplication } from "@nestjs/common";
@@ -97,6 +98,7 @@ beforeAll(async () => {
       new PostgresNotificationWritePort(),
       new PostgresModuleReadPort(),
       new PostgresProjectsWritePort(),
+      new PostgresUserReadPort(),
     ),
     commands = new SqlTaskDeletionCommandPort(
       management,

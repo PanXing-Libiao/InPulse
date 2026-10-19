@@ -22,7 +22,7 @@ it("versions both legacy status operations while preserving their original finge
     )!;
     // ADR-040 起响应 TaskItem 新增 assigneeIds：legacy status 路由再升一个主版本；
     // ADR-054 起 TaskItem 去掉已归档生命周期取值，重放响应字段变化再升一个主版本。
-    expect(route.idempotencyContractVersion).toBe("4.0.0");
+    expect(route.idempotencyContractVersion).toBe("5.0.0");
     expect(route.replayAuthorizationPolicy).toMatchObject({
       version: "2.0.0",
       resources: { contextSchemaRef: "TaskStatusCompatibilityReplayContext" },
@@ -32,6 +32,7 @@ it("versions both legacy status operations while preserving their original finge
       "2.0.0",
       "3.0.0",
       "4.0.0",
+      "5.0.0",
     ]);
   }
 });

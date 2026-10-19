@@ -117,6 +117,7 @@ function projectionItem(id: number, projectId: number): ActivityProjectionItem {
     sourceEntityId: id,
     activityType: "TASK_COMPLETED",
     actorId: 7,
+    actorName: "成员",
     summary: `动态 ${String(id)}`,
     occurredAt: "2026-09-08T00:00:01.000Z",
   };

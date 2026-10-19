@@ -38,7 +38,7 @@ export async function createProjectViaUi(
     .fill("由 Playwright E2E 创建，用于验证项目动态与站内通知。");
   // 项目成员是可搜索多选下拉（不再是逐人复选框）。
   await pickCalmSelectOptions(dialog, "选择项目成员", [runtime.member.name]);
-  await expect(dialog.getByText(/已选择 1 位其他成员/)).toBeVisible();
+  await expect(dialog.getByText(/共 2 人/)).toBeVisible();
   await dialog.getByRole("button", { name: "创建项目" }).click();
 
   await expect(page.getByText("项目创建成功", { exact: true })).toBeVisible(

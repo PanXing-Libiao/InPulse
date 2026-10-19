@@ -4,7 +4,8 @@ export type AdminUserErrorReason =
   | "version-conflict"
   | "self-mutation"
   | "last-active-admin"
-  | "open-tasks";
+  | "open-tasks"
+  | "active-project-membership";
 
 export class AdminUserError extends Error {
   constructor(
@@ -50,7 +51,7 @@ export function adminUserSelfMutation(): AdminUserError {
   return new AdminUserError(
     409,
     "ADMIN_USER_SELF_MUTATION_REJECTED",
-    "不能对当前管理员自己执行停用、降级或强制退出",
+    "不能对当前管理员自己执行停用、降级、删除或强制退出",
     "self-mutation",
   );
 }
@@ -62,6 +63,15 @@ export function adminUserOpenTasks(openTaskCount: number): AdminUserError {
     "该账号仍有未完成任务，请先转分配或删除任务后再停用",
     "open-tasks",
     { openTaskCount },
+  );
+}
+
+export function adminUserActiveProjectMembership(): AdminUserError {
+  return new AdminUserError(
+    409,
+    "ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP",
+    "该用户仍是项目活跃成员，请先转移组长身份并把该账号移出全部项目后再删除",
+    "active-project-membership",
   );
 }
 

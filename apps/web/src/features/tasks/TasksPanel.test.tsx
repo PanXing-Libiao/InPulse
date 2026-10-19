@@ -1225,6 +1225,7 @@ describe("C-3 任务详情弹窗标签页", () => {
               completionNoteSnapshot: null,
               reason: null,
               changedBy: 5,
+              changedByName: "项目成员",
               changedAt: "2026-09-10T03:00:00.000Z",
             },
           ],

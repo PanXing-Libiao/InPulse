@@ -8,9 +8,10 @@ import type { TransactionContext } from "../database/transaction-context.js";
 
 type AdminUserRow = Omit<
   AdminUserItem,
-  "disabledAt" | "createdAt" | "updatedAt"
+  "disabledAt" | "deletedAt" | "createdAt" | "updatedAt"
 > & {
   disabledAt: Date | string | null;
+  deletedAt: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 };
@@ -19,6 +20,8 @@ const dto = (row: AdminUserRow): AdminUserItem => ({
   ...row,
   disabledAt:
     row.disabledAt === null ? null : new Date(row.disabledAt).toISOString(),
+  deletedAt:
+    row.deletedAt === null ? null : new Date(row.deletedAt).toISOString(),
   createdAt: new Date(row.createdAt).toISOString(),
   updatedAt: new Date(row.updatedAt).toISOString(),
 });
@@ -38,9 +41,11 @@ export class AdminUserRepository {
              row_version AS "rowVersion",
              disabled_at AS "disabledAt",
              (SELECT count(*)::int FROM app.task_assignees AS ta JOIN app.tasks AS t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.user_id = users.id AND t.work_status = 'TODO' AND t.lifecycle_status = 'ACTIVE' AND t.deleted_at IS NULL) AS "openTaskCount",
+             deleted_at AS "deletedAt",
              created_at AS "createdAt",
              updated_at AS "updatedAt"
         FROM app.users
+       WHERE deleted_at IS NULL
        ORDER BY id DESC
        LIMIT 1000
     `) as unknown as readonly AdminUserRow[];
@@ -65,6 +70,7 @@ export class AdminUserRepository {
                  row_version AS "rowVersion",
                  disabled_at AS "disabledAt",
              (SELECT count(*)::int FROM app.task_assignees AS ta JOIN app.tasks AS t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.user_id = users.id AND t.work_status = 'TODO' AND t.lifecycle_status = 'ACTIVE' AND t.deleted_at IS NULL) AS "openTaskCount",
+             deleted_at AS "deletedAt",
                  created_at AS "createdAt",
                  updated_at AS "updatedAt"
             FROM app.users
@@ -84,6 +90,7 @@ export class AdminUserRepository {
                  row_version AS "rowVersion",
                  disabled_at AS "disabledAt",
              (SELECT count(*)::int FROM app.task_assignees AS ta JOIN app.tasks AS t ON t.id = ta.task_id AND t.project_id = ta.project_id WHERE ta.user_id = users.id AND t.work_status = 'TODO' AND t.lifecycle_status = 'ACTIVE' AND t.deleted_at IS NULL) AS "openTaskCount",
+             deleted_at AS "deletedAt",
                  created_at AS "createdAt",
                  updated_at AS "updatedAt"
             FROM app.users
@@ -143,6 +150,7 @@ export class AdminUserRepository {
              updated_at = now(),
              row_version = row_version + 1
        WHERE id = ${current.id}
+         AND deleted_at IS NULL
          AND row_version = ${current.rowVersion}
       RETURNING id
     `) as unknown as readonly { id: number }[];
@@ -164,6 +172,7 @@ export class AdminUserRepository {
              row_version = row_version + 1,
              updated_at = now()
        WHERE id = ${current.id}
+         AND deleted_at IS NULL
          AND row_version = ${current.rowVersion}
       RETURNING id
     `) as unknown as readonly { id: number }[];
@@ -184,6 +193,7 @@ export class AdminUserRepository {
              row_version = row_version + 1,
              updated_at = now()
        WHERE id = ${current.id}
+         AND deleted_at IS NULL
          AND row_version = ${current.rowVersion}
       RETURNING id
     `) as unknown as readonly { id: number }[];
@@ -203,6 +213,41 @@ export class AdminUserRepository {
              row_version = row_version + 1,
              updated_at = now()
        WHERE id = ${current.id}
+         AND deleted_at IS NULL
+         AND row_version = ${current.rowVersion}
+      RETURNING id
+    `) as unknown as readonly { id: number }[];
+    if (rows.length === 0) {
+      return undefined;
+    }
+    return this.find(tx, current.id);
+  }
+
+  /**
+   * 不可逆墓碑化：清除登录名、个人资料、口令、组织与管理员身份，保留主键。
+   * 只有服务层校验完停用态、版本与活跃项目关系后才可调用。
+   */
+  async delete(
+    tx: TransactionContext,
+    current: AdminUserItem,
+  ): Promise<AdminUserItem | undefined> {
+    const rows = (await tx.sql`
+      UPDATE app.users
+         SET login_name = 'deleted-user-' || id::text,
+             name = '删除用户',
+             email = NULL,
+             avatar_url = NULL,
+             password_hash = NULL,
+             organization_id = NULL,
+             is_admin = false,
+             status = 'DISABLED',
+             disabled_at = COALESCE(disabled_at, now()),
+             auth_version = auth_version + 1,
+             deleted_at = now(),
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${current.id}
+         AND deleted_at IS NULL
          AND row_version = ${current.rowVersion}
       RETURNING id
     `) as unknown as readonly { id: number }[];
@@ -224,6 +269,7 @@ export class AdminUserRepository {
        WHERE u.is_admin = true
          AND u.status = 'ACTIVE'
          AND u.disabled_at IS NULL
+         AND u.deleted_at IS NULL
        ORDER BY u.id
        FOR UPDATE OF u
     `) as unknown as readonly { id: number }[];

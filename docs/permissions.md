@@ -85,6 +85,7 @@ F-12 本地接口已登记到可执行权限矩阵，真实 HTTP/数据库验收
 | `updateUser` · `PATCH /api/v1/admin/users/{userId}` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；登录名不可修改，字段缺省保持不变，`email/avatarUrl` 为 null 表示清空；版本/状态冲突 409；禁止取消自己的管理员角色；移除 ACTIVE 管理员前按 id 升序锁定全部活跃管理员，剩余可用管理员数必须大于 1，否则 409；审计 `admin.user.update` |
 | `disableUser` · `POST /api/v1/admin/users/{userId}/disable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标不存在 404、已停用或版本冲突 409；禁止停用自己；停用 ACTIVE 管理员时执行最后一名可用管理员保护；有未完成任务时返回 409 `ADMIN_USER_HAS_OPEN_TASKS`，`details.openTaskCount` 给出数量且不撤销会话、不改状态；同事务置 `DISABLED`/`disabled_at`、递增 `auth_version` 与 `row_version`、撤销全部 Session 并写审计；停用后目标所有受保护请求 401 |
 | `enableUser` · `POST /api/v1/admin/users/{userId}/enable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标不存在 404、已启用或版本冲突 409；同事务清除停用态并递增 `row_version`、写审计；不恢复已撤销 Session 或登录限流历史 |
+| `deleteUser` · `POST /api/v1/admin/users/{userId}/delete` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标必须已停用、尚未墓碑化且无任何 ACTIVE 项目成员关系；禁止删除自己；同事务墓碑化账号（`deleted_at`、固定登录名与姓名、清除邮箱/头像/口令/组织/管理员身份）、递增 `auth_version` 与 `row_version`、撤销全部 Session、改写动态姓名并写 `admin.user.delete` 审计；已删除账号不可登录、启用、编辑、强退或再次删除 |
 | `forceLogoutUser` · `POST /api/v1/admin/users/{userId}/force-logout` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标不存在 404、版本冲突 409；禁止强制退出自己；同事务递增 `auth_version` 与 `row_version`、撤销目标全部 Session 并写审计；账号保持 ACTIVE；前端不再单列「强制退出」入口，统一由「停用账号」承担撤销会话语义 |
 
 ## F-14 功能级任务接口（2026-09-09 本地实现）
@@ -331,3 +332,11 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | `getMyOrganizationMembers` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效会话：返回当前用户所属组织与该组织 ACTIVE 成员（`id` / `name` / `avatarUrl` / `isAdmin`，最多 300 条；不返回登录名、邮箱与停用状态）；未分配返回空列表；只读，响应 `no-store` |
 
 六条路由承载 ADR-081 的组织（部门）能力：组织是全局平铺配置，一名成员至多归属一个组织（未分配为 `NULL`，删除组织即回到未分配），组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。路由总数 119 → 125，`permissions:check` 125 条操作 / 125 条路由通过（2026-10-16 实测）；真实 PostgreSQL 集成用例 `apps/api/test/organizations-api.integration.test.ts` 3 例本地通过；迁移 `0046_organizations.sql`。2026-10-16 第二批（部分）与修正：① `getUserDirectory` 增加只读组织字段（未分配为 `null`，仍不含登录名与邮箱），新建项目「初始项目成员」选择器按组织分组并支持「全选组织」快捷按钮（仍受 1～20 人与项目成员约束不变）；② 修正 `/settings` 前端路由守卫——ADR-081 首批声明「入口对全体成员开放」但路由仍要求管理员，已改为登录守卫（`requiresAuth`），普通成员进入后只渲染只读同组织视图，管理能力由页面按 `isAdmin` 收缩；③ 真实 PostgreSQL 集成 `apps/api/test/user-directory.integration.test.ts` 增至 3 例（含组织归属 `null` / 非 `null`）。
+
+## ADR-082 离职账号墓碑化删除（2026-10-19）
+
+| operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
+| ------------ | ---- | -------- | ------------ | ---------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deleteUser` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（1.0.0）+ `If-Match`；目标不存在 404；未停用、已墓碑化或版本冲突 409；禁止删除自己；仍有 ACTIVE 项目成员关系时 409 `ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP`；成功 204 无 body |
+
+本路由只服务离职账号清理：管理员必须先把目标停用并移出全部项目，再执行删除。删除不是物理删除，而是不可逆墓碑化 `app.users` 行：保留主键与历史外键，清除登录名、姓名、邮箱、头像、口令、组织归属与管理员身份，撤销全部 Session，并在同一事务内改写项目动态中的姓名引用和写 `admin.user.delete` 审计。墓碑账号不可登录、启用、编辑、强制退出或再次删除；原登录名可复用，`sso_subject` 保留用于阻止同一统一身份静默接管新账号。审计原始载荷与哈希链保持不可变，审计列表优先使用事件载荷中的历史姓名；历史业务记录显示「删除用户」。成员页默认展示启用账号，可切换到已停用/离职；墓碑账号不进入任何成员筛选，停用账号不显示强制退出按钮，强制退出接口行为不变。路由总数 125 → 126，`permissions:check` 126 条操作 / 126 条路由（2026-10-19 实测）。真实 PostgreSQL 集成 `apps/api/test/admin-users-api.integration.test.ts`、`apps/api/test/login.integration.test.ts` 与 `database/test/integration/database.test.ts` 已覆盖墓碑化、Session 撤销、历史姓名、审计、幂等重放、登录拒绝与数据库不可逆约束。

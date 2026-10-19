@@ -1,3 +1,4 @@
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { SearchQueryService } from "../src/modules/search/search-query.service.js";
 import { PostgresSearchProjectionReader } from "../src/modules/search/search-projection.reader.js";
 import { SearchCursorService } from "../src/modules/search/search-cursor.js";
@@ -171,6 +172,7 @@ beforeAll(async () => {
             uow,
             new PublishedRecordRepository(),
             new TimeCursorService(ring, "CHANGE_RECORDS"),
+            new PostgresUserReadPort(),
           ),
         ),
       },
@@ -398,6 +400,7 @@ describe("F21 ADR-024 lifecycle", () => {
       uow,
       new PublishedRecordRepository(),
       new TimeCursorService(ring, "CHANGE_RECORDS"),
+      new PostgresUserReadPort(),
     );
     await expect(
       reader.read(f.userId, f.projectId, f.draft.id),

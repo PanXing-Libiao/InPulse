@@ -134,6 +134,7 @@ export class OrganizationRepository {
              row_version = row_version + 1,
              updated_at = now()
        WHERE organization_id = ${organizationId}
+         AND deleted_at IS NULL
       RETURNING id
     `) as unknown as readonly { id: number }[];
     return rows.length;
@@ -166,6 +167,7 @@ export class OrganizationRepository {
       SELECT id
         FROM app.users
        WHERE id = ANY(${userIds}::integer[])
+         AND deleted_at IS NULL
        ORDER BY id
        FOR UPDATE
     `) as unknown as readonly { id: number }[];
@@ -187,6 +189,7 @@ export class OrganizationRepository {
              row_version = row_version + 1,
              updated_at = now()
        WHERE id = ANY(${userIds}::integer[])
+         AND deleted_at IS NULL
          AND organization_id IS DISTINCT FROM ${organizationId}
       RETURNING id
     `) as unknown as readonly { id: number }[];

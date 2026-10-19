@@ -2,7 +2,6 @@ import { Injectable } from "@nestjs/common";
 import {
   taskItemSchema,
   moduleTaskItemSchema,
-  taskStatusHistoryResponseSchema,
   type ModuleTaskItem,
   type TaskItem,
   type TaskEditRequest,
@@ -11,6 +10,16 @@ import type { TransactionContext } from "../../database/transaction-context.js";
 import { taskListOrderBy } from "./task-list-order.js";
 
 export type TaskRecord = TaskItem | ModuleTaskItem;
+export interface TaskStatusHistoryRow {
+  readonly id: string;
+  readonly fromWorkStatus: "TODO" | "DONE" | "CANCELED" | null;
+  readonly toWorkStatus: "TODO" | "DONE" | "CANCELED";
+  readonly completedAtSnapshot: string | null;
+  readonly completionNoteSnapshot: string | null;
+  readonly reason: string | null;
+  readonly changedBy: number;
+  readonly changedAt: string;
+}
 type Row = Omit<TaskRecord, "createdAt" | "updatedAt" | "dueAt"> & {
   createdAt: Date;
   updatedAt: Date;
@@ -49,12 +58,16 @@ export interface TaskDeletionRow {
 
 @Injectable()
 export class TaskManagementRepository {
-  async history(tx: TransactionContext, scope: TaskScope, taskId: number) {
+  async history(
+    tx: TransactionContext,
+    scope: TaskScope,
+    taskId: number,
+  ): Promise<TaskStatusHistoryRow[]> {
     const rows = await tx.sql<
       {
         id: string;
-        fromWorkStatus: string | null;
-        toWorkStatus: string;
+        fromWorkStatus: "TODO" | "DONE" | "CANCELED" | null;
+        toWorkStatus: "TODO" | "DONE" | "CANCELED";
         completedAtSnapshot: Date | null;
         completionNoteSnapshot: string | null;
         reason: string | null;
@@ -66,16 +79,14 @@ export class TaskManagementRepository {
         completed_at_snapshot AS "completedAtSnapshot", completion_note_snapshot AS "completionNoteSnapshot",
         reason, changed_by AS "changedBy", changed_at AS "changedAt"
       FROM app.task_status_history WHERE task_id=${taskId} AND project_id=${scope.projectId} ORDER BY app.task_status_history.id`;
-    return taskStatusHistoryResponseSchema.parse({
-      items: rows.map((row) => ({
-        ...row,
-        completedAtSnapshot:
-          row.completedAtSnapshot === null
-            ? null
-            : new Date(row.completedAtSnapshot).toISOString(),
-        changedAt: new Date(row.changedAt).toISOString(),
-      })),
-    });
+    return rows.map((row) => ({
+      ...row,
+      completedAtSnapshot:
+        row.completedAtSnapshot === null
+          ? null
+          : new Date(row.completedAtSnapshot).toISOString(),
+      changedAt: new Date(row.changedAt).toISOString(),
+    }));
   }
   async transition(
     tx: TransactionContext,
@@ -138,7 +149,7 @@ export class TaskManagementRepository {
   async list(tx: TransactionContext, scope: TaskScope): Promise<TaskRecord[]> {
     const rows = await tx.sql<
       Row[]
-    >`SELECT t.id, t.project_id AS "projectId", t.module_id AS "moduleId", t.feature_id AS "featureId", t.scope_type AS "scopeType", t.code, t.title, t.description, a.ids AS "assigneeIds", a.ids[1] AS "assigneeId", t.creator_id AS "creatorId", t.priority, t.work_status AS "workStatus", t.lifecycle_status AS "lifecycleStatus", t.due_at AS "dueAt", t.row_version AS "rowVersion", t.created_at AS "createdAt", t.updated_at AS "updatedAt", ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=t.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks t LEFT JOIN LATERAL (SELECT array_agg(ta.user_id ORDER BY ta.user_id) AS ids FROM app.task_assignees ta WHERE ta.task_id=t.id) AS a ON true WHERE t.deleted_at IS NULL AND t.project_id = ${scope.projectId} AND t.module_id = ${scope.moduleId} AND ${scope.featureId === null ? tx.sql`t.scope_type = 'MODULE' AND t.feature_id IS NULL` : tx.sql`((t.feature_id = ${scope.featureId} AND t.scope_type = 'FEATURE') OR (t.scope_type = 'MODULE' AND EXISTS (SELECT 1 FROM app.task_feature_impacts i WHERE i.task_id = t.id AND i.feature_id = ${scope.featureId})))`} ORDER BY ${taskListOrderBy(tx.sql)}`;
+    >`SELECT t.id, t.project_id AS "projectId", t.module_id AS "moduleId", t.feature_id AS "featureId", t.scope_type AS "scopeType", t.code, t.title, t.description, a.ids AS "assigneeIds", a.ids[1] AS "assigneeId", t.creator_id AS "creatorId", (SELECT u.name FROM app.users u WHERE u.id = t.creator_id) AS "creatorName", a.names AS "assigneeNames", t.priority, t.work_status AS "workStatus", t.lifecycle_status AS "lifecycleStatus", t.due_at AS "dueAt", t.row_version AS "rowVersion", t.created_at AS "createdAt", t.updated_at AS "updatedAt", ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=t.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks t LEFT JOIN LATERAL (SELECT array_agg(ta.user_id ORDER BY ta.user_id) AS ids, array_agg(u.name ORDER BY ta.user_id) AS names FROM app.task_assignees ta JOIN app.users u ON u.id = ta.user_id WHERE ta.task_id=t.id) AS a ON true WHERE t.deleted_at IS NULL AND t.project_id = ${scope.projectId} AND t.module_id = ${scope.moduleId} AND ${scope.featureId === null ? tx.sql`t.scope_type = 'MODULE' AND t.feature_id IS NULL` : tx.sql`((t.feature_id = ${scope.featureId} AND t.scope_type = 'FEATURE') OR (t.scope_type = 'MODULE' AND EXISTS (SELECT 1 FROM app.task_feature_impacts i WHERE i.task_id = t.id AND i.feature_id = ${scope.featureId})))`} ORDER BY ${taskListOrderBy(tx.sql)}`;
     return rows.map(dto);
   }
   async find(
@@ -149,7 +160,7 @@ export class TaskManagementRepository {
   ): Promise<TaskRecord | undefined> {
     const [row] = await tx.sql<
       Row[]
-    >`SELECT id, project_id AS "projectId", module_id AS "moduleId", feature_id AS "featureId", scope_type AS "scopeType", code, title, description, (SELECT array_agg(ta.user_id ORDER BY ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeIds", (SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId", creator_id AS "creatorId", priority, work_status AS "workStatus", lifecycle_status AS "lifecycleStatus", due_at AS "dueAt", row_version AS "rowVersion", created_at AS "createdAt", updated_at AS "updatedAt", ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=app.tasks.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks WHERE deleted_at IS NULL AND project_id = ${scope.projectId} AND module_id = ${scope.moduleId} AND ${scope.featureId === null ? tx.sql`scope_type = 'MODULE' AND feature_id IS NULL` : tx.sql`scope_type = 'FEATURE' AND feature_id = ${scope.featureId}`} AND id = ${taskId} ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
+    >`SELECT id, project_id AS "projectId", module_id AS "moduleId", feature_id AS "featureId", scope_type AS "scopeType", code, title, description, (SELECT array_agg(ta.user_id ORDER BY ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeIds", (SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId", (SELECT array_agg(u.name ORDER BY ta.user_id) FROM app.task_assignees ta JOIN app.users u ON u.id = ta.user_id WHERE ta.task_id=app.tasks.id) AS "assigneeNames", creator_id AS "creatorId", (SELECT u.name FROM app.users u WHERE u.id = app.tasks.creator_id) AS "creatorName", priority, work_status AS "workStatus", lifecycle_status AS "lifecycleStatus", due_at AS "dueAt", row_version AS "rowVersion", created_at AS "createdAt", updated_at AS "updatedAt", ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=app.tasks.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks WHERE deleted_at IS NULL AND project_id = ${scope.projectId} AND module_id = ${scope.moduleId} AND ${scope.featureId === null ? tx.sql`scope_type = 'MODULE' AND feature_id IS NULL` : tx.sql`scope_type = 'FEATURE' AND feature_id = ${scope.featureId}`} AND id = ${taskId} ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
     return row ? dto(row) : undefined;
   }
   /**

@@ -64,6 +64,15 @@ export class AdminUsersController {
     return this.respond("enableUser", request, response);
   }
 
+  @Post(":userId/delete")
+  @Operation("deleteUser")
+  async remove(
+    @Req() request: AdminUsersHttpRequest,
+    @Res({ passthrough: true }) response: AdminUsersControllerResponse,
+  ) {
+    return this.respond("deleteUser", request, response);
+  }
+
   @Post(":userId/force-logout")
   @Operation("forceLogoutUser")
   async forceLogout(

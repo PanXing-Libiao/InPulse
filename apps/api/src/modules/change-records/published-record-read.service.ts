@@ -1,8 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   RECORD_PAGE_LIMIT_DEFAULT,
+  type ReadableRecord,
   type ReadableRecordPage,
 } from "@inpulse/api-contract";
+import { UserReadPort } from "../../auth/user-read.port.js";
 import {
   TimeCursorError,
   TimeCursorService,
@@ -12,6 +14,7 @@ import {
   PROJECT_ACCESS_QUERY_PORT,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
+import type { TransactionContext } from "../../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../../database/unit-of-work.js";
 import { PublishedRecordRepository } from "./published-record.repository.js";
 import { RecordDraftError } from "./record-drafts.service.js";
@@ -48,6 +51,7 @@ export class PublishedRecordReadService {
     @Inject(PublishedRecordRepository)
     private readonly repository: PublishedRecordRepository,
     @Inject(TimeCursorService) private readonly cursor: TimeCursorService,
+    @Inject(UserReadPort) private readonly users: UserReadPort,
   ) {}
   /**
    * 正式记录列表分页（B-1 / C-006）：items / nextCursor / hasMore，limit 1..100
@@ -78,7 +82,7 @@ export class PublishedRecordReadService {
               after,
             });
       return {
-        items: page.items,
+        items: await this.withNames(tx, page.items),
         hasMore: page.hasMore,
         nextCursor:
           page.last === null
@@ -110,7 +114,7 @@ export class PublishedRecordReadService {
           ? await this.repository.findVoided(tx, projectId, recordId)
           : undefined);
       if (!record) throw missing();
-      if (!versions) return record;
+      if (!versions) return (await this.withNames(tx, [record]))[0]!;
       const items = await this.repository.versions(tx, record, versionNo);
       if (versionNo !== undefined) {
         if (!items[0]) throw missing();
@@ -118,6 +122,20 @@ export class PublishedRecordReadService {
       }
       return { items };
     });
+  }
+  private async withNames(
+    tx: TransactionContext,
+    items: readonly ReadableRecord[],
+  ): Promise<ReadableRecord[]> {
+    const users = await this.users.listByIds(tx, [
+      ...new Set(items.flatMap((item) => [item.authorId, item.handlerId])),
+    ]);
+    const names = new Map(users.map((user) => [user.userId, user.name]));
+    return items.map((item) => ({
+      ...item,
+      authorName: names.get(item.authorId) ?? null,
+      handlerName: names.get(item.handlerId) ?? null,
+    }));
   }
   private decodeCursor(
     cursor: string | undefined,

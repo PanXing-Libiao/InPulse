@@ -27,6 +27,7 @@ const safeUserFields = [
   "openTaskCount",
   "rowVersion",
   "disabledAt",
+  "deletedAt",
   "createdAt",
   "updatedAt",
 ] as const;
@@ -72,13 +73,14 @@ const noBodyWritePolicy = {
 } as const;
 
 /**
- * createUser / updateUser 的响应为 AdminUserItem：ADR-081 为它新增
- * organizationId 字段后响应 Schema 变化，按契约要求把这两条路由的
- * 幂等契约版本升级到 1.1.0（旧 Key 在新契约下返回 409）。
+ * createUser / updateUser 的响应为 AdminUserItem：ADR-081 新增
+ * organizationId 与 openTaskCount，ADR-082 新增 deletedAt，响应 Schema 因此变化。
+ * origin/test 已发布 deletedAt 版本的 1.2.0，合并后的 Schema 与两者都不同，
+ * 按契约要求把这两条路由的幂等契约版本升级到 1.3.0（旧 Key 在新契约下返回 409）。
  */
 const userBodyWritePolicy = {
   ...writePolicy,
-  idempotencyContractVersion: "1.2.0",
+  idempotencyContractVersion: "1.3.0",
 } as const;
 
 const versionedWritePolicy = {
@@ -114,7 +116,7 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     path: "/admin/users",
     operationId: "listAdminUsers",
     summary:
-      "系统管理员读取全部用户账号，用于新增、编辑、启停、角色与强制退出；不返回任何认证材料。",
+      "系统管理员读取未删除的用户账号，用于编辑、启停、角色与强制退出；墓碑账号不再出现在成员列表，不返回任何认证材料。",
     request: {
       path: "none",
       query: "none",
@@ -233,6 +235,27 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     ...noBodyWritePolicy,
     ...versionedWritePolicy,
     auditAction: "admin.user.enable",
+  },
+  {
+    method: "POST",
+    path: "/admin/users/{userId}/delete",
+    operationId: "deleteUser",
+    summary:
+      "系统管理员强制删除已停用用户：同事务墓碑化账号、清除凭据与个人字段、撤销全部 Session、改写历史成员姓名并写审计；账号仍存在但不可恢复。",
+    request: {
+      path: "AdminUserPath",
+      query: "none",
+      headers: "AdminUserVersionHeaders",
+      body: { noBody: true },
+    },
+    responses: { "204": { noBody: true }, ...errors },
+    authPolicy: "adminSession",
+    csrfPolicy: "required",
+    idempotencyPolicy: "idempotencyRequired",
+    behaviorHeaders: ["If-Match"],
+    ...noBodyWritePolicy,
+    ...versionedWritePolicy,
+    auditAction: "admin.user.delete",
   },
   {
     method: "POST",

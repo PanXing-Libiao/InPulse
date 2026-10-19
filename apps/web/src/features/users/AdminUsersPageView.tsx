@@ -26,7 +26,7 @@ import {
 } from "./organization-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
-type LifecycleAction = "disable" | "enable";
+type LifecycleAction = "disable" | "enable" | "delete";
 
 /** 设计师稿 latest-version/views/settings.tsx L9-11：左栏区块导航。 */
 export type SettingsTab =
@@ -53,6 +53,11 @@ const lifecycleCopy: Readonly<
   enable: {
     title: "启用用户",
     description: "启用后用户可重新登录；历史与已撤销会话不会恢复。",
+  },
+  delete: {
+    title: "强制删除",
+    description:
+      "删除不可撤销：账号会被墓碑化，登录名与个人资料清除，历史业务记录中的显示名改为「删除用户」。原始审计快照保持不可变。",
   },
 };
 
@@ -200,7 +205,13 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         action: lifecycle.action,
         user: lifecycle.user,
       });
-      setSuccess(lifecycle.action === "disable" ? "用户已停用" : "用户已启用");
+      setSuccess(
+        lifecycle.action === "disable"
+          ? "用户已停用"
+          : lifecycle.action === "enable"
+            ? "用户已启用"
+            : "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
+      );
       setLifecycle(null);
     } catch {
       // 失败详情由 mutation 状态统一渲染，避免重复提示。
@@ -226,7 +237,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   // 成员排序：当前账号置顶，其后未分配组织、已分配组织，停用账号最后；
   // 未分配 / 已分配两档内部仍保持系统管理员在普通成员之前，同级保持服务端顺序。
   const members = useMemo(() => {
-    const items = query.data?.items ?? [];
+    const items = (query.data?.items ?? []).filter(
+      (user) => user.deletedAt === null,
+    );
     const rank = (user: AdminUserItem) => {
       if (user.status !== "ACTIVE") return 100;
       if (currentUserId !== undefined && user.id === currentUserId) return 0;
@@ -976,12 +989,21 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                     停用账号
                   </Button>
                 ) : (
-                  <Button
-                    htmlType="button"
-                    onClick={() => openLifecycle("enable", editor)}
-                  >
-                    启用账号
-                  </Button>
+                  <>
+                    <Button
+                      htmlType="button"
+                      onClick={() => openLifecycle("enable", editor)}
+                    >
+                      启用账号
+                    </Button>
+                    <Button
+                      htmlType="button"
+                      danger
+                      onClick={() => openLifecycle("delete", editor)}
+                    >
+                      强制删除
+                    </Button>
+                  </>
                 )}
               </Space>
             ) : editor !== null ? (
@@ -1021,14 +1043,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           lifecycle ? "账号 · " + lifecycle.user.loginName : "账号生命周期"
         }
         title={lifecycle ? lifecycleCopy[lifecycle.action].title : ""}
-        // 停用是破坏性动作（红）、启用是挽回（绿）。
+        // 停用与强制删除是破坏性动作（红）、启用是挽回（绿）。
         tone={
           lifecycle !== null && lifecycle.action === "enable"
             ? "success"
             : "danger"
         }
         icon={
-          lifecycle === null || lifecycle.action === "disable"
+          lifecycle === null || lifecycle.action !== "enable"
             ? "alert"
             : "check"
         }
@@ -1054,10 +1076,11 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               </Button>
               <Button
                 type="primary"
+                danger={lifecycle.action !== "enable"}
                 loading={mutation.isPending}
                 onClick={() => void confirmLifecycle()}
               >
-                确认
+                {lifecycle.action === "delete" ? "确认删除" : "确认"}
               </Button>
             </Space>
           </>

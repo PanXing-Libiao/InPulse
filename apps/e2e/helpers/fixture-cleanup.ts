@@ -42,7 +42,9 @@ export interface FixtureCleanupReport {
  * `sso_`、`login_`、`invalidate_`、`csrf_` 来自 API 集成测试的夹具命名；
  * `backup_` / `archive_` 来自 `apps/ops` 备份与审计归档集成测试。
  */
+// 墓碑化会改写登录名，因此同时按 sso_subject 的 e2e_ 前缀识别夹具账号。
 const FIXTURE_LOGIN_FILTER = [
+  "sso_subject LIKE 'e2e\\_%'",
   "login_name LIKE 'e2e\\_%'",
   "login_name LIKE 'f03\\_%'",
   "login_name LIKE 'user\\_%'",

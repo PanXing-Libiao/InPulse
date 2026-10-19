@@ -11,6 +11,7 @@ export interface SsoUserRecord {
   readonly isAdmin: boolean;
   readonly authVersion: number;
   readonly disabledAt: Date | null;
+  readonly deletedAt: Date | null;
 }
 
 /** 本次登录与本地账号的匹配结果分类，用于审计与测试断言。 */
@@ -48,12 +49,14 @@ interface SsoUserRow {
   readonly isAdmin: boolean;
   readonly authVersion: number;
   readonly disabledAt: string | null;
+  readonly deletedAt: string | null;
 }
 
 function toRecord(row: SsoUserRow): SsoUserRecord {
   return {
     ...row,
     disabledAt: row.disabledAt === null ? null : new Date(row.disabledAt),
+    deletedAt: row.deletedAt === null ? null : new Date(row.deletedAt),
   };
 }
 
@@ -79,6 +82,11 @@ export class PostgresSsoUserRepository {
   ): Promise<SsoIdentityMapping> {
     const bySubject = await this.findBySubject(tx, claims.subject);
     if (bySubject !== undefined) {
+      // 墓碑账号不可再写资料；登录编排会按 DISABLED 干净拒绝，不能先 syncProfile
+      // 触发 users 不可变触发器并误报 500。
+      if (bySubject.deletedAt !== null) {
+        return { kind: "mapped", user: bySubject, outcome: "subject" };
+      }
       const synced = await this.syncProfile(tx, bySubject, claims);
       return { kind: "mapped", user: synced, outcome: "subject" };
     }
@@ -132,10 +140,12 @@ export class PostgresSsoUserRepository {
              status,
              is_admin AS "isAdmin",
              auth_version AS "authVersion",
-             disabled_at AS "disabledAt"
+             disabled_at AS "disabledAt",
+                deleted_at AS "deletedAt"
         FROM app.users
        WHERE sso_subject = ${subject}
        LIMIT 1
+       FOR UPDATE
     `) as unknown as readonly SsoUserRow[];
     const row = rows[0];
     return row === undefined ? undefined : toRecord(row);
@@ -154,7 +164,8 @@ export class PostgresSsoUserRepository {
              status,
              is_admin AS "isAdmin",
              auth_version AS "authVersion",
-             disabled_at AS "disabledAt"
+             disabled_at AS "disabledAt",
+                deleted_at AS "deletedAt"
         FROM app.users
        WHERE lower(btrim(login_name)) = lower(btrim(${loginName}))
        FOR UPDATE
@@ -190,6 +201,7 @@ export class PostgresSsoUserRepository {
              updated_at = now()
        WHERE id = ${userId}
          AND sso_subject IS NULL
+         AND deleted_at IS NULL
       RETURNING id,
                 login_name AS "loginName",
                 name,
@@ -198,7 +210,8 @@ export class PostgresSsoUserRepository {
                 status,
                 is_admin AS "isAdmin",
                 auth_version AS "authVersion",
-                disabled_at AS "disabledAt"
+                disabled_at AS "disabledAt",
+                deleted_at AS "deletedAt"
     `) as unknown as readonly SsoUserRow[];
     const row = rows[0];
     return row === undefined ? undefined : toRecord(row);
@@ -247,7 +260,8 @@ export class PostgresSsoUserRepository {
                 status,
                 is_admin AS "isAdmin",
                 auth_version AS "authVersion",
-                disabled_at AS "disabledAt"
+                disabled_at AS "disabledAt",
+                deleted_at AS "deletedAt"
     `) as unknown as readonly SsoUserRow[];
     const row = rows[0];
     if (row === undefined) {
@@ -285,6 +299,7 @@ export class PostgresSsoUserRepository {
              row_version = row_version + 1,
              updated_at = now()
        WHERE id = ${current.id}
+         AND deleted_at IS NULL
       RETURNING id,
                 login_name AS "loginName",
                 name,
@@ -293,7 +308,8 @@ export class PostgresSsoUserRepository {
                 status,
                 is_admin AS "isAdmin",
                 auth_version AS "authVersion",
-                disabled_at AS "disabledAt"
+                disabled_at AS "disabledAt",
+                deleted_at AS "deletedAt"
     `) as unknown as readonly SsoUserRow[];
     const row = rows[0];
     if (row === undefined) {

@@ -122,6 +122,8 @@ export const activityItemSchema = z
     sourceEntityId: z.number().int().positive(),
     activityType: z.string().min(1).max(100),
     actorId: z.number().int().positive().nullable(),
+    /** 当前展示名；墓碑账号固定为「删除用户」，系统事件为 null。 */
+    actorName: z.string().min(1).max(200).nullable(),
     summary: z.string().min(1).max(1000),
     occurredAt: z.string().min(1).max(64),
   })

@@ -23,7 +23,9 @@ const fields = [
   "description",
   "assigneeId",
   "assigneeIds[]",
+  "assigneeNames[]",
   "creatorId",
+  "creatorName",
   "priority",
   "workStatus",
   "lifecycleStatus",
@@ -97,7 +99,8 @@ const basicTaskRoutes: readonly RouteDefinition[] = [
         idempotencyExceptionAdr: "none",
         // ADR-040：请求体 assigneeId 改为 assigneeIds，响应新增 assigneeIds，属破坏性契约变更，主版本递增。
         // ADR-054：响应 lifecycleStatus 去掉不可达的 ARCHIVED，再次递增主版本。
-        idempotencyContractVersion: "3.0.0",
+        // ADR-082：响应新增墓碑账号展示名，重放字段变化再次递增主版本。
+        idempotencyContractVersion: "4.0.0",
         idempotencyFingerprintVersion: "1.0.0",
         behaviorHeaders: create ? [] : ["If-Match"],
         idempotencyReplayPolicy: {
@@ -168,7 +171,8 @@ export const taskRoutes: readonly RouteDefinition[] = [
     operationId: "transitionTask",
     // ADR-040：响应 TaskItem 新增 assigneeIds，属破坏性契约变更，主版本递增。
     // ADR-054：响应 lifecycleStatus 去掉不可达的 ARCHIVED，再次递增主版本。
-    idempotencyContractVersion: "4.0.0",
+    // ADR-082：响应新增墓碑账号展示名，重放字段变化再次递增主版本。
+    idempotencyContractVersion: "5.0.0",
     replayAuthorizationPolicy: {
       version: "2.0.0",
       resources: {

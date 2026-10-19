@@ -1,3 +1,4 @@
+import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { TaskGroupsService } from "../src/modules/task-groups/task-groups.service.js";
 import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
@@ -229,6 +230,7 @@ beforeAll(async () => {
             uow,
             new PublishedRecordRepository(),
             new TimeCursorService(ring, "CHANGE_RECORDS"),
+            new PostgresUserReadPort(),
           ),
         ),
       },

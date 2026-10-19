@@ -54,6 +54,7 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "admin.user.disable": "停用用户",
   "admin.user.enable": "启用用户",
   "admin.user.force_logout": "强制退出登录",
+  "admin.user.delete": "强制删除用户",
   "admin.wecomRobot.update": "更新机器人配置",
   "admin.aiAssistSettings.update": "更新 AI 辅助设置",
   "auth.sso_login": "统一身份认证登录",

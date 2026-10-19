@@ -5,7 +5,9 @@ import {
   type TaskEditRequest,
   type TaskStatusRequest,
   taskStatusRequestSchema,
+  taskStatusHistoryResponseSchema,
 } from "@inpulse/api-contract";
+import { UserReadPort } from "../../auth/user-read.port.js";
 import { AuditWritePort } from "../../audit/index.js";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../../database/unit-of-work.js";
@@ -72,6 +74,7 @@ export class TasksManagementService {
     private readonly notifications: NotificationWritePort,
     @Inject(ModuleReadPort) private readonly moduleRead: ModuleReadPort,
     @Inject(ProjectsWritePort) private readonly projects: ProjectsWritePort,
+    @Inject(UserReadPort) private readonly users: UserReadPort,
   ) {}
   async read(
     actorId: number,
@@ -105,7 +108,19 @@ export class TasksManagementService {
       if (taskId !== undefined) {
         const item = await this.repository.find(tx, scope, taskId);
         if (!item) throw missing();
-        if (history) return this.repository.history(tx, scope, taskId);
+        if (history) {
+          const rows = await this.repository.history(tx, scope, taskId);
+          const users = await this.users.listByIds(tx, [
+            ...new Set(rows.map((row) => row.changedBy)),
+          ]);
+          const names = new Map(users.map((user) => [user.userId, user.name]));
+          return taskStatusHistoryResponseSchema.parse({
+            items: rows.map((row) => ({
+              ...row,
+              changedByName: names.get(row.changedBy) ?? "删除用户",
+            })),
+          });
+        }
         return item;
       }
       return { items: await this.repository.list(tx, scope) };

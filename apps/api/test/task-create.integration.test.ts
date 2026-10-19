@@ -108,6 +108,7 @@ beforeAll(() => {
     new PostgresNotificationWritePort(),
     moduleRead,
     new PostgresProjectsWritePort(),
+    new PostgresUserReadPort(),
   );
   workflow = new TaskCreateWorkflow(
     new ProjectCreationLockPort(),

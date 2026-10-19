@@ -29,6 +29,7 @@ const admin: AdminUserItem = {
   openTaskCount: 0,
   rowVersion: 1,
   disabledAt: null,
+  deletedAt: null,
   createdAt: "2026-09-09T00:00:00.000Z",
   updatedAt: "2026-09-09T00:00:00.000Z",
 };
@@ -266,6 +267,124 @@ describe("F-03 admin users page", () => {
       }
     ).headers["Idempotency-Key"];
     expect(secondKey).toBe(firstKey);
+  });
+
+  it("keeps disabled members visible and hides deleted accounts", async () => {
+    const disabled: AdminUserItem = {
+      ...member,
+      id: 3,
+      loginName: "departed",
+      name: "离职成员",
+      status: "DISABLED",
+      disabledAt: "2026-10-18T00:00:00.000Z",
+      rowVersion: 2,
+    };
+    const deleted: AdminUserItem = {
+      ...member,
+      id: 4,
+      loginName: "deleted-user-4",
+      name: "删除用户",
+      email: null,
+      status: "DISABLED",
+      disabledAt: "2026-10-18T00:00:00.000Z",
+      deletedAt: "2026-10-19T00:00:00.000Z",
+      rowVersion: 3,
+    };
+    mount({
+      listAdminUsers: vi
+        .fn()
+        .mockResolvedValue({ items: [admin, member, disabled, deleted] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Alice");
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+    expect(screen.getByText("离职成员")).toBeInTheDocument();
+    expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("group", { name: "成员状态筛选" }),
+    ).not.toBeInTheDocument();
+    const rows = [...document.querySelectorAll(".member-row")];
+    expect(rows.at(-1)?.textContent).toContain("离职成员");
+    expect(rows.at(-1)?.className).toContain("is-disabled");
+  });
+
+  it("confirms force deletion from the editor with CSRF, idempotency key and If-Match", async () => {
+    const disabled: AdminUserItem = {
+      ...member,
+      status: "DISABLED",
+      disabledAt: "2026-10-18T00:00:00.000Z",
+      rowVersion: 7,
+    };
+    const issueCsrfToken = vi
+      .fn()
+      .mockResolvedValue({ csrfToken: "a".repeat(43) });
+    const deleteUser = vi.fn().mockResolvedValue(undefined);
+    mount({
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, disabled] }),
+      issueCsrfToken,
+      deleteUser,
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Alice");
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "强制删除" }));
+    const dialog = screen.getByRole("dialog", { name: /强制删除/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(deleteUser).toHaveBeenCalledTimes(1));
+    expect(deleteUser).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-csrf-token": "a".repeat(43),
+          "Idempotency-Key": expect.stringContaining("admin-user-"),
+          "If-Match": `"7"`,
+        }),
+      }),
+    );
+    await screen.findByText(
+      "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
+    );
+  });
+
+  it("keeps disabled and deleted accounts out of organization adjustment", async () => {
+    const organization = {
+      id: 7,
+      name: "研发一组",
+      rowVersion: 1,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    const disabled: AdminUserItem = {
+      ...member,
+      id: 3,
+      loginName: "departed",
+      name: "离职成员",
+      status: "DISABLED",
+      disabledAt: "2026-10-18T00:00:00.000Z",
+      organizationId: 7,
+    };
+    const deleted: AdminUserItem = {
+      ...member,
+      id: 4,
+      loginName: "deleted-user-4",
+      name: "删除用户",
+      email: null,
+      status: "DISABLED",
+      disabledAt: "2026-10-18T00:00:00.000Z",
+      deletedAt: "2026-10-19T00:00:00.000Z",
+      organizationId: 7,
+    };
+    mount({
+      listAdminUsers: vi
+        .fn()
+        .mockResolvedValue({ items: [admin, disabled, deleted] }),
+      listOrganizations: vi.fn().mockResolvedValue({ items: [organization] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Alice");
+    fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
+    expect(screen.queryByText("离职成员")).not.toBeInTheDocument();
+    expect(screen.queryByText("删除用户")).not.toBeInTheDocument();
   });
 });
 

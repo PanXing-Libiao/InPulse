@@ -3,6 +3,7 @@ import {
   ProjectMembersQueryPort,
   type ActiveProjectMemberProfile,
   type AssignableProjectMember,
+  type UserProjectMembership,
 } from "./project-members-query.port.js";
 
 export class PostgresProjectMembersQueryPort extends ProjectMembersQueryPort {
@@ -86,6 +87,23 @@ export class PostgresProjectMembersQueryPort extends ProjectMembersQueryPort {
     >`SELECT role FROM app.project_members WHERE project_id = ${input.projectId} AND user_id = ${input.userId} AND status = 'ACTIVE' LIMIT 1`;
     return row?.role;
   }
+  async listActiveMembershipsForUser(
+    tx: TransactionContext,
+    input: { readonly userId: number },
+  ): Promise<readonly UserProjectMembership[]> {
+    return (await tx.sql<
+      readonly UserProjectMembership[]
+    >`SELECT m.project_id AS "projectId",
+             p.name AS "projectName",
+             m.role
+        FROM app.project_members AS m
+        JOIN app.projects AS p ON p.id = m.project_id
+       WHERE m.user_id = ${input.userId}
+         AND m.status = 'ACTIVE'
+       ORDER BY m.project_id
+       FOR SHARE OF m`) as unknown as readonly UserProjectMembership[];
+  }
+
   async checkAssignableMember(
     tx: TransactionContext,
     input: { projectId: number; userId: number },
