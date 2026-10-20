@@ -1008,6 +1008,14 @@ export type NotificationPath = {
   readonly notificationId: number;
 };
 
+export type NotificationPreferences = {
+  readonly disabledSettings: readonly ("PROJECT_JOINED" | "task.assigned" | "task.complete" | "task.reopen" | "task.merge" | "task.unmerge" | "record.publish" | "record.version.create" | "record.leftover.add" | "leftover.convert" | "project.status.change")[];
+};
+
+export type NotificationPreferencesUpdateRequest = {
+  readonly disabledSettings: readonly ("PROJECT_JOINED" | "task.assigned" | "task.complete" | "task.reopen" | "task.merge" | "task.unmerge" | "record.publish" | "record.version.create" | "record.leftover.add" | "leftover.convert" | "project.status.change")[];
+};
+
 export type NotificationQueryRequest = {
   readonly mutedProjectCategories?: NotificationMutedProjectCategories;
   readonly cursor?: string;

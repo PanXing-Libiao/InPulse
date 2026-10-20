@@ -1,46 +1,46 @@
-import React, { useEffect, useState } from "react";
-import { Switch } from "antd";
+import React from "react";
+import { Alert, Switch } from "antd";
+import type { InpulseApiClient } from "@generated/api";
+import type { PersonalNotificationSetting } from "@shared/notifications/personal-notification-settings";
 import { CalmSectionTitle } from "@features/common/components/Calm";
 import { notificationScenarios } from "./settings-content";
 import {
-  readDisabledNotificationTypes,
-  writeDisabledNotificationTypes,
-} from "./notification-policy-storage";
+  useNotificationPreferences,
+  useUpdateNotificationPreferences,
+} from "./notification-preferences-query";
 
 export interface NotificationPolicyPanelProps {
-  /**
-   * 当前登录账号；用于按账号保存开关。为空时只在本次渲染内生效
-   * （测试或未登录兜底，不做持久化）。
-   */
-  readonly userId?: number | null | undefined;
+  readonly client?: InpulseApiClient | undefined;
 }
 
 /**
  * 通知策略：仅列出会提醒到个人的事件，每个类型后提供个人开关。
- * 每次切换立即写入浏览器本地存储，刷新、切换页签后保持；没有单独的保存按钮。
+ * 开关保存到服务端，关闭后通知写入端口不再生成该类型通知，列表与未读数
+ * 只阻止后续新通知，历史通知保持原状；每次切换立即提交完整关闭列表，没有保存按钮。
  */
 export const NotificationPolicyPanel: React.FC<
   NotificationPolicyPanelProps
-> = ({ userId = null }) => {
-  const [disabled, setDisabled] = useState<ReadonlySet<string>>(() =>
-    readDisabledNotificationTypes(userId),
+> = ({ client }) => {
+  const preferences = useNotificationPreferences({ client });
+  const update = useUpdateNotificationPreferences({ client });
+  const savedDisabled = preferences.data?.disabledSettings ?? [];
+  const disabled = new Set<PersonalNotificationSetting>(
+    update.isPending && update.variables !== undefined
+      ? update.variables
+      : savedDisabled,
   );
 
-  useEffect(() => {
-    setDisabled(readDisabledNotificationTypes(userId));
-  }, [userId]);
-
-  const setEnabled = (key: string, enabled: boolean): void => {
-    setDisabled((current) => {
-      const next = new Set(current);
-      if (enabled) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      writeDisabledNotificationTypes(userId, next);
-      return next;
-    });
+  const setEnabled = (
+    key: PersonalNotificationSetting,
+    enabled: boolean,
+  ): void => {
+    const next = new Set(disabled);
+    if (enabled) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    update.mutate([...next]);
   };
 
   return (
@@ -49,6 +49,17 @@ export const NotificationPolicyPanel: React.FC<
       aria-label="通知策略"
     >
       <CalmSectionTitle title="通知策略" />
+
+      {preferences.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="通知策略加载失败，请刷新后重试。"
+        />
+      ) : null}
+      {update.isError ? (
+        <Alert type="error" showIcon message="通知策略保存失败，请重试。" />
+      ) : null}
 
       <div className="table-wrap">
         <table className="settings-table notification-policy-table">
@@ -64,6 +75,8 @@ export const NotificationPolicyPanel: React.FC<
                   <Switch
                     size="small"
                     checked={!disabled.has(row.key)}
+                    loading={preferences.isPending || update.isPending}
+                    disabled={preferences.isError}
                     aria-label={"接收" + row.event + "提醒"}
                     onChange={(checked) => setEnabled(row.key, checked)}
                   />
@@ -73,6 +86,9 @@ export const NotificationPolicyPanel: React.FC<
           </tbody>
         </table>
       </div>
+      <p className="form-hint" style={{ marginTop: 12, fontSize: 12 }}>
+        关闭后，服务端不再生成该类型的新通知；通知中心里已有的历史通知保持原状。重新开启也不会补发关闭期间的通知。
+      </p>
     </section>
   );
 };

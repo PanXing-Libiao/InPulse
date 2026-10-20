@@ -581,6 +581,16 @@
       "fingerprint": "5dcb58c06fcaf920374f9fc2c8a9099cda0ef634d577d096f60fe9e37e39826c"
     }
   ],
+  "updateNotificationPreferences": [
+    {
+      "version": "1.0.0",
+      "fingerprint": "335feedd12724f67f7408ee3ff8e1cd9ef100fe49c6883fcdac02335ecc6458a"
+    },
+    {
+      "version": "1.1.0",
+      "fingerprint": "253b633ac624bec5349168164202850830457c8fa0fa4f8e329a9f083236edf7"
+    }
+  ],
   "updateOrganization": [
     {
       "version": "1.0.0",

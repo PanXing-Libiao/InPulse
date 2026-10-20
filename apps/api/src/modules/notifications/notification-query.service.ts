@@ -53,6 +53,10 @@ function parseLimit(limit: number | undefined): number {
   return Math.min(value, NOTIFICATION_PAGE_LIMIT_MAX);
 }
 
+function isMuteValidationError(error: unknown): error is Error {
+  return error instanceof InvalidMutedProjectCategoriesError;
+}
+
 export class NotificationQueryService {
   readonly #state: NotificationStateService;
   readonly #cursor: TimeCursorService;
@@ -86,7 +90,7 @@ export class NotificationQueryService {
     try {
       hiddenRules = notificationMuteRules(command.mutedProjectCategories);
     } catch (error) {
-      if (error instanceof InvalidMutedProjectCategoriesError) {
+      if (isMuteValidationError(error)) {
         throw new NotificationQueryValidationError(
           "invalid-mute",
           error.message,
@@ -112,6 +116,7 @@ export class NotificationQueryService {
               projectId: null,
               afterAt: page.last.at,
               afterId: page.last.id,
+              sortGroup: page.last.sortGroup ?? null,
             }),
       hasMore: page.last !== null,
     };
@@ -127,7 +132,7 @@ export class NotificationQueryService {
         notificationMuteRules(mutedProjectCategories),
       );
     } catch (error) {
-      if (error instanceof InvalidMutedProjectCategoriesError) {
+      if (isMuteValidationError(error)) {
         throw new NotificationQueryValidationError(
           "invalid-mute",
           error.message,

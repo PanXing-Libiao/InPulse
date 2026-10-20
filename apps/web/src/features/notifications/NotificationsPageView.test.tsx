@@ -148,4 +148,58 @@ describe("NotificationsPageView", () => {
     expect(screen.queryByText("record.publish")).not.toBeInTheDocument();
     expect(screen.queryByText("task.complete")).not.toBeInTheDocument();
   });
+
+  it("只为未读通知显示红点", async () => {
+    const getNotifications = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: "101",
+          projectId: 1,
+          notificationType: "PROJECT_JOINED",
+          title: "未读通知",
+          body: "应显示红点",
+          targetPath: null,
+          createdAt: "2026-09-20T01:00:00.000Z",
+          readAt: null,
+        },
+        {
+          id: "102",
+          projectId: 1,
+          notificationType: "PROJECT_JOINED",
+          title: "已读通知",
+          body: "不应显示红点",
+          targetPath: null,
+          createdAt: "2026-09-20T00:00:00.000Z",
+          readAt: "2026-09-20T00:00:00.000Z",
+        },
+      ],
+      nextCursor: null,
+      hasMore: false,
+    });
+    const client = {
+      getNotifications,
+      getNotificationUnreadCount: vi.fn().mockResolvedValue({ unreadCount: 1 }),
+    } as unknown as InpulseApiClient;
+
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: { queries: { retry: false } },
+          })
+        }
+      >
+        <NotificationsPageView client={client} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("notification-dot-101")).toHaveAttribute(
+      "data-unread",
+      "true",
+    );
+    expect(screen.getByTestId("notification-dot-102")).toHaveAttribute(
+      "data-unread",
+      "false",
+    );
+  });
 });

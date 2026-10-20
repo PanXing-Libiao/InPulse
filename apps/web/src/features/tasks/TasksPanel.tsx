@@ -3,7 +3,6 @@ import { taskDetailPath, type TaskLocation } from "./task-links";
 import {
   DETACHED_ASSIGNEE_HINT,
   detachedAssigneeTitle,
-  hasDetachedAssignee,
   isDetachedAssignee,
   withDetachedMark,
 } from "./detached-assignee";
@@ -29,6 +28,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Input } from "antd";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { invalidateShellCounters } from "@shared/api/shell-counters";
+import {
+  preloadRoutePath,
+  routePreloadHandlers,
+} from "@shared/routing/route-preload";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import {
   CalmDateTimeInput,
@@ -407,6 +410,8 @@ export function TasksPanel({
     useState<RecordDraftEditorTarget | null>(null);
   const generation = useRef(0);
   const saving = useRef(false);
+  /** 「在项目中打开」的目标页 chunk 就绪前保持弹窗在场，避免闪出空列表或骨架。 */
+  const openingInProject = useRef(false);
   const {
     control,
     handleSubmit,
@@ -435,6 +440,15 @@ export function TasksPanel({
   const currentGroupId =
     currentMark?.groupRole === "SOURCE" ? currentMark.groupId : null;
   const currentRecordCount = currentMark?.publishedRecordCount ?? 0;
+  const currentTaskPath =
+    current === undefined
+      ? null
+      : taskDetailPath({
+          projectId: current.projectId,
+          moduleId: current.moduleId,
+          featureId: current.featureId,
+          taskId: current.id,
+        });
   // 迭代记录标签页按设计师稿直接列出本任务的已发布记录与草稿：两者都是既有
   // 只读契约（listChangeRecords / getTaskRecordDrafts），客户端按 taskId 过滤，不新增路由。
   const detailTaskId = current?.id ?? 0;
@@ -525,9 +539,6 @@ export function TasksPanel({
     ids.length === 0
       ? "未指派"
       : ids.map((id, index) => memberName(id, names[index])).join("、");
-  /** 这批负责人里是否有已移出项目的人：详情页据此补一行重新分配指引。 */
-  const memberDetached = (ids: readonly number[]) =>
-    hasDetachedAssignee(activeMemberIds, ids);
   /** hover 文案：姓名之外把「请重新分配」的处置指引一并带上。 */
   const assigneeTitle = (
     ids: readonly number[],
@@ -590,6 +601,22 @@ export function TasksPanel({
     setPublishedRecord(null);
     setDeleteOpen(false);
     onDetailClose?.();
+  };
+  /**
+   * 先等目标页面 chunk 就绪，再关闭弹窗并导航。直接在点击时 closeDetail()
+   * 会让通知列表或任务中心先露出来一帧，随后才被新页面替换；先预加载能把
+   * 「关弹窗 → 空一帧 → 新页淡入」合并成一次完整切换。
+   */
+  const openInProject = (path: string) => {
+    if (openingInProject.current) {
+      return;
+    }
+    openingInProject.current = true;
+    void preloadRoutePath(path).finally(() => {
+      openingInProject.current = false;
+      closeDetail();
+      navigate(path);
+    });
   };
   /**
    * C-3：状态操作入口。每次点击递增 token，任务状态弹窗重新挂载，
@@ -1283,15 +1310,13 @@ export function TasksPanel({
                   <Button
                     className="secondary-button"
                     title="跳转到该项目中此任务所在的功能档案 / 模块任务页"
+                    {...(currentTaskPath === null
+                      ? {}
+                      : routePreloadHandlers(currentTaskPath))}
                     onClick={() => {
-                      const location = {
-                        projectId: current.projectId,
-                        moduleId: current.moduleId,
-                        featureId: current.featureId,
-                        taskId: current.id,
-                      };
-                      closeDetail();
-                      navigate(taskDetailPath(location));
+                      if (currentTaskPath !== null) {
+                        openInProject(currentTaskPath);
+                      }
                     }}
                   >
                     <InpulseIcon name="folder" size={14} />
@@ -1572,11 +1597,6 @@ export function TasksPanel({
                     <dt>负责人</dt>
                     <dd>
                       {memberNames(current.assigneeIds, current.assigneeNames)}
-                      {memberDetached(current.assigneeIds) && (
-                        <small className="assignee-detached-hint">
-                          {DETACHED_ASSIGNEE_HINT}
-                        </small>
-                      )}
                     </dd>
                     <dt>创建人</dt>
                     <dd>

@@ -44,6 +44,25 @@ describe("TimeCursorService", () => {
     expect(service.decode(undefined, context)).toBeNull();
   });
 
+  test("携带排序组时原样返回", () => {
+    const service = new TimeCursorService(
+      keyring([{ version: 1, key: Buffer.alloc(32, 0x42) }], 1),
+      "ACTIVITY",
+    );
+    const token = service.encode({
+      ...context,
+      afterAt: "2026-09-08T00:00:00.000Z",
+      afterId: "42",
+      sortGroup: "UNREAD",
+    });
+
+    expect(service.decode(token, context)).toEqual({
+      at: "2026-09-08T00:00:00.000Z",
+      id: "42",
+      sortGroup: "UNREAD",
+    });
+  });
+
   test("拒绝篡改签名、过期和绑到其他用户或项目的游标", () => {
     const service = new TimeCursorService(
       keyring([{ version: 1, key: Buffer.alloc(32, 0x42) }], 1),

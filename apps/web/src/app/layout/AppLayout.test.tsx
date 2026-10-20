@@ -359,6 +359,63 @@ describe("AppLayout", () => {
     ).toBeInTheDocument();
   });
 
+  it("任务通知从铃铛进入通知汇总，不再直接跳进项目", async () => {
+    const user = userEvent.setup();
+    const taskNotificationClient = {
+      ...notificationClient,
+      getNotificationUnreadCount: vi.fn().mockResolvedValue({ unreadCount: 1 }),
+      getNotifications: vi.fn().mockResolvedValue({
+        items: [
+          {
+            id: "91",
+            projectId: 1,
+            notificationType: "task.assigned",
+            title: "任务指派：电池巡检",
+            body: "T-91",
+            targetPath: "/projects/1/modules/2/features/3?taskId=4",
+            createdAt: "2026-10-20T00:00:00.000Z",
+            readAt: null,
+          },
+        ],
+        nextCursor: null,
+        hasMore: false,
+      }),
+    } as unknown as InpulseApiClient;
+
+    renderLayout(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route
+            path="/"
+            element={<AppLayout notificationClient={taskNotificationClient} />}
+          >
+            <Route index element={<div>Home content</div>} />
+            <Route
+              path="notifications"
+              element={<div>Notifications content</div>}
+            />
+            <Route
+              path="projects/1/modules/2/features/3"
+              element={<div>Project content</div>}
+            />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "通知" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: "打开通知：任务指派：电池巡检",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Notifications content"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Project content")).not.toBeInTheDocument();
+  });
+
   it("renders sidebar counters from the read-only aggregate ports", async () => {
     const counterClient = {
       ...notificationClient,

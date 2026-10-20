@@ -602,9 +602,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         </nav>
 
         {effectiveTab === "permissions" ? <PermissionMatrixPanel /> : null}
-        {effectiveTab === "notifications" ? (
-          <NotificationPolicyPanel userId={currentUserId} />
-        ) : null}
+        {effectiveTab === "notifications" ? <NotificationPolicyPanel /> : null}
         {effectiveTab === "aiAssist" ? (
           <AiAssistSettingsPanel {...(client ? { client } : {})} />
         ) : null}
