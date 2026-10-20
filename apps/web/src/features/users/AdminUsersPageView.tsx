@@ -805,7 +805,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 ) : null}
               </CalmEmptyState>
             ) : (
-              <div className="member-list">
+              <div className="member-list admin-member-list">
                 {visibleMembers.map((user) => (
                   <div
                     className={
@@ -839,9 +839,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       </small>
                     </div>
                     <div className="member-meta">
-                      {selfAdmin(user) ? (
-                        <CalmBadge tone="violet">当前账号</CalmBadge>
-                      ) : null}
                       <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
                         {user.isAdmin ? "系统管理员" : "项目成员"}
                       </CalmBadge>

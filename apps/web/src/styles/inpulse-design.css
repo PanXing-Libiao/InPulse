@@ -3260,6 +3260,45 @@
   gap: 9px;
 }
 
+.settings-members-panel .admin-member-list .member-meta {
+  display: grid;
+  grid-template-columns: 96px 78px 52px 104px;
+  align-items: center;
+  justify-content: start;
+  column-gap: 9px;
+  flex: 0 0 357px;
+  width: 357px;
+  min-width: 0;
+}
+
+.settings-members-panel .admin-member-list .member-meta > * {
+  margin-top: 0;
+}
+
+.settings-members-panel .admin-member-list .member-meta > .badge,
+.settings-members-panel .admin-member-list .member-meta > .member-status,
+.settings-members-panel .admin-member-list .member-meta > .member-task-count {
+  justify-self: start;
+  min-width: 0;
+}
+
+.settings-members-panel .admin-member-list .member-meta > .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 900px) {
+  .settings-members-panel .admin-member-list .member-meta {
+    display: flex;
+    flex-wrap: wrap;
+    flex: 1 1 auto;
+    width: auto;
+    justify-content: flex-start;
+    row-gap: 6px;
+  }
+}
+
 .settings-members-panel .member-meta .badge {
   padding: 3px 7px;
   font-size: 10px;

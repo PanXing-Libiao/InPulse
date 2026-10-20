@@ -178,10 +178,22 @@ describe("F-03 admin users page", () => {
       (row) => row.querySelector("strong")?.textContent ?? "",
     );
     expect(rendered).toEqual(["Alice", "Carol", "Bob"]);
-    expect(within(userCard("Alice")).getByText("当前账号")).toHaveClass(
-      "badge",
-      "badge-violet",
-    );
+  });
+
+  it("starts every member tag row with the role badge", async () => {
+    const listAdminUsers = vi
+      .fn()
+      .mockResolvedValue({ items: [admin, member] });
+    mount({ listAdminUsers } as unknown as InpulseApiClient, admin.id);
+    await screen.findByText("Alice");
+
+    expect(within(userCard("Alice")).queryByText("当前账号")).toBeNull();
+    expect(
+      userCard("Alice").querySelector(".member-meta")?.firstElementChild,
+    ).toHaveTextContent("系统管理员");
+    expect(
+      userCard("Bob").querySelector(".member-meta")?.firstElementChild,
+    ).toHaveTextContent("项目成员");
   });
 
   it("edits a user and sends row version via If-Match", async () => {
