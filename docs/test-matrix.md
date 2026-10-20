@@ -6870,3 +6870,15 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | MEMBER-ROLE-E2E-001 | Playwright 浏览器 | 真实页面组长转移 | 目标卡「转移组长」→「确认转移组长」→「确认转移」→ 成功提示；转移后目标成为组长、原组长降级为普通成员 | 本地通过（2026-10-20，Playwright 3/3） |
 
 验证结果（2026-10-20）：定向 Web 单测 2 文件 14 例、全量 Web 单测 115 文件 969 例、project-members.spec.ts Playwright 3/3、Web typecheck、定向 ESLint、Prettier 与 check:docs 均通过。根级 pnpm lint 仍被 ADR-088 既有改动中的未使用变量报错阻断（API 测试与数据库 schema 文件，本次未触碰）。
+
+
+## 2026-10-20 管理员加入组织下拉改用 CalmSelect（用户指示，本地落库）
+
+管理员「加入组织」批量栏的目标组织由原生 `<select>` 换成仓库统一的 `CalmSelect`（menu 形态）：触发器与批量栏其他控件同为 34px 高，弹层使用浅色圆角菜单、悬停/选中底与勾选态，不再出现浏览器默认灰块。选项仍是现有组织与「＋ 新建组织」，提交参数不变。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ORG-SELECT-UI-001 | Web 单元 | 组织下拉样式与选择 | 目标组织控件为 `.calm-select`，批量栏不再渲染原生 `<select>`；选择现有组织后提交 `{ userIds, organizationId }`，选择「＋ 新建组织」后创建并加入成员 | 本地通过（2026-10-20，`AdminUsersPageView.test.tsx` 31/31） |
+| ORG-SELECT-UI-002 | 浏览器复核 | 实际页面下拉外观 | 管理员进入「加入组织」后打开目标组织下拉，弹层为应用统一浅色菜单，选项为 `NEXT-HUB` 与「＋ 新建组织」，无浏览器默认灰色选中块 | 本地通过（2026-10-20，手动复核 `/settings`） |
+
+验证结果（2026-10-20）：`AdminUsersPageView.test.tsx` 31/31、全量 Web 单测 116 文件 978 例、Web typecheck、定向 ESLint、Prettier、`check:docs` 与浏览器手动复核均通过。

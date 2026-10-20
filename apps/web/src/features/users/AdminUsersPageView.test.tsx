@@ -80,6 +80,16 @@ function userCard(name: string): HTMLElement {
   return card as HTMLElement;
 }
 
+/** CalmSelect 交互：打开组织下拉并点选目标项（弹层项带 title 属性）。 */
+async function pickOrganizationOption(optionTitle: string) {
+  const trigger = screen.getByLabelText("目标组织").closest(".ant-select");
+  if (!trigger) {
+    throw new Error("organization select trigger not found");
+  }
+  fireEvent.mouseDown(trigger);
+  fireEvent.click(await screen.findByTitle(optionTitle));
+}
+
 describe("F-03 admin users page", () => {
   it("shows direct lifecycle actions for other members", async () => {
     const disabled: AdminUserItem = {
@@ -793,9 +803,11 @@ describe("ADR-081 organizations", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("选择 Bob"));
-    fireEvent.change(screen.getByLabelText("目标组织"), {
-      target: { value: "7" },
-    });
+    expect(
+      screen.getByLabelText("目标组织").closest(".calm-select"),
+    ).not.toBeNull();
+    expect(document.querySelector(".member-batchbar select")).toBeNull();
+    await pickOrganizationOption("研发一组");
     fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
     await waitFor(() =>
       expect(assignUsersOrganization).toHaveBeenCalledTimes(1),
@@ -914,9 +926,7 @@ describe("ADR-081 organizations", () => {
     await screen.findByText("Bob");
     fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
     fireEvent.click(screen.getByLabelText("选择 Bob"));
-    fireEvent.change(screen.getByLabelText("目标组织"), {
-      target: { value: "new" },
-    });
+    await pickOrganizationOption("＋ 新建组织");
     fireEvent.change(screen.getByLabelText("新组织名称"), {
       target: { value: "研发二组" },
     });

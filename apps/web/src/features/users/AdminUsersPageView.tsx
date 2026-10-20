@@ -14,6 +14,7 @@ import {
   CalmSectionTitle,
   CalmSegmented,
 } from "@features/common/components/Calm";
+import { CalmSelect } from "@features/common/components/CalmSelect";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { AiAssistSettingsPanel } from "@features/settings/AiAssistSettingsPanel";
 import { WecomRobotSettingsPanel } from "@features/settings/WecomRobotSettingsPanel";
@@ -317,6 +318,22 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     scopedMembers.filter(
       (user) => (user.organizationId ?? null) === organizationId,
     ).length;
+  const joinOrganizationOptions = useMemo(
+    () => [
+      ...(organizations.data?.items ?? [])
+        .filter((organization) =>
+          scopedMembers.some(
+            (user) => (user.organizationId ?? null) === organization.id,
+          ),
+        )
+        .map((organization) => ({
+          value: String(organization.id),
+          label: organization.name,
+        })),
+      { value: "new", label: "＋ 新建组织" },
+    ],
+    [organizations.data, scopedMembers],
+  );
 
   const adminCount = scopedMembers.filter((user) => user.isAdmin).length;
 
@@ -929,27 +946,16 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 <span>{"已选 " + selectedUserIds.length + " 人"}</span>
                 {orgMode === "join" ? (
                   <>
-                    <select
-                      aria-label="目标组织"
+                    <CalmSelect
+                      ariaLabel="目标组织"
+                      appearance="menu"
+                      className="member-org-select"
+                      options={joinOrganizationOptions}
+                      placeholder="选择组织…"
                       value={joinTarget}
-                      onChange={(event) => setJoinTarget(event.target.value)}
-                    >
-                      <option value="">选择组织…</option>
-                      {(organizations.data?.items ?? [])
-                        .filter(
-                          (organization) =>
-                            countByOrganization(organization.id) > 0,
-                        )
-                        .map((organization) => (
-                          <option
-                            key={organization.id}
-                            value={String(organization.id)}
-                          >
-                            {organization.name}
-                          </option>
-                        ))}
-                      <option value="new">＋ 新建组织</option>
-                    </select>
+                      width={220}
+                      onChange={(value) => setJoinTarget(String(value))}
+                    />
                     {joinTarget === "new" ? (
                       <Input
                         aria-label="新组织名称"
