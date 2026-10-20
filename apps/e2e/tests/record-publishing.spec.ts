@@ -61,7 +61,7 @@ test("F18 独立发布、修订、明确解决遗留与不可变历史对比", a
       edit.getByRole("button", { name: "保存新版本" }),
     ).toBeDisabled();
     await edit
-      .getByRole("checkbox", { name: /确认移除的遗留问题已解决/ })
+      .getByRole("checkbox", { name: /确认移除的遗留问题已处理/ })
       .check();
     await edit.getByRole("button", { name: "保存新版本" }).click();
     await expect(edit).toBeHidden();
@@ -72,7 +72,9 @@ test("F18 独立发布、修订、明确解决遗留与不可变历史对比", a
       "已发布",
     );
     await expect(
-      detail.getByText("已标记解决的遗留问题保留历史内容，不再计入未闭环。"),
+      detail.getByText(
+        "已删除或标记解决的遗留问题保留历史内容，不再计入未处理。",
+      ),
     ).toBeVisible();
     await pickCalmSelectOption(detail, "较早版本", /^v1 · /);
     await pickCalmSelectOption(detail, "对照版本", /^v3 · /);

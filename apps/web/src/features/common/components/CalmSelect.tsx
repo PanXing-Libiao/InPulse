@@ -437,6 +437,7 @@ export const CalmSelect: React.FC<CalmSelectComponentProps> = (props) => {
       menuItemSelectedIcon={null}
       suffixIcon={<InpulseIcon name="chevronDown" size={14} />}
       popupMatchSelectWidth={false}
+      {...(appearance === "member" ? { listHeight: 240 } : {})}
       {...(forcePopupBelow === true
         ? {
             placement: "bottomLeft" as const,

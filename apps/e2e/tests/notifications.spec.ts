@@ -18,6 +18,14 @@ test("登录用户可在通知页切换已读/未读并全部已读", async ({ b
   const runtime = await loadRuntime();
   const { context, page } = await createAuthenticatedContext(browser, runtime);
 
+  // 先在测试库清空历史未读，避免“未读优先 + 首屏 20 条”把刚标记已读的条目
+  // 顶到后续分页，从而使已读/未读往返断言变成对分页顺序的偶然依赖。
+  await page.goto("/notifications");
+  const markAllRead = page.getByRole("button", { name: "全部已读" });
+  if (await markAllRead.isEnabled()) {
+    await markAllRead.click();
+    await expect(markAllRead).toBeDisabled();
+  }
   const created = await createProjectViaUi(page, runtime, "NOT");
   await page.goto("/notifications");
 

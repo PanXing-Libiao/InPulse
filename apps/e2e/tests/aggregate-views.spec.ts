@@ -22,6 +22,17 @@ test("F-32 任务中心：真实任务进入列表，工作状态与优先级接
   test.setTimeout(120_000);
   const runtime = await loadRuntime();
   const { context, page } = await createAuthenticatedContext(browser, runtime);
+  // 侧栏任务徽章会静默请求 /api/v1/me/tasks；它 500 时页面仍可用，因此必须显式收集，
+  // 不能让「列表可见」掩盖契约违约（2026-10-20 游标超过 256 的实际回归）。
+  const shellTaskFailures: string[] = [];
+  page.on("response", (response) => {
+    if (
+      new URL(response.url()).pathname === "/api/v1/me/tasks" &&
+      response.status() >= 500
+    ) {
+      shellTaskFailures.push(String(response.status()));
+    }
+  });
   try {
     const suffix = Date.now().toString(16).toUpperCase();
     const featureName = "任务中心-" + suffix;
@@ -289,6 +300,7 @@ test("F-32 任务中心：真实任务进入列表，工作状态与优先级接
     await expect(issuesDialog).toBeHidden();
     expect(page.url()).toBe(issuesEntryUrl);
     await expect(page.getByTestId("task-center")).toBeVisible();
+    expect(shellTaskFailures).toEqual([]);
   } finally {
     await context.close();
   }
@@ -347,7 +359,7 @@ test("F-29 项目主页：服务端真实指标（含遗留问题总数）与入
       page.getByRole("heading", { name: "待处理遗留问题" }),
     ).toBeVisible();
     await expect(page.getByText("暂无已发布记录")).toBeVisible();
-    await expect(page.getByText("没有待闭环的遗留问题")).toBeVisible();
+    await expect(page.getByText("没有未处理的遗留问题")).toBeVisible();
 
     // 2026-09-20：项目主页三个入口改为就地弹窗——「查看全部」打开迭代记录
     // 弹窗，地址栏保持在项目主页；弹窗内项目筛选已预置为当前项目。

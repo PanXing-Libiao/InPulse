@@ -15,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { migrate } from "../../../database/src/migrate.ts";
 import {
+  AGGREGATE_READ_CURSOR_MAX_LENGTH,
   myTaskPageSchema,
   projectOverviewResponseSchema,
   taskGroupDetailResponseSchema,
@@ -1298,6 +1299,11 @@ describe("GET /api/v1/me/tasks（R-3 我的任务）", () => {
       );
       expect(response.status).toBe(200);
       const page = myTaskPageSchema.parse(response.body);
+      if (page.nextCursor !== null) {
+        expect(page.nextCursor.length).toBeLessThanOrEqual(
+          AGGREGATE_READ_CURSOR_MAX_LENGTH,
+        );
+      }
       collected.push(...page.items.map((item) => item.taskId));
       cursor = page.nextCursor;
       if (cursor === null) {

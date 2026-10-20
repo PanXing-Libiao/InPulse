@@ -1,5 +1,6 @@
 import React from "react";
 import { CalmBadge, CalmSectionTitle } from "@features/common/components/Calm";
+import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { permissionMatrixRows } from "./settings-content";
 
 /**
@@ -8,8 +9,11 @@ import { permissionMatrixRows } from "./settings-content";
  * 「项目成员」列除 √ / — 外还有「仅组长」（本项目现任组长专属，ADR-053）。
  */
 export const PermissionMatrixPanel: React.FC = () => (
-  <section className="panel settings-panel table-panel" aria-label="权限矩阵">
-    <CalmSectionTitle title="权限矩阵" hint="系统管理员与项目成员的权限对照" />
+  <section
+    className="panel settings-panel table-panel permission-matrix-panel"
+    aria-label="权限矩阵"
+  >
+    <CalmSectionTitle title="权限矩阵" />
 
     <div className="table-wrap">
       <table className="settings-table permission-matrix-table">
@@ -30,14 +34,20 @@ export const PermissionMatrixPanel: React.FC = () => (
               </td>
               <td className="permission-cell">
                 {row.admin ? (
-                  <CalmBadge tone="green">√</CalmBadge>
+                  <CalmBadge tone="green" title="允许">
+                    <InpulseIcon name="check" size={13} />
+                    <span className="sr-only">允许</span>
+                  </CalmBadge>
                 ) : (
                   <CalmBadge tone="gray">—</CalmBadge>
                 )}
               </td>
               <td className="permission-cell">
                 {row.member === true ? (
-                  <CalmBadge tone="green">√</CalmBadge>
+                  <CalmBadge tone="green" title="允许">
+                    <InpulseIcon name="check" size={13} />
+                    <span className="sr-only">允许</span>
+                  </CalmBadge>
                 ) : row.member === "leader" ? (
                   <CalmBadge tone="amber" title="仅本项目现任组长可执行">
                     仅组长

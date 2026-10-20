@@ -13,6 +13,10 @@ function cell(rowLabel: string, columnIndex: number): HTMLElement {
   return target;
 }
 
+function expectAllowed(target: HTMLElement): void {
+  expect(target.querySelector(".badge-green")).not.toBeNull();
+}
+
 describe("PermissionMatrixPanel", () => {
   it("renders the four documented columns over every matrix row", () => {
     render(<PermissionMatrixPanel />);
@@ -29,9 +33,9 @@ describe("PermissionMatrixPanel", () => {
 
   it("marks admin-only capabilities and keeps their rule notes", () => {
     render(<PermissionMatrixPanel />);
-    expect(cell("作废/恢复迭代记录", 1)).toHaveTextContent("√");
+    expectAllowed(cell("作废/恢复迭代记录", 1));
     expect(cell("作废/恢复迭代记录", 2)).toHaveTextContent("—");
-    expect(cell("系统管理与审计", 1)).toHaveTextContent("√");
+    expectAllowed(cell("系统管理与审计", 1));
     expect(cell("系统管理与审计", 2)).toHaveTextContent("—");
     expect(cell("系统管理与审计", 3)).toHaveTextContent("原始审计快照");
   });
@@ -52,11 +56,14 @@ describe("PermissionMatrixPanel", () => {
     expect(screen.queryAllByText(/V1\.1/)).toHaveLength(0);
   });
 
-  it("describes the panel without any version tag", () => {
+  it("renders only the panel title, without a caption line or version tag", () => {
     render(<PermissionMatrixPanel />);
     expect(
-      screen.getByText("系统管理员与项目成员的权限对照"),
+      screen.getByRole("heading", { name: "权限矩阵" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("系统管理员与项目成员的权限对照"),
+    ).not.toBeInTheDocument();
   });
 
   it("documents personal notification isolation and project group notification policy", () => {
@@ -65,7 +72,7 @@ describe("PermissionMatrixPanel", () => {
     expect(cell("个人通知与企业微信", 3)).toHaveTextContent(
       "关闭只抑制后续新通知",
     );
-    expect(cell("项目企业微信群", 1)).toHaveTextContent("√");
+    expectAllowed(cell("项目企业微信群", 1));
     expect(cell("项目企业微信群", 2)).toHaveTextContent("仅组长");
     expect(cell("项目企业微信群", 3)).toHaveTextContent("普通成员只读");
   });
@@ -84,15 +91,15 @@ describe("PermissionMatrixPanel", () => {
       "迭代记录与 GitHub 链接",
       "个人通知与企业微信",
     ]) {
-      expect(cell(row, 1)).toHaveTextContent("√");
-      expect(cell(row, 2)).toHaveTextContent("√");
+      expectAllowed(cell(row, 1));
+      expectAllowed(cell(row, 2));
     }
     for (const row of [
       "组长转移与删除项目",
       "删除模块/功能",
       "项目企业微信群",
     ]) {
-      expect(cell(row, 1)).toHaveTextContent("√");
+      expectAllowed(cell(row, 1));
       expect(cell(row, 2)).toHaveTextContent("仅组长");
     }
   });
