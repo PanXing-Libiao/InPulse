@@ -394,7 +394,7 @@ describe("ProjectMembersPageView", () => {
     await screen.findByText(/成员已移出项目/);
   });
 
-  it("lets a system admin transfer the leader role through the generated client (ADR-039)", async () => {
+  it("lets a system admin promote a member through a confirmation dialog (ADR-039)", async () => {
     const client = baseClient();
     const setProjectMemberRole = vi.fn().mockResolvedValue({
       member: { ...owner, role: "LEADER" },
@@ -406,10 +406,12 @@ describe("ProjectMembersPageView", () => {
     mount(api, { isSystemAdmin: true, viewerRole: "MEMBER" });
 
     await screen.findAllByText(/开发者 C/);
-    fireEvent.click(screen.getByRole("button", { name: "设置角色" }));
-    const dialog = await screen.findByRole("dialog", { name: "设置项目角色" });
-    fireEvent.click(within(dialog).getByRole("radio", { name: /组\s*长/ }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "保存角色" }));
+    fireEvent.click(screen.getByRole("button", { name: "设为组长" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认设为组长" });
+    expect(within(dialog).queryByRole("radio")).toBeNull();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "确认设为组长" }),
+    );
 
     await waitFor(() => expect(setProjectMemberRole).toHaveBeenCalledTimes(1));
     expect(setProjectMemberRole).toHaveBeenCalledWith(
@@ -423,10 +425,10 @@ describe("ProjectMembersPageView", () => {
         }),
       }),
     );
-    await screen.findByText(/已将 开发者 C 的项目角色设置为组长/);
+    await screen.findByText(/已将 开发者 C 设为项目组长/);
   });
 
-  it("offers the leader role option to system admins and protects the leader card from removal", async () => {
+  it("offers leader promotion to system admins and protects the leader card from removal", async () => {
     const client = baseClient();
     const leader: ProjectMemberRecordItem = {
       ...owner,
@@ -451,15 +453,16 @@ describe("ProjectMembersPageView", () => {
     expect(within(dialog).getByText(/开发者 C/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /取\s*消/ }));
 
-    const roleButtons = screen.getAllByRole("button", { name: "设置角色" });
+    const roleButtons = screen.getAllByRole("button", { name: "设为组长" });
     expect(roleButtons).toHaveLength(1);
     fireEvent.click(roleButtons[0]!);
     const roleDialog = await screen.findByRole("dialog", {
-      name: "设置项目角色",
+      name: "确认设为组长",
     });
     expect(
-      within(roleDialog).getByRole("radio", { name: /组\s*长/ }),
+      within(roleDialog).getByText(/将 开发者 C 设为项目组长/),
     ).toBeInTheDocument();
+    expect(within(roleDialog).queryByRole("radio")).toBeNull();
   });
 
   it("lets the project leader transfer the role to another member only (ADR-053)", async () => {
@@ -483,23 +486,20 @@ describe("ProjectMembersPageView", () => {
 
     await screen.findByText("组长本人");
     // 组长自己的卡片没有动作按钮，其他成员卡片只有「转移组长」。
-    expect(screen.queryByRole("button", { name: "设置角色" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "设为组长" })).toBeNull();
     const transferButtons = screen.getAllByRole("button", {
       name: "转移组长",
     });
     expect(transferButtons).toHaveLength(1);
     fireEvent.click(transferButtons[0]!);
 
-    const dialog = await screen.findByRole("dialog", { name: "设置项目角色" });
+    const dialog = await screen.findByRole("dialog", { name: "确认转移组长" });
     expect(
-      within(dialog).getByRole("radio", { name: /^项目角色：组长/ }),
+      within(dialog).getByText(/将组长身份转交给 开发者 C/),
     ).toBeInTheDocument();
-    // 组长不能撤销组长：转移弹窗里没有「成员」选项。
-    expect(
-      within(dialog).queryByRole("radio", { name: /^项目角色：成员/ }),
-    ).toBeNull();
-    fireEvent.click(within(dialog).getByRole("radio", { name: /组\s*长/ }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "保存角色" }));
+    // 组长不能撤销组长：弹窗不再提供角色选项，只确认转移。
+    expect(within(dialog).queryByRole("radio")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认转移" }));
 
     await waitFor(() => expect(setProjectMemberRole).toHaveBeenCalledTimes(1));
     expect(setProjectMemberRole).toHaveBeenCalledWith(
@@ -524,7 +524,7 @@ describe("ProjectMembersPageView", () => {
     });
     await screen.findAllByText(/开发者 C/);
     expect(
-      screen.queryByRole("button", { name: "设置角色" }),
+      screen.queryByRole("button", { name: "设为组长" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "转移组长" }),

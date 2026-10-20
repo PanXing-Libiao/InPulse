@@ -2207,6 +2207,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 12px;
 }
 
 .member-candidate-list {
@@ -3457,14 +3458,8 @@
   font-size: 12px;
 }
 
-.member-batchbar select {
-  min-width: 190px;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid #cfdae6;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #42586d;
+.member-batchbar .member-org-select.ant-select {
+  --ant-select-height: 34px;
   font-size: 12px;
 }
 

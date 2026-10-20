@@ -155,25 +155,20 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
     removeMutation.reset();
   };
 
-  // ADR-053：角色任命只针对现任组长之外的行——把其他成员设为组长即完成转移，
-  // 原组长自动降级；撤销组长不存在独立入口。调用者只剩系统管理员与本项目组长。
+  // ADR-053：项目内角色只有「成员 / 组长」，而组长只能通过转移产生；
+  // 因此角色入口实际只做一件事：把目标成员提升为组长。撤销组长不存在，
+  // 系统管理员与现任组长都只需确认这一动作。
   const canSetRoles = isSystemAdmin || viewerRole === "LEADER";
   const leaderTransferOnly = !isSystemAdmin && viewerRole === "LEADER";
-  const assignableRoles = leaderTransferOnly
-    ? (["LEADER"] as const)
-    : (["MEMBER", "LEADER"] as const);
   const [roleTarget, setRoleTarget] = useState<ProjectMemberRecordItem | null>(
     null,
   );
-  const [selectedRole, setSelectedRole] = useState<"MEMBER" | "LEADER" | null>(
-    null,
+  const currentLeader = activeMembers.find(
+    (member) => member.role === "LEADER",
   );
 
   const openRoleModal = (member: ProjectMemberRecordItem) => {
     setRoleTarget(member);
-    setSelectedRole(
-      member.role === "LEADER" || leaderTransferOnly ? null : member.role,
-    );
     setActionError(null);
     setSuccess(null);
     roleMutation.reset();
@@ -182,26 +177,24 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
   const closeRoleModal = () => {
     if (roleMutation.isPending) return;
     setRoleTarget(null);
-    setSelectedRole(null);
     roleMutation.reset();
   };
 
   const submitRole = async () => {
-    if (roleTarget === null || selectedRole === null) return;
+    if (roleTarget === null) return;
     if (roleMutation.isPending) return;
     setActionError(null);
     try {
       await roleMutation.mutateAsync({
         userId: roleTarget.userId,
-        role: selectedRole,
+        role: "LEADER",
       });
       setSuccess(
         leaderTransferOnly
           ? `已将组长身份转交给 ${roleTarget.name}，你已成为普通成员。`
-          : `已将 ${roleTarget.name} 的项目角色设置为${roleLabel[selectedRole]}。`,
+          : `已将 ${roleTarget.name} 设为项目组长。`,
       );
       setRoleTarget(null);
-      setSelectedRole(null);
     } catch (error) {
       setActionError(projectMemberErrorMessage(error));
     }
@@ -427,7 +420,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
                             className="secondary-button"
                             onClick={() => openRoleModal(member)}
                           >
-                            {leaderTransferOnly ? "转移组长" : "设置角色"}
+                            {leaderTransferOnly ? "转移组长" : "设为组长"}
                           </Button>
                         ) : null}
                         {member.role !== "LEADER" ? (
@@ -655,7 +648,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
       <Modal
         className="catalog-modal"
         open={roleTarget !== null}
-        title="设置项目角色"
+        title={leaderTransferOnly ? "确认转移组长" : "确认设为组长"}
         onCancel={closeRoleModal}
         mask={{ closable: !roleMutation.isPending }}
         footer={
@@ -670,13 +663,9 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
             <Button
               className="primary-button"
               loading={roleMutation.isPending}
-              disabled={
-                selectedRole === null ||
-                selectedRole === (roleTarget?.role ?? null)
-              }
               onClick={() => void submitRole()}
             >
-              保存角色
+              {leaderTransferOnly ? "确认转移" : "确认设为组长"}
             </Button>
           </>
         }
@@ -687,39 +676,24 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
               showIcon
               type="info"
               title={
-                "为 " +
-                (roleTarget?.name ?? "") +
-                (leaderTransferOnly
-                  ? " 转交组长身份（仅在本项目生效）"
-                  : " 设置项目内角色（仅在本项目生效）")
+                leaderTransferOnly
+                  ? "将组长身份转交给 " +
+                    (roleTarget?.name ?? "") +
+                    "（仅在本项目生效）"
+                  : "将 " +
+                    (roleTarget?.name ?? "") +
+                    " 设为项目组长（仅在本项目生效）"
               }
               description={
                 leaderTransferOnly
-                  ? "转交后对方成为组长，你自动成为普通成员；每个项目只能有一名组长。"
-                  : "可将成员设为组长；把其他成员设为组长即完成转移，原组长自动成为普通成员。组长不能被直接撤销。"
+                  ? "确认后对方成为项目组长，你自动成为普通成员；每个项目只能有一名组长。"
+                  : currentLeader !== undefined
+                    ? "确认后对方成为项目组长，" +
+                      currentLeader.name +
+                      " 将自动成为普通成员；每个项目只能有一名组长。"
+                    : "确认后对方成为项目组长；每个项目只能有一名组长。"
               }
             />
-            <div className="impact-fieldset member-candidate-list">
-              <div className="check-list">
-                {assignableRoles.map((role) => (
-                  <label key={role}>
-                    <input
-                      type="radio"
-                      name="project-member-role"
-                      checked={selectedRole === role}
-                      aria-label={"项目角色：" + roleLabel[role]}
-                      onChange={() => setSelectedRole(role)}
-                    />
-                    {roleLabel[role]}
-                    {role === "LEADER"
-                      ? leaderTransferOnly
-                        ? "（转交后你成为普通成员）"
-                        : "（每项目唯一，可把组长身份转交给其他成员）"
-                      : "（普通项目成员）"}
-                  </label>
-                ))}
-              </div>
-            </div>
             {actionError ? (
               <Alert type="error" showIcon title={actionError} />
             ) : null}
