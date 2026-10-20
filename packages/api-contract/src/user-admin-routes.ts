@@ -85,10 +85,10 @@ const deleteWritePolicy = {
   },
 } as const;
 
-/** 停用请求新增任务交接 body，旧幂等 Key 在新契约下返回 409。 */
+/** 停用请求新增任务交接与组长移交 body，旧幂等 Key 在新契约下返回 409。 */
 const disableWritePolicy = {
   ...noBodyWritePolicy,
-  idempotencyContractVersion: "2.0.0",
+  idempotencyContractVersion: "3.0.0",
 } as const;
 
 /**
@@ -245,7 +245,7 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     path: "/admin/users/{userId}/disable",
     operationId: "disableUser",
     summary:
-      "系统管理员停用指定用户：同一事务先按项目交接全部未完成任务（保留其他负责人、增补接手人或删除唯一负责人任务），再递增 auth_version、撤销全部 Session 并写审计；停用后所有受保护请求返回 401。",
+      "系统管理员停用指定用户：同一事务先按项目交接全部未完成任务（保留其他负责人、增补接手人或删除唯一负责人任务），并把该账号担任组长的项目移交给项目内其他活跃成员，再递增 auth_version、撤销全部 Session 并写审计；停用后所有受保护请求返回 401。",
     request: {
       path: "AdminUserPath",
       query: "none",

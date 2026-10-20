@@ -3,6 +3,7 @@ export * from "./projects-write.port.js";
 export * from "./projects.module.js";
 
 export * from "./project-code.port.js";
+export * from "./project-leader-transfer.port.js";
 export * from "./project-query.port.js";
 export {
   ProjectMembersQueryPort,

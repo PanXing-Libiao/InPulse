@@ -3745,6 +3745,7 @@
 
 .disable-project-copy {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
 }
@@ -3763,8 +3764,22 @@
   font-weight: 400;
 }
 
-.disable-project-head .disable-pill {
+.disable-project-pills {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
   margin-left: auto;
+}
+
+.disable-leader-select {
+  flex: 0 0 auto;
+}
+
+.disable-leader-select.is-missing .ant-select-selector {
+  border-color: #e3b98f;
+  background: #fffdf9;
+  box-shadow: 0 0 0 2px rgba(227, 185, 143, 0.14);
 }
 
 .disable-task-table {
@@ -3981,6 +3996,16 @@
 }
 
 @media (max-width: 760px) {
+  .disable-project-head {
+    flex-wrap: wrap;
+  }
+
+  .disable-project-pills {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 44px;
+  }
+
   .disable-account-card {
     align-items: flex-start;
     flex-wrap: wrap;

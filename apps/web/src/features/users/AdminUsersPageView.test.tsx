@@ -284,7 +284,7 @@ describe("F-03 admin users page", () => {
     await waitFor(() => expect(disableUser).toHaveBeenCalledTimes(1));
     expect(disableUser).toHaveBeenCalledWith(
       2,
-      { tasks: [] },
+      { tasks: [], leaderTransfers: [] },
       expect.objectContaining({
         headers: expect.objectContaining({
           "If-Match": '"1"',
@@ -1157,6 +1157,7 @@ describe("ADR-081 organizations", () => {
             delete: false,
           },
         ],
+        leaderTransfers: [],
       },
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -1241,6 +1242,73 @@ describe("ADR-081 organizations", () => {
         (node) => node.textContent,
       ),
     ).toEqual(["第一优先唯一任务", "第二优先唯一任务", "普通多负责人任务"]);
+  });
+
+  it("requires a new leader when the disabled account leads a project", async () => {
+    const target: AdminUserItem = { ...member, openTaskCount: 0 };
+    const disableUser = vi.fn().mockResolvedValue(undefined);
+    const getAdminUserOffboarding = vi.fn().mockResolvedValue({
+      user: target,
+      projects: [
+        {
+          projectId: 42,
+          projectCode: "CORE",
+          projectName: "核心平台",
+          members: [
+            { userId: 1, name: "Alice", avatarUrl: null },
+            { userId: 3, name: "Carol", avatarUrl: null },
+          ],
+          tasks: [],
+          requiresLeaderTransfer: true,
+        },
+      ],
+    });
+    const client = {
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [target, admin] }),
+      issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
+      disableUser,
+      getAdminUserOffboarding,
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
+    );
+    const dialog = screen.getByRole("dialog", {
+      name: "停用账号 · 任务交接",
+    });
+    await within(dialog).findByLabelText("为 核心平台 选择新组长");
+    expect(
+      within(dialog).queryByText("全部项目已完成。"),
+    ).not.toBeInTheDocument();
+    const confirm = within(dialog).getByRole("button", {
+      name: /确认停用/,
+    });
+    expect(confirm).toBeDisabled();
+
+    const trigger = screen
+      .getByLabelText("为 核心平台 选择新组长")
+      .closest(".ant-select");
+    if (!trigger) throw new Error("leader select not found");
+    fireEvent.mouseDown(trigger);
+    fireEvent.click(await screen.findByTitle("Alice"));
+    await waitFor(() => expect(confirm).toBeEnabled());
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(disableUser).toHaveBeenCalledTimes(1));
+    expect(disableUser).toHaveBeenCalledWith(
+      2,
+      {
+        tasks: [],
+        leaderTransfers: [{ projectId: 42, newLeaderUserId: 1 }],
+      },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "If-Match": '"1"',
+          "Idempotency-Key": expect.stringContaining("admin-user-"),
+        }),
+      }),
+    );
   });
 
   it("shows disabled accounts only in the departed filter and keeps them gray", async () => {

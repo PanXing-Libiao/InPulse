@@ -246,7 +246,7 @@ describe("F-03 AdminUsersHttpService", () => {
       expect.objectContaining({ actorId: userId }),
       item.id,
       1,
-      { tasks: [] },
+      { tasks: [], leaderTransfers: [] },
     );
 
     s.disable.mockRejectedValueOnce(

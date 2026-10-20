@@ -1599,7 +1599,7 @@
     "/admin/users/{userId}/disable": {
       "post": {
         "operationId": "disableUser",
-        "summary": "系统管理员停用指定用户：同一事务先按项目交接全部未完成任务（保留其他负责人、增补接手人或删除唯一负责人任务），再递增 auth_version、撤销全部 Session 并写审计；停用后所有受保护请求返回 401。",
+        "summary": "系统管理员停用指定用户：同一事务先按项目交接全部未完成任务（保留其他负责人、增补接手人或删除唯一负责人任务），并把该账号担任组长的项目移交给项目内其他活跃成员，再递增 auth_version、撤销全部 Session 并写审计；停用后所有受保护请求返回 401。",
         "responses": {
           "204": {
             "description": "成功且无响应体"
@@ -1680,7 +1680,7 @@
           "csrfPolicy": "required",
           "idempotencyPolicy": "idempotencyRequired",
           "idempotencyExceptionAdr": "none",
-          "idempotencyContractVersion": "2.0.0",
+          "idempotencyContractVersion": "3.0.0",
           "idempotencyFingerprintVersion": "1.0.0",
           "behaviorHeaders": [
             "If-Match"
@@ -18389,10 +18389,19 @@
             "items": {
               "$ref": "#/components/schemas/AdminUserDisableTaskAction"
             }
+          },
+          "leaderTransfers": {
+            "default": [],
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminUserLeaderTransfer"
+            }
           }
         },
         "required": [
-          "tasks"
+          "tasks",
+          "leaderTransfers"
         ],
         "additionalProperties": false
       },
@@ -18584,6 +18593,26 @@
         ],
         "additionalProperties": false
       },
+      "AdminUserLeaderTransfer": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "newLeaderUserId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "projectId",
+          "newLeaderUserId"
+        ],
+        "additionalProperties": false
+      },
       "AdminUserListResponse": {
         "type": "object",
         "properties": {
@@ -18696,6 +18725,9 @@
             "items": {
               "$ref": "#/components/schemas/AdminUserOffboardingMember"
             }
+          },
+          "requiresLeaderTransfer": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -18703,7 +18735,8 @@
           "projectCode",
           "projectName",
           "tasks",
-          "members"
+          "members",
+          "requiresLeaderTransfer"
         ],
         "additionalProperties": false
       },
