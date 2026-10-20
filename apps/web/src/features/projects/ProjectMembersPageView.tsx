@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Alert, Button } from "antd";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import type {
@@ -84,7 +83,6 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
   const [success, setSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const projects = useProjects({ client });
-  const navigate = useNavigate();
   const project = (projects.data?.items ?? []).find(
     (item) => item.id === projectId,
   );
@@ -324,6 +322,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
       {/* ADR-077：组长 / 系统管理员可签发绑定码与解绑，普通成员只读。 */}
       <ProjectWecomGroupCard
         projectId={projectId}
+        projectName={project?.name ?? null}
         canManage={isSystemAdmin || viewerRole === "LEADER"}
         client={client}
       />
@@ -360,29 +359,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
           data-testid="project-members-panel"
         >
           <div className="settings-panel-head">
-            <CalmSectionTitle title="项目成员">
-              {embedded ? null : (
-                <CalmSelect
-                  value={projectId}
-                  onChange={(next) =>
-                    navigate("/projects/" + String(next) + "/members")
-                  }
-                  options={(projects.data?.items ?? []).map((item) => ({
-                    value: item.id,
-                    label: item.name,
-                    description: String(item.memberCount) + " 名活跃成员",
-                    iconText: item.code.slice(0, 2).toUpperCase(),
-                    badge: {
-                      text: projectLifecycleLabel(item.status),
-                      tone: projectLifecycleTone(item.status, "blue"),
-                    },
-                  }))}
-                  appearance="rich"
-                  ariaLabel="选择项目"
-                  animated
-                />
-              )}
-            </CalmSectionTitle>
+            <CalmSectionTitle title="项目成员" />
           </div>
           {project ? (
             <>
@@ -394,10 +371,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
                 <dt>状态</dt>
                 <dd>{projectLifecycleLabel(project.status)}</dd>
                 <dt>创建人</dt>
-                <dd>
-                  {memberNames.get(project.createdBy) ?? "—"}
-                  （仅溯源，不授予额外权限）
-                </dd>
+                <dd>{memberNames.get(project.createdBy) ?? "—"}</dd>
                 <dt>创建时间</dt>
                 <dd>{formatMemberDate(project.createdAt)}</dd>
               </dl>
@@ -409,14 +383,6 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
                     <em>共 {activeMembers.length} 人</em>
                   </span>
                   <div className="member-selection-actions">
-                    <Button
-                      className="text-button"
-                      onClick={() => {
-                        void query.refetch();
-                      }}
-                    >
-                      刷新成员
-                    </Button>
                     <Button className="secondary-button" onClick={openAdd}>
                       <InpulseIcon name="plus" size={15} />
                       添加成员

@@ -11,9 +11,12 @@ import {
   projectWecomGroupErrorMessage,
   useProjectWecomGroup,
 } from "./project-wecom-group-query";
+import { ProjectNotificationOptionsModal } from "./ProjectNotificationOptionsModal";
 
 export interface ProjectWecomGroupCardProps {
   readonly projectId: number;
+  /** 通知选项弹窗的眉标：当前项目名称；项目尚未加载时退回「企业微信项目群」。 */
+  readonly projectName?: string | null | undefined;
   /** ADR-077：组长 / 系统管理员可见「生成绑定码」与「解绑」；普通成员只读。 */
   readonly canManage: boolean;
   readonly client?: InpulseApiClient | undefined;
@@ -38,10 +41,12 @@ function formatRemaining(remainingMs: number): string {
  */
 export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
   projectId,
+  projectName = null,
   canManage,
   client,
 }) => {
   const { query, issueCode, unbind } = useProjectWecomGroup(projectId, client);
+  const [notificationOpen, setNotificationOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
@@ -181,6 +186,11 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
         <CalmSectionTitle title="企业微信项目群">
           {canManage ? (
             <div className="calm-section-actions">
+              {bound ? (
+                <Button size="small" onClick={() => setNotificationOpen(true)}>
+                  通知选项
+                </Button>
+              ) : null}
               {issueButton}
               {bound ? (
                 <Popconfirm
@@ -322,6 +332,12 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
           />
         </div>
       ) : null}
+
+      <ProjectNotificationOptionsModal
+        open={notificationOpen}
+        projectName={projectName}
+        onClose={() => setNotificationOpen(false)}
+      />
     </section>
   );
 };

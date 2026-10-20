@@ -1838,6 +1838,77 @@
   padding: 16px 0 14px;
 }
 
+/* 通知选项弹窗（项目群绑定成功后打开）：该盒没有 catalog-modal 类，不吃通用头部
+   排版，需要显式补内边距，否则眉标顶到盒子左上角、关闭按钮贴住右边缘。
+   头部左右与正文 28px 内容边界对齐（窄屏同为 20px），行距由 13px 收到 10px，
+   描述允许换行，开关列固定靠右。 */
+.project-notification-modal > .drawer-header {
+  padding: 18px 28px 14px;
+  border-bottom: 1px solid #e8eef5;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.project-notification-modal > .modal-body {
+  padding: 14px 28px 8px;
+}
+
+.project-notification-modal .settings-table {
+  width: 100%;
+}
+
+.project-notification-modal .settings-table tr:first-child td {
+  border-top: 0;
+}
+
+.project-notification-modal .settings-table tbody tr {
+  cursor: default;
+}
+
+.project-notification-modal .settings-table td {
+  padding: 10px 0;
+  white-space: normal;
+}
+
+.project-notification-modal .settings-table td:first-child {
+  padding-right: 16px;
+}
+
+.project-notification-modal .settings-table td small {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.project-notification-modal .switch-cell {
+  width: 64px;
+  text-align: right;
+}
+
+/* 眉标是中文项目名：去掉英文小标题的 1.3px 字距，字号提到 12px 并允许单行省略。 */
+.project-notification-modal > .drawer-header .detail-label {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6d8ca9;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .project-notification-modal > .drawer-header {
+    padding: 16px 20px 12px;
+  }
+
+  .project-notification-modal > .modal-body {
+    padding: 12px 20px 6px;
+  }
+}
+
 .project-members-panel .project-facts {
   margin: 0;
 }

@@ -122,7 +122,7 @@ export function ActiveProjectMembers({
               <dt>状态</dt>
               <dd>{projectLifecycleLabel(projectDetail.status)}</dd>
               <dt>创建人</dt>
-              <dd>{creatorName ?? "—"}（仅溯源，不授予额外权限）</dd>
+              <dd>{creatorName ?? "—"}</dd>
               <dt>创建时间</dt>
               <dd>{formatMemberDate(projectDetail.createdAt)}</dd>
             </dl>

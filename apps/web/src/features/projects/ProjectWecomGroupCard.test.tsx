@@ -1,6 +1,12 @@
 import React from "react";
 import { ConfigProvider } from "antd";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import type { InpulseApiClient, ProjectWecomGroupStatus } from "@generated/api";
@@ -154,6 +160,7 @@ describe("ProjectWecomGroupCard（ADR-077）", () => {
     await screen.findByText("已绑定企业微信群");
     expect(screen.queryByRole("button", { name: "解绑企业微信群" })).toBeNull();
     expect(screen.queryByRole("button", { name: "重新生成绑定码" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "通知选项" })).toBeNull();
   });
 
   it("待用码但客户端无明文：展示有效期并允许重新生成", async () => {
@@ -193,5 +200,17 @@ describe("ProjectWecomGroupCard（ADR-077）", () => {
     fireEvent.click(screen.getByRole("button", { name: "复制绑定码" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
     expect(writeText).toHaveBeenLastCalledWith("ABCD-EFGH-JKMN-PQRS");
+  });
+
+  it("已绑定且管理员：通知选项按钮打开设置弹窗", async () => {
+    mount({ statuses: [bound], canManage: true });
+    await screen.findByText("已绑定企业微信群");
+
+    fireEvent.click(screen.getByRole("button", { name: "通知选项" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "通知选项" });
+    expect(
+      within(dialog).getByRole("switch", { name: "项目群推送任务派发" }),
+    ).toBeChecked();
   });
 });
