@@ -2539,6 +2539,13 @@
   text-align: center;
 }
 
+/* 权限矩阵「规则说明」列：原 10px 小字在宽表里偏小，按用户要求提到 11px；
+   列头和左侧功能名保持原字号。 */
+.permission-matrix-table td small {
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .notification-policy-panel .calm-section-title h3 {
   color: #132238;
   font-size: 18px;
