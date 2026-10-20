@@ -8,8 +8,11 @@ import { permissionMatrixRows } from "./settings-content";
  * 「项目成员」列除 √ / — 外还有「仅组长」（本项目现任组长专属，ADR-053）。
  */
 export const PermissionMatrixPanel: React.FC = () => (
-  <section className="panel settings-panel table-panel" aria-label="权限矩阵">
-    <CalmSectionTitle title="权限矩阵" hint="系统管理员与项目成员的权限对照" />
+  <section
+    className="panel settings-panel table-panel permission-matrix-panel"
+    aria-label="权限矩阵"
+  >
+    <CalmSectionTitle title="权限矩阵" />
 
     <div className="table-wrap">
       <table className="settings-table permission-matrix-table">

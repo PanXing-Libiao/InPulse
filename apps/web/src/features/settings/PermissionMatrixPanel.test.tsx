@@ -57,11 +57,14 @@ describe("PermissionMatrixPanel", () => {
     expect(screen.queryAllByText(/V1\.1/)).toHaveLength(0);
   });
 
-  it("describes the panel without any version tag", () => {
+  it("renders only the panel title, without a caption line or version tag", () => {
     render(<PermissionMatrixPanel />);
     expect(
-      screen.getByText("系统管理员与项目成员的权限对照"),
+      screen.getByRole("heading", { name: "权限矩阵" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("系统管理员与项目成员的权限对照"),
+    ).not.toBeInTheDocument();
   });
 
   it("distinguishes member-wide, leader-only and admin-only capabilities", () => {
