@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { projectNotificationCategories } from "../project-notification-categories.js";
+import { personalNotificationSettings } from "../personal-notification-settings.js";
 
 export const NOTIFICATION_PAGE_LIMIT_MAX = 50;
 export const NOTIFICATION_CURSOR_MAX_LENGTH = 512;
@@ -124,4 +125,31 @@ export type NotificationUnreadCountResponse = z.infer<
 >;
 export type NotificationReplayContext = z.infer<
   typeof notificationReplayContextSchema
+>;
+
+export const notificationPreferencesSchema = z
+  .object({
+    disabledSettings: z
+      .array(z.enum(personalNotificationSettings))
+      .max(personalNotificationSettings.length)
+      .overwrite((values) => [...new Set(values)].sort()),
+  })
+  .strict()
+  .meta({ id: "NotificationPreferences" });
+
+export const notificationPreferencesUpdateRequestSchema = z
+  .object({
+    disabledSettings: z
+      .array(z.enum(personalNotificationSettings))
+      .max(personalNotificationSettings.length)
+      .overwrite((values) => [...new Set(values)].sort()),
+  })
+  .strict()
+  .meta({ id: "NotificationPreferencesUpdateRequest" });
+
+export type NotificationPreferences = z.infer<
+  typeof notificationPreferencesSchema
+>;
+export type NotificationPreferencesUpdateRequest = z.infer<
+  typeof notificationPreferencesUpdateRequestSchema
 >;

@@ -32,7 +32,7 @@ const pageChunks = import.meta.glob("../../pages/**/*Page.tsx");
 
 interface RoutePreloadEntry {
   readonly pattern: RegExp;
-  readonly preload: () => void;
+  readonly preload: () => Promise<void>;
 }
 
 const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/g;
@@ -72,10 +72,12 @@ function buildEntries(): RoutePreloadEntry[] {
     }
     entries.push({
       pattern: pathPatternOf(routePath),
-      preload: () => {
-        // 预取只为把 chunk 预热进模块缓存；结果与异常都不影响导航本身。
-        void load().catch(() => undefined);
-      },
+      // 返回 Promise 让调用方能在「内容已经就绪」后再切换路由：先关弹窗再等
+      // chunk 会让用户看到一帧空列表 / 骨架，再整页重建，观感就是闪一下。
+      preload: () =>
+        load()
+          .then(() => undefined)
+          .catch(() => undefined),
     });
   }
   return entries;
@@ -83,15 +85,18 @@ function buildEntries(): RoutePreloadEntry[] {
 
 const routePreloadEntries = buildEntries();
 
-/** 把某个地址的页面 chunk 提前拉进模块缓存；没有匹配路由时什么都不做。 */
-export function preloadRoutePath(url: string): void {
+/**
+ * 把某个地址的页面 chunk 提前拉进模块缓存；没有匹配路由时立即完成。
+ * 返回值总是 resolve：预取失败不能阻断真正的导航。
+ */
+export function preloadRoutePath(url: string): Promise<void> {
   const path = url.split("?")[0] ?? "";
   for (const entry of routePreloadEntries) {
     if (entry.pattern.test(path)) {
-      entry.preload();
-      return;
+      return entry.preload();
     }
   }
+  return Promise.resolve();
 }
 
 /**
@@ -100,7 +105,7 @@ export function preloadRoutePath(url: string): void {
  */
 export function routePreloadHandlers(path: string) {
   const preload = () => {
-    preloadRoutePath(path);
+    void preloadRoutePath(path);
   };
   return {
     onPointerEnter: preload,

@@ -97,6 +97,8 @@ import {
   notificationItemSchema,
   notificationPageSchema,
   notificationPathSchema,
+  notificationPreferencesSchema,
+  notificationPreferencesUpdateRequestSchema,
   notificationQueryRequestSchema,
   notificationMuteQueryRequestSchema,
   notificationReplayContextSchema,
@@ -544,6 +546,17 @@ export const schemaRegistry = {
   NotificationReplayContext: {
     schema: notificationReplayContextSchema,
     summary: "单条通知写操作的最小重放授权上下文",
+    sensitiveFieldPaths: [],
+  },
+  NotificationPreferences: {
+    schema: notificationPreferencesSchema,
+    summary:
+      "当前用户的个人通知偏好；disabledSettings 列出被关闭的设置项，缺省全部开启",
+    sensitiveFieldPaths: [],
+  },
+  NotificationPreferencesUpdateRequest: {
+    schema: notificationPreferencesUpdateRequestSchema,
+    summary: "整组替换个人通知偏好；disabledSettings 去重并排序",
     sensitiveFieldPaths: [],
   },
   ProjectCode: {

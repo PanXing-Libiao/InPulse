@@ -1,4 +1,3 @@
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
@@ -369,7 +368,7 @@ describe("F-16 status history", () => {
       history.items[1]!.completedAtSnapshot,
     );
   });
-  it("notifies the creator on completion and deduplicates creator/assignee on reopening", async () => {
+  it("notifies the creator and all assignees on completion and deduplicates them on reopening", async () => {
     const { project, member } = await fixture();
     const assignee = await actor();
     await addMember(project.projectId, assignee.userId);
@@ -388,8 +387,12 @@ describe("F-16 status history", () => {
       2,
     );
     expect(
-      await client.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${project.projectId} AND notification_type='task.complete'`,
-    ).toEqual([{ recipient_id: member.userId }]);
+      await client.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${project.projectId} AND notification_type='task.complete' ORDER BY recipient_id`,
+    ).toEqual(
+      [member.userId, assignee.userId]
+        .sort((a, b) => a - b)
+        .map((recipient_id) => ({ recipient_id })),
+    );
     expect(
       await client.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${project.projectId} AND notification_type='task.reopen' ORDER BY recipient_id`,
     ).toEqual(

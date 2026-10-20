@@ -11,6 +11,8 @@ export interface TimeCursorEncodeInput {
   readonly projectId: number | null;
   readonly afterAt: string;
   readonly afterId: string;
+  /** 通知等列表的排序分组，例如 UNREAD / READ；解码后原样返回。 */
+  readonly sortGroup?: string | null;
   /**
    * 可选：本接口的规范化筛选摘要（B-3b 跨项目记录读）。提供后解码必须复现
    * 完全相同的字符串，否则按筛选不匹配拒绝，游标不得跨筛选复用。
@@ -31,6 +33,7 @@ export interface TimeCursorDecodeContext {
 export interface TimeCursorValue {
   readonly at: string;
   readonly id: string;
+  readonly sortGroup?: string | null;
 }
 
 interface TimeCursorPayload {
@@ -41,6 +44,7 @@ interface TimeCursorPayload {
   readonly f: string | null;
   readonly a: string;
   readonly i: string;
+  readonly g: string | null;
   readonly e: number;
 }
 
@@ -87,6 +91,13 @@ export class TimeCursorService {
     if (!positiveIntegerString(input.afterId)) {
       throw new Error("time cursor afterId must be a positive integer string");
     }
+    if (
+      input.sortGroup !== undefined &&
+      input.sortGroup !== null &&
+      !validSortGroup(input.sortGroup)
+    ) {
+      throw new Error("time cursor sortGroup is invalid");
+    }
 
     const nowMs = input.nowMs ?? Date.now();
     const payload: TimeCursorPayload = {
@@ -97,6 +108,7 @@ export class TimeCursorService {
       f: input.filterKey ?? null,
       a: input.afterAt,
       i: input.afterId,
+      g: input.sortGroup ?? null,
       e: nowMs + TIME_CURSOR_TTL_MS,
     };
     const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString(
@@ -168,7 +180,8 @@ export class TimeCursorService {
     if ((payload.f ?? null) !== (context.filterKey ?? null)) {
       fail("filter-mismatch", "time cursor filter does not match");
     }
-    return { at: payload.a, id: payload.i };
+    const value: TimeCursorValue = { at: payload.a, id: payload.i };
+    return payload.g === null ? value : { ...value, sortGroup: payload.g };
   }
 }
 
@@ -186,6 +199,12 @@ function positiveInteger(value: number): boolean {
 
 function positiveIntegerString(value: string): boolean {
   return /^[1-9][0-9]*$/.test(value);
+}
+
+function validSortGroup(value: string): boolean {
+  return (
+    value.length > 0 && value.length <= 32 && /^[A-Z][A-Z0-9_]*$/.test(value)
+  );
 }
 
 function validTimestamp(value: string): boolean {
@@ -242,6 +261,13 @@ function parsePayload(raw: string): TimeCursorPayload {
   if (typeof payload.i !== "string" || !positiveIntegerString(payload.i)) {
     fail("malformed", "time cursor after id is invalid");
   }
+  if (
+    payload.g !== undefined &&
+    payload.g !== null &&
+    (typeof payload.g !== "string" || !validSortGroup(payload.g))
+  ) {
+    fail("malformed", "time cursor sort group is invalid");
+  }
   if (!positiveInteger(payload.e ?? 0)) {
     fail("malformed", "time cursor expiry is invalid");
   }
@@ -253,6 +279,7 @@ function parsePayload(raw: string): TimeCursorPayload {
     f: payload.f ?? null,
     a: payload.a,
     i: payload.i,
+    g: payload.g ?? null,
     e: payload.e!,
   };
 }

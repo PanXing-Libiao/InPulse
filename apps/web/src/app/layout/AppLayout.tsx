@@ -10,6 +10,7 @@ import {
 } from "@features/common/components/InpulseIcon";
 import { useProjectTier } from "@features/common/project-tier-context";
 import { NotificationBell } from "@features/notifications/NotificationBell";
+import { createNotificationTaskOpenState } from "@features/notifications/notification-task-state";
 import { WecomBindingModal } from "@features/settings/WecomBindingModal";
 import { WecomBindingPromptModal } from "@features/settings/WecomBindingPromptModal";
 import { ProjectTree } from "@features/project-tree/ProjectTree";
@@ -290,8 +291,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     }, NAV_COLLAPSE_MS);
   };
 
+  /**
+   * 任务通知先落到通知汇总页，由通知页就地打开任务详情；关闭弹窗后仍停留在
+   * /notifications，不再把人带到项目内部。其余通知保持原有跳转。
+   */
   const handleOpenTarget = (targetPath: string) => {
-    navigate(targetPath);
+    const taskState = createNotificationTaskOpenState(targetPath);
+    if (taskState !== null) {
+      navigate("/notifications", { state: taskState });
+      return;
+    }
+    // 目标页 chunk 就绪后再切换，避免铃铛弹层关闭后先露出骨架。
+    void preloadRoutePath(targetPath).finally(() => navigate(targetPath));
   };
 
   const handleOpenSearch = (query: string) => {
@@ -520,6 +531,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <NotificationBell
               client={notificationClient}
               enabled={status === "authenticated"}
+              userId={user?.id ?? null}
               onOpen={() => handleNavigation("/notifications")}
               onOpenTarget={handleOpenTarget}
             />

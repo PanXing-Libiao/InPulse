@@ -14,6 +14,7 @@ import { routePreloadHandlers } from "@shared/routing/route-preload";
 export interface NotificationBellProps {
   readonly client?: InpulseApiClient | undefined;
   readonly enabled?: boolean;
+  readonly userId?: number | null | undefined;
   readonly onOpen: () => void;
   readonly onOpenTarget?: (targetPath: string) => void;
 }
@@ -51,17 +52,19 @@ function formatNotificationTime(value: string): string {
 export const NotificationBell: React.FC<NotificationBellProps> = ({
   client,
   enabled = true,
+  userId = null,
   onOpen,
   onOpenTarget,
 }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const unreadQuery = useNotificationUnreadCount({ client, enabled });
+  const unreadQuery = useNotificationUnreadCount({ client, enabled, userId });
   const listQuery = useNotificationsInfiniteQuery({
     client,
     enabled: enabled && open,
     filter: "all",
     limit: 5,
+    userId,
   });
   const actions = useNotificationActions({ client });
   const unreadCount = unreadQuery.data ?? 0;

@@ -44,32 +44,67 @@ export class NotificationStateService {
   }> {
     const rows = await this.#sql.unsafe<NotificationRow[]>(
       `SELECT
-         id::text,
-         project_id,
-         notification_type,
-         title,
-         body,
-         target_path,
-         to_char(created_at AT TIME ZONE 'UTC',
+         n.id::text,
+         n.project_id,
+         n.notification_type,
+         n.title,
+         n.body,
+         n.target_path,
+         to_char(n.created_at AT TIME ZONE 'UTC',
                  'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
-         to_char(read_at AT TIME ZONE 'UTC',
+         to_char(n.read_at AT TIME ZONE 'UTC',
                  'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS read_at
-       FROM app.notifications
-      WHERE recipient_id = $1
-        AND ($2::boolean IS FALSE OR read_at IS NULL)
+       FROM app.notifications AS n
+      WHERE n.recipient_id = $1
+        AND ($2::boolean IS FALSE OR n.read_at IS NULL)
         AND (
           $3::timestamptz IS NULL
-          OR created_at < $3::timestamptz
-          OR (created_at = $3::timestamptz AND id < $4::bigint)
+          OR (
+            $7::text = 'UNREAD'
+            AND (
+              (
+                n.read_at IS NULL
+                AND (
+                  n.created_at < $3::timestamptz
+                  OR (n.created_at = $3::timestamptz AND n.id < $4::bigint)
+                )
+              )
+              OR (
+                n.read_at IS NOT NULL
+                AND NOT (
+                  n.created_at = $3::timestamptz
+                  AND n.id = $4::bigint
+                )
+              )
+            )
+          )
+          OR (
+            $7::text = 'READ'
+            AND n.read_at IS NOT NULL
+            AND (
+              n.created_at < $3::timestamptz
+              OR (n.created_at = $3::timestamptz AND n.id < $4::bigint)
+            )
+          )
+          OR (
+            $7::text IS NULL
+            AND (
+              n.created_at < $3::timestamptz
+              OR (n.created_at = $3::timestamptz AND n.id < $4::bigint)
+            )
+          )
         )
         AND (
-          project_id IS NULL
+          n.project_id IS NULL
           OR NOT (
-            project_id::text || '|' || notification_type
+            n.project_id::text || '|' || n.notification_type
               = ANY ($6::text[])
           )
         )
-      ORDER BY created_at DESC, id DESC
+      ORDER BY
+        (n.read_at IS NULL) DESC,
+        n.created_at DESC,
+        n.id DESC
       LIMIT $5`,
       [
         input.recipientId,
@@ -78,6 +113,7 @@ export class NotificationStateService {
         input.after?.id ?? "0",
         input.limit + 1,
         input.hiddenRules ?? [],
+        input.after?.sortGroup ?? null,
       ],
     );
     const hasMore = rows.length > input.limit;
@@ -97,7 +133,11 @@ export class NotificationStateService {
       last:
         last === undefined || !hasMore
           ? null
-          : { at: last.created_at, id: last.id },
+          : {
+              at: last.created_at,
+              id: last.id,
+              sortGroup: last.read_at === null ? "UNREAD" : "READ",
+            },
     };
   }
 
@@ -107,16 +147,17 @@ export class NotificationStateService {
   ): Promise<number> {
     const rows = (await this.#sql.unsafe<{ count: number }[]>(
       `SELECT count(*)::INTEGER AS count
-         FROM app.notifications
-        WHERE recipient_id = $1
-          AND read_at IS NULL
+         FROM app.notifications AS n
+        WHERE n.recipient_id = $1
+          AND n.read_at IS NULL
           AND (
-            project_id IS NULL
+            n.project_id IS NULL
             OR NOT (
-              project_id::text || '|' || notification_type
+              n.project_id::text || '|' || n.notification_type
                 = ANY ($2::text[])
             )
-          )`,
+          )
+`,
       [recipientId, hiddenRules],
     )) as unknown as readonly { count: number }[];
     return rows[0]?.count ?? 0;

@@ -136,14 +136,15 @@ describe("PostgresNotificationWritePort / NotificationStateService (real Postgre
     expect(ownerCount?.count).toBe(2);
   });
 
-  test("只返回当前用户自己的通知并支持未读过滤与游标分页", async () => {
+  test("只返回当前用户自己的通知，未读优先并支持跨组游标分页", async () => {
+    const readerId = await createUser(client!.sql);
     const created = [
       new Date("2026-09-08T00:00:06.000Z"),
       new Date("2026-09-08T00:00:05.000Z"),
       new Date("2026-09-08T00:00:04.000Z"),
     ];
     for (const [index, at] of created.entries()) {
-      await appendNotification(ownerId!, {
+      await appendNotification(readerId, {
         projectId: project!.projectId,
         notificationType: `EVENT_${index}`,
         title: `通知 ${index}`,
@@ -160,39 +161,44 @@ describe("PostgresNotificationWritePort / NotificationStateService (real Postgre
       targetPath: null,
       createdAt: new Date("2026-09-08T00:00:09.000Z"),
     });
-    await markRead(ownerId!, created[1]!);
+    await markRead(readerId, created[1]!);
 
-    const first = await state!.read({
-      recipientId: ownerId!,
-      unreadOnly: false,
+    const first = await queryService!.query({
+      actorUserId: readerId,
       limit: 1,
-      after: null,
     });
     expect(first.items).toHaveLength(1);
-    expect(first.last).not.toBeNull();
     expect(first.items[0]?.title).toBe("通知 0");
-    expect(first.last?.at).toBe("2026-09-08T00:00:06.000000Z");
+    expect(first.nextCursor).not.toBeNull();
 
-    const second = await state!.read({
-      recipientId: ownerId!,
-      unreadOnly: false,
+    const second = await queryService!.query({
+      actorUserId: readerId,
       limit: 1,
-      after: first.last,
+      after: first.nextCursor as string,
     });
-    expect(second.items[0]?.title).toBe("通知 1");
-    expect(second.items[0]?.readAt).not.toBeNull();
-    expect(second.last).not.toBeNull();
+    expect(second.items[0]?.title).toBe("通知 2");
+    expect(second.items[0]?.readAt).toBeNull();
+    expect(second.nextCursor).not.toBeNull();
 
-    const unread = await state!.read({
-      recipientId: ownerId!,
+    const third = await queryService!.query({
+      actorUserId: readerId,
+      limit: 1,
+      after: second.nextCursor as string,
+    });
+    expect(third.items[0]?.title).toBe("通知 1");
+    expect(third.items[0]?.readAt).not.toBeNull();
+    expect(third.nextCursor).toBeNull();
+
+    const unread = await queryService!.query({
+      actorUserId: readerId,
       unreadOnly: true,
       limit: 50,
-      after: null,
     });
-    expect(unread.items.every((item) => !item.title.startsWith("通知 1"))).toBe(
-      true,
-    );
-    expect(await state!.countUnread(ownerId!)).toBe(unread.items.length);
+    expect(unread.items.map((item) => item.title)).toEqual([
+      "通知 0",
+      "通知 2",
+    ]);
+    expect(await state!.countUnread(readerId)).toBe(2);
   });
 
   test("项目通知选项只过滤对应项目的站内通知与未读数", async () => {
@@ -274,6 +280,98 @@ describe("PostgresNotificationWritePort / NotificationStateService (real Postgre
 
     expect(await state!.countUnread(ownerId!)).toBe(beforeAll + 4);
     expect(await state!.countUnread(ownerId!, rules)).toBe(beforeMuted + 3);
+  });
+
+  test("个人通知抑制项只阻止新写入，不隐藏历史通知与未读数", async () => {
+    const recipientId = await createUser(client!.sql);
+    const otherProject = await createProject(client!.sql, recipientId);
+
+    await appendNotification(recipientId, {
+      projectId: project!.projectId,
+      notificationType: "task.assigned",
+      title: "个人策略-项目 A 任务",
+      body: "历史通知保持原状",
+      targetPath: "/projects/" + project!.projectId + "/tasks",
+      createdAt: new Date("2026-09-08T00:02:01.000Z"),
+    });
+    const otherAudit = await uow!.run((tx) =>
+      auditPort!.append(tx, {
+        ...auditInput("PERSONAL_POLICY_PROJECT_B"),
+        projectId: otherProject.projectId,
+        targetId: String(otherProject.projectId),
+      }),
+    );
+    await uow!.run((tx) =>
+      writePort!.write(tx, {
+        recipientId,
+        projectId: otherProject.projectId,
+        sourceChainId: "PROJECT:" + otherProject.projectId,
+        sourceSequence: otherAudit.sequenceNo,
+        notificationType: "task.assigned",
+        title: "个人策略-项目 B 任务",
+        body: "同类型跨项目历史也保留",
+        targetPath: "/projects/" + otherProject.projectId + "/tasks",
+        createdAt: new Date("2026-09-08T00:02:02.000Z"),
+      }),
+    );
+    await appendNotification(recipientId, {
+      projectId: project!.projectId,
+      notificationType: "record.publish",
+      title: "个人策略-记录发布",
+      body: "其他类型不受影响",
+      targetPath: "/projects/" + project!.projectId + "/records",
+      createdAt: new Date("2026-09-08T00:02:03.000Z"),
+    });
+    expect(await state!.countUnread(recipientId)).toBe(3);
+
+    await client!.sql`
+      INSERT INTO app.user_notification_suppressions (
+        user_id,
+        notification_type,
+        setting_key
+      )
+      VALUES (${recipientId}, ${"task.assigned"}, ${"task.assigned"})
+      ON CONFLICT DO NOTHING
+    `;
+
+    const page = await state!.read({
+      recipientId,
+      unreadOnly: false,
+      limit: 50,
+      after: null,
+      hiddenRules: [],
+    });
+    const titles = page.items.map((item) => item.title);
+    expect(titles).toContain("个人策略-项目 A 任务");
+    expect(titles).toContain("个人策略-项目 B 任务");
+    expect(titles).toContain("个人策略-记录发布");
+    expect(await state!.countUnread(recipientId)).toBe(3);
+
+    await appendNotification(recipientId, {
+      projectId: project!.projectId,
+      notificationType: "task.assigned",
+      title: "个人策略-关闭后新任务",
+      body: "关闭后不再写入",
+      targetPath: "/projects/" + project!.projectId + "/tasks",
+      createdAt: new Date("2026-09-08T00:02:04.000Z"),
+    });
+    const afterWrite = await state!.read({
+      recipientId,
+      unreadOnly: false,
+      limit: 50,
+      after: null,
+      hiddenRules: [],
+    });
+    const afterTitles = afterWrite.items.map((item) => item.title);
+    expect(afterTitles).not.toContain("个人策略-关闭后新任务");
+    expect(afterTitles).toHaveLength(3);
+    expect(await state!.countUnread(recipientId)).toBe(3);
+
+    await client!.sql`
+      DELETE FROM app.user_notification_suppressions
+       WHERE user_id = ${recipientId}
+         AND notification_type = ${"task.assigned"}
+    `;
   });
 
   test("签名游标绑定当前用户并支持无重叠分页", async () => {

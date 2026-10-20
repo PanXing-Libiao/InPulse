@@ -579,11 +579,7 @@ export class TasksManagementService {
     });
     if (command.action === "COMPLETE" || command.action === "REOPEN") {
       const recipients = [
-        ...new Set(
-          command.action === "COMPLETE"
-            ? [result.creatorId]
-            : [...result.assigneeIds, result.creatorId],
-        ),
+        ...new Set([result.creatorId, ...result.assigneeIds]),
       ].sort((a, b) => a - b);
       for (const recipientId of recipients)
         await this.notifications.write(tx, {

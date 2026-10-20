@@ -7,6 +7,8 @@
  * 全角色都不具备的能力不列入矩阵。
  */
 
+import type { PersonalNotificationSetting } from "@shared/notifications/personal-notification-settings";
+
 /** 项目成员列取值：true = 任意活跃成员；"leader" = 仅本项目现任组长；false = 无人。 */
 export type MemberPermissionMark = boolean | "leader";
 
@@ -186,7 +188,7 @@ export const permissionMatrixRows: readonly PermissionMatrixRow[] = [
 
 export interface NotificationScenarioRow {
   /** 后端通知类型；同一类型对应同一个开关。 */
-  readonly key: string;
+  readonly key: PersonalNotificationSetting;
   readonly event: string;
   readonly audience: string;
 }
@@ -208,7 +210,7 @@ export const notificationScenarios: readonly NotificationScenarioRow[] = [
     key: "task.complete",
 
     event: "任务完成",
-    audience: "你创建的任务被完成时",
+    audience: "你创建或负责的任务被完成时",
   },
   {
     key: "task.reopen",

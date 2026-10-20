@@ -4479,7 +4479,7 @@
     "/notifications": {
       "get": {
         "operationId": "getNotifications",
-        "summary": "当前用户自己的站内通知列表；SQL 强制 recipient_id=当前用户，cursor 为服务端签名、校验并带过期时间的不透明字符串；mutedProjectCategories 为逗号分隔的 projectId:category 对，用于按浏览器中的项目通知选项过滤当前用户的只读视图与未读数。",
+        "summary": "当前用户自己的站内通知列表，未读通知优先，未读组与已读组内均按发送时间倒序；SQL 强制 recipient_id=当前用户；个人通知偏好只影响后续通知生成，不回滤历史通知；cursor 为服务端签名、校验并带过期时间的不透明字符串；mutedProjectCategories 为逗号分隔的 projectId:category 对，用于按浏览器中的项目通知选项过滤当前用户的只读视图与未读数。",
         "responses": {
           "200": {
             "description": "成功",
@@ -4801,6 +4801,175 @@
         ]
       }
     },
+    "/notifications/preferences": {
+      "get": {
+        "operationId": "getNotificationPreferences",
+        "summary": "当前登录用户的个人通知偏好；disabledSettings 列出被关闭的设置项，缺省全部开启；响应 no-store。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferences"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Session 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期错误，不向客户端泄露堆栈",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-inpulse-policy": {
+          "authPolicy": "session",
+          "csrfPolicy": "none",
+          "idempotencyPolicy": "none",
+          "idempotencyExceptionAdr": "none",
+          "idempotencyContractVersion": "none",
+          "idempotencyFingerprintVersion": "none",
+          "behaviorHeaders": "none",
+          "idempotencyReplayPolicy": "none",
+          "replayAuthorizationPolicy": "none",
+          "securityFlowPolicy": "none",
+          "versionPolicy": "none",
+          "concurrencyPolicy": "none",
+          "auditAction": "none"
+        }
+      },
+      "put": {
+        "operationId": "updateNotificationPreferences",
+        "summary": "整组替换当前登录用户的个人通知偏好；关闭项只停止该类型后续新通知的写入，历史通知保持原状，重新开启也不补发；设置页每次切换提交完整列表。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferences"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或业务参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Session 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "已登录但无全局权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "版本冲突、重复操作或状态冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "字段校验错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期错误，不向客户端泄露堆栈",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-inpulse-policy": {
+          "authPolicy": "session",
+          "csrfPolicy": "required",
+          "idempotencyPolicy": "idempotencyRequired",
+          "idempotencyExceptionAdr": "none",
+          "idempotencyContractVersion": "1.1.0",
+          "idempotencyFingerprintVersion": "1.0.0",
+          "behaviorHeaders": [],
+          "idempotencyReplayPolicy": {
+            "version": "1.0.0",
+            "success": {
+              "200": {
+                "body": {
+                  "responseSchemaRef": "NotificationPreferences",
+                  "safeBodyFieldPaths": [
+                    "disabledSettings[]"
+                  ]
+                }
+              }
+            }
+          },
+          "replayAuthorizationPolicy": {
+            "version": "1.0.0",
+            "actorOnly": true
+          },
+          "securityFlowPolicy": "none",
+          "versionPolicy": "none",
+          "concurrencyPolicy": "none",
+          "auditAction": "none"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationPreferencesUpdateRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/notifications/read-all": {
       "post": {
         "operationId": "readAllNotifications",
@@ -4890,7 +5059,7 @@
     "/notifications/unread-count": {
       "get": {
         "operationId": "getNotificationUnreadCount",
-        "summary": "返回当前登录用户的未读通知数量；mutedProjectCategories 与通知列表使用同一过滤口径，隐藏类别不会计入未读数。",
+        "summary": "返回当前登录用户的未读通知数量；mutedProjectCategories 与通知列表使用同一过滤口径，被项目通知选项隐藏的类别不计入未读数；个人通知偏好仅抑制后续新通知，不影响历史未读数。",
         "responses": {
           "200": {
             "description": "成功",
@@ -22986,6 +23155,64 @@
         },
         "required": [
           "notificationId"
+        ],
+        "additionalProperties": false
+      },
+      "NotificationPreferences": {
+        "type": "object",
+        "properties": {
+          "disabledSettings": {
+            "maxItems": 11,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "PROJECT_JOINED",
+                "task.assigned",
+                "task.complete",
+                "task.reopen",
+                "task.merge",
+                "task.unmerge",
+                "record.publish",
+                "record.version.create",
+                "record.leftover.add",
+                "leftover.convert",
+                "project.status.change"
+              ]
+            }
+          }
+        },
+        "required": [
+          "disabledSettings"
+        ],
+        "additionalProperties": false
+      },
+      "NotificationPreferencesUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "disabledSettings": {
+            "maxItems": 11,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "PROJECT_JOINED",
+                "task.assigned",
+                "task.complete",
+                "task.reopen",
+                "task.merge",
+                "task.unmerge",
+                "record.publish",
+                "record.version.create",
+                "record.leftover.add",
+                "leftover.convert",
+                "project.status.change"
+              ]
+            }
+          }
+        },
+        "required": [
+          "disabledSettings"
         ],
         "additionalProperties": false
       },

@@ -145,7 +145,7 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
       sourceRowVersion: result.rowVersion,
     });
     for (const recipientId of [
-      ...new Set([result.creatorId, ...recordAuthors]),
+      ...new Set([result.creatorId, ...recordAuthors, ...result.assigneeIds]),
     ].sort((a, b) => a - b)) {
       const check = await this.access.checkProjectForWrite(tx, {
         actorUserId: recipientId,

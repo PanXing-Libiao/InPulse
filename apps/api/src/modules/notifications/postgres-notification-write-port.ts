@@ -9,7 +9,8 @@ import {
 /**
  * 显式接收调用方事务的通知写适配器。
  * `(source_chain_id, source_sequence, recipient_id, notification_type)` 唯一，
- * 重复写业务事件时 no-op，不产生重复通知。
+ * 重复写业务事件时 no-op，不产生重复通知。收件人关闭该个人通知类型时同样
+ * 不落库（`inserted=false`），由通知写入侧统一执行，不依赖前端。
  */
 export class PostgresNotificationWritePort extends NotificationWritePort {
   async write(
@@ -29,7 +30,7 @@ export class PostgresNotificationWritePort extends NotificationWritePort {
         target_path,
         created_at
       )
-      VALUES (
+      SELECT
         ${input.recipientId},
         ${input.projectId},
         ${input.sourceChainId},
@@ -39,7 +40,12 @@ export class PostgresNotificationWritePort extends NotificationWritePort {
         ${input.body},
         ${input.targetPath},
         ${input.createdAt.toISOString()}
-      )
+       WHERE NOT EXISTS (
+         SELECT 1
+           FROM app.user_notification_suppressions AS s
+          WHERE s.user_id = ${input.recipientId}
+            AND s.notification_type = ${input.notificationType}
+       )
       ON CONFLICT (
         source_chain_id,
         source_sequence,

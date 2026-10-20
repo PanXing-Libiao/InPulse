@@ -135,6 +135,31 @@ describe("notification query hooks", () => {
     );
   });
 
+  it("keeps the unread count cache separate per account", async () => {
+    const getNotificationUnreadCount = vi
+      .fn()
+      .mockResolvedValue({ unreadCount: 0 });
+    const client = {
+      getNotificationUnreadCount,
+    } as unknown as InpulseApiClient;
+    const { wrapper } = createQueryWrapper();
+    const { rerender } = renderHook(
+      ({ userId }: { readonly userId: number }) =>
+        useNotificationUnreadCount({ client, userId }),
+      { wrapper, initialProps: { userId: 7 } },
+    );
+
+    await waitFor(() =>
+      expect(getNotificationUnreadCount).toHaveBeenCalledTimes(1),
+    );
+
+    rerender({ userId: 8 });
+
+    await waitFor(() =>
+      expect(getNotificationUnreadCount).toHaveBeenCalledTimes(2),
+    );
+  });
+
   it("issues CSRF and sends an idempotency key for a notification write", async () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
     const readNotification = vi.fn().mockResolvedValue(undefined);

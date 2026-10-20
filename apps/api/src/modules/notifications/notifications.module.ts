@@ -8,6 +8,7 @@ import { TimeCursorService } from "../../cursors/time-cursor.js";
 import { DATABASE_CLIENT } from "../../database/database.constants.js";
 import { DatabaseModule } from "../../database/database.module.js";
 import { IdempotencyModule } from "../../idempotency/idempotency.module.js";
+import { NotificationPreferencesService } from "./notification-preferences.service.js";
 import { NotificationQueryService } from "./notification-query.service.js";
 import { NotificationStateService } from "./notification.service.js";
 import { NotificationsController } from "./notifications.controller.js";
@@ -26,6 +27,12 @@ import { NotificationsController } from "./notifications.controller.js";
       useFactory: (keyring: VersionedHmacKeyring) =>
         new TimeCursorService(keyring, "NOTIFICATION"),
       inject: [SESSION_HMAC_KEYRING],
+    },
+    {
+      provide: NotificationPreferencesService,
+      useFactory: (client: DatabaseClient) =>
+        new NotificationPreferencesService(client.sql),
+      inject: [DATABASE_CLIENT],
     },
     {
       provide: NotificationQueryService,

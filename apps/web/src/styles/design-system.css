@@ -4259,15 +4259,6 @@ a:focus-visible {
   margin: 0;
   overflow-wrap: anywhere;
 }
-/* 负责人已移出项目：任务详情在姓名下面补一行「请重新分配」的指引
-   （2026-10-16 实测反馈：人被移出后卡片只平铺姓名、详情回退成内部编号）。 */
-.assignee-detached-hint {
-  display: block;
-  margin-top: 4px;
-  color: #ae741b;
-  font-size: 12px;
-  font-weight: 600;
-}
 .more-wrap {
   position: relative;
   flex: 0 0 auto;
@@ -6868,13 +6859,16 @@ td.due-overdue {
    三处都只作用于「出现」这一下，静止外观与改前完全一致；prefers-reduced-motion 下全部瞬时出现。
    2026-10-20 用户「所有跳转要柔和」：时长整体放慢、缓动统一为「慢起慢收」的
    cubic-bezier(0.22, 0.61, 0.36, 1)：内容立刻起显、尾段缓慢收住，不出现开头空白。
-   路由 240ms、浮层 200ms、侧栏气泡 180ms。 */
+   路由 280ms、浮层 200ms、侧栏气泡 180ms。
+   2026-10-20 追加「跳转不要闪」：路由内容不再从 opacity:0 起步——旧页消失后的
+   第一帧必须已经有内容，否则会先露出整块空白再淡入，观感就是闪一下。现在从
+   0.6 不透明度起步，首帧即有页面（略淡），再用同一缓动收束到完全不透明。 */
 :root {
   --motion-soft-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 @keyframes route-content-in {
   from {
-    opacity: 0;
+    opacity: 0.6;
   }
   to {
     opacity: 1;
@@ -6882,7 +6876,7 @@ td.due-overdue {
 }
 
 .page-content > * {
-  animation: route-content-in 240ms var(--motion-soft-ease) both;
+  animation: route-content-in 280ms var(--motion-soft-ease) both;
 }
 
 @keyframes surface-fade-in {

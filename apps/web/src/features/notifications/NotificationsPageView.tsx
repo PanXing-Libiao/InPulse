@@ -67,6 +67,7 @@ function parseNotificationId(value: string): number | null {
 
 export interface NotificationsPageViewProps {
   readonly client?: InpulseApiClient;
+  readonly userId?: number | null | undefined;
   readonly filter?: NotificationFilter;
   readonly onFilterChange?: (filter: NotificationFilter) => void;
   readonly onOpenTarget?: (targetPath: string) => void;
@@ -74,12 +75,13 @@ export interface NotificationsPageViewProps {
 
 export const NotificationsPageView: React.FC<NotificationsPageViewProps> = ({
   client,
+  userId = null,
   filter = "all",
   onFilterChange,
   onOpenTarget,
 }) => {
-  const unreadQuery = useNotificationUnreadCount({ client });
-  const listQuery = useNotificationsInfiniteQuery({ client, filter });
+  const unreadQuery = useNotificationUnreadCount({ client, userId });
+  const listQuery = useNotificationsInfiniteQuery({ client, filter, userId });
   const actions = useNotificationActions({ client });
   const items = listQuery.data?.pages.flatMap((page) => [...page.items]) ?? [];
   const unreadCount = unreadQuery.data ?? 0;
@@ -162,7 +164,21 @@ export const NotificationsPageView: React.FC<NotificationsPageViewProps> = ({
                   cursor: "pointer",
                 }}
               >
-                <Badge dot={item.readAt === null} color="#ef7777" />
+                <span
+                  aria-hidden="true"
+                  data-testid={`notification-dot-${item.id}`}
+                  data-unread={item.readAt === null ? "true" : "false"}
+                  style={{
+                    display: "inline-block",
+                    width: 6,
+                    height: 6,
+                    marginTop: 7,
+                    borderRadius: "50%",
+                    flex: "0 0 6px",
+                    backgroundColor:
+                      item.readAt === null ? "#ef7777" : "transparent",
+                  }}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <Space align="center" wrap size={8}>
                     <Text strong={item.readAt === null}>{item.title}</Text>

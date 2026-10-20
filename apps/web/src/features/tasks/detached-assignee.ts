@@ -13,7 +13,7 @@ import type { InpulseApiClient } from "@generated/api";
  */
 /** 内联短标记：跟在姓名后面，卡片与列表一眼能看出人已移出。 */
 export const DETACHED_ASSIGNEE_SUFFIX = "（已移出项目）";
-/** 完整指引：进 title、下拉副标题与详情提示行。 */
+/** 完整指引：进 hover title 与下拉副标题。 */
 export const DETACHED_ASSIGNEE_HINT = "已不在项目成员中，请重新分配";
 
 /** 姓名 + 内联标记。 */
@@ -57,14 +57,6 @@ export function isDetachedAssignee(
   userId: number,
 ): boolean {
   return activeMemberIds !== null && !activeMemberIds.has(userId);
-}
-
-/** 这批负责人里是否有已脱钩的（名单未知时为 false）。 */
-export function hasDetachedAssignee(
-  activeMemberIds: ReadonlySet<number> | null,
-  userIds: readonly number[],
-): boolean {
-  return userIds.some((id) => isDetachedAssignee(activeMemberIds, id));
 }
 
 /** 看板卡片 / 列表行：把一队负责人按脱钩口径拼成一个字符串（hint=true 时带处置指引）。 */

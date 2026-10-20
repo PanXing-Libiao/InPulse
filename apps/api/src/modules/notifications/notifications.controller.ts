@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Post,
+  Put,
   Req,
   Res,
   UseGuards,
@@ -13,9 +14,11 @@ import {
 import type {
   NotificationMuteQueryRequest,
   NotificationPath,
+  NotificationPreferencesUpdateRequest,
   NotificationQueryRequest,
 } from "@inpulse/api-contract";
 import {
+  ContractBody,
   ContractPath,
   ContractQuery,
   Operation,
@@ -41,6 +44,7 @@ import {
   NotificationQueryService,
   NotificationQueryValidationError,
 } from "./notification-query.service.js";
+import { NotificationPreferencesService } from "./notification-preferences.service.js";
 
 interface NotificationControllerRequest {
   readonly headers: HttpHeaderBag;
@@ -77,6 +81,7 @@ export class NotificationsController {
     private readonly mutationAuth: AuthenticatedMutationService,
     private readonly queryService: NotificationQueryService,
     private readonly stateService: NotificationStateService,
+    private readonly preferencesService: NotificationPreferencesService,
     private readonly idempotency: IdempotencyHttpService,
   ) {}
 
@@ -150,6 +155,76 @@ export class NotificationsController {
       }
       response.status(500);
       return internalError(requestId);
+    }
+  }
+
+  @Get("preferences")
+  @Operation("getNotificationPreferences")
+  async preferences(
+    @Req() request: NotificationControllerRequest,
+    @Res({ passthrough: true }) response: NotificationControllerResponse,
+  ): Promise<unknown | ErrorResponseDto> {
+    const requestId = randomUUID();
+    const actor = await this.sessionAuth.resolveActor(
+      getHeader(request.headers, "cookie"),
+    );
+    if (actor === undefined) {
+      return unauthorized(requestId, response);
+    }
+    try {
+      return await this.preferencesService.read(actor.userId);
+    } catch {
+      response.status(500);
+      return internalError(requestId);
+    }
+  }
+
+  @Put("preferences")
+  @HttpCode(200)
+  @UseGuards(StrictSameOriginGuard)
+  @Operation("updateNotificationPreferences")
+  async updatePreferences(
+    @Req() request: NotificationControllerRequest,
+    @Res({ passthrough: true }) response: NotificationControllerResponse,
+    @ContractBody("updateNotificationPreferences")
+    body: NotificationPreferencesUpdateRequest,
+  ): Promise<unknown | ErrorResponseDto> {
+    const requestId = randomUUID();
+    const originFailure = mutationSameOriginValidationError(request.headers);
+    if (originFailure !== undefined) {
+      return csrfOriginFailure(requestId, response, originFailure);
+    }
+    try {
+      const result = await this.idempotency.run({
+        operationId: "updateNotificationPreferences",
+        actorId: async (tx) => this.resolveMutationActor(tx, request),
+        request: {
+          method: "PUT",
+          path: "/notifications/preferences",
+          pathParams: {},
+          query: {},
+          headers: request.headers,
+          body,
+        },
+        execute: async (tx, actorId) => ({
+          responseStatus: 200,
+          responseSchemaRef: "NotificationPreferences",
+          responseHasBody: true,
+          responseBody: await this.preferencesService.replace(
+            tx,
+            actorId,
+            body.disabledSettings,
+          ),
+          replayAuthContext: {},
+        }),
+        replayAuthorizer: async (_record, tx) => {
+          await this.resolveMutationActor(tx, request);
+        },
+      });
+      response.status(result.responseStatus);
+      return result.responseBody;
+    } catch (error) {
+      return this.mapMutationError(error, requestId, response);
     }
   }
 

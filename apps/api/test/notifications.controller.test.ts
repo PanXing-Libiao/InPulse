@@ -92,6 +92,24 @@ class FakeQueryService {
   }
 }
 
+class FakePreferencesService {
+  disabledSettings: readonly string[] = [];
+  saved: readonly string[] | undefined;
+
+  async read(): Promise<{ readonly disabledSettings: readonly string[] }> {
+    return { disabledSettings: this.disabledSettings };
+  }
+
+  async replace(
+    _tx: TransactionContext,
+    _userId: number,
+    disabledSettings: readonly string[],
+  ): Promise<{ readonly disabledSettings: readonly string[] }> {
+    this.saved = disabledSettings;
+    return { disabledSettings };
+  }
+}
+
 class FakeStateService {
   error: unknown;
   markReadArgs:
@@ -135,9 +153,11 @@ function createController(
   state: FakeStateService,
   mutation: FakeMutationAuth = new FakeMutationAuth(),
   idempotency: FakeIdempotency = new FakeIdempotency(),
+  preferences: FakePreferencesService = new FakePreferencesService(),
 ): {
   readonly controller: NotificationsController;
   readonly idempotency: FakeIdempotency;
+  readonly preferences: FakePreferencesService;
 } {
   return {
     controller: new NotificationsController(
@@ -145,9 +165,11 @@ function createController(
       mutation as never,
       query as never,
       state as never,
+      preferences as never,
       idempotency as never,
     ),
     idempotency,
+    preferences,
   };
 }
 
@@ -175,7 +197,11 @@ describe("NotificationsController", () => {
     const result = await controller.list(
       { headers: { cookie: "__Host-session=token" } },
       response as never,
-      { cursor: "opaque", limit: 10, unreadOnly: true },
+      {
+        cursor: "opaque",
+        limit: 10,
+        unreadOnly: true,
+      },
     );
     expect(query.queryCommands).toEqual([
       {
@@ -200,7 +226,9 @@ describe("NotificationsController", () => {
       await controller.unreadCount(
         { headers: { cookie: "__Host-session=token" } },
         countResponse as never,
-        { mutedProjectCategories: "12:task.assign" },
+        {
+          mutedProjectCategories: "12:task.assign",
+        },
       ),
     ).toEqual({ unreadCount: 3 });
     expect(query.unreadCalls).toEqual(["12:task.assign"]);
@@ -289,5 +317,53 @@ describe("NotificationsController", () => {
       ),
     ).toMatchObject({ code: "CSRF_ORIGIN_REJECTED" });
     expect(missingOriginResponse.status).toHaveBeenCalledWith(403);
+  });
+  test("个人通知偏好按当前用户读取，PUT 经 CSRF 与幂等保存完整关闭列表", async () => {
+    const session = new FakeSessionAuth();
+    const preferences = new FakePreferencesService();
+    preferences.disabledSettings = ["task.complete"];
+    const { controller, idempotency } = createController(
+      session,
+      new FakeQueryService(),
+      new FakeStateService(),
+      new FakeMutationAuth(),
+      new FakeIdempotency(),
+      preferences,
+    );
+
+    const readResponse = responseFixture();
+    expect(
+      await controller.preferences(
+        { headers: { cookie: "__Host-session=token" } },
+        readResponse as never,
+      ),
+    ).toEqual({ disabledSettings: ["task.complete"] });
+    expect(readResponse.status).not.toHaveBeenCalled();
+
+    const writeResponse = responseFixture();
+    await controller.updatePreferences(
+      { headers: mutationHeaders() },
+      writeResponse as never,
+      { disabledSettings: ["task.complete"] },
+    );
+    expect(preferences.saved).toEqual(["task.complete"]);
+    expect(idempotency.calls[0]?.operationId).toBe(
+      "updateNotificationPreferences",
+    );
+    expect(idempotency.calls[0]?.request.method).toBe("PUT");
+    expect(idempotency.calls[0]?.request.path).toBe(
+      "/notifications/preferences",
+    );
+    expect(idempotency.calls[0]?.request.body).toEqual({
+      disabledSettings: ["task.complete"],
+    });
+    expect(writeResponse.status).toHaveBeenCalledWith(204);
+
+    session.value = undefined;
+    const anonymousResponse = responseFixture();
+    expect(
+      await controller.preferences({ headers: {} }, anonymousResponse as never),
+    ).toMatchObject({ code: "NOTIFICATION_UNAUTHENTICATED" });
+    expect(anonymousResponse.status).toHaveBeenCalledWith(401);
   });
 });

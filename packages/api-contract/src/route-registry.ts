@@ -816,7 +816,7 @@ export const routeRegistry = [
     path: "/notifications",
     operationId: "getNotifications",
     summary:
-      "当前用户自己的站内通知列表；SQL 强制 recipient_id=当前用户，cursor 为服务端签名、校验并带过期时间的不透明字符串；mutedProjectCategories 为逗号分隔的 projectId:category 对，用于按浏览器中的项目通知选项过滤当前用户的只读视图与未读数。",
+      "当前用户自己的站内通知列表，未读通知优先，未读组与已读组内均按发送时间倒序；SQL 强制 recipient_id=当前用户；个人通知偏好只影响后续通知生成，不回滤历史通知；cursor 为服务端签名、校验并带过期时间的不透明字符串；mutedProjectCategories 为逗号分隔的 projectId:category 对，用于按浏览器中的项目通知选项过滤当前用户的只读视图与未读数。",
     request: {
       path: "none",
       query: "NotificationQueryRequest",
@@ -872,7 +872,7 @@ export const routeRegistry = [
     path: "/notifications/unread-count",
     operationId: "getNotificationUnreadCount",
     summary:
-      "返回当前登录用户的未读通知数量；mutedProjectCategories 与通知列表使用同一过滤口径，隐藏类别不会计入未读数。",
+      "返回当前登录用户的未读通知数量；mutedProjectCategories 与通知列表使用同一过滤口径，被项目通知选项隐藏的类别不计入未读数；个人通知偏好仅抑制后续新通知，不影响历史未读数。",
     request: {
       path: "none",
       query: "NotificationMuteQueryRequest",
@@ -914,6 +914,158 @@ export const routeRegistry = [
     behaviorHeaders: "none",
     idempotencyReplayPolicy: "none",
     replayAuthorizationPolicy: "none",
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "none",
+  },
+  {
+    method: "GET",
+    path: "/notifications/preferences",
+    operationId: "getNotificationPreferences",
+    summary:
+      "当前登录用户的个人通知偏好；disabledSettings 列出被关闭的设置项，缺省全部开启；响应 no-store。",
+    request: {
+      path: "none",
+      query: "none",
+      headers: "none",
+      body: { noBody: true },
+    },
+    responses: {
+      "200": {
+        body: {
+          contentTypes: [
+            {
+              contentType: "application/json",
+              schemaRef: "NotificationPreferences",
+            },
+          ],
+        },
+      },
+      "401": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+      "500": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+    },
+    authPolicy: "session",
+    csrfPolicy: "none",
+    idempotencyPolicy: "none",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "none",
+    idempotencyFingerprintVersion: "none",
+    behaviorHeaders: "none",
+    idempotencyReplayPolicy: "none",
+    replayAuthorizationPolicy: "none",
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "none",
+  },
+  {
+    method: "PUT",
+    path: "/notifications/preferences",
+    operationId: "updateNotificationPreferences",
+    summary:
+      "整组替换当前登录用户的个人通知偏好；关闭项只停止该类型后续新通知的写入，历史通知保持原状，重新开启也不补发；设置页每次切换提交完整列表。",
+    request: {
+      path: "none",
+      query: "none",
+      headers: "none",
+      body: {
+        contentTypes: [
+          {
+            contentType: "application/json",
+            schemaRef: "NotificationPreferencesUpdateRequest",
+          },
+        ],
+      },
+    },
+    responses: {
+      "200": {
+        body: {
+          contentTypes: [
+            {
+              contentType: "application/json",
+              schemaRef: "NotificationPreferences",
+            },
+          ],
+        },
+      },
+      "400": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+      "401": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+      "403": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+      "409": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+      "422": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+      "500": {
+        body: {
+          contentTypes: [
+            { contentType: "application/json", schemaRef: "ErrorResponse" },
+          ],
+        },
+      },
+    },
+    authPolicy: "session",
+    csrfPolicy: "required",
+    idempotencyPolicy: "idempotencyRequired",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "1.1.0",
+    idempotencyFingerprintVersion: "1.0.0",
+    behaviorHeaders: [],
+    idempotencyReplayPolicy: {
+      version: "1.0.0",
+      success: {
+        "200": {
+          body: {
+            responseSchemaRef: "NotificationPreferences",
+            safeBodyFieldPaths: ["disabledSettings[]"],
+          },
+        },
+      },
+    },
+    replayAuthorizationPolicy: {
+      version: "1.0.0",
+      actorOnly: true,
+    },
     securityFlowPolicy: "none",
     versionPolicy: "none",
     concurrencyPolicy: "none",

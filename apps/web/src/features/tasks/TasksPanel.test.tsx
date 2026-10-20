@@ -1313,7 +1313,7 @@ describe("负责人已被移出项目", () => {
       }),
     });
 
-  it("卡片与详情写出「已移出项目」，并提示重新分配，不再回退成内部编号", async () => {
+  it("卡片与详情写出「已移出项目」，不再回退成内部编号", async () => {
     mount(detachedClient());
     const card = await screen.findByRole("article", {
       name: /^查看任务详情/,
@@ -1327,8 +1327,8 @@ describe("负责人已被移出项目", () => {
     const dialog = await screen.findByRole("dialog", { name: "任务详情" });
     expect(within(dialog).getByText("小潘（已移出项目）")).toBeTruthy();
     expect(
-      within(dialog).getByText("已不在项目成员中，请重新分配"),
-    ).toBeTruthy();
+      within(dialog).queryByText("已不在项目成员中，请重新分配"),
+    ).toBeNull();
   });
 
   it("编辑任务的负责人下拉把离职的人标出来并说明要重新分配", async () => {

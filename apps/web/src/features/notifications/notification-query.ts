@@ -30,6 +30,8 @@ export interface NotificationQueryOptions {
   readonly client?: InpulseApiClient | undefined;
   readonly enabled?: boolean;
   readonly limit?: number;
+  /** 当前登录账号；用于隔离不同账号的通知查询缓存。 */
+  readonly userId?: number | null | undefined;
 }
 
 export interface NotificationListOptions extends NotificationQueryOptions {
@@ -70,15 +72,23 @@ export function useMutedProjectCategoriesQuery(): string | undefined {
 export function useNotificationUnreadCount({
   client,
   enabled = true,
+  userId = null,
 }: NotificationQueryOptions) {
   const apiClient = useMemo(() => client ?? createApiClient(), [client]);
   const mutedProjectCategories = useMutedProjectCategoriesQuery();
   return useQuery({
-    queryKey: ["notifications", "unread-count", mutedProjectCategories ?? null],
+    queryKey: [
+      "notifications",
+      "unread-count",
+      userId ?? null,
+      mutedProjectCategories ?? null,
+    ],
     queryFn: async () => {
-      const result = await apiClient.getNotificationUnreadCount(
-        mutedProjectCategories === undefined ? {} : { mutedProjectCategories },
-      );
+      const result = await apiClient.getNotificationUnreadCount({
+        ...(mutedProjectCategories === undefined
+          ? {}
+          : { mutedProjectCategories }),
+      });
       return result.unreadCount;
     },
     enabled,
@@ -92,6 +102,7 @@ export function useNotificationsInfiniteQuery({
   filter,
   enabled = true,
   limit = NOTIFICATION_PAGE_LIMIT,
+  userId = null,
 }: NotificationListOptions) {
   const apiClient = useMemo(() => client ?? createApiClient(), [client]);
   const mutedProjectCategories = useMutedProjectCategoriesQuery();
@@ -101,6 +112,7 @@ export function useNotificationsInfiniteQuery({
       "list",
       filter,
       limit,
+      userId ?? null,
       mutedProjectCategories ?? null,
     ],
     queryFn: ({ pageParam, signal }) =>
