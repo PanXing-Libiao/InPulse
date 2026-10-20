@@ -1674,7 +1674,7 @@ HTML 不允许按钮内嵌链接/按钮，因此三层卡片统一采用「容�
 | --- | --- | --- | --- | --- |
 | NAV-CLEAN-UNIT-001 | 单元 | 概览视图收窄后的 props 与渲染 | `ProjectOverviewPageView.test.tsx` 8 例：删除 2 个「项目内导航」用例后其余（指标卡、面板、错误态、跳转）全通过；`ProjectOverviewPage.test.tsx` 6 例：2 个导航用例替换为「查看模块」入口用例 | 本地通过 |
 | NAV-CLEAN-UNIT-002 | 单元 | 模块页 / 功能页移除横条与左栏后无回归 | `ModulesPageView.test.tsx` 8 例（删除「项目内导航」describe）、`FeaturesPageView.test.tsx` 10 例（删除「项目内导航」describe 与「module siblings」用例及其 `moduleRow`/`moduleClient` 辅助）全通过 | 本地通过 |
-| MEMBER-RO-UNIT-001 | 单元 | 只读成员视图渲染与只读语义 | `ActiveProjectMembers.test.tsx` 6 例：复用管理员视觉（h1 项目名、`.panel.settings-panel`、`.calm-member-card` 数量）；无添加 / 移除 / 归档 / dialog、仅「刷新成员」；创建者标注且全员「活跃成员」；加入时间与角色徽标（LEADER 显「组长」、MEMBER 不显徽标、无「移除时间」、无「设置角色」）；空态；加载失败出「项目成员加载失败」+ 重试 | 本地通过 |
+| MEMBER-RO-UNIT-001 | 单元 | 只读成员视图渲染与只读语义 | `ActiveProjectMembers.test.tsx` 6 例：复用管理员视觉（h1 项目名、`.panel.settings-panel`、`.calm-member-card` 数量）；无添加 / 移除 / 归档 / dialog、仅「刷新成员」；创建者标注且全员「活跃成员」；加入时间与角色徽标（LEADER 显「组长」、MEMBER 不显徽标、无「移除时间」、无「设为组长 / 转移组长」）；空态；加载失败出「项目成员加载失败」+ 重试 | 本地通过 |
 | MEMBER-RO-API-001 | 集成（真实 HTTP + PostgreSQL） | `listActiveProjectMembers` 响应契约与授权 | `projects-read-api.integration.test.ts` 2 例：200 且 `Cache-Control: no-store`，`ActiveProjectMembersResponse` strict parse 通过并返回 `[创建者 LEADER, 新成员 MEMBER]` 的 `{id, role}` 与 ISO `joinedAt`（ADR-039 后新成员不再写 `PROJECT_ADMIN`）；成员置 REMOVED 后从只读列表消失、历史行仍为 `REMOVED`；非成员 404 `PROJECT_NOT_FOUND`、匿名 401 `PROJECT_SESSION_REQUIRED`、不存在项目 404 | 本地通过（ADR-039 后已同步修复物） |
 | MEMBER-RO-E2E-001 | 浏览器 E2E | 活跃成员成员页与隐藏项目 404 | `project-members.spec.ts` 例 1：活跃成员（ADR-039 起不再进入只读视图）可查看并管理本项目成员（「添加成员」「移除」可见），隐藏项目 404 且不泄露成员姓名；管理员用例（例 2）不受影响 | 待重跑（ADR-039 已反转断言；本机需先启动 E2E 环境） |
 
@@ -2978,7 +2978,7 @@ HTML 不允许按钮内嵌链接/按钮，因此三层卡片统一采用「容�
 | ADR039-API-INT-003 | 真实 PostgreSQL | 任务归档与项目状态全员可写 | `tasks-api.integration.test.ts`：`MEMBER` 归档自己创建的任务 → 200 / `ARCHIVED` / `rowVersion +1`；`project-management-api.integration.test.ts`：`MEMBER` `PATCH /projects/{id}/status` → 200 / `{ status: "ACTIVE", rowVersion: 2 }`，非成员 404、版本冲突与同态 409 | 本地通过 |
 | ADR039-API-INT-004 | 真实 PostgreSQL | 归档申请门禁与任务前置校验分层 | `project-archive-request-api.integration.test.ts`：普通成员不再被角色拒绝，而是被状态门禁拦下 409 `PROJECT_ARCHIVE_TASKS_OPEN`（证明拒绝原因已不是权限）；组长提交与重放仍成功 | 本地通过 |
 | ADR039-API-INT-005 | 真实 PostgreSQL | 读接口角色口径 | `projects-read-api.integration.test.ts`：活跃成员列表的 `role` 为 `LEADER`/`MEMBER`（夹具由 `PROJECT_ADMIN` 改为 `MEMBER`） | 本地通过 |
-| ADR039-WEB-UNIT-001 | Web 单元 | 管理入口按成员身份显示 | `ProjectMembersPageView.test.tsx`：活跃成员可见「添加成员」与行内「移除」，「设置角色」只对系统管理员渲染；`ProjectsPageView`/`ModulesPageView`/`FeaturesPageView` 归档入口对 `MEMBER` 与 `LEADER` 均可见、对 `currentUserRole: null` 不可见；`TasksPanel.test.tsx` 生命周期入口同理 | 本地通过（Web 单测 84 文件 539 例） |
+| ADR039-WEB-UNIT-001 | Web 单元 | 管理入口按成员身份显示 | `ProjectMembersPageView.test.tsx`：活跃成员可见「添加成员」与行内「移除」，「设为组长」确认框只对系统管理员渲染，项目组长入口为「转移组长」；`ProjectsPageView`/`ModulesPageView`/`FeaturesPageView` 归档入口对 `MEMBER` 与 `LEADER` 均可见、对 `currentUserRole: null` 不可见；`TasksPanel.test.tsx` 生命周期入口同理 | 本地通过（Web 单测 84 文件 539 例） |
 | ADR039-WEB-UNIT-002 | Web 单元 | 文案与错误码收敛 | `project-management-modals.test.tsx` 状态栏提示为「只有本项目活跃成员或系统管理员可以更改项目状态。」；`project-member-query.ts` 的 403 分支改写；`project-management-query.ts` 移除 `PROJECT_STATUS_FORBIDDEN` 与 `PROJECT_ARCHIVE_REQUEST_FORBIDDEN` 专用分支 | 本地通过 |
 | ADR039-E2E-001 | Playwright | 成员视角关键路径 | `features.spec.ts` 在编辑弹层断言 `feature-modal-lifecycle` 可见（原「看不到归档功能」断言反转）；`modules.spec.ts` 断言编辑弹层「归档模块」可见；`project-members.spec.ts` 断言活跃成员可见「添加成员」与成员卡「移除」 | 本地通过（定向与全量分别执行，见下） |
 
@@ -6856,3 +6856,17 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR082-E2E-002 | Playwright 浏览器 | 真实页面无当前账号标签 | `admin-users.spec.ts`：登录管理员后成员页「当前账号」文本计数为 0，当前账号行改用登录名定位，仍保留隐藏「停用」占位槽且无可访问「停用」按钮；状态列与「编辑」按钮继续与普通成员对齐 | 本地通过（2026-10-20） |
 
 界面复核：管理员成员列表四列（96px 角色 / 78px 组织 / 52px 状态 / 104px 未完成任务数）在浏览器中纵向对齐，且不再出现「当前账号」标签；四列对齐属视觉结果，未写成自动化布局断言。
+
+## 2026-10-20 成员页组长入口收敛为确认框（用户指示，本地落库）
+
+用户指出成员行「设置角色」与「移除」间距过紧，且「设置角色」实际只有「提升为组长」一个有效动作。前端据此把系统管理员入口改为「设为组长」，项目组长入口保持「转移组长」；两者统一打开只含说明与确认按钮的确认框，不再渲染「成员 / 组长」单选。成员卡动作区增加 12px 间距。
+
+后端 `setProjectMemberRole` 契约、CSRF/幂等要求与「组长只能转移、不能撤销」规则不变；仅前端不再提交 `role = MEMBER`。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| MEMBER-ROLE-UI-001 | Web 单元 | 系统管理员提升组长 | 点击「设为组长」打开「确认设为组长」；弹窗无单选项；确认后经生成客户端提交 `{ role: "LEADER" }`，成功提示「已将 … 设为项目组长」 | 本地通过（2026-10-20，定向 Web 单测 2 文件 14 例） |
+| MEMBER-ROLE-UI-002 | Web 单元 | 项目组长转移身份 | 目标成员行显示「转移组长」；弹窗「确认转移组长」无角色选项；确认后提交 `{ role: "LEADER" }` 并提示身份已转交 | 本地通过（2026-10-20，定向 Web 单测 2 文件 14 例） |
+| MEMBER-ROLE-E2E-001 | Playwright 浏览器 | 真实页面组长转移 | 目标卡「转移组长」→「确认转移组长」→「确认转移」→ 成功提示；转移后目标成为组长、原组长降级为普通成员 | 本地通过（2026-10-20，Playwright 3/3） |
+
+验证结果（2026-10-20）：定向 Web 单测 2 文件 14 例、全量 Web 单测 115 文件 969 例、project-members.spec.ts Playwright 3/3、Web typecheck、定向 ESLint、Prettier 与 check:docs 均通过。根级 pnpm lint 仍被 ADR-088 既有改动中的未使用变量报错阻断（API 测试与数据库 schema 文件，本次未触碰）。

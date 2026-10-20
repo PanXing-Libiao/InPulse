@@ -148,7 +148,7 @@ describe("ActiveProjectMembers（普通成员只读视图）", () => {
     expect(screen.queryByText("移除时间：")).not.toBeInTheDocument();
     // 角色管理仍属管理员视图。
     expect(
-      screen.queryByRole("button", { name: /设置角色/ }),
+      screen.queryByRole("button", { name: /设为组长|转移组长/ }),
     ).not.toBeInTheDocument();
   });
 

@@ -191,16 +191,16 @@ test("项目组长本人可把组长身份转交给其他成员（ADR-053）", a
     );
 
     await targetCard.getByRole("button", { name: "转移组长" }).click();
-    const dialog = page.getByRole("dialog", { name: "设置项目角色" });
-    // 组长没有撤销组长的入口：弹窗里只有「组长」一个选项。
+    const dialog = page.getByRole("dialog", { name: "确认转移组长" });
+    // 组长没有撤销组长的入口：弹窗只确认转移，不再提供角色选项。
     await expect(
-      dialog.getByRole("radio", { name: "项目角色：组长" }),
+      dialog.getByText(
+        `将组长身份转交给 ${runtime.member.name}（仅在本项目生效）`,
+        { exact: true },
+      ),
     ).toBeVisible();
-    await expect(
-      dialog.getByRole("radio", { name: "项目角色：成员" }),
-    ).toHaveCount(0);
-    await dialog.getByRole("radio", { name: "项目角色：组长" }).click();
-    await dialog.getByRole("button", { name: "保存角色" }).click();
+    await expect(dialog.getByRole("radio")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "确认转移" }).click();
     await expect(
       page.getByText(
         `已将组长身份转交给 ${runtime.member.name}，你已成为普通成员。`,
