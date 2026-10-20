@@ -83,8 +83,8 @@ F-12 本地接口已登记到可执行权限矩阵，真实 HTTP/数据库验收
 | `listAdminUsers` · `GET /api/v1/admin/users` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整系统管理员 Session；读取全部账号的登录名、姓名、邮箱、头像、管理员角色、状态、未完成任务数、版本与时间，不返回密码哈希等认证材料；最多 1000 条；响应 `no-store`；不需要 CSRF 或幂等键 |
 | `createUser` · `POST /api/v1/admin/users` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF 与 `Idempotency-Key` 必填；Argon2id 哈希在事务外生成、业务与审计同事务写入；登录名/邮箱唯一冲突 409；响应不返回密码或认证材料 |
 | `updateUser` · `PATCH /api/v1/admin/users/{userId}` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；登录名不可修改，字段缺省保持不变，`email/avatarUrl` 为 null 表示清空；版本/状态冲突 409；禁止取消自己的管理员角色；移除 ACTIVE 管理员前按 id 升序锁定全部活跃管理员，剩余可用管理员数必须大于 1，否则 409；审计 `admin.user.update` |
-| `getAdminUserOffboarding` · `GET /api/v1/admin/users/{userId}/offboarding` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整系统管理员 Session；只读，不要求 CSRF、`Idempotency-Key` 或 `If-Match`；目标不存在 404；返回按项目分组的 TODO 任务、全部负责人、任务 `rowVersion` 与可接手的 ACTIVE 项目成员；无任务返回 `projects: []`；响应 `no-store` |
-| `disableUser` · `POST /api/v1/admin/users/{userId}/disable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；请求体 `AdminUserDisableRequest`（幂等契约 2.0.0）；目标不存在 404、已停用或用户版本冲突 409；禁止停用自己；停用 ACTIVE 管理员时执行最后一名可用管理员保护；多负责人任务默认保留其他负责人；唯一负责人任务必须指定一名或多名接手人或 `delete = true`，否则 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED`；任务 scope/版本变化、重复动作或删除主任务按明确错误返回；全部任务处理后重新读取，仍有未完成任务 409 `ADMIN_USER_OFFBOARDING_INCOMPLETE` 并整体回滚；同事务置 `DISABLED`/`disabled_at`、递增 `auth_version` 与 `row_version`、撤销全部 Session 并写审计（含 `reassignedTaskIds` / `deletedTaskIds`）；停用后目标所有受保护请求 401 |
+| `getAdminUserOffboarding` · `GET /api/v1/admin/users/{userId}/offboarding` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整系统管理员 Session；只读，不要求 CSRF、`Idempotency-Key` 或 `If-Match`；目标不存在 404；返回按项目分组的 TODO 任务、全部负责人、任务 `rowVersion` 与可接手的 ACTIVE 项目成员；目标仍是项目 ACTIVE 组长时，该项目即使无 TODO 任务也返回并置 `requiresLeaderTransfer = true`；无任务且不是组长时返回 `projects: []`；响应 `no-store` |
+| `disableUser` · `POST /api/v1/admin/users/{userId}/disable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；请求体 `AdminUserDisableRequest`（幂等契约 3.0.0；含 `tasks` 与 `leaderTransfers`）；目标不存在 404、已停用或用户版本冲突 409；禁止停用自己；停用 ACTIVE 管理员时执行最后一名可用管理员保护；多负责人任务默认保留其他负责人；唯一负责人任务必须指定一名或多名接手人或 `delete = true`，否则 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED`；任务 scope/版本变化、重复动作或删除主任务按明确错误返回；目标仍是项目 ACTIVE 组长时，每个组长项目必须提交一条 `leaderTransfers`，新组长只能是该项目 ACTIVE 成员，缺失/重复/项目外成员/移交给本人分别 422；任务按 taskId、组长移交按 projectId 升序在同一事务处理；全部交接后重新读取，仍有未完成任务或未移交组长 409 `ADMIN_USER_OFFBOARDING_INCOMPLETE` 并整体回滚；同事务置 `DISABLED`/`disabled_at`、递增 `auth_version` 与 `row_version`、撤销全部 Session 并写审计（含 `reassignedTaskIds` / `deletedTaskIds` / `leaderTransfers`）；停用后目标所有受保护请求 401 |
 | `enableUser` · `POST /api/v1/admin/users/{userId}/enable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标不存在 404、已启用或版本冲突 409；同事务清除停用态并递增 `row_version`、写审计；不恢复已撤销 Session 或登录限流历史 |
 | `deleteUser` · `POST /api/v1/admin/users/{userId}/delete` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标必须已停用且无任何 ACTIVE 项目成员关系；禁止删除自己；同事务物理删除账号、级联清理 7 类私有运行态数据、撤销全部 Session、留档最小身份并写 `admin.user.delete` 审计；审计、项目动态与业务历史使用事件时快照保留署名；删除后目标资源返回 404，新删除请求不可再次执行 |
 
@@ -349,3 +349,12 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | `disableUser` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（2.0.0）+ `If-Match`；先按任务 ID 升序改派或删除，再复核清单为空才停用 |
 
 本批新增 `getAdminUserOffboarding`，并把 `disableUser` 从「有未完成任务直接拒绝」改为「在停用弹窗内完成交接后停用」。多负责人任务默认摘掉待停用账号并保留其他人；唯一负责人任务必须至少指定一名接手人（可多选）或标记删除。交接在单个事务内完成，任一任务失败则账号、任务、Session 与审计全部回滚。路由总数 125 → 126，`permissions:check` 126 条操作 / 126 条路由。
+
+## ADR-089 停用账号前的项目组长移交（2026-10-20）
+
+| operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
+| ------------ | ---- | -------- | ------------ | ---------- | -------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getAdminUserOffboarding` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；只读，无 CSRF / 幂等要求；返回目标负责的 TODO 任务与目标仍担任 ACTIVE 组长的项目；组长项目即使无任务也返回，并附带可选择的 ACTIVE 项目成员 |
+| `disableUser` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（3.0.0）+ `If-Match`；任务按 taskId、组长移交按 projectId 升序；每个组长项目必须移交给该项目 ACTIVE 成员，全部交接完成后才停用 |
+
+本批把 ADR-084 的停用交接扩展到项目组长身份：`AdminUserDisableRequest` 新增 `leaderTransfers`，`AdminUserOffboardingProject` 新增 `requiresLeaderTransfer`。组长移交复用项目模块的 `ProjectLeaderTransferPort`，与任务改派/删除、审计、项目动态、Session 撤销和账号停用共用同一事务；不新增路由、不新增迁移，路由总数保持 128，`permissions:check` 128 条操作 / 128 条路由。

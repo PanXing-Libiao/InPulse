@@ -80,6 +80,7 @@ export type AdminUserCreateRequest = {
 
 export type AdminUserDisableRequest = {
   readonly tasks: readonly AdminUserDisableTaskAction[];
+  readonly leaderTransfers: readonly AdminUserLeaderTransfer[];
 };
 
 export type AdminUserDisableTaskAction = {
@@ -109,6 +110,11 @@ export type AdminUserItem = {
   readonly updatedAt: string;
 };
 
+export type AdminUserLeaderTransfer = {
+  readonly projectId: number;
+  readonly newLeaderUserId: number;
+};
+
 export type AdminUserListResponse = {
   readonly items: readonly AdminUserItem[];
 };
@@ -134,6 +140,7 @@ export type AdminUserOffboardingProject = {
   readonly projectName: string;
   readonly tasks: readonly AdminUserOffboardingTask[];
   readonly members: readonly AdminUserOffboardingMember[];
+  readonly requiresLeaderTransfer: boolean;
 };
 
 export type AdminUserOffboardingResponse = {

@@ -15,7 +15,11 @@ import { AdminHighRiskAuthService } from "../auth/admin-high-risk.service.js";
 import { notAdmin } from "../auth/admin-high-risk.error.js";
 import { PostgresUserSessionRepository } from "../auth/user-session.repository.js";
 import { AuditWritePort } from "../audit/index.js";
-import { ProjectMembersQueryPort } from "../modules/projects/index.js";
+import {
+  ProjectLeaderTransferError,
+  ProjectLeaderTransferPort,
+  ProjectMembersQueryPort,
+} from "../modules/projects/index.js";
 import {
   ProjectMemberTaskCommandError,
   ProjectMemberTaskCommandPort,
@@ -55,6 +59,8 @@ export class AdminUserService {
     private readonly highRisk: AdminHighRiskAuthService,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     private readonly projectMembers: ProjectMembersQueryPort,
+    @Inject(ProjectLeaderTransferPort)
+    private readonly projectLeaders: ProjectLeaderTransferPort,
     @Inject(ProjectMemberTaskCommandPort)
     private readonly projectMemberTasks: ProjectMemberTaskCommandPort,
     @Inject(TaskDeletionCommandPort)
@@ -131,7 +137,7 @@ export class AdminUserService {
     meta: AdminUserMutationMeta,
     userId: number,
     version: number,
-    request: AdminUserDisableRequest = { tasks: [] },
+    request: AdminUserDisableRequest = { tasks: [], leaderTransfers: [] },
   ): Promise<void> {
     await this.verifyBeforeLocks(tx, meta.headers);
     const candidate = await this.repository.find(tx, userId);
@@ -175,6 +181,28 @@ export class AdminUserService {
       reassignedTaskIds.push(task.taskId);
     }
 
+    const leaderTransfers = [...request.leaderTransfers].sort(
+      (left, right) => left.projectId - right.projectId,
+    );
+    for (const transfer of leaderTransfers) {
+      try {
+        await this.projectLeaders.transferLeader(tx, {
+          actorId: meta.actorId,
+          projectId: transfer.projectId,
+          fromUserId: userId,
+          newLeaderUserId: transfer.newLeaderUserId,
+          requestId: meta.requestId,
+        });
+      } catch (error) {
+        if (error instanceof ProjectLeaderTransferError) {
+          if (error.status === 422)
+            throw adminUserOffboardingInvalid(error.code, error.message);
+          throw adminUserOffboardingConflict(error.code, error.message);
+        }
+        throw error;
+      }
+    }
+
     const remaining = await this.offboardingRepository.load(tx, userId);
     if (remaining.length > 0) {
       const count = remaining.reduce(
@@ -183,7 +211,7 @@ export class AdminUserService {
       );
       throw adminUserOffboardingConflict(
         "ADMIN_USER_OFFBOARDING_INCOMPLETE",
-        `交接期间仍有 ${count} 个未完成任务，请刷新后重试`,
+        `交接期间仍有 ${count} 个未完成任务或未移交组长的项目，请刷新后重试`,
       );
     }
 
@@ -199,6 +227,10 @@ export class AdminUserService {
       revokedSessionCount: revoked,
       reassignedTaskIds,
       deletedTaskIds,
+      leaderTransfers: leaderTransfers.map((transfer) => ({
+        projectId: transfer.projectId,
+        newLeaderUserId: transfer.newLeaderUserId,
+      })),
     });
   }
 
@@ -249,6 +281,52 @@ export class AdminUserService {
         throw adminUserOffboardingInvalid(
           "ADMIN_USER_OFFBOARDING_DELETE_NOT_ALLOWED",
           "只有唯一负责人任务可以删除；多负责人任务请保留其他人继续负责",
+        );
+      }
+    }
+    const leaderProjects = new Map(
+      projects
+        .filter((project) => project.requiresLeaderTransfer)
+        .map((project) => [project.projectId, project] as const),
+    );
+    const seenLeaderProjects = new Set<number>();
+    for (const transfer of request.leaderTransfers) {
+      if (seenLeaderProjects.has(transfer.projectId)) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_DUPLICATE_LEADER_PROJECT",
+          "同一个项目不能重复提交组长移交",
+        );
+      }
+      seenLeaderProjects.add(transfer.projectId);
+      const project = leaderProjects.get(transfer.projectId);
+      if (project === undefined) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_LEADER_NOT_REQUIRED",
+          "该账号不是此项目的组长，无需移交",
+        );
+      }
+      if (transfer.newLeaderUserId === userId) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_SELF_LEADER",
+          "不能把组长移交给待停用账号",
+        );
+      }
+      if (
+        !project.members.some(
+          (member) => member.userId === transfer.newLeaderUserId,
+        )
+      ) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_LEADER_INVALID",
+          "新组长必须是该项目的活跃成员",
+        );
+      }
+    }
+    for (const project of leaderProjects.values()) {
+      if (!seenLeaderProjects.has(project.projectId)) {
+        throw adminUserOffboardingInvalid(
+          "ADMIN_USER_OFFBOARDING_LEADER_REQUIRED",
+          `项目 ${project.projectCode} 的组长身份必须先移交`,
         );
       }
     }

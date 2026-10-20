@@ -177,7 +177,7 @@ export type AdminUserOffboardingTask = z.infer<
   typeof adminUserOffboardingTaskSchema
 >;
 
-/** 按项目分组的停用交接清单。 */
+/** 按项目分组的停用交接清单；组长项目即使没有未完成任务也会返回。 */
 export const adminUserOffboardingProjectSchema = z
   .object({
     projectId: userIdSchema,
@@ -185,6 +185,8 @@ export const adminUserOffboardingProjectSchema = z
     projectName: z.string().min(1).max(200),
     tasks: z.array(adminUserOffboardingTaskSchema).max(500),
     members: z.array(adminUserOffboardingMemberSchema).max(1000),
+    /** 待停用账号仍是该项目 ACTIVE 组长时为 true，停用前必须移交。 */
+    requiresLeaderTransfer: z.boolean(),
   })
   .strict()
   .meta({ id: "AdminUserOffboardingProject" });
@@ -193,7 +195,7 @@ export type AdminUserOffboardingProject = z.infer<
   typeof adminUserOffboardingProjectSchema
 >;
 
-/** 停用前的交接清单；无未完成任务时 projects 为空数组。 */
+/** 停用前的交接清单；无任务且不是任何项目组长时 projects 为空数组。 */
 export const adminUserOffboardingResponseSchema = z
   .object({
     user: adminUserItemSchema,
@@ -241,10 +243,31 @@ export type AdminUserDisableTaskAction = z.infer<
   typeof adminUserDisableTaskActionSchema
 >;
 
-/** 停用请求；tasks 只列需要额外接手或删除的任务，其余任务由服务端自动保留其他负责人。 */
+/** 停用时的组长移交动作；新组长必须是该项目当前活跃成员。 */
+export const adminUserLeaderTransferSchema = z
+  .object({
+    projectId: userIdSchema,
+    newLeaderUserId: userIdSchema,
+  })
+  .strict()
+  .meta({ id: "AdminUserLeaderTransfer" });
+
+export type AdminUserLeaderTransfer = z.infer<
+  typeof adminUserLeaderTransferSchema
+>;
+
+/**
+ * 停用请求；tasks 只列需要额外接手或删除的任务，其余任务由服务端自动保留
+ * 其他负责人。leaderTransfers 列出待停用账号仍是组长的项目及新组长，缺少任何
+ * 一个组长项目都会返回 422。
+ */
 export const adminUserDisableRequestSchema = z
   .object({
     tasks: z.array(adminUserDisableTaskActionSchema).max(500).default([]),
+    leaderTransfers: z
+      .array(adminUserLeaderTransferSchema)
+      .max(1000)
+      .default([]),
   })
   .strict()
   .refine(
@@ -252,6 +275,12 @@ export const adminUserDisableRequestSchema = z
       new Set(value.tasks.map((task) => task.taskId)).size ===
       value.tasks.length,
     { message: "同一个任务不能重复提交", path: ["tasks"] },
+  )
+  .refine(
+    (value) =>
+      new Set(value.leaderTransfers.map((item) => item.projectId)).size ===
+      value.leaderTransfers.length,
+    { message: "同一个项目不能重复提交组长移交", path: ["leaderTransfers"] },
   )
   .meta({ id: "AdminUserDisableRequest" });
 

@@ -31,6 +31,7 @@ import { PostgresActivityProjectionReader } from "../src/modules/activity/activi
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
+import { PostgresProjectLeaderTransferPort } from "../src/modules/projects/project-leader-transfer.port.js";
 import { AdminUserOffboardingRepository } from "../src/admin-users/admin-user-offboarding.repository.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
@@ -39,7 +40,6 @@ import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { TasksManagementService } from "../src/modules/tasks/tasks-management.service.js";
@@ -479,6 +479,11 @@ beforeAll(async () => {
     highRisk,
     audit,
     new PostgresProjectMembersQueryPort(),
+    new PostgresProjectLeaderTransferPort(
+      new PostgresProjectsWritePort(),
+      audit,
+      activity,
+    ),
     new ProjectMemberTaskCommandPort(
       new TaskManagementRepository(),
       taskManagement,
@@ -582,7 +587,7 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       actor,
       {
         version: updated.rowVersion,
-        body: { tasks: [] },
+        body: { tasks: [], leaderTransfers: [] },
       },
     );
     expect(disable.status).toBe(204);
@@ -651,7 +656,9 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
   it("唯一负责人任务未处理时拒绝停用", async () => {
     const actor = await seedUser({ admin: true });
     const target = await seedUser({ admin: false });
+    const peer = await seedUser({ admin: false });
     const project = await createProject(client.sql, target.userId);
+    await addProjectMember(project.projectId, peer.userId);
     await createOpenTaskForAssignees(
       project,
       target.userId,
@@ -665,7 +672,18 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       `/admin/users/${target.userId}/disable`,
       "POST",
       actor,
-      { version: before.rowVersion, body: { tasks: [] } },
+      {
+        version: before.rowVersion,
+        body: {
+          tasks: [],
+          leaderTransfers: [
+            {
+              projectId: project.projectId,
+              newLeaderUserId: peer.userId,
+            },
+          ],
+        },
+      },
     );
 
     expect(response.status).toBe(422);
@@ -697,7 +715,18 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       `/admin/users/${target.userId}/disable`,
       "POST",
       actor,
-      { version: before.rowVersion, body: { tasks: [] } },
+      {
+        version: before.rowVersion,
+        body: {
+          tasks: [],
+          leaderTransfers: [
+            {
+              projectId: project.projectId,
+              newLeaderUserId: peer.userId,
+            },
+          ],
+        },
+      },
     );
 
     expect(response.status).toBe(204);
@@ -724,6 +753,132 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       task.taskId,
     ]);
     expect(disabledAudit?.eventPayload.deletedTaskIds).toEqual([]);
+  });
+
+  it("组长未移交时拒绝停用", async () => {
+    const actor = await seedUser({ admin: true });
+    const target = await seedUser({ admin: false });
+    const peer = await seedUser({ admin: false });
+    const project = await createProject(client.sql, target.userId);
+    await addProjectMember(project.projectId, peer.userId);
+    const before = await userState(target.userId);
+    await createTargetSession(target.userId, before.authVersion);
+
+    const response = await request(
+      "/admin/users/" + target.userId + "/disable",
+      "POST",
+      actor,
+      { version: before.rowVersion, body: { tasks: [], leaderTransfers: [] } },
+    );
+
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { readonly code: string };
+    expect(body.code).toBe("ADMIN_USER_OFFBOARDING_LEADER_REQUIRED");
+    expect(await userState(target.userId)).toMatchObject({
+      status: "ACTIVE",
+      activeSessions: 2,
+    });
+  });
+
+  it("组长移交给项目活跃成员后完成停用", async () => {
+    const actor = await seedUser({ admin: true });
+    const target = await seedUser({ admin: false });
+    const peer = await seedUser({ admin: false });
+    const project = await createProject(client.sql, target.userId);
+    await addProjectMember(project.projectId, peer.userId);
+    const before = await userState(target.userId);
+    await createTargetSession(target.userId, before.authVersion);
+
+    const response = await request(
+      "/admin/users/" + target.userId + "/disable",
+      "POST",
+      actor,
+      {
+        version: before.rowVersion,
+        body: {
+          tasks: [],
+          leaderTransfers: [
+            { projectId: project.projectId, newLeaderUserId: peer.userId },
+          ],
+        },
+      },
+    );
+
+    expect(response.status).toBe(204);
+    expect(await userState(target.userId)).toMatchObject({
+      status: "DISABLED",
+      activeSessions: 0,
+    });
+    const members = (await client.sql`
+      SELECT user_id AS "userId", role
+        FROM app.project_members
+       WHERE project_id = ${project.projectId}
+         AND status = 'ACTIVE'
+       ORDER BY user_id
+    `) as unknown as readonly {
+      readonly userId: number;
+      readonly role: string;
+    }[];
+    const roles = new Map(members.map((item) => [item.userId, item.role]));
+    expect(roles.get(peer.userId)).toBe("LEADER");
+    expect(roles.get(target.userId)).toBe("MEMBER");
+
+    const roleAudit = (await auditReader.sql`
+      SELECT event_payload AS "eventPayload"
+        FROM app.audit_logs
+       WHERE project_id = ${project.projectId}
+         AND action = 'project.member.role.set'
+       ORDER BY sequence_no DESC
+       LIMIT 1
+    `) as unknown as readonly {
+      readonly eventPayload: {
+        readonly previousLeaderUserId: number;
+        readonly userId: number;
+        readonly role: string;
+      };
+    }[];
+    expect(roleAudit[0]?.eventPayload).toMatchObject({
+      previousLeaderUserId: target.userId,
+      userId: peer.userId,
+      role: "LEADER",
+    });
+    const roleActivity = (await client.sql`
+      SELECT activity_type AS "activityType"
+        FROM app.activity_projection
+       WHERE project_id = ${project.projectId}
+         AND activity_type = 'PROJECT_MEMBER_ROLE_CHANGED'
+    `) as unknown as readonly { readonly activityType: string }[];
+    expect(roleActivity).toHaveLength(1);
+  });
+
+  it("组长不能移交给项目外成员", async () => {
+    const actor = await seedUser({ admin: true });
+    const target = await seedUser({ admin: false });
+    const peer = await seedUser({ admin: false });
+    const outsider = await seedUser({ admin: false });
+    const project = await createProject(client.sql, target.userId);
+    await addProjectMember(project.projectId, peer.userId);
+    const before = await userState(target.userId);
+    await createTargetSession(target.userId, before.authVersion);
+
+    const response = await request(
+      "/admin/users/" + target.userId + "/disable",
+      "POST",
+      actor,
+      {
+        version: before.rowVersion,
+        body: {
+          tasks: [],
+          leaderTransfers: [
+            { projectId: project.projectId, newLeaderUserId: outsider.userId },
+          ],
+        },
+      },
+    );
+
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { readonly code: string };
+    expect(body.code).toBe("ADMIN_USER_OFFBOARDING_LEADER_INVALID");
   });
 
   it("唯一负责人任务可增补多名接手人，也可标记删除", async () => {
@@ -768,6 +923,12 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
               rowVersion: transferTask.rowVersion,
               assigneeIds: transferAssignees,
               delete: false,
+            },
+          ],
+          leaderTransfers: [
+            {
+              projectId: transferProject.projectId,
+              newLeaderUserId: peerA.userId,
             },
           ],
         },
@@ -815,6 +976,12 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
               delete: true,
             },
           ],
+          leaderTransfers: [
+            {
+              projectId: deleteProject.projectId,
+              newLeaderUserId: peerC.userId,
+            },
+          ],
         },
       },
     );
@@ -836,8 +1003,10 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
   it("物理删除已停用且无活跃项目关系的用户，并保留历史署名与审计", async () => {
     const actor = await seedUser({ admin: true });
     const target = await seedUser({ admin: false });
+    const peer = await seedUser({ admin: false });
     const original = await userState(target.userId);
     const project = await createProject(client.sql, target.userId);
+    await addProjectMember(project.projectId, peer.userId);
     const taskId = await createTask(project, target.userId);
     const targetSession = await createTargetSession(
       target.userId,
@@ -859,10 +1028,21 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       `/admin/users/${target.userId}/disable`,
       "POST",
       actor,
-      { version: original.rowVersion, body: { tasks: [] } },
+      {
+        version: original.rowVersion,
+        body: {
+          tasks: [],
+          leaderTransfers: [
+            {
+              projectId: project.projectId,
+              newLeaderUserId: peer.userId,
+            },
+          ],
+        },
+      },
     );
     expect(disable.status).toBe(204);
-    let state = await userState(target.userId);
+    const state = await userState(target.userId);
     expect(state).toMatchObject({
       status: "DISABLED",
       rowVersion: original.rowVersion + 1,
@@ -1335,6 +1515,11 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       highRisk,
       failingAudit,
       new PostgresProjectMembersQueryPort(),
+      new PostgresProjectLeaderTransferPort(
+        new PostgresProjectsWritePort(),
+        failingAudit,
+        new PostgresActivityWritePort(),
+      ),
       new ProjectMemberTaskCommandPort(
         new TaskManagementRepository(),
         taskManagement,

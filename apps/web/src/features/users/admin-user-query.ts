@@ -48,6 +48,10 @@ export function adminUserErrorMessage(error: unknown): string {
         return "不能把待停用账号继续设为接手人。";
       if (error.code === "ADMIN_USER_OFFBOARDING_DELETE_NOT_ALLOWED")
         return "只有唯一负责人任务可以删除；多负责人任务请保留其他人继续负责。";
+      if (error.code === "PROJECT_LEADER_NOT_CURRENT")
+        return "该项目组长身份已变化，请刷新后重新选择新组长。";
+      if (error.code === "PROJECT_LEADER_TRANSFER_CONFLICT")
+        return "组长移交发生冲突，请刷新后重试。";
       if (error.code === "TASK_GROUP_MAIN_LOCKED")
         return "该任务是任务组主任务，请先解除合并后再删除。";
       if (error.code === "TASK_ASSIGNEE_INVALID")
@@ -65,6 +69,16 @@ export function adminUserErrorMessage(error: unknown): string {
     if (error.status === 422) {
       if (error.code === "PROJECT_MEMBER_REASSIGNMENT_REQUIRED")
         return "该任务没有其他负责人，必须指定接手人或删除任务。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_LEADER_REQUIRED")
+        return "还有项目组长身份未移交，请选择项目内成员接手后再停用。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_LEADER_INVALID")
+        return "新组长必须是该项目内的活跃成员，请刷新后重新选择。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_SELF_LEADER")
+        return "不能把组长身份移交给待停用账号。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_DUPLICATE_LEADER_PROJECT")
+        return "同一个项目不能重复提交组长移交。";
+      if (error.code === "ADMIN_USER_OFFBOARDING_LEADER_NOT_REQUIRED")
+        return "该账号已不是该项目组长，无需再移交。";
       return "请检查姓名、邮箱或任务交接设置。";
     }
     if (error.status === 429) return "请求过于频繁，请稍后重试。";

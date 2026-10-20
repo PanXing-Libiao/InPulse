@@ -6751,6 +6751,15 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR084-E2E-001 | Playwright 浏览器 | 成员生命周期改走交接弹窗 | 点击行内「停用」打开「停用账号 · 任务交接」；无任务目标显示「全部项目已完成」，点击「确认停用」后从启用列表消失 | 本地通过（2026-10-19，合并后 `admin-users.spec.ts` 2/2；全量 88/88 为合并前结果） |
 | ADR084-GATE-001 | 静态门禁 | 契约 / 权限 / 类型 / 构建 | `contract:drift` 6 产物一致；`contract:validate` 126 条路由；`permissions:check` 126 条操作 / 126 条路由；typecheck / lint / format:check / build 通过 | 本地通过（2026-10-19 合并后） |
 
+## ADR-089 停用账号前的项目组长移交（2026-10-20）
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR089-API-001 | API 单元 | 停用请求体透传 | `disableUser` 经 HTTP 服务把 `AdminUserDisableRequest`（含默认 `leaderTransfers: []`）原样传给业务服务；组长相关 422 / 409 错误映射为统一停用错误 | 本地通过（2026-10-20，`admin-users-http.test.ts` 9/9） |
+| ADR089-API-002 | 真实 PostgreSQL 集成（真实 HTTP） | 组长未移交、成功移交与非法目标 | 目标仍是 ACTIVE 组长且未提交 `leaderTransfers` 时返回 422 `ADMIN_USER_OFFBOARDING_LEADER_REQUIRED`，账号保持 ACTIVE、Session 不撤销；移交给项目 ACTIVE 成员后停用成功，原组长降为 MEMBER、新组长为 LEADER；移交给项目外成员返回 422 `ADMIN_USER_OFFBOARDING_LEADER_INVALID` | 本地通过（2026-10-20，`admin-users-api.integration.test.ts` 11/11） |
+| ADR089-UI-001 | Web 单元 | 组长项目在停用弹窗内移交 | 无任务但需移交组长的项目仍显示「项目组长移交」且不显示「全部项目已完成」；未选择新组长时「确认停用」禁用；选择项目内成员后启用；请求体包含 `leaderTransfers: [{ projectId, newLeaderUserId }]`；项目内无可接手成员时显示提示并保持禁用 | 本地通过（2026-10-20，`AdminUsersPageView.test.tsx` 32/32） |
+| ADR089-GATE-001 | 静态门禁 | 契约 / 权限 / 类型 / 边界 | `contract:drift` 6 产物一致；`contract:validate` 128 条路由；`permissions:check` 128 条操作 / 128 条路由；API / Web typecheck、Web 依赖边界、改动文件 Prettier / ESLint 与 `check:docs` 通过 | 本地通过（2026-10-20） |
+
 ## 审计动作码候选面板对齐（2026-10-19）
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |

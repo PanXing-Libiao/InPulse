@@ -19,6 +19,7 @@ import {
   type ProjectAccessQueryPort,
 } from "./project-access.port.js";
 import { ProjectRoleGateService } from "./project-role-gate.service.js";
+import { PROJECT_MEMBER_ROLE_CHANGE_ACTIVITY } from "./project-member-events.js";
 import {
   ActiveUsersQueryPort,
   type ProjectMemberRecord,
@@ -33,7 +34,6 @@ import type {
 
 const PROJECT_MEMBER_ADD_ACTIVITY = "PROJECT_MEMBER_ADDED";
 const PROJECT_MEMBER_REMOVE_ACTIVITY = "PROJECT_MEMBER_REMOVED";
-const PROJECT_MEMBER_ROLE_CHANGE_ACTIVITY = "PROJECT_MEMBER_ROLE_CHANGED";
 const PROJECT_MEMBER_JOIN_NOTIFICATION = "PROJECT_JOINED";
 
 export class ProjectMemberManagementError extends Error {

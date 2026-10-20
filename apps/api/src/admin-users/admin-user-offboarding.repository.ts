@@ -28,6 +28,12 @@ interface MemberRow {
   readonly avatarUrl: string | null;
 }
 
+interface LeaderProjectRow {
+  readonly projectId: number;
+  readonly projectCode: string;
+  readonly projectName: string;
+}
+
 /** 停用账号的跨项目交接读模型；只按目标账号当前真实负责人关系生成。 */
 @Injectable()
 export class AdminUserOffboardingRepository {
@@ -67,9 +73,26 @@ export class AdminUserOffboardingRepository {
        ORDER BY p.id, t.id
     `) as unknown as readonly TaskRow[];
 
-    if (tasks.length === 0) return [];
+    const leaders = (await tx.sql<LeaderProjectRow[]>`
+      SELECT p.id AS "projectId",
+             p.code AS "projectCode",
+             p.name AS "projectName"
+        FROM app.project_members AS m
+        JOIN app.projects AS p ON p.id = m.project_id
+       WHERE m.user_id = ${userId}
+         AND m.status = 'ACTIVE'
+         AND m.role = 'LEADER'
+       ORDER BY p.id
+    `) as unknown as readonly LeaderProjectRow[];
 
-    const projectIds = [...new Set(tasks.map((task) => task.projectId))];
+    if (tasks.length === 0 && leaders.length === 0) return [];
+
+    const projectIds = [
+      ...new Set([
+        ...tasks.map((task) => task.projectId),
+        ...leaders.map((project) => project.projectId),
+      ]),
+    ].sort((left, right) => left - right);
     const members = (await tx.sql<MemberRow[]>`
       SELECT m.project_id AS "projectId",
              u.id AS "userId",
@@ -92,24 +115,48 @@ export class AdminUserOffboardingRepository {
       membersByProject.set(member.projectId, list);
     }
 
-    const projects = new Map<number, AdminUserOffboardingProject>();
-    for (const row of tasks) {
-      let project = projects.get(row.projectId);
-      if (project === undefined) {
-        project = {
-          projectId: row.projectId,
+    const leaderProjectIds = new Set(
+      leaders.map((project) => project.projectId),
+    );
+    const projectMeta = new Map<
+      number,
+      { readonly projectCode: string; readonly projectName: string }
+    >();
+    for (const leader of leaders)
+      projectMeta.set(leader.projectId, {
+        projectCode: leader.projectCode,
+        projectName: leader.projectName,
+      });
+    for (const row of tasks)
+      if (!projectMeta.has(row.projectId))
+        projectMeta.set(row.projectId, {
           projectCode: row.projectCode,
           projectName: row.projectName,
-          tasks: [],
-          members: (membersByProject.get(row.projectId) ?? []).map(
-            (member) => ({
-              userId: member.userId,
-              name: member.name,
-              avatarUrl: member.avatarUrl,
-            }),
-          ),
-        };
-        projects.set(row.projectId, project);
+        });
+
+    const projects = new Map<number, AdminUserOffboardingProject>();
+    for (const projectId of [...projectMeta.keys()].sort(
+      (left, right) => left - right,
+    )) {
+      const meta = projectMeta.get(projectId);
+      if (meta === undefined) continue;
+      projects.set(projectId, {
+        projectId,
+        projectCode: meta.projectCode,
+        projectName: meta.projectName,
+        tasks: [],
+        members: (membersByProject.get(projectId) ?? []).map((member) => ({
+          userId: member.userId,
+          name: member.name,
+          avatarUrl: member.avatarUrl,
+        })),
+        requiresLeaderTransfer: leaderProjectIds.has(projectId),
+      });
+    }
+    for (const row of tasks) {
+      const project = projects.get(row.projectId);
+      if (project === undefined) {
+        throw new Error("offboarding project was not initialized");
       }
       const task: AdminUserOffboardingTask = {
         taskId: row.taskId,

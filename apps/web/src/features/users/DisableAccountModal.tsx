@@ -6,12 +6,14 @@ import {
   type AdminUserDisableRequest,
   type AdminUserDisableTaskAction,
   type AdminUserItem,
+  type AdminUserLeaderTransfer,
   type AdminUserOffboardingProject,
   type AdminUserOffboardingTask,
   type InpulseApiClient,
 } from "@generated/api";
 
 import { AppModal as Modal } from "@features/common/components/AppModal";
+import { CalmSelect } from "@features/common/components/CalmSelect";
 import { adminUserErrorMessage } from "./admin-user-query";
 
 interface TaskDraft {
@@ -53,8 +55,9 @@ export interface DisableAccountModalProps {
 }
 
 /**
- * 停用账号前的任务交接弹窗。默认保留多负责人任务的其余负责人；
- * 只有「仅该账号一人负责」的任务必须指定接手人或标记删除。
+ * 停用账号前的交接弹窗。默认保留多负责人任务的其余负责人；
+ * 只有「仅该账号一人负责」的任务必须指定接手人或标记删除；
+ * 待停用账号仍是项目组长时，还必须把组长身份移交给项目内活跃成员。
  */
 export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
   open,
@@ -79,10 +82,14 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
     refetchOnMount: "always",
   });
   const [drafts, setDrafts] = useState<Record<number, TaskDraft>>({});
+  const [leaderDrafts, setLeaderDrafts] = useState<
+    Record<number, number | null>
+  >({});
   const submitGuard = useRef(false);
 
   useEffect(() => {
     setDrafts({});
+    setLeaderDrafts({});
     submitGuard.current = false;
   }, [open, userId]);
 
@@ -97,6 +104,8 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
     }));
     return sorted.sort(
       (left, right) =>
+        Number(right.requiresLeaderTransfer) -
+          Number(left.requiresLeaderTransfer) ||
         right.tasks.filter((task) => task.requiresHandover).length -
           left.tasks.filter((task) => task.requiresHandover).length ||
         left.projectId - right.projectId,
@@ -106,12 +115,20 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
     () => projects.flatMap((project) => project.tasks),
     [projects],
   );
-  const unresolved = allTasks.filter((task) => {
+  const unresolvedTaskCount = allTasks.filter((task) => {
     const draft = taskDraft(drafts, task.taskId);
     return (
       task.requiresHandover && !draft.removed && draft.selected.length === 0
     );
-  });
+  }).length;
+  const unresolvedLeaderProjects = projects.filter(
+    (project) =>
+      project.requiresLeaderTransfer && leaderDrafts[project.projectId] == null,
+  );
+  const unresolvedCount = unresolvedTaskCount + unresolvedLeaderProjects.length;
+  const leaderProjectCount = projects.filter(
+    (project) => project.requiresLeaderTransfer,
+  ).length;
 
   const updateDraft = (taskId: number, change: Partial<TaskDraft>): void => {
     setDrafts((current) => ({
@@ -137,6 +154,10 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
     updateDraft(taskId, { selected, removed: false });
   };
 
+  const selectLeader = (projectId: number, memberId: number): void => {
+    setLeaderDrafts((current) => ({ ...current, [projectId]: memberId }));
+  };
+
   const markRemoved = (taskId: number): void => {
     updateDraft(taskId, { removed: true, selected: [], expanded: false });
   };
@@ -160,7 +181,17 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
         delete: draft.removed,
       });
     }
-    return { tasks };
+    const leaderTransfers: AdminUserLeaderTransfer[] = [];
+    for (const project of projects) {
+      const newLeaderUserId = leaderDrafts[project.projectId];
+      if (!project.requiresLeaderTransfer || newLeaderUserId == null) continue;
+      leaderTransfers.push({
+        projectId: project.projectId,
+        newLeaderUserId,
+      });
+    }
+    leaderTransfers.sort((left, right) => left.projectId - right.projectId);
+    return { tasks, leaderTransfers };
   };
 
   const submit = async (): Promise<void> => {
@@ -169,7 +200,7 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
       submitGuard.current ||
       offboarding.isPending ||
       offboarding.isError ||
-      unresolved.length > 0
+      unresolvedCount > 0
     ) {
       return;
     }
@@ -187,18 +218,18 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
     !pending &&
     !offboarding.isPending &&
     !offboarding.isError &&
-    unresolved.length === 0;
+    unresolvedCount === 0;
 
   let footNote = "交接已准备好，确认后将撤销全部会话并停用账号。";
   if (offboarding.isError) {
     footNote = "任务清单加载失败，请重试后再停用。";
-  } else if (allTasks.length === 0) {
+  } else if (projects.length === 0) {
     footNote = "当前账号没有未完成任务，可以直接停用。";
-  } else if (unresolved.length > 0) {
+  } else if (unresolvedCount > 0) {
     footNote =
       "还有 " +
-      unresolved.length +
-      " 个仅该账号负责的任务未处理，处理后才能停用。";
+      unresolvedCount +
+      " 项必须处理（任务接手或组长移交），处理后才能停用。";
   }
 
   return (
@@ -250,8 +281,15 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
                   ? "任务清单未加载"
                   : allTasks.length > 0
                     ? allTasks.length + " 个未完成任务"
-                    : "没有未完成任务"}
+                    : projects.length > 0
+                      ? projects.length + " 个项目待交接"
+                      : "没有未完成任务"}
               </span>
+              {leaderProjectCount > 0 ? (
+                <span className="disable-pill is-amber">
+                  {leaderProjectCount} 个组长项目
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -270,7 +308,7 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
               />
               <Button onClick={() => void offboarding.refetch()}>重试</Button>
             </div>
-          ) : allTasks.length === 0 ? (
+          ) : projects.length === 0 ? (
             <div className="disable-account-done">
               <span aria-hidden="true">✓</span>
               <div>
@@ -285,6 +323,7 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
                   key={project.projectId}
                   project={project}
                   targetUserId={user.id}
+                  leaderUserId={leaderDrafts[project.projectId] ?? null}
                   drafts={drafts}
                   onToggleAssignee={toggleAssignee}
                   onTogglePanel={(taskId, expanded) =>
@@ -292,6 +331,7 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
                   }
                   onMarkRemoved={markRemoved}
                   onUndoRemoved={undoRemoved}
+                  onSelectLeader={selectLeader}
                 />
               ))}
             </div>
@@ -309,6 +349,7 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
 interface ProjectHandoverCardProps {
   readonly project: AdminUserOffboardingProject;
   readonly targetUserId: number;
+  readonly leaderUserId: number | null;
   readonly drafts: Readonly<Record<number, TaskDraft>>;
   readonly onToggleAssignee: (
     taskId: number,
@@ -318,64 +359,103 @@ interface ProjectHandoverCardProps {
   readonly onTogglePanel: (taskId: number, expanded: boolean) => void;
   readonly onMarkRemoved: (taskId: number) => void;
   readonly onUndoRemoved: (taskId: number) => void;
+  readonly onSelectLeader: (projectId: number, memberId: number) => void;
 }
 
 const ProjectHandoverCard: React.FC<ProjectHandoverCardProps> = ({
   project,
   targetUserId,
+  leaderUserId,
   drafts,
   onToggleAssignee,
   onTogglePanel,
   onMarkRemoved,
   onUndoRemoved,
+  onSelectLeader,
 }) => {
   const requiredCount = project.tasks.filter(
     (task) => task.requiresHandover,
   ).length;
+  const needsLeader = project.requiresLeaderTransfer;
+  const urgent = requiredCount > 0 || needsLeader;
+  const memberOptions = project.members.map((member) => ({
+    value: member.userId,
+    label: member.name,
+    avatarUrl: member.avatarUrl,
+  }));
+  const summaryParts = [
+    project.projectCode,
+    project.tasks.length > 0
+      ? project.tasks.length + " 个未完成任务"
+      : "无未完成任务",
+  ];
+  if (needsLeader) summaryParts.push("待移交组长");
+
   return (
-    <section
-      className={"disable-project" + (requiredCount > 0 ? " is-urgent" : "")}
-    >
+    <section className={"disable-project" + (urgent ? " is-urgent" : "")}>
       <div className="disable-project-head">
         <span
-          className={
-            "disable-project-logo" + (requiredCount > 0 ? " is-red" : "")
-          }
+          className={"disable-project-logo" + (urgent ? " is-red" : "")}
           aria-hidden="true"
         >
           {projectInitials(project.projectCode)}
         </span>
         <div className="disable-project-copy">
           <strong>{project.projectName}</strong>
-          <span>
-            {project.projectCode} · {project.tasks.length} 个未完成任务
-          </span>
+          <span>{summaryParts.join(" · ")}</span>
         </div>
-        <span
-          className={
-            "disable-pill " + (requiredCount > 0 ? "is-red" : "is-blue")
-          }
-        >
-          {requiredCount > 0 ? requiredCount + " 个必须处理" : "全部多名负责人"}
-        </span>
+        <div className="disable-project-pills">
+          {requiredCount > 0 ? (
+            <span className="disable-pill is-red">
+              {requiredCount} 个必须处理
+            </span>
+          ) : project.tasks.length > 0 ? (
+            <span className="disable-pill is-blue">全部多名负责人</span>
+          ) : null}
+          {needsLeader ? (
+            project.members.length > 0 ? (
+              <CalmSelect
+                appearance="member"
+                value={leaderUserId}
+                onChange={(value) => {
+                  if (typeof value === "number") {
+                    onSelectLeader(project.projectId, value);
+                  }
+                }}
+                options={memberOptions}
+                placeholder="选择新组长"
+                ariaLabel={"为 " + project.projectName + " 选择新组长"}
+                className={
+                  "disable-leader-select" +
+                  (leaderUserId == null ? " is-missing" : "")
+                }
+                width={180}
+              />
+            ) : (
+              <span className="disable-pill is-amber">暂无成员可移交</span>
+            )
+          ) : null}
+        </div>
       </div>
-      <table className="disable-task-table">
-        <tbody>
-          {project.tasks.map((task) => (
-            <TaskHandoverRow
-              key={task.taskId}
-              project={project}
-              task={task}
-              targetUserId={targetUserId}
-              draft={taskDraft(drafts, task.taskId)}
-              onToggleAssignee={onToggleAssignee}
-              onTogglePanel={onTogglePanel}
-              onMarkRemoved={onMarkRemoved}
-              onUndoRemoved={onUndoRemoved}
-            />
-          ))}
-        </tbody>
-      </table>
+      {project.tasks.length > 0 ? (
+        <table className="disable-task-table">
+          <tbody>
+            {project.tasks.map((task) => (
+              <TaskHandoverRow
+                key={task.taskId}
+                project={project}
+                task={task}
+                targetUserId={targetUserId}
+                draft={taskDraft(drafts, task.taskId)}
+                onToggleAssignee={onToggleAssignee}
+                onTogglePanel={onTogglePanel}
+                onMarkRemoved={onMarkRemoved}
+                onUndoRemoved={onUndoRemoved}
+              />
+            ))}
+          </tbody>
+        </table>
+      ) : null}
     </section>
   );
 };
