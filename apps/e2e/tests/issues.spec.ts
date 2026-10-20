@@ -6,12 +6,12 @@ import { pickCalmSelectOption } from "../helpers/calm-select.js";
 
 /**
  * F-20 遗留问题页（R-6）关键路径 E2E：发布带「遗留问题」的迭代记录后，
- * 未闭环桶展示来源记录、来源迭代弹窗入口与转为任务入口；页内完成转换后按应用统一
- * 模式自动打开新建的跟进任务详情，回到遗留问题页可见该条移入已闭环折叠区
+ * 未处理桶展示来源记录、来源迭代弹窗入口与转为任务入口；页内完成转换后按应用统一
+ * 模式自动打开新建的跟进任务详情，回到遗留问题页可见该条移入已处理折叠区
  * 并保留跟进任务入口，原记录内容不被改写。
  */
 
-test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ browser }) => {
+test("F-20 遗留问题页未处理展示与页内转为任务", async ({ browser }) => {
   test.setTimeout(120_000);
   const runtime = await loadRuntime();
   const { context, page } = await createAuthenticatedContext(browser, runtime);
@@ -57,24 +57,21 @@ test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ 
     // 列表必须在内容区内水平居中，左右留白差值不超过 1px；随后恢复默认视口继续交互。
     await page.setViewportSize({ width: 1680, height: 900 });
     const listSpacing = await page.evaluate(() => {
-      const pageRoot = document.querySelector(".issues-page");
       const list = document.querySelector(".issues-page > .issue-list");
-      if (
-        !(pageRoot instanceof HTMLElement) ||
-        !(list instanceof HTMLElement)
-      ) {
-        throw new Error("遗留问题页缺少页面或列表容器");
+      const content = document.querySelector("main");
+      if (!(list instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+        throw new Error("遗留问题页缺少内容区或列表容器");
       }
-      const pageRect = pageRoot.getBoundingClientRect();
+      const contentRect = content.getBoundingClientRect();
       const listRect = list.getBoundingClientRect();
       return {
-        pageWidth: pageRect.width,
+        contentWidth: contentRect.width,
         listWidth: listRect.width,
-        left: listRect.left - pageRect.left,
-        right: pageRect.right - listRect.right,
+        left: listRect.left - contentRect.left,
+        right: contentRect.right - listRect.right,
       };
     });
-    expect(listSpacing.pageWidth).toBeGreaterThan(1020);
+    expect(listSpacing.contentWidth).toBeGreaterThan(1020);
     expect(listSpacing.listWidth).toBeLessThanOrEqual(1020);
     expect(Math.abs(listSpacing.left - listSpacing.right)).toBeLessThanOrEqual(
       1,
@@ -85,7 +82,7 @@ test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ 
       .getByTestId(/^leftover-item-/)
       .filter({ hasText: leftover });
     await expect(row).toBeVisible();
-    await expect(row.getByText("待闭环")).toBeVisible();
+    await expect(row.getByText("未处理")).toBeVisible();
     await expect(row).toContainText(taskTitle);
 
     // 2026-10-10 用户指示：原「来源任务 <编号>」按钮改为「来源迭代」，点击就地打开这条
@@ -130,7 +127,7 @@ test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ 
     await expect(detail).toBeVisible();
     await expect(detail.getByText(followupTitle)).toBeVisible();
 
-    // 回到遗留问题页：条目离开未闭环桶，进入已闭环折叠区并保留跟进任务入口。
+    // 回到遗留问题页：条目离开未处理桶，进入已处理或已作废折叠区并保留跟进任务入口。
     await page.goto("/issues");
     await expect(
       page
@@ -140,24 +137,24 @@ test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ 
     ).toHaveCount(0);
 
     const closed = page.locator("details.history-block");
-    await expect(closed.locator("summary")).toContainText("已闭环");
+    await expect(closed.locator("summary")).toContainText("已处理或已作废");
 
-    // 已闭环折叠区与列表使用同一条居中内容列：宽屏下左右留白同样对称。
+    // 已处理或已作废折叠区与列表使用同一条居中内容列：宽屏下左右留白同样对称。
     await page.setViewportSize({ width: 1680, height: 900 });
     const historySpacing = await page.evaluate(() => {
-      const pageRoot = document.querySelector(".issues-page");
       const history = document.querySelector(".issues-page > .history-block");
+      const content = document.querySelector("main");
       if (
-        !(pageRoot instanceof HTMLElement) ||
-        !(history instanceof HTMLElement)
+        !(history instanceof HTMLElement) ||
+        !(content instanceof HTMLElement)
       ) {
-        throw new Error("遗留问题页缺少页面或已闭环折叠区");
+        throw new Error("遗留问题页缺少内容区或已处理折叠区");
       }
-      const pageRect = pageRoot.getBoundingClientRect();
+      const contentRect = content.getBoundingClientRect();
       const historyRect = history.getBoundingClientRect();
       return {
-        left: historyRect.left - pageRect.left,
-        right: pageRect.right - historyRect.right,
+        left: historyRect.left - contentRect.left,
+        right: contentRect.right - historyRect.right,
       };
     });
     expect(
@@ -170,7 +167,7 @@ test("F-20 遗留问题页未闭环展示与页内转为任务闭环", async ({ 
       .getByTestId(/^leftover-item-/)
       .filter({ hasText: leftover });
     await expect(closedRow).toBeVisible();
-    await expect(closedRow.getByText("已闭环")).toBeVisible();
+    await expect(closedRow.getByText("已处理")).toBeVisible();
     await closedRow.getByRole("button", { name: /查看跟进任务/ }).click();
     await expect(detail).toBeVisible();
     await expect(detail.getByText(followupTitle)).toBeVisible();

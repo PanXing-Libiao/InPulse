@@ -145,6 +145,12 @@ test("F-15 单份模块任务影响两功能，引用计数与增删关系持久
     await expect(page.getByText("1 个任务")).toBeVisible();
     await page.goto("/notifications");
     await page.getByText(`任务指派：${title}`, { exact: true }).click();
+    const notificationDetail = page.getByRole("dialog", { name: "任务详情" });
+    await expect(notificationDetail).toBeVisible();
+    await expect(page).toHaveURL(/\/notifications$/);
+    await notificationDetail
+      .getByRole("button", { name: "在项目中打开" })
+      .click();
     await expect(page).toHaveURL(
       new RegExp(`/modules/${moduleId}/tasks\\?taskId=`),
     );

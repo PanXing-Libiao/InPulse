@@ -3914,7 +3914,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 512
             }
           },
           {
@@ -4139,7 +4139,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 512
             }
           },
           {
@@ -16543,7 +16543,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 512
             }
           },
           {
@@ -16743,7 +16743,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 512
             }
           },
           {
@@ -17324,7 +17324,7 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 256
+              "maxLength": 512
             }
           },
           {
@@ -21165,7 +21165,7 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 256
+                "maxLength": 512
               },
               {
                 "type": "null"
@@ -21363,7 +21363,7 @@
           "cursor": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 256
+            "maxLength": 512
           },
           "limit": {
             "type": "integer",
@@ -22886,7 +22886,7 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 256
+                "maxLength": 512
               },
               {
                 "type": "null"
@@ -22999,7 +22999,7 @@
           "cursor": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 256
+            "maxLength": 512
           },
           "limit": {
             "type": "integer",
@@ -27263,7 +27263,7 @@
           "cursor": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 256
+            "maxLength": 512
           },
           "limit": {
             "type": "integer",
@@ -28341,7 +28341,7 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 256
+                "maxLength": 512
               },
               {
                 "type": "null"
@@ -28365,7 +28365,7 @@
           "cursor": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 256
+            "maxLength": 512
           },
           "limit": {
             "type": "integer",
@@ -29010,7 +29010,7 @@
               {
                 "type": "string",
                 "minLength": 1,
-                "maxLength": 256
+                "maxLength": 512
               },
               {
                 "type": "null"
@@ -29039,7 +29039,7 @@
           "cursor": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 256
+            "maxLength": 512
           },
           "limit": {
             "type": "integer",

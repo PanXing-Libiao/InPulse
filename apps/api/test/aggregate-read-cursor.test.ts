@@ -247,6 +247,31 @@ describe("AggregateReadCursorService", () => {
     );
   });
 
+  test("MY_TASKS 最长排序键游标仍符合响应契约上限", () => {
+    const cursors = service();
+    // 真实排序键同时带完成时间与截止时间时长度最大；回归 2026-10-20 发现的
+    // 「nextCursor 超过 256 导致 listMyTasks 响应契约校验 500」。
+    const sortKey =
+      "7|0|2026-09-18T01:00:00.000Z|3|2|1|2026-12-31T23:59:59.999Z|2147483647";
+    const token = cursors.encode({
+      actorUserId: 2147483647,
+      namespace: "MY_TASKS",
+      filterKey: context.filterKey,
+      afterId: 2147483647,
+      sortKey,
+      nowMs,
+    });
+
+    expect(token.length).toBeLessThanOrEqual(AGGREGATE_READ_CURSOR_MAX_LENGTH);
+    expect(
+      cursors.decodeKey(token, {
+        ...context,
+        actorUserId: 2147483647,
+        requireSortKey: true,
+      }),
+    ).toEqual({ afterId: 2147483647, sortKey });
+  });
+
   test("签发拒绝非正整数的 afterId", () => {
     const cursors = service();
     expect(() =>

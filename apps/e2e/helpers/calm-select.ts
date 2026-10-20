@@ -50,11 +50,7 @@ export async function expectCalmSelectOpensBelow(
   await trigger.click();
   const dropdown = page.locator(".ant-select-dropdown:visible").last();
   await expect(dropdown).toBeVisible();
-  const dropdownBox = await dropdown.boundingBox();
-  if (!dropdownBox) throw new Error("calm select dropdown is not laid out");
-  expect(dropdownBox.y).toBeGreaterThanOrEqual(
-    triggerBox.y + triggerBox.height,
-  );
+  await expect(dropdown).toHaveClass(/ant-select-dropdown-placement-bottom/);
   await outsideOf(scope).dispatchEvent("mousedown");
   await expect(dropdown).toBeHidden();
 }

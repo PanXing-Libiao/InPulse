@@ -20,7 +20,12 @@ export const MY_TASK_LEFTOVER_SUMMARY_MAX = 200;
  */
 export const AGGREGATE_READ_PAGE_LIMIT_DEFAULT = 20;
 export const AGGREGATE_READ_PAGE_LIMIT_MAX = 100;
-export const AGGREGATE_READ_CURSOR_MAX_LENGTH = 256;
+/**
+ * 游标上限：MY_TASKS 的游标内联七项排序键（含完成时间与截止时间两段 ISO 文本），
+ * base64url(JSON) + HMAC 签名后可达 250+ 字符；旧上限 256 会让正常分页在响应契约
+ * 校验处 500（2026-10-20 实操发现）。512 仍是不透明字符串的硬上限，且留足余量。
+ */
+export const AGGREGATE_READ_CURSOR_MAX_LENGTH = 512;
 /** R-2 收口参数（Q-06）：默认 3 / 2，上限 10；越界或非整数由服务端返回 422。 */
 export const PROJECT_OVERVIEW_RECENT_LIMIT_DEFAULT = 3;
 export const PROJECT_OVERVIEW_LEFTOVER_LIMIT_DEFAULT = 2;

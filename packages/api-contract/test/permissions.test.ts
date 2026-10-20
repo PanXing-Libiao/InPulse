@@ -240,6 +240,8 @@ export class HealthController {
       "PATCH /api/v1/projects/{projectId}/modules/{moduleId}",
       "GET /api/v1/notifications",
       "GET /api/v1/notifications/unread-count",
+      "GET /api/v1/notifications/preferences",
+      "PUT /api/v1/notifications/preferences",
       "POST /api/v1/notifications/{notificationId}/read",
       "POST /api/v1/notifications/{notificationId}/unread",
       "POST /api/v1/notifications/read-all",
