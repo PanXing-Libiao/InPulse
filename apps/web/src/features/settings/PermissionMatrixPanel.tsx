@@ -1,5 +1,6 @@
 import React from "react";
 import { CalmBadge, CalmSectionTitle } from "@features/common/components/Calm";
+import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { permissionMatrixRows } from "./settings-content";
 
 /**
@@ -33,14 +34,20 @@ export const PermissionMatrixPanel: React.FC = () => (
               </td>
               <td className="permission-cell">
                 {row.admin ? (
-                  <CalmBadge tone="green">√</CalmBadge>
+                  <CalmBadge tone="green" title="允许">
+                    <InpulseIcon name="check" size={13} />
+                    <span className="sr-only">允许</span>
+                  </CalmBadge>
                 ) : (
                   <CalmBadge tone="gray">—</CalmBadge>
                 )}
               </td>
               <td className="permission-cell">
                 {row.member === true ? (
-                  <CalmBadge tone="green">√</CalmBadge>
+                  <CalmBadge tone="green" title="允许">
+                    <InpulseIcon name="check" size={13} />
+                    <span className="sr-only">允许</span>
+                  </CalmBadge>
                 ) : row.member === "leader" ? (
                   <CalmBadge tone="amber" title="仅本项目现任组长可执行">
                     仅组长

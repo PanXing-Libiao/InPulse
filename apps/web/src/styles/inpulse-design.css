@@ -2547,6 +2547,18 @@
   line-height: 1.6;
 }
 
+/* 2026-10-20 用户要求：权限矩阵勾选更圆润（圆头图标 + 柔和大圆角）。 */
+.permission-matrix-panel .permission-cell .badge {
+  justify-content: center;
+  min-width: 28px;
+  border-radius: 9px;
+  padding: 4px 8px;
+}
+
+.permission-matrix-panel .permission-cell .badge svg {
+  display: block;
+}
+
 /* 2026-10-20 用户要求：权限矩阵只留一行标题，标题放大、加粗并加深颜色。 */
 .permission-matrix-panel .calm-section-title h3 {
   color: #132238;

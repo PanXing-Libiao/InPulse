@@ -13,6 +13,10 @@ function cell(rowLabel: string, columnIndex: number): HTMLElement {
   return target;
 }
 
+function expectAllowed(target: HTMLElement): void {
+  expect(target.querySelector(".badge-green")).not.toBeNull();
+}
+
 describe("PermissionMatrixPanel", () => {
   it("renders the four documented columns over every matrix row", () => {
     render(<PermissionMatrixPanel />);
@@ -29,12 +33,12 @@ describe("PermissionMatrixPanel", () => {
 
   it("marks high-risk permissions as admin only and keeps their rule note", () => {
     render(<PermissionMatrixPanel />);
-    expect(cell("查看所有项目", 1)).toHaveTextContent("√");
+    expectAllowed(cell("查看所有项目", 1));
     expect(cell("查看所有项目", 2)).toHaveTextContent("—");
     expect(cell("查看所有项目", 3)).toHaveTextContent(
       "项目成员只能看已加入项目",
     );
-    expect(cell("用户账号管理", 1)).toHaveTextContent("√");
+    expectAllowed(cell("用户账号管理", 1));
     expect(cell("用户账号管理", 2)).toHaveTextContent("—");
     expect(cell("系统配置", 3)).toHaveTextContent(
       "含 AI 辅助与企业微信机器人配置",
@@ -78,8 +82,8 @@ describe("PermissionMatrixPanel", () => {
       "AI 改写迭代总结",
       "绑定企业微信机器人",
     ]) {
-      expect(cell(row, 1)).toHaveTextContent("√");
-      expect(cell(row, 2)).toHaveTextContent("√");
+      expectAllowed(cell(row, 1));
+      expectAllowed(cell(row, 2));
     }
     for (const row of [
       "组长转移",
@@ -87,7 +91,7 @@ describe("PermissionMatrixPanel", () => {
       "删除模块/删除功能",
       "项目企业微信群绑定",
     ]) {
-      expect(cell(row, 1)).toHaveTextContent("√");
+      expectAllowed(cell(row, 1));
       expect(cell(row, 2)).toHaveTextContent("仅组长");
     }
   });
