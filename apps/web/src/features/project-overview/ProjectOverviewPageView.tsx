@@ -387,7 +387,7 @@ export const ProjectOverviewPageView: React.FC<
             ) : (
               <CalmEmptyState
                 icon="check"
-                title="没有待闭环的遗留问题"
+                title="没有未处理的遗留问题"
                 description="新的遗留问题会在记录发布后进入这里。"
               />
             )}

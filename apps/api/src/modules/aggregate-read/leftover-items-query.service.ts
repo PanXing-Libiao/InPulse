@@ -37,7 +37,8 @@ import {
  * projectId 只用于缩小范围，非成员或越权项目收敛为空页而不是 404（不泄露存在性）。
  * 事务：一次请求一个只读事务，不创建命令 UnitOfWork、不取行锁、不写投影。
  * 排序：固定 leftoverItemId DESC；游标签名绑定 actor 与 [projectId, bucket]。
- * CLOSED 分桶包含 CONVERTED 与 RESOLVED（RESOLVED 表示遗留事项已解决、无跟进任务）。
+ * OPEN 分桶只含父记录 PUBLISHED 且遗留项 ACTIVE 的未处理项；CLOSED 分桶含
+ * CONVERTED / RESOLVED（已处理）以及父记录 VOID 的 VOIDED（已作废）项。
  */
 export interface LeftoverItemsQueryCommand {
   readonly actorUserId: number;

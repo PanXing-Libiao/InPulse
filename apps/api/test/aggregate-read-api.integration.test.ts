@@ -1046,7 +1046,7 @@ describe("GET /api/v1/projects/{projectId}/overview（R-2 项目概览）", () =
     ]);
     expect(overview.activeLeftovers.map((item) => item.content)).toEqual([
       "来源任务遗留问题",
-      "作废记录遗留问题",
+      "模块级记录遗留问题",
     ]);
     expect(
       overview.activeLeftovers.every(
@@ -1076,7 +1076,6 @@ describe("GET /api/v1/projects/{projectId}/overview（R-2 项目概览）", () =
     ]);
     expect(paged.activeLeftovers.map((item) => item.content)).toEqual([
       "来源任务遗留问题",
-      "作废记录遗留问题",
       "模块级记录遗留问题",
     ]);
 
@@ -1092,7 +1091,7 @@ describe("GET /api/v1/projects/{projectId}/overview（R-2 项目概览）", () =
     expect(
       all.recentRecords.find((item) => item.recordId === crModule)?.featureName,
     ).toBeNull();
-    // VOID 与 DRAFT 记录都不进入最近迭代；已解决的遗留问题不再返回。
+    // VOID 与 DRAFT 记录都不进入最近迭代；VOID 记录与已解决项的遗留问题不计入未处理。
     expect(all.recentRecords.some((item) => item.recordId === crVoid)).toBe(
       false,
     );
@@ -1164,7 +1163,7 @@ describe("GET /api/v1/projects/{projectId}/overview（R-2 项目概览）", () =
     expect(response.status).toBe(200);
     const overview = projectOverviewResponseSchema.parse(response.body);
     expect(overview.activeLeftovers).toHaveLength(1);
-    expect(overview.activeLeftoverTotal).toBe(3);
+    expect(overview.activeLeftoverTotal).toBe(2);
     expect(overview.activeLeftovers[0]?.recordTitle).toBe("聚合读接口记录");
   });
 });

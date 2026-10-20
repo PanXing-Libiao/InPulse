@@ -38,7 +38,22 @@ export function issueOriginParts(item: LeftoverListItem): IssueOriginParts {
   };
 }
 
-/** 已闭环 = 已转为跟进任务（CONVERTED）或已标记解决（RESOLVED）。 */
+/** 已处理 = 已转为跟进任务（CONVERTED）或已标记解决（RESOLVED）。 */
 export function isLeftoverClosed(item: LeftoverListItem): boolean {
   return item.status !== "ACTIVE";
+}
+
+/** 遗留问题对外状态文案：父记录作废时由 API 派生为 VOIDED。 */
+export function leftoverStatusText(status: LeftoverListItem["status"]): string {
+  if (status === "ACTIVE") return "未处理";
+  if (status === "VOIDED") return "已作废";
+  return "已处理";
+}
+
+/** 徽章色调：未处理用琥珀色，已处理用绿色，已作废用灰色。 */
+export function leftoverStatusTone(
+  status: LeftoverListItem["status"],
+): "amber" | "green" | "gray" {
+  if (status === "ACTIVE") return "amber";
+  return status === "VOIDED" ? "gray" : "green";
 }

@@ -57,22 +57,20 @@ export function publishedRecordErrorMessage(error: unknown) {
       : "暂时无法加载记录，请重试。";
 }
 
-/** 遗留项状态中文标签：逐行列表行尾标记是否闭环。 */
+/** 遗留项状态中文标签：未处理 / 已处理 / 已作废。 */
 export function leftoverStatusText(
-  status: "ACTIVE" | "CONVERTED" | "RESOLVED",
+  status: "ACTIVE" | "CONVERTED" | "RESOLVED" | "VOIDED",
 ) {
-  return status === "ACTIVE"
-    ? "未闭环"
-    : status === "CONVERTED"
-      ? "已转为任务"
-      : "已完成";
+  if (status === "ACTIVE") return "未处理";
+  return status === "VOIDED" ? "已作废" : "已处理";
 }
 
 /** 遗留项状态徽章色调：与任务记录列表的状态徽章同一套 CalmBadge。 */
 const leftoverTone = {
-  ACTIVE: "red",
-  CONVERTED: "blue",
+  ACTIVE: "amber",
+  CONVERTED: "green",
   RESOLVED: "green",
+  VOIDED: "gray",
 } as const;
 
 /**
@@ -309,20 +307,19 @@ export function PublishedRecordDetail({
                       <CalmBadge tone={leftoverTone[leftover.status]}>
                         {leftoverStatusText(leftover.status)}
                       </CalmBadge>
-                      {leftover.status === "CONVERTED" &&
-                        leftover.linkedTaskId !== null && (
-                          <a
-                            className="leftover-followup"
-                            href={taskDetailPath({
-                              projectId: record.projectId,
-                              moduleId: record.moduleId,
-                              featureId: record.featureId,
-                              taskId: leftover.linkedTaskId,
-                            })}
-                          >
-                            查看跟进任务
-                          </a>
-                        )}
+                      {leftover.linkedTaskId !== null && (
+                        <a
+                          className="leftover-followup"
+                          href={taskDetailPath({
+                            projectId: record.projectId,
+                            moduleId: record.moduleId,
+                            featureId: record.featureId,
+                            taskId: leftover.linkedTaskId,
+                          })}
+                        >
+                          查看跟进任务
+                        </a>
+                      )}
                       {!readOnly &&
                         leftover.status === "ACTIVE" &&
                         record.status === "PUBLISHED" && (
@@ -357,7 +354,7 @@ export function PublishedRecordDetail({
           <p>已转任务的遗留问题保留原任务关联，修订文字不会创建第二个任务。</p>
         )}
       {removedLeftovers > 0 && (
-        <p>已标记解决的遗留问题保留历史内容，不再计入未闭环。</p>
+        <p>已删除或标记解决的遗留问题保留历史内容，不再计入未处理。</p>
       )}
       {record.status === "VOID" && (
         <Alert

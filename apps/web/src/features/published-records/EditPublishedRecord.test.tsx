@@ -72,7 +72,7 @@ it("requires explicit resolution and preserves the same key and input when retry
   expect(screen.getByRole("button", { name: "保存新版本" })).toBeDisabled();
   fireEvent.click(
     screen.getByRole("checkbox", {
-      name: /确认移除的遗留问题已解决/,
+      name: /确认移除的遗留问题已处理/,
     }),
   );
   fireEvent.click(screen.getByRole("button", { name: "保存新版本" }));

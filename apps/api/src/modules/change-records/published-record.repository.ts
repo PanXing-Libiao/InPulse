@@ -106,7 +106,7 @@ export class PublishedRecordRepository {
   private async dto(tx: TransactionContext, row: Row) {
     const { currentPayload, ...identity } = row;
     const leftovers =
-      await tx.sql`SELECT l.id,l.status,l.row_version AS "rowVersion",v.content_snapshot AS content,t.task_id AS "linkedTaskId" FROM app.change_record_version_leftovers v JOIN app.change_record_leftover_items l ON l.id=v.leftover_item_id AND l.project_id=v.project_id AND l.record_id=v.record_id LEFT JOIN app.leftover_task_links t ON t.leftover_item_id=l.id AND t.project_id=l.project_id WHERE v.record_id=${row.id} AND v.project_id=${row.projectId} AND v.version_no=${row.currentVersion} ORDER BY l.id`;
+      await tx.sql`SELECT l.id,CASE WHEN ${row.status} = 'VOID' THEN 'VOIDED' ELSE l.status END AS status,l.row_version AS "rowVersion",v.content_snapshot AS content,t.task_id AS "linkedTaskId" FROM app.change_record_version_leftovers v JOIN app.change_record_leftover_items l ON l.id=v.leftover_item_id AND l.project_id=v.project_id AND l.record_id=v.record_id LEFT JOIN app.leftover_task_links t ON t.leftover_item_id=l.id AND t.project_id=l.project_id WHERE v.record_id=${row.id} AND v.project_id=${row.projectId} AND v.version_no=${row.currentVersion} ORDER BY l.id`;
     return {
       ...currentPayload,
       ...identity,

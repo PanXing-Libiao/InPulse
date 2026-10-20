@@ -116,8 +116,8 @@ export type RecordSummaryPoint = z.infer<typeof recordSummaryPointSchema>;
 
 /**
  * 范围内遗留问题（来源记录的 publishedAt 落在范围内）。status 为遗留项当前处置
- * 状态：ACTIVE 待跟进、CONVERTED 已转任务、RESOLVED 已闭环；后两者计入
- * totals.closedLeftoverCount。
+ * 状态：ACTIVE 未处理、CONVERTED / RESOLVED 已处理、VOIDED 已作废（父记录
+ * 作废时派生）；后三者计入 totals.closedLeftoverCount。
  */
 export const recordSummaryIssueSchema = z
   .object({
@@ -129,7 +129,7 @@ export const recordSummaryIssueSchema = z
     projectName: z.string().min(1).max(200),
     author: userRefSchema,
     content: z.string().min(1).max(10000),
-    status: z.enum(["ACTIVE", "CONVERTED", "RESOLVED"]),
+    status: z.enum(["ACTIVE", "CONVERTED", "RESOLVED", "VOIDED"]),
     followupTaskId: id.nullable(),
     followupTaskCode: z.string().min(1).max(64).nullable(),
     publishedAt: z.iso.datetime(),

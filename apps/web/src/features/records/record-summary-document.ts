@@ -76,7 +76,7 @@ export function buildSummaryDocument(
 
   const overviewParts = [
     `范围内 ${String(totals.projectCount)} 个项目、${String(totals.moduleCount)} 个模块、${String(totals.featureCount)} 个功能累计沉淀 ${String(totals.recordCount)} 条迭代记录，覆盖 ${String(totals.completedTaskCount)} 个已完成任务。`,
-    `共记录 ${String(totals.leftoverCount)} 条遗留问题，其中 ${String(totals.closedLeftoverCount)} 条已闭环。`,
+    `共记录 ${String(totals.leftoverCount)} 条遗留问题，其中 ${String(totals.closedLeftoverCount)} 条已处理或已作废。`,
   ];
   if (totals.missingRecordTaskCount > 0) {
     overviewParts.push(
@@ -126,7 +126,7 @@ export function buildSummaryDocument(
     blocks.push({
       kind: "issues",
       heading: `${cnIndex(numbered - 1)}、遗留问题与风险`,
-      lead: `范围内共 ${String(data.leftovers.length)} 条遗留问题，已闭环 ${String(closed)} 条，仍有 ${String(activeIssues.length)} 条待跟进。`,
+      lead: `范围内共 ${String(data.leftovers.length)} 条遗留问题，已处理或已作废 ${String(closed)} 条，仍有 ${String(activeIssues.length)} 条未处理。`,
       items: activeIssues.map(
         (issue) =>
           `${issue.content} —— 来自 ${issue.recordTitle}（${issue.projectName}）`,

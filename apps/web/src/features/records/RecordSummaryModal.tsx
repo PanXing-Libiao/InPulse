@@ -696,7 +696,7 @@ export function RecordSummaryModal({
           </strong>
         </div>
         <div>
-          <span>遗留问题（待跟进）</span>
+          <span>遗留问题（未处理）</span>
           <strong>
             {data.totals.leftoverCount}（
             {data.totals.leftoverCount - data.totals.closedLeftoverCount}）

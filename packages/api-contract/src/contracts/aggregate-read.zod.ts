@@ -583,7 +583,8 @@ export type AggregateTaskRef = z.infer<typeof aggregateTaskRefSchema>;
 
 /**
  * R-6 遗留问题列表查询参数。bucket 是展示分桶，不改变排序：
- * OPEN = status ACTIVE；CLOSED = status CONVERTED / RESOLVED；
+ * OPEN = 父记录 PUBLISHED 且 status ACTIVE；CLOSED = status CONVERTED / RESOLVED
+ * 或父记录 VOID（对外派生 VOIDED）；
  * 缺省表示不按分桶过滤。排序固定 leftoverItemId DESC。
  */
 export const leftoverListQueryRequestSchema = z
@@ -608,7 +609,8 @@ export type LeftoverListQueryRequest = z.infer<
 /**
  * R-6 列表项：内容取该遗留项最新版本快照；sourceTask 为来源任务（独立记录为
  * null），followupTask 为已生成跟进任务（未转换 / 已解决时为 null）。记录只含
- * PUBLISHED 与 VOID（Q-13），author 为记录作者，不暴露登录名或邮箱。
+ * PUBLISHED 与 VOID（Q-13）；父记录为 VOID 时遗留项有效状态派生为 VOIDED，
+ * 不持久化、恢复记录后回到原状态。author 为记录作者，不暴露登录名或邮箱。
  */
 export const leftoverListItemSchema = z
   .object({
@@ -625,7 +627,7 @@ export const leftoverListItemSchema = z
     author: userRefSchema,
     publishedAt: z.iso.datetime(),
     content: z.string().min(1).max(10000),
-    status: z.enum(["ACTIVE", "CONVERTED", "RESOLVED"]),
+    status: z.enum(["ACTIVE", "CONVERTED", "RESOLVED", "VOIDED"]),
     sourceTask: aggregateTaskRefSchema.nullable(),
     followupTask: aggregateTaskRefSchema.nullable(),
   })

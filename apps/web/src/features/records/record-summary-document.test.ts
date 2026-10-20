@@ -166,11 +166,39 @@ describe("buildSummaryDocument", () => {
     ]);
   });
 
-  it("遗留问题只列待跟进项，已闭环计入小结但不进清单", () => {
+  it("遗留问题只列未处理项，已处理计入小结但不进清单", () => {
     const document = buildSummaryDocument(response());
     const issues = document.blocks.find((block) => block.kind === "issues");
     expect(issues?.kind === "issues" && issues.lead).toBe(
-      "范围内共 2 条遗留问题，已闭环 1 条，仍有 1 条待跟进。",
+      "范围内共 2 条遗留问题，已处理或已作废 1 条，仍有 1 条未处理。",
+    );
+    expect(issues?.kind === "issues" && issues.items).toEqual([
+      "退款链路还没覆盖 —— 来自 下单链路拆分（商城系统）",
+    ]);
+  });
+
+  it("父记录作废派生的已作废项计入收尾数量且不进入未处理清单", () => {
+    const base = response();
+    const document = buildSummaryDocument({
+      ...base,
+      totals: {
+        ...base.totals,
+        leftoverCount: 3,
+        closedLeftoverCount: 2,
+      },
+      leftovers: [
+        ...base.leftovers,
+        {
+          ...base.leftovers[1]!,
+          leftoverItemId: 902,
+          content: "来源记录已作废",
+          status: "VOIDED",
+        },
+      ],
+    });
+    const issues = document.blocks.find((block) => block.kind === "issues");
+    expect(issues?.kind === "issues" && issues.lead).toBe(
+      "范围内共 3 条遗留问题，已处理或已作废 2 条，仍有 1 条未处理。",
     );
     expect(issues?.kind === "issues" && issues.items).toEqual([
       "退款链路还没覆盖 —— 来自 下单链路拆分（商城系统）",
