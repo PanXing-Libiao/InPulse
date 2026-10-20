@@ -109,6 +109,8 @@ F-14 业务纵切片，新增路由必须同步 Schema、Route Registry、权限
 | F06-MAINTENANCE-API-001 | HTTP + PostgreSQL | 维护中门禁 | 项目下存在未收尾（`lifecycle_status = 'ACTIVE'` 且 `work_status NOT IN ('DONE','CANCELED')`）任务时切「维护中」409 `PROJECT_MAINTENANCE_TASKS_OPEN`，且零副作用；全部收尾后 200 且 `rowVersion` 递增 | 本地通过（`project-management-api.integration.test.ts`、`project-management.service.test.ts`） |
 | F06-MAINTENANCE-API-002 | HTTP + PostgreSQL | 已归档 / 已取消任务不算未收尾 | 任务已归档或已取消时切「维护中」放行 | 同上 |
 | F06-MAINTENANCE-UI-001 | 前端 | 项目卡与编辑弹窗 | 项目卡片只有编辑与管理成员入口，不再有归档 / 恢复 / 申请 / 批准 / 驳回入口；编辑弹窗按三态切换并提示「切到维护中要求项目下任务全部收尾」 | 本地通过（`ProjectsPageView.test.tsx`、`project-management-modals.test.tsx`） |
+| F06-EDIT-UI-001 | Web 单元 | 编辑弹窗单次保存 | 状态与名称/描述共用页脚「保存修改」，无改动时按钮禁用且提交不发请求；只改状态时仅调 `PATCH /projects/{id}/status`，成功后关闭并回调最终项目；字段与状态同改时先更新字段，再用返回的新 `rowVersion` 更新状态，回调只发生一次 | 本地通过（`project-management-modals.test.tsx` 14 例，2026-10-20） |
+| F06-EDIT-UI-002 | Web 单元 | 项目成功气泡 | 项目创建、编辑与删除成功提示使用固定浮层气泡，不占文档流；创建与变更提示互斥，6 秒后自动关闭，支持手动关闭；列表页与模块工作区共用同一组件 | 本地通过（`ProjectSuccessToast.test.tsx` 2 例 + 页面既有用例，2026-10-20） |
 | F06-ARCHIVE-E2E-001 | Playwright | ~~归档→只读→恢复关键路径~~ | ~~已被 ADR-043 取代~~：项目层面归档整体下线，`apps/e2e/tests/project-archive.spec.ts` 已删除 | 已下线（2026-09-23） |
 
 ## F-12 未分类模块编辑（2026-09-09 人工确认）
@@ -1981,7 +1983,7 @@ HTML 不允许按钮内嵌链接/按钮，因此三层卡片统一采用「容�
 | --- | --- | --- | --- | --- |
 | ADR035-WEB-UNIT-001 | Web 单元 | 四态标签与配色 | `resource-lifecycle.test.ts`：`projectLifecycleLabel` 四态分别为未开始 / 进行中 / 维护中 / 已归档；`projectLifecycleTone` 为 cyan / violet / amber，进行中沿用调用方主色；`projectLifecycleKind` 直接透传存储状态 | 本地通过 |
 | ADR035-WEB-UNIT-002 | Web 单元 | 项目卡渲染四态 | `ProjectsPageView.test.tsx`：`NOT_STARTED` 渲染「未开始」+ `badge-cyan`、`ACTIVE` 渲染「进行中」+ `badge-blue`、`MAINTENANCE` 渲染「维护中」+ `badge-violet`；`completedTaskCount` 不再影响项目标签 | 本地通过 |
-| ADR035-WEB-UNIT-003 | Web 单元 | 编辑弹窗状态栏 | `project-management-modals.test.tsx`：点「保存状态」以 CSRF + `Idempotency-Key` + `If-Match` 调 `PATCH /projects/{id}/status`，成功后不关闭弹窗并回调 `onStatusChanged`；已有完成任务时「未开始」置灰并带原因 title；未开始 → 维护中、维护中 → 未开始同样置灰；非成员时只读展示标签 | 本地通过 |
+| ADR035-WEB-UNIT-003 | Web 单元 | 编辑弹窗状态栏（保存入口已由 F06-EDIT-UI-001 收敛） | `project-management-modals.test.tsx`：状态与字段共用「保存修改」；只改状态时以 CSRF + `Idempotency-Key` + `If-Match` 调 `PATCH /projects/{id}/status` 并关闭弹窗；字段与状态同改时按返回的新版本串行保存；已有完成任务时「未开始」置灰并带原因 title；未开始 → 维护中、维护中 → 未开始同样置灰；非成员时只读展示标签 | 本地通过（2026-10-20 更新） |
 | ADR035-API-INT-001 | 真实 PostgreSQL | 手动开工 | `project-management-api.integration.test.ts`：组长把未开始改为进行中返回 200 且 `hasCompletedTask: false`；审计 `project.status.change`、活动 `PROJECT_STATUS_CHANGED`、搜索投影与发给全体活跃成员的 `project.status.change` 通知同事务提交 | 本地通过 |
 | ADR035-API-INT-002 | 真实 PostgreSQL | 越级与成员门禁（~~角色口径已被 ADR-039 修订~~） | 同上：未开始 → 维护中与维护中 → 未开始都 409 `PROJECT_STATUS_LEVEL_SKIP`（且不发通知）；普通成员同样可改状态（200）、非成员 404、版本冲突 409 `PROJECT_VERSION_CONFLICT`、同态 409 `PROJECT_STATE_CONFLICT`、目标态 `ARCHIVED` 422 `PROJECT_VALIDATION_FAILED` | 本地通过（ADR-039 后已重写为正向断言） |
 | ADR035-API-INT-003 | 真实 PostgreSQL | 粘性锁与已归档只读 | 同上：项目出现过已完成任务后回退未开始 409 `PROJECT_STATUS_NOT_STARTED_LOCKED`，切到维护中仍放行且 `hasCompletedTask: true`；已归档项目改状态 409 `PROJECT_ARCHIVED` | 本地通过 |
@@ -6939,3 +6941,20 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | WECOM-GROUP-POLICY-GATE-001 | 静态门禁 | 契约、权限与类型 | API / Web typecheck；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由；`permissions:check` 129 条操作 / 129 条路由 | 本地通过（2026-10-20） |
 
 已知边界：桥接过滤在物化 `app.wecom_group_deliveries` 前执行，关闭或重新开启都不回溯历史、已排队或已发送消息；未识别的未来事件默认放行。个人单聊和企业微信个人通知偏好不受本 ADR 影响。未运行全量 API / Web 单测、Playwright、生产构建、Trivy 与 GitHub Actions。
+
+## 2026-10-20 项目封箱彩蛋（ADR-091）
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR091-DB-001 | PostgreSQL 迁移 | 全新库应用 0056 | `app_ci` 从零应用 55 条迁移；`project_wraps` 表归属、单行主键、级联外键、JSONB CHECK、只增授权与备份只读断言全部通过；`wecom_group_deliveries.delivered_step_count` 存在且非负 | 本地通过（2026-10-20） |
+| ADR091-API-001 | API 集成（真实 PostgreSQL + HTTP） | 首次封箱 | 项目从进行中进入维护中后恰有一条快照，统计含 1 个已完成任务、0 个未收尾；时间线最后完成时间非空；动态顺序为普通状态变化后再加 `PROJECT_WRAPPED`；活跃成员收到 `project.wrapped` 通知 | 本地通过（2026-10-20，`project-management-api.integration.test.ts`） |
+| ADR091-API-002 | API 集成（真实 PostgreSQL + HTTP） | 不重复封箱与无完成任务 | 再次封箱路径不新增快照或封箱通知；没有已完成任务时进入维护中只写普通状态变化，`project_wraps` 行数为 0 | 本地通过（2026-10-20，同上） |
+| ADR091-API-003 | API 集成（真实 PostgreSQL + HTTP） | 物理删除级联 | 项目存在封箱快照时删除成功；删除后 `app.project_wraps` 中该项目行数为 0，项目审计链保留断言不变 | 本地通过（2026-10-20，`project-delete-api.integration.test.ts`） |
+| ADR091-BRIDGE-001 | Bridge 单元 | 快照校验、文案与 JPEG | 版本 1 快照规范化并按时区格式化；未知版本与非法成员拒绝；个人 / 群文案包含固定彩蛋句；海报为 1080 × 1350 JPEG，base64 与 MD5 一致 | 本地通过（2026-10-20，桥接 9 例） |
+| ADR091-IP-001 | 静态检查 / 渲染 | 字体许可边界 | 海报源码只引用捆绑的 Noto Sans SC Regular / Black 与 OFL 兜底字体，不含 Arial、微软雅黑、黑体或 WenQuanYi 路径；字体资产与 OFL 文本存在，样例 JPEG 中英文正常 | 本地通过（2026-10-20） |
+| ADR091-GATE-001 | 静态门禁 | 类型、格式与语法 | API / Web typecheck 通过；桥接三个改动脚本 `node --check` 通过；相关 TypeScript 与 JS 文件 Prettier check 通过 | 本地通过（2026-10-20） |
+
+| ADR091-LIVE-001 | 实机推送（本地演示库 + 当前机器人） | 个人封箱通知 | 项目 140 从进行中切到维护中后写入快照；通知 22192 发给邵晨宇，文字与个人署名海报均经长连接返回 `errcode=0`，图片上传协议完成 | 本地通过（2026-10-20 17:13，通知 22192） |
+| ADR091-LIVE-002 | 实机推送（本地演示库 + 当前机器人） | 项目群封箱通知 | 临时绑定项目 140 后，动态 17020 物化为投递 13；文字与海报分段送达，`delivered_step_count=2`、状态 `SENT`，两段响应均 `errcode=0`；测试后删除临时绑定与投递行并恢复原绑定 `REVOKED` | 本地通过（2026-10-20 17:15，投递 13） |
+
+已知边界：实机验证使用邵晨宇（用户 7）的 ACTIVE 绑定与既有真实群；项目 140 现保留在维护中并留有封箱快照，作为本地演示数据。群验证的临时绑定与投递行已清理，原项目 1 群绑定仍为 REVOKED；当前没有 ACTIVE 项目群绑定，正式群通知需重新绑定后才会产生。海报渲染失败会降级为文字，不能作为业务事务失败。

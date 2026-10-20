@@ -126,6 +126,50 @@ export interface ProjectStatRecord {
   readonly completedTaskCount: number;
 }
 
+/** 项目封箱海报数据版本；桥接必须拒绝未知版本而不是猜测字段。 */
+export const PROJECT_WRAP_TEMPLATE_VERSION = 1;
+
+export interface ProjectWrapParticipant {
+  readonly userId: number;
+  readonly name: string;
+  readonly role: "MEMBER" | "LEADER";
+  readonly completedTaskCount: number;
+}
+
+/** 封箱时冻结的统计、参与者与时间线；不随项目后续变化而更新。 */
+export interface ProjectWrapSnapshot {
+  readonly version: typeof PROJECT_WRAP_TEMPLATE_VERSION;
+  readonly project: {
+    readonly id: number;
+    readonly code: string;
+    readonly name: string;
+  };
+  readonly stats: {
+    readonly completedTaskCount: number;
+    readonly publishedRecordCount: number;
+    readonly activeMemberCount: number;
+    readonly activeModuleCount: number;
+    readonly activeFeatureCount: number;
+    readonly openTaskCount: number;
+    readonly durationDays: number;
+    readonly completionPercent: number;
+  };
+  readonly participants: readonly ProjectWrapParticipant[];
+  readonly timeline: {
+    readonly foundedAt: string;
+    readonly firstRecordAt: string | null;
+    readonly lastTaskCompletedAt: string;
+    readonly sealedAt: string;
+  };
+}
+
+export interface ProjectWrapRecord {
+  readonly projectId: number;
+  readonly sealedAt: string;
+  readonly templateVersion: number;
+  readonly snapshot: ProjectWrapSnapshot;
+}
+
 /** 物理删除实际删除的业务行数与保留的审计行数；只用于审计留痕，不参与幂等摘要。 */
 export interface ProjectPurgeCounts {
   readonly modules: number;
@@ -195,6 +239,20 @@ export abstract class ProjectsWritePort {
       readonly status: ProjectLifecycleStatus;
     },
   ): Promise<ProjectChangeRecord | undefined>;
+
+  /**
+   * ADR-091：项目第一次进入维护中且至少有一个已完成任务时冻结封箱快照。
+   * 表主键保证每个项目终生至多一次；已有快照、没有完成任务或项目不存在时返回
+   * undefined，不产生任何副作用。
+   */
+  abstract createProjectWrap(
+    tx: TransactionContext,
+    input: {
+      readonly projectId: number;
+      readonly actorId: number;
+      readonly sealedAt: Date;
+    },
+  ): Promise<ProjectWrapRecord | undefined>;
 
   /**
    * ADR-062 / ADR-085：调用 `app.purge_project` 物理删除项目及其全部下级

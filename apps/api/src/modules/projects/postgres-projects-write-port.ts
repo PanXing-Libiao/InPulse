@@ -15,6 +15,7 @@ import {
   type ProjectMemberRecord,
   type ProjectPurgeCounts,
   type ProjectRecord,
+  type ProjectWrapRecord,
   ProjectsWritePort,
 } from "./projects-write.port.js";
 
@@ -320,6 +321,205 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
     `) as unknown as readonly ProjectChangeRow[];
     const row = rows[0];
     return row === undefined ? undefined : this.toChangeRecord(row);
+  }
+
+  /**
+   * ADR-091：以单条 INSERT ... SELECT 在同一事务内冻结封箱快照。
+   * 任务统计沿用项目卡的有效任务口径；只有存在已完成任务且尚无快照时命中。
+   * 主键与 ON CONFLICT DO NOTHING 让重复进入维护中不会改写历史快照。
+   */
+  async createProjectWrap(
+    tx: TransactionContext,
+    input: {
+      readonly projectId: number;
+      readonly actorId: number;
+      readonly sealedAt: Date;
+    },
+  ): Promise<ProjectWrapRecord | undefined> {
+    const rows = (await tx.sql`
+      WITH target AS (
+        SELECT p.id,
+               p.code,
+               p.name,
+               p.created_at,
+               u.name AS actor_name
+          FROM app.projects p
+          JOIN app.users u ON u.id = ${input.actorId}
+         WHERE p.id = ${input.projectId}
+      ),
+      done_tasks AS (
+        SELECT t.id,
+               t.completed_at
+          FROM app.tasks t
+          JOIN target x ON x.id = t.project_id
+         WHERE t.deleted_at IS NULL
+           AND t.lifecycle_status <> 'INVALID'
+           AND t.work_status = 'DONE'
+           AND NOT EXISTS (
+             SELECT 1
+               FROM app.task_group_members gm
+               JOIN app.task_groups g
+                 ON g.id = gm.group_id
+                AND g.project_id = gm.project_id
+              WHERE gm.task_id = t.id
+                AND g.status = 'ACTIVE'
+                AND gm.status = 'ACTIVE'
+                AND gm.role = 'SOURCE'
+                AND gm.source_kind = 'HISTORICAL'
+           )
+      ),
+      stats AS (
+        SELECT target.id,
+               target.code,
+               target.name,
+               target.created_at,
+               target.actor_name,
+               (SELECT COUNT(*)::integer FROM done_tasks) AS completed_task_count,
+               (SELECT MAX(done_tasks.completed_at) FROM done_tasks) AS last_task_completed_at,
+               (
+                 SELECT COUNT(*)::integer
+                   FROM app.change_records cr
+                  WHERE cr.project_id = target.id
+                    AND cr.status = 'PUBLISHED'
+               ) AS published_record_count,
+               (
+                 SELECT MIN(cr.published_at)
+                   FROM app.change_records cr
+                  WHERE cr.project_id = target.id
+                    AND cr.published_at IS NOT NULL
+               ) AS first_record_at,
+               (
+                 SELECT COUNT(*)::integer
+                   FROM app.project_members pm
+                  WHERE pm.project_id = target.id
+                    AND pm.status = 'ACTIVE'
+               ) AS active_member_count,
+               (
+                 SELECT COUNT(*)::integer
+                   FROM app.modules m
+                  WHERE m.project_id = target.id
+                    AND m.status = 'ACTIVE'
+                    AND m.deleted_at IS NULL
+               ) AS active_module_count,
+               (
+                 SELECT COUNT(*)::integer
+                   FROM app.features f
+                  WHERE f.project_id = target.id
+                    AND f.status = 'ACTIVE'
+                    AND f.deleted_at IS NULL
+               ) AS active_feature_count,
+               (
+                 SELECT COUNT(*)::integer
+                   FROM app.tasks t
+                  WHERE t.project_id = target.id
+                    AND t.deleted_at IS NULL
+                    AND t.lifecycle_status = 'ACTIVE'
+                    AND t.work_status NOT IN ('DONE', 'CANCELED')
+               ) AS open_task_count,
+               GREATEST(
+                 1,
+                 FLOOR(
+                   EXTRACT(EPOCH FROM (${input.sealedAt.toISOString()}::TIMESTAMPTZ - target.created_at))
+                   / 86400
+                 )::integer + 1
+               ) AS duration_days
+          FROM target
+      )
+      INSERT INTO app.project_wraps (
+        project_id,
+        sealed_at,
+        sealed_by,
+        sealed_by_snapshot,
+        template_version,
+        snapshot
+      )
+      SELECT s.id,
+             ${input.sealedAt.toISOString()}::TIMESTAMPTZ,
+             ${input.actorId},
+             jsonb_build_object('id', ${input.actorId}::integer, 'name', s.actor_name),
+             1,
+             jsonb_build_object(
+               'version', 1,
+               'project', jsonb_build_object(
+                 'id', s.id,
+                 'code', s.code,
+                 'name', s.name
+               ),
+               'stats', jsonb_build_object(
+                 'completedTaskCount', s.completed_task_count,
+                 'publishedRecordCount', s.published_record_count,
+                 'activeMemberCount', s.active_member_count,
+                 'activeModuleCount', s.active_module_count,
+                 'activeFeatureCount', s.active_feature_count,
+                 'openTaskCount', s.open_task_count,
+                 'durationDays', s.duration_days,
+                 'completionPercent', 100
+               ),
+               'participants', COALESCE((
+                 SELECT jsonb_agg(
+                   jsonb_build_object(
+                     'userId', pm.user_id,
+                     'name', pm.user_snapshot->>'name',
+                     'role', pm.role,
+                     'completedTaskCount', (
+                       SELECT COUNT(DISTINCT t.id)::integer
+                         FROM app.task_assignees ta
+                         JOIN app.tasks t
+                           ON t.id = ta.task_id
+                          AND t.project_id = ta.project_id
+                        WHERE ta.user_id = pm.user_id
+                          AND ta.project_id = s.id
+                          AND t.deleted_at IS NULL
+                          AND t.lifecycle_status <> 'INVALID'
+                          AND t.work_status = 'DONE'
+                          AND NOT EXISTS (
+                            SELECT 1
+                              FROM app.task_group_members gm
+                              JOIN app.task_groups g
+                                ON g.id = gm.group_id
+                               AND g.project_id = gm.project_id
+                             WHERE gm.task_id = t.id
+                               AND g.status = 'ACTIVE'
+                               AND gm.status = 'ACTIVE'
+                               AND gm.role = 'SOURCE'
+                               AND gm.source_kind = 'HISTORICAL'
+                          )
+                     )
+                   )
+                   ORDER BY pm.joined_at ASC, pm.id ASC
+                 )
+                 FROM app.project_members pm
+                WHERE pm.project_id = s.id
+                  AND pm.status = 'ACTIVE'
+               ), '[]'::jsonb),
+               'timeline', jsonb_build_object(
+                 'foundedAt', s.created_at,
+                 'firstRecordAt', s.first_record_at,
+                 'lastTaskCompletedAt', s.last_task_completed_at,
+                 'sealedAt', ${input.sealedAt.toISOString()}::TIMESTAMPTZ
+               )
+             )
+        FROM stats s
+       WHERE s.completed_task_count > 0
+      ON CONFLICT (project_id) DO NOTHING
+      RETURNING project_id AS "projectId",
+                sealed_at AS "sealedAt",
+                template_version AS "templateVersion",
+                snapshot
+    `) as unknown as readonly {
+      readonly projectId: number;
+      readonly sealedAt: Date;
+      readonly templateVersion: number;
+      readonly snapshot: ProjectWrapRecord["snapshot"];
+    }[];
+    const row = rows[0];
+    if (row === undefined) return undefined;
+    return {
+      projectId: row.projectId,
+      sealedAt: new Date(row.sealedAt).toISOString(),
+      templateVersion: row.templateVersion,
+      snapshot: row.snapshot,
+    };
   }
 
   /**

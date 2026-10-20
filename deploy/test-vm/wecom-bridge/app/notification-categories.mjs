@@ -36,6 +36,7 @@ const NOTIFICATION_TYPE_CATEGORY = new Map([
   ["project_joined", "project.member"],
   ["project.status.change", "project.member"],
   ["project_status_changed", "project.member"],
+  ["project.wrapped", "project.member"],
 ]);
 
 const ACTIVITY_TYPE_CATEGORY = new Map([
@@ -56,6 +57,7 @@ const ACTIVITY_TYPE_CATEGORY = new Map([
   ["project_created", "project.member"],
   ["project_updated", "project.member"],
   ["project_status_changed", "project.member"],
+  ["project_wrapped", "project.member"],
   ["project_member_added", "project.member"],
   ["project_member_removed", "project.member"],
   ["project_member_role_changed", "project.member"],

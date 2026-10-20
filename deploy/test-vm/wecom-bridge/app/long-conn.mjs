@@ -22,14 +22,23 @@
 //   1000 条/小时，超限自动退避；重启后从 PENDING 断点续传。
 //   config.json 可选键：groupDeliveries=false 关闭、groupDeliveryPollMs、
 //   groupDeliveriesPerMinute、groupDeliveriesPerHour。
+// 2026-10-20 改造（ADR-091：项目封箱彩蛋）：
+//   PROJECT_WRAPPED 动态发送「封箱文案 + 海报」两段；delivered_step_count 持久化
+//   已成功的段数，文本先成功、图片失败或进程重启时只续发图片。
 import { readFileSync, writeFileSync } from "node:fs";
-import { createDecipheriv } from "node:crypto";
+import { createDecipheriv, createHash } from "node:crypto";
 import {
   BINDING_FAILURE_REASONS,
   PROJECT_BINDING_FAILURE_REASONS,
   redeemBindingCode,
   redeemProjectGroupCode,
 } from "./binding-code.mjs";
+import {
+  buildGroupWrapText,
+  imageMessageFromPoster,
+  normalizeWrapSnapshot,
+  renderWrapPoster,
+} from "./wrap-poster.mjs";
 import { WebSocket } from "ws";
 import pg from "pg";
 
@@ -168,7 +177,13 @@ function pollCommandFile() {
   const chunk = raw.slice(commandOffset);
   commandOffset = raw.length;
   for (const line of chunk.split(/\r?\n/)) {
-    if (line.trim().length > 0) log("执行命令文件指令:", line.trim());
+    if (line.trim().length > 0) {
+      const preview = line.trim();
+      log(
+        "执行命令文件指令:",
+        preview.length > 160 ? preview.slice(0, 160) + "…" : preview,
+      );
+    }
     handleStdinLine(line);
   }
 }
@@ -186,6 +201,7 @@ let activeCreds = null;
 let refreshing = false;
 let warnedNoConfig = false;
 const observedUserIds = new Set();
+const pendingCommands = new Map();
 
 function log(...parts) {
   console.log("[" + new Date().toISOString() + "]", ...parts);
@@ -206,6 +222,52 @@ function sendCommand(cmd, body) {
   if (body !== undefined) frame.body = body;
   socket.send(JSON.stringify(frame));
   return reqId;
+}
+
+function commandFailure(cmd, errcode, errmsg) {
+  const error = new Error(
+    "企业微信指令 " +
+      cmd +
+      " 失败：errcode " +
+      String(errcode) +
+      " " +
+      String(errmsg === null || errmsg === undefined ? "" : errmsg),
+  );
+  error.errcode = Number(errcode);
+  error.errmsg = String(errmsg === null || errmsg === undefined ? "" : errmsg);
+  return error;
+}
+
+function requestCommand(cmd, body, timeoutMs) {
+  if (socket === null || socket.readyState !== OPEN || !subscribed) {
+    return Promise.reject(new Error("长连接尚未就绪，未发送: " + cmd));
+  }
+  const reqId = nextReqId();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingCommands.delete(reqId);
+      const error = new Error(
+        "企业微信指令 " +
+          cmd +
+          " 响应超时（" +
+          String(Math.round(timeoutMs / 1000)) +
+          " 秒）",
+      );
+      error.errcode = -1;
+      error.retryable = true;
+      reject(error);
+    }, timeoutMs);
+    pendingCommands.set(reqId, { cmd, resolve, reject, timer });
+    const frame = { cmd: cmd, headers: { req_id: reqId } };
+    if (body !== undefined) frame.body = body;
+    try {
+      socket.send(JSON.stringify(frame));
+    } catch (error) {
+      clearTimeout(timer);
+      pendingCommands.delete(reqId);
+      reject(error);
+    }
+  });
 }
 
 function loadKeyringKeys() {
@@ -381,6 +443,7 @@ const GROUP_PENDING_SQL = [
   "  d.group_binding_id,",
   "  d.source_kind,",
   "  d.source_id,",
+  "  d.delivered_step_count,",
   "  g.status as binding_status,",
   "  g.wecom_chat_id",
   "from app.wecom_group_deliveries d",
@@ -422,6 +485,8 @@ const GROUP_ACTIVITY_SQL = [
   "  a.id,",
   "  a.summary,",
   "  a.occurred_at,",
+  "  a.activity_type,",
+  "  a.project_id,",
   "  p.name as project_name,",
   "  u.name as actor_name",
   "from app.activity_projection a",
@@ -429,8 +494,101 @@ const GROUP_ACTIVITY_SQL = [
   "left join app.users u on u.id = a.actor_id",
   "where a.id = $1",
 ].join(" ");
+const GROUP_WRAP_SNAPSHOT_SQL = [
+  "select w.snapshot",
+  "from app.project_wraps w",
+  "where w.project_id = $1",
+].join(" ");
 
-let groupDeliveryInFlight = null;
+const MEDIA_CHUNK_SIZE = 512 * 1024;
+const MEDIA_UPLOAD_TIMEOUT_MS = 60000;
+
+function readResponseBodyValue(frame, key) {
+  if (frame && frame.body && typeof frame.body === "object") {
+    const value = frame.body[key];
+    if (value !== undefined && value !== null) return value;
+  }
+  return frame && frame[key] !== undefined ? frame[key] : undefined;
+}
+
+async function uploadImageMedia(image) {
+  const base64 = String(image && image.base64 ? image.base64 : "");
+  if (base64.length === 0) throw new Error("图片消息缺少 base64");
+  const buffer = Buffer.from(base64, "base64");
+  if (buffer.length === 0) throw new Error("图片 base64 解码为空");
+  const totalChunks = Math.max(1, Math.ceil(buffer.length / MEDIA_CHUNK_SIZE));
+  if (totalChunks > 100) throw new Error("图片超过企业微信 50MB 上传限制");
+  const digest = createHash("md5").update(buffer).digest("hex");
+  const init = await requestCommand(
+    "aibot_upload_media_init",
+    {
+      type: "image",
+      filename: "project-wrap-" + digest.slice(0, 12) + ".jpg",
+      total_size: buffer.length,
+      total_chunks: totalChunks,
+      md5: digest,
+    },
+    MEDIA_UPLOAD_TIMEOUT_MS,
+  );
+  const uploadId = readResponseBodyValue(init, "upload_id");
+  if (typeof uploadId !== "string" || uploadId.length === 0) {
+    throw new Error("企业微信图片上传初始化未返回 upload_id");
+  }
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+    const chunk = buffer.subarray(
+      chunkIndex * MEDIA_CHUNK_SIZE,
+      (chunkIndex + 1) * MEDIA_CHUNK_SIZE,
+    );
+    await requestCommand(
+      "aibot_upload_media_chunk",
+      {
+        upload_id: uploadId,
+        chunk_index: chunkIndex,
+        base64_data: chunk.toString("base64"),
+      },
+      MEDIA_UPLOAD_TIMEOUT_MS,
+    );
+  }
+  const finish = await requestCommand(
+    "aibot_upload_media_finish",
+    { upload_id: uploadId },
+    MEDIA_UPLOAD_TIMEOUT_MS,
+  );
+  const mediaId = readResponseBodyValue(finish, "media_id");
+  if (typeof mediaId !== "string" || mediaId.length === 0) {
+    throw new Error("企业微信图片上传完成未返回 media_id");
+  }
+  return mediaId;
+}
+
+async function sendImageMessage(chatId, chatType, image) {
+  const mediaId = await uploadImageMedia(image);
+  return requestCommand(
+    "aibot_send_msg",
+    {
+      chatid: chatId,
+      chat_type: chatType,
+      msgtype: "image",
+      image: { media_id: mediaId },
+    },
+    GROUP_DELIVERY_RESPONSE_TIMEOUT_MS,
+  );
+}
+
+async function sendImageToUser(userId, image) {
+  try {
+    await sendImageMessage(userId, 1, image);
+    log("企业微信图片主动推送成功 ->", userId);
+  } catch (error) {
+    log(
+      "企业微信图片主动推送失败 ->",
+      userId,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+let groupDeliveryBusy = false;
 let groupDeliveryRateLogAt = 0;
 const groupSendTimestamps = [];
 const groupDeliveryBackoffUntil = new Map();
@@ -534,10 +692,39 @@ async function buildGroupNotificationContent(sourceId) {
   return lines.join(GROUP_NEWLINE);
 }
 
-async function buildGroupActivityContent(sourceId) {
+async function buildGroupActivityMessages(sourceId) {
   const detail = await pool.query(GROUP_ACTIVITY_SQL, [sourceId]);
   const item = detail.rows[0];
   if (item === undefined) return null;
+  if (item.activity_type === "PROJECT_WRAPPED") {
+    const projectId = Number(item.project_id);
+    if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+      throw new Error("项目封箱动态缺少有效 project_id");
+    }
+    const wrapResult = await pool.query(GROUP_WRAP_SNAPSHOT_SQL, [projectId]);
+    const wrap = wrapResult.rows[0];
+    if (wrap === undefined) {
+      throw new Error("项目封箱快照不存在");
+    }
+    const snapshot = normalizeWrapSnapshot(wrap.snapshot);
+    const messages = [
+      {
+        msgtype: "markdown",
+        markdown: { content: buildGroupWrapText(snapshot) },
+      },
+    ];
+    try {
+      const poster = await renderWrapPoster({ snapshot });
+      messages.push(imageMessageFromPoster(poster));
+    } catch (error) {
+      log(
+        "项目封箱群海报渲染失败，降级为纯文本: 项目",
+        projectId,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    return messages;
+  }
   const projectName = clampGroupText(item.project_name, 40);
   const lines = [
     projectName.length > 0
@@ -552,7 +739,23 @@ async function buildGroupActivityContent(sourceId) {
   const occurred = formatGroupTime(item.occurred_at);
   if (occurred.length > 0) meta.push(occurred);
   if (meta.length > 0) lines.push(meta.join(" ｜ "));
-  return lines.join(GROUP_NEWLINE);
+  return [
+    {
+      msgtype: "markdown",
+      markdown: { content: lines.join(GROUP_NEWLINE) },
+    },
+  ];
+}
+
+async function buildGroupNotificationMessages(sourceId) {
+  const content = await buildGroupNotificationContent(sourceId);
+  if (content === null || content.trim().length === 0) return null;
+  return [
+    {
+      msgtype: "markdown",
+      markdown: { content: content },
+    },
+  ];
 }
 
 async function markGroupDeliverySent(deliveryId, bindingId) {
@@ -610,150 +813,206 @@ async function keepGroupDeliveryForRetry(deliveryId, note) {
   );
 }
 
+function summarizeGroupMessage(message) {
+  if (message && message.msgtype === "image") {
+    const base64 = String(
+      message.image && message.image.base64 ? message.image.base64 : "",
+    );
+    return (
+      "image md5=" +
+      String(message.image && message.image.md5) +
+      " bytes=" +
+      base64.length
+    );
+  }
+  if (message && message.msgtype === "markdown") {
+    return clampGroupText(
+      String(message.markdown && message.markdown.content)
+        .split(GROUP_NEWLINE)
+        .join(" / "),
+      140,
+    );
+  }
+  return message && message.msgtype ? String(message.msgtype) : "unknown";
+}
+
 function isRetryableGroupSendError(errcode, errmsg) {
   if (errcode === 45009) return true;
   const text = String(errmsg === null || errmsg === undefined ? "" : errmsg);
   return /限|频繁|too many|rate|limit/i.test(text);
 }
 
-async function completeGroupDelivery(frame) {
-  const inflight = groupDeliveryInFlight;
-  if (inflight === null) return;
-  const reqId =
-    frame.headers && typeof frame.headers.req_id === "string"
-      ? frame.headers.req_id
-      : null;
-  if (reqId !== inflight.reqId) return;
-  groupDeliveryInFlight = null;
-  if (inflight.timer !== null) clearTimeout(inflight.timer);
-  if (frame.errcode === 0) {
-    await markGroupDeliverySent(inflight.deliveryId, inflight.bindingId);
-    log(
-      "群投递已送达：投递行",
-      inflight.deliveryId,
-      "绑定行",
-      inflight.bindingId,
-    );
+function isRetryableCommandFailure(error) {
+  if (error && error.retryable === true) return true;
+  const errcode = Number(error && error.errcode);
+  return (
+    Number.isFinite(errcode) &&
+    isRetryableGroupSendError(errcode, error && error.errmsg)
+  );
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function recordGroupDeliveryStep(deliveryId, deliveredStepCount) {
+  await pool.query(
+    [
+      "update app.wecom_group_deliveries",
+      "set delivered_step_count = $2",
+      "where id = $1 and status = 'PENDING'",
+    ].join(" "),
+    [deliveryId, deliveredStepCount],
+  );
+}
+
+async function sendGroupMessage(chatId, message) {
+  if (message && message.msgtype === "image") {
+    await sendImageMessage(chatId, 2, message.image);
     return;
   }
-  const errorText =
-    "errcode " +
-    frame.errcode +
-    " " +
-    String(
-      frame.errmsg === null || frame.errmsg === undefined ? "" : frame.errmsg,
-    );
-  if (isRetryableGroupSendError(frame.errcode, frame.errmsg)) {
-    await keepGroupDeliveryForRetry(
-      inflight.deliveryId,
-      "限速/临时错误，稍后重试：" + errorText,
-    );
-    log(
-      "群投递遇到限速/临时错误，保持 PENDING 稍后重试：投递行",
-      inflight.deliveryId,
-      errorText,
-    );
-    return;
-  }
-  await markGroupDeliveryFailed(
-    inflight.deliveryId,
-    inflight.bindingId,
-    "发送失败：" + errorText,
+  await requestCommand(
+    "aibot_send_msg",
+    Object.assign(
+      {
+        chatid: chatId,
+        chat_type: 2,
+      },
+      message,
+    ),
+    GROUP_DELIVERY_RESPONSE_TIMEOUT_MS,
   );
 }
 
 async function pollGroupDeliveries() {
-  if (!groupDeliveriesEnabled || pool === null) return;
-  if (groupDeliveryInFlight !== null) return;
+  if (!groupDeliveriesEnabled || pool === null || groupDeliveryBusy) return;
   if (!subscribed || socket === null || socket.readyState !== OPEN) return;
-  const now = Date.now();
-  pruneGroupSendTimestamps(now);
-  if (
-    groupSendCountSince(now, 60 * 1000) >= groupDeliveriesPerMinute ||
-    groupSendCountSince(now, 60 * 60 * 1000) >= groupDeliveriesPerHour
-  ) {
-    if (now - groupDeliveryRateLogAt > 60000) {
-      groupDeliveryRateLogAt = now;
-      log("群投递达到机器人限速窗口，窗口释放后自动继续");
+  groupDeliveryBusy = true;
+  try {
+    const pending = await pool.query(GROUP_PENDING_SQL);
+    const row = pending.rows[0];
+    if (row === undefined) return;
+    const now = Date.now();
+    const deliveryId = Number(row.delivery_id);
+    const bindingId = Number(row.group_binding_id);
+    const backoffUntil = groupDeliveryBackoffUntil.get(deliveryId);
+    if (backoffUntil !== undefined && backoffUntil > now) return;
+    if (row.binding_status !== "ACTIVE") {
+      await markGroupDeliveryFailed(
+        deliveryId,
+        bindingId,
+        "群绑定已解绑，消息未投递",
+      );
+      return;
     }
-    return;
+    let messages = null;
+    try {
+      if (row.source_kind === "NOTIFICATION") {
+        messages = await buildGroupNotificationMessages(Number(row.source_id));
+      } else if (row.source_kind === "ACTIVITY") {
+        messages = await buildGroupActivityMessages(Number(row.source_id));
+      }
+    } catch (error) {
+      await markGroupDeliveryFailed(
+        deliveryId,
+        bindingId,
+        "来源数据无法生成群消息：" +
+          (error instanceof Error ? error.message : String(error)),
+      );
+      return;
+    }
+    if (messages === null || messages.length === 0) {
+      await markGroupDeliveryFailed(
+        deliveryId,
+        bindingId,
+        "来源数据不存在，无法生成群消息",
+      );
+      return;
+    }
+    let stepIndex = Math.max(0, Number(row.delivered_step_count) || 0);
+    if (stepIndex >= messages.length) {
+      await markGroupDeliverySent(deliveryId, bindingId);
+      log(
+        "群投递各分段均已成功，补记送达：投递行",
+        deliveryId,
+        "绑定行",
+        bindingId,
+      );
+      return;
+    }
+    while (stepIndex < messages.length) {
+      const sendNow = Date.now();
+      pruneGroupSendTimestamps(sendNow);
+      if (
+        groupSendCountSince(sendNow, 60 * 1000) >= groupDeliveriesPerMinute ||
+        groupSendCountSince(sendNow, 60 * 60 * 1000) >= groupDeliveriesPerHour
+      ) {
+        if (sendNow - groupDeliveryRateLogAt > 60000) {
+          groupDeliveryRateLogAt = sendNow;
+          log("群投递达到机器人限速窗口，窗口释放后自动继续");
+        }
+        return;
+      }
+      const message = messages[stepIndex];
+      groupSendTimestamps.push(sendNow);
+      log(
+        "已发起群投递：投递行",
+        deliveryId,
+        "绑定行",
+        bindingId,
+        "分段",
+        String(stepIndex + 1) + "/" + String(messages.length),
+        "-> 群",
+        row.wecom_chat_id,
+      );
+      log("  消息内容:", summarizeGroupMessage(message));
+      try {
+        await sendGroupMessage(row.wecom_chat_id, message);
+      } catch (error) {
+        const errorText =
+          error instanceof Error ? error.message : String(error);
+        if (isRetryableCommandFailure(error)) {
+          await keepGroupDeliveryForRetry(
+            deliveryId,
+            "限速/临时错误，稍后重试：" + errorText,
+          );
+          log(
+            "群投递遇到限速/临时错误，保持 PENDING 稍后重试：投递行",
+            deliveryId,
+            "分段",
+            String(stepIndex + 1) + "/" + String(messages.length),
+            errorText,
+          );
+        } else {
+          await markGroupDeliveryFailed(
+            deliveryId,
+            bindingId,
+            "分段 " +
+              String(stepIndex + 1) +
+              "/" +
+              String(messages.length) +
+              " 发送失败：" +
+              errorText,
+          );
+        }
+        return;
+      }
+      stepIndex += 1;
+      await recordGroupDeliveryStep(deliveryId, stepIndex);
+      groupDeliveryBackoffUntil.delete(deliveryId);
+      log(
+        "群投递分段已送达：投递行",
+        deliveryId,
+        "分段",
+        String(stepIndex) + "/" + String(messages.length),
+      );
+      if (stepIndex < messages.length) await wait(1200);
+    }
+    await markGroupDeliverySent(deliveryId, bindingId);
+    log("群投递已送达：投递行", deliveryId, "绑定行", bindingId);
+  } finally {
+    groupDeliveryBusy = false;
   }
-  const pending = await pool.query(GROUP_PENDING_SQL);
-  const row = pending.rows[0];
-  if (row === undefined) return;
-  const deliveryId = Number(row.delivery_id);
-  const bindingId = Number(row.group_binding_id);
-  const backoffUntil = groupDeliveryBackoffUntil.get(deliveryId);
-  if (backoffUntil !== undefined && backoffUntil > now) return;
-  if (row.binding_status !== "ACTIVE") {
-    await markGroupDeliveryFailed(
-      deliveryId,
-      bindingId,
-      "群绑定已解绑，消息未投递",
-    );
-    return;
-  }
-  let content = null;
-  if (row.source_kind === "NOTIFICATION") {
-    content = await buildGroupNotificationContent(Number(row.source_id));
-  } else if (row.source_kind === "ACTIVITY") {
-    content = await buildGroupActivityContent(Number(row.source_id));
-  }
-  if (content === null || content.trim().length === 0) {
-    await markGroupDeliveryFailed(
-      deliveryId,
-      bindingId,
-      "来源数据不存在，无法生成群消息",
-    );
-    return;
-  }
-  const reqId = sendCommand("aibot_send_msg", {
-    chatid: row.wecom_chat_id,
-    chat_type: 2,
-    msgtype: "markdown",
-    markdown: { content: content },
-  });
-  if (reqId === null) return;
-  groupSendTimestamps.push(now);
-  const inflight = {
-    reqId: reqId,
-    deliveryId: deliveryId,
-    bindingId: bindingId,
-    timer: null,
-  };
-  inflight.timer = setTimeout(() => {
-    if (groupDeliveryInFlight !== inflight) return;
-    groupDeliveryInFlight = null;
-    void keepGroupDeliveryForRetry(
-      deliveryId,
-      "发送响应超时（" +
-        Math.round(GROUP_DELIVERY_RESPONSE_TIMEOUT_MS / 1000) +
-        " 秒），稍后重试",
-    )
-      .then(() => {
-        log("群投递响应超时：投递行", deliveryId, "（保持 PENDING，稍后重试）");
-      })
-      .catch((error) => {
-        log(
-          "群投递超时回写失败:",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-  }, GROUP_DELIVERY_RESPONSE_TIMEOUT_MS);
-  groupDeliveryInFlight = inflight;
-  groupDeliveryBackoffUntil.delete(deliveryId);
-  log(
-    "已发起群投递：投递行",
-    deliveryId,
-    "绑定行",
-    bindingId,
-    "-> 群",
-    row.wecom_chat_id,
-  );
-  log(
-    "  消息内容:",
-    clampGroupText(content.split(GROUP_NEWLINE).join(" / "), 140),
-  );
 }
 
 function onSubscribed() {
@@ -1111,13 +1370,23 @@ function handleFrame(raw) {
         scheduleReconnect();
       }
     }
-    if (groupDeliveryInFlight !== null) {
-      void completeGroupDelivery(frame).catch((error) => {
-        log(
-          "群投递回写失败:",
-          error instanceof Error ? error.message : String(error),
+    const responseReqId =
+      frame.headers && typeof frame.headers.req_id === "string"
+        ? frame.headers.req_id
+        : null;
+    const pending =
+      responseReqId === null ? undefined : pendingCommands.get(responseReqId);
+    if (pending !== undefined) {
+      clearTimeout(pending.timer);
+      pendingCommands.delete(responseReqId);
+      if (frame.errcode === 0) {
+        pending.resolve(frame);
+      } else {
+        pending.reject(
+          commandFailure(pending.cmd, frame.errcode, frame.errmsg),
         );
-      });
+      }
+      return;
     }
     return;
   }
@@ -1315,6 +1584,12 @@ function handleStdinLine(line) {
         "raw 指令 JSON 解析失败:",
         error && error.message ? error.message : String(error),
       );
+      return;
+    }
+    if (payload && payload.msgtype === "image") {
+      enqueuePush("image -> " + userId, () => {
+        void sendImageToUser(userId, payload.image);
+      });
       return;
     }
     enqueuePush("raw -> " + userId, () => {

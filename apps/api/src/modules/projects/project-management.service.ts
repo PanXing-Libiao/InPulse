@@ -17,6 +17,7 @@ import {
 import { ProjectMembersQueryPort } from "./project-members-query.port.js";
 import { ProjectRoleGateService } from "./project-role-gate.service.js";
 import { ProjectStartNotifier } from "./project-start.notifier.js";
+import { ProjectWrapNotifier } from "./project-wrap.notifier.js";
 import {
   ProjectsWritePort,
   type ProjectChangeRecord,
@@ -24,6 +25,7 @@ import {
 
 const PROJECT_UPDATE_ACTIVITY = "PROJECT_UPDATED";
 const PROJECT_STATUS_CHANGED_ACTIVITY = "PROJECT_STATUS_CHANGED";
+const PROJECT_WRAPPED_ACTIVITY = "PROJECT_WRAPPED";
 
 /** F-06.3 状态接口可写入的目标态：项目三态，不存在归档。 */
 export type ProjectLifecycleTarget = "NOT_STARTED" | "ACTIVE" | "MAINTENANCE";
@@ -87,6 +89,8 @@ export class ProjectManagementService {
     private readonly roles: ProjectRoleGateService,
     @Inject(ProjectStartNotifier)
     private readonly startNotifier: ProjectStartNotifier,
+    @Inject(ProjectWrapNotifier)
+    private readonly wrapNotifier: ProjectWrapNotifier,
   ) {}
 
   /** 写前授权：实时成员关系与用户状态由 Port 读取；项目三态下没有只读态。 */
@@ -289,6 +293,14 @@ export class ProjectManagementService {
     });
     if (updated === undefined) throw versionConflict();
     const occurredAt = new Date();
+    const wrap =
+      current.status !== "MAINTENANCE" && updated.status === "MAINTENANCE"
+        ? await this.projects.createProjectWrap(tx, {
+            projectId: updated.projectId,
+            actorId: input.actorId,
+            sealedAt: occurredAt,
+          })
+        : undefined;
     const event = await this.audit.append(tx, {
       projectId: updated.projectId,
       actorType: "USER",
@@ -299,6 +311,13 @@ export class ProjectManagementService {
       eventPayload: {
         before: { status: current.status, rowVersion: current.rowVersion },
         after: { status: updated.status, rowVersion: updated.rowVersion },
+        wrapped: wrap !== undefined,
+        ...(wrap === undefined
+          ? {}
+          : {
+              wrapTemplateVersion: wrap.templateVersion,
+              wrapStats: wrap.snapshot.stats,
+            }),
       },
       requestId: input.requestId,
       occurredAt,
@@ -309,13 +328,25 @@ export class ProjectManagementService {
       sourceSequence: event.sequenceNo,
       sourceEntityType: "PROJECT",
       sourceEntityId: updated.projectId,
-      activityType: PROJECT_STATUS_CHANGED_ACTIVITY,
+      activityType:
+        wrap === undefined
+          ? PROJECT_STATUS_CHANGED_ACTIVITY
+          : PROJECT_WRAPPED_ACTIVITY,
       actorId: input.actorId,
-      summary: `项目状态：${PROJECT_STATUS_LABELS[current.status] ?? current.status} → ${PROJECT_STATUS_LABELS[updated.status] ?? updated.status}（${updated.name}）`,
+      summary:
+        wrap === undefined
+          ? `项目状态：${PROJECT_STATUS_LABELS[current.status] ?? current.status} → ${PROJECT_STATUS_LABELS[updated.status] ?? updated.status}（${updated.name}）`
+          : `项目封箱：${updated.name} 主体交付完成，正式进入维护。${wrap.snapshot.stats.completedTaskCount} 个任务、${wrap.snapshot.stats.publishedRecordCount} 篇记录、${wrap.snapshot.stats.activeMemberCount} 个人、${wrap.snapshot.stats.durationDays} 天。`,
       metadata: {
         code: updated.code,
         beforeStatus: current.status,
         afterStatus: updated.status,
+        ...(wrap === undefined
+          ? {}
+          : {
+              wrapTemplateVersion: wrap.templateVersion,
+              wrapStats: wrap.snapshot.stats,
+            }),
       },
       visibilityScope: "MEMBER",
       sourceStatus: updated.status,
@@ -336,6 +367,15 @@ export class ProjectManagementService {
       sourceStatus: updated.status,
       sourceRowVersion: updated.rowVersion,
     });
+    if (wrap !== undefined) {
+      await this.wrapNotifier.notify(tx, {
+        projectId: updated.projectId,
+        chainId: event.chainId,
+        sequenceNo: event.sequenceNo,
+        occurredAt,
+        snapshot: wrap.snapshot,
+      });
+    }
     if (current.status === "NOT_STARTED" && updated.status === "ACTIVE") {
       await this.startNotifier.notify(tx, {
         projectId: updated.projectId,

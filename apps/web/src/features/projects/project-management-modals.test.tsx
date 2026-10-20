@@ -87,6 +87,9 @@ describe("EditProjectModal", () => {
     );
 
     const dialog = await screen.findByRole("dialog", { name: "编辑项目" });
+    expect(
+      within(dialog).queryByRole("button", { name: "保存状态" }),
+    ).toBeNull();
     const nameInput = within(dialog).getByLabelText("项目名称");
     fireEvent.change(nameInput, { target: { value: "商城系统二期" } });
     await userEvent.click(
@@ -137,6 +140,9 @@ describe("EditProjectModal", () => {
     );
 
     const dialog = await screen.findByRole("dialog", { name: "编辑项目" });
+    fireEvent.change(within(dialog).getByLabelText("项目名称"), {
+      target: { value: "商城系统二期" },
+    });
     await userEvent.click(
       within(dialog).getByRole("button", { name: "保存修改" }),
     );
@@ -149,16 +155,18 @@ describe("EditProjectModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("组长或项目管理员可切换状态：走 If-Match 与幂等键，成功后不关闭弹窗", async () => {
+  it("只改状态时点「保存修改」即保存并关闭弹窗", async () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
+    const updateProject = vi.fn();
     const changeProjectStatus = vi.fn().mockResolvedValue({
       project: { ...project, status: "MAINTENANCE", rowVersion: 4 },
     });
     const client = {
       issueCsrfToken,
+      updateProject,
       changeProjectStatus,
     } as unknown as InpulseApiClient;
-    const onStatusChanged = vi.fn();
+    const onUpdated = vi.fn();
     const onClose = vi.fn();
     renderWithProviders(
       <EditProjectModal
@@ -166,22 +174,19 @@ describe("EditProjectModal", () => {
         project={project}
         client={client}
         canChangeStatus
-        onUpdated={vi.fn()}
-        onStatusChanged={onStatusChanged}
+        onUpdated={onUpdated}
         onClose={onClose}
       />,
     );
 
     const dialog = await screen.findByRole("dialog", { name: "编辑项目" });
-    const saveStatus = within(dialog).getByRole("button", {
-      name: "保存状态",
-    });
-    expect(saveStatus).toBeDisabled();
+    const save = within(dialog).getByRole("button", { name: "保存修改" });
+    expect(save).toBeDisabled();
     await userEvent.click(
       within(dialog).getByRole("button", { name: "维护中" }),
     );
-    expect(saveStatus).not.toBeDisabled();
-    await userEvent.click(saveStatus);
+    expect(save).not.toBeDisabled();
+    await userEvent.click(save);
 
     await waitFor(() => expect(changeProjectStatus).toHaveBeenCalledTimes(1));
     expect(changeProjectStatus).toHaveBeenCalledWith(
@@ -195,12 +200,94 @@ describe("EditProjectModal", () => {
         }),
       }),
     );
-    expect(onStatusChanged).toHaveBeenCalledWith(
+    expect(updateProject).not.toHaveBeenCalled();
+    expect(onUpdated).toHaveBeenCalledWith(
       expect.objectContaining({ status: "MAINTENANCE", rowVersion: 4 }),
     );
-    expect(onClose).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("字段与状态同时改动时按新版本串行保存，只回调最终结果", async () => {
+    const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
+    const updateProject = vi.fn().mockResolvedValue({
+      project: { ...project, name: "商城系统二期", rowVersion: 4 },
+    });
+    const changeProjectStatus = vi.fn().mockResolvedValue({
+      project: {
+        ...project,
+        name: "商城系统二期",
+        status: "MAINTENANCE",
+        rowVersion: 5,
+      },
+    });
+    const client = {
+      issueCsrfToken,
+      updateProject,
+      changeProjectStatus,
+    } as unknown as InpulseApiClient;
+    const onUpdated = vi.fn();
+    const onClose = vi.fn();
+    renderWithProviders(
+      <EditProjectModal
+        open
+        project={project}
+        client={client}
+        canChangeStatus
+        onUpdated={onUpdated}
+        onClose={onClose}
+      />,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "编辑项目" });
+    fireEvent.change(within(dialog).getByLabelText("项目名称"), {
+      target: { value: "商城系统二期" },
+    });
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "维护中" }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "保存修改" }),
+    );
+
+    await waitFor(() => {
+      expect(updateProject).toHaveBeenCalledTimes(1);
+      expect(changeProjectStatus).toHaveBeenCalledTimes(1);
+    });
+    expect(updateProject).toHaveBeenCalledWith(
+      7,
+      { name: "商城系统二期", description: "商城项目描述" },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-csrf-token": "csrf-1",
+          "If-Match": '"3"',
+          "Idempotency-Key": expect.any(String),
+        }),
+      }),
+    );
+    expect(changeProjectStatus).toHaveBeenCalledWith(
+      7,
+      { status: "MAINTENANCE" },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-csrf-token": "csrf-1",
+          "If-Match": '"4"',
+          "Idempotency-Key": expect.any(String),
+        }),
+      }),
+    );
+    expect(updateProject.mock.invocationCallOrder[0]!).toBeLessThan(
+      changeProjectStatus.mock.invocationCallOrder[0]!,
+    );
+    expect(onUpdated).toHaveBeenCalledTimes(1);
+    expect(onUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "商城系统二期",
+        status: "MAINTENANCE",
+        rowVersion: 5,
+      }),
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
   it("已有完成任务时不能再退回「未开始」，越级切换「维护中」也置灰", async () => {
     const client = {
       issueCsrfToken: vi.fn(),
@@ -279,7 +366,7 @@ describe("EditProjectModal", () => {
     ).not.toBeDisabled();
   });
 
-  it("无状态变更权限时只展示标签，保存状态按钮不可用", async () => {
+  it("无状态变更权限时只展示标签，保存修改保持禁用", async () => {
     const client = {
       issueCsrfToken: vi.fn(),
       changeProjectStatus: vi.fn(),
@@ -298,13 +385,48 @@ describe("EditProjectModal", () => {
     expect(within(dialog).queryByRole("button", { name: "维护中" })).toBeNull();
     expect(within(dialog).getByText("进行中")).toBeTruthy();
     expect(
-      within(dialog).getByRole("button", { name: "保存状态" }),
+      within(dialog).getByRole("button", { name: "保存修改" }),
     ).toBeDisabled();
     expect(
       within(dialog).getByText(
         "只有本项目活跃成员或系统管理员可以更改项目状态。",
       ),
     ).toBeTruthy();
+  });
+
+  it("没有任何改动时不发请求，也不递增版本号", async () => {
+    const issueCsrfToken = vi.fn();
+    const updateProject = vi.fn();
+    const changeProjectStatus = vi.fn();
+    const client = {
+      issueCsrfToken,
+      updateProject,
+      changeProjectStatus,
+    } as unknown as InpulseApiClient;
+    const onClose = vi.fn();
+    renderWithProviders(
+      <EditProjectModal
+        open
+        project={project}
+        client={client}
+        canChangeStatus
+        onUpdated={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "编辑项目" });
+    expect(
+      within(dialog).getByRole("button", { name: "保存修改" }),
+    ).toBeDisabled();
+    const form = dialog.querySelector("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(issueCsrfToken).not.toHaveBeenCalled();
+    expect(updateProject).not.toHaveBeenCalled();
+    expect(changeProjectStatus).not.toHaveBeenCalled();
   });
 
   it("有删除权限时展示删除入口，二次确认后带 CSRF、If-Match 与幂等键调用 deleteProject", async () => {

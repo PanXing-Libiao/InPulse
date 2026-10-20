@@ -37,8 +37,6 @@ export interface EditProjectModalProps {
    * 默认 false 只展示当前状态标签。服务端仍会二次校验同一条件。
    */
   readonly canChangeStatus?: boolean | undefined;
-  /** 状态保存成功且不关闭弹窗时通知调用方刷新列表与版本。 */
-  readonly onStatusChanged?: ((updated: ProjectItem) => void) | undefined;
   /**
    * ADR-062：只有本项目组长（实时成员关系中的 ACTIVE LEADER）或系统管理员
    * 可以删除项目。调用方按 `canDeleteProject` 判定后传入，默认 false 就不渲染
@@ -57,7 +55,6 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   onClose,
   onUpdated,
   canChangeStatus = false,
-  onStatusChanged,
   canDeleteProject = false,
   onDeleted,
 }) => {
@@ -67,7 +64,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
     reset,
     setError,
     clearErrors,
-    formState: { errors },
+    formState: { errors, isDirty: fieldsDirty },
   } = useForm<ProjectEditFormValues>({
     defaultValues: { name: project.name, description: project.description },
   });
@@ -79,10 +76,12 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
     null,
   );
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [baseProject, setBaseProject] = useState(project);
 
   useEffect(() => {
     if (open) {
       reset({ name: project.name, description: project.description });
+      setBaseProject(project);
       mutation.reset();
       setStatusDraft(null);
       statusMutation.reset();
@@ -93,9 +92,10 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
 
   // ADR-043：项目只有未开始 / 进行中 / 维护中三态，不存在只读锁定态。
   const canEditStatus = canChangeStatus;
-  const currentStatus: ProjectLifecycleTarget = project.status;
+  const currentStatus: ProjectLifecycleTarget = baseProject.status;
   const statusValue = statusDraft ?? currentStatus;
   const statusDirty = statusValue !== currentStatus;
+  const saving = mutation.isPending || statusMutation.isPending;
 
   const statusOptions = (
     [
@@ -106,13 +106,14 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   ).map((option) => {
     const backToNotStarted = option.value === "NOT_STARTED";
     const skipLevel =
-      (backToNotStarted && project.status === "MAINTENANCE") ||
-      (option.value === "MAINTENANCE" && project.status === "NOT_STARTED");
-    const blockedByCompletedTask = backToNotStarted && project.hasCompletedTask;
+      (backToNotStarted && baseProject.status === "MAINTENANCE") ||
+      (option.value === "MAINTENANCE" && baseProject.status === "NOT_STARTED");
+    const blockedByCompletedTask =
+      backToNotStarted && baseProject.hasCompletedTask;
     return {
       value: option.value,
       label: option.label,
-      disabled: blockedByCompletedTask || skipLevel,
+      disabled: saving || blockedByCompletedTask || skipLevel,
       title: blockedByCompletedTask
         ? "项目里已经出现过已完成任务，不能再退回未开始"
         : skipLevel
@@ -124,23 +125,9 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   const statusHint = !canChangeStatus
     ? "只有本项目活跃成员或系统管理员可以更改项目状态。"
     : "未开始 ⇄ 进行中 ⇄ 维护中；未开始与维护中不能直接互改；切到维护中要求项目下任务全部收尾。" +
-      (project.hasCompletedTask
+      (baseProject.hasCompletedTask
         ? "项目里已有完成任务，因此不能再退回未开始。"
         : "");
-
-  const submitStatus = async () => {
-    if (!canEditStatus || !statusDirty) return;
-    try {
-      const updated = await statusMutation.mutateAsync({
-        status: statusValue,
-        rowVersion: project.rowVersion,
-      });
-      setStatusDraft(null);
-      onStatusChanged?.(updated.project);
-    } catch {
-      // statusMutation.error 负责展示，草稿保留。
-    }
-  };
 
   const submit = async (values: ProjectEditFormValues) => {
     const parsed = projectEditFormSchema.safeParse(values);
@@ -153,18 +140,48 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
       }
       return;
     }
+
+    const fieldsChanged =
+      parsed.data.name !== baseProject.name ||
+      parsed.data.description !== baseProject.description;
+    const statusChanged = canEditStatus && statusDirty;
+    if (!fieldsChanged && !statusChanged) {
+      onClose();
+      return;
+    }
+
+    mutation.reset();
+    statusMutation.reset();
+    let current = baseProject;
     try {
-      const updated = await mutation.mutateAsync({
-        edit: {
-          name: parsed.data.name,
-          description: parsed.data.description,
-        },
-        rowVersion: project.rowVersion,
-      });
-      onUpdated(updated.project);
+      if (fieldsChanged) {
+        const updated = await mutation.mutateAsync({
+          edit: {
+            name: parsed.data.name,
+            description: parsed.data.description,
+          },
+          rowVersion: current.rowVersion,
+        });
+        current = updated.project;
+        setBaseProject(current);
+        reset({
+          name: current.name,
+          description: current.description,
+        });
+      }
+      if (statusChanged) {
+        const updated = await statusMutation.mutateAsync({
+          status: statusValue,
+          rowVersion: current.rowVersion,
+        });
+        current = updated.project;
+        setBaseProject(current);
+      }
+      onUpdated(current);
       onClose();
     } catch {
-      // mutation.error 负责展示，表单保留输入。
+      // mutation.error / statusMutation.error 负责展示；字段保存成功后
+      // baseProject 已更新，重试状态时不会复用旧版本号。
     }
   };
 
@@ -197,7 +214,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
               <Button
                 className="danger-button footer-leading"
                 data-testid="delete-project-button"
-                disabled={mutation.isPending || statusMutation.isPending}
+                disabled={saving}
                 onClick={() => {
                   deleteMutation.reset();
                   setDeleteConfirmOpen(true);
@@ -206,14 +223,15 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                 删除项目
               </Button>
             ) : null}
-            <Button disabled={mutation.isPending} onClick={onClose}>
+            <Button disabled={saving} onClick={onClose}>
               取消
             </Button>
             <Button
               type="primary"
               htmlType="submit"
               form={formId}
-              loading={mutation.isPending}
+              loading={saving}
+              disabled={!fieldsDirty && !statusDirty}
             >
               保存修改
             </Button>
@@ -245,7 +263,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                       {...field}
                       aria-label="项目名称"
                       maxLength={PROJECT_NAME_MAX_LENGTH}
-                      disabled={mutation.isPending}
+                      disabled={saving}
                       onChange={(event) => {
                         field.onChange(event.currentTarget.value);
                         clearErrors("name");
@@ -268,7 +286,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                       aria-label="项目描述"
                       rows={4}
                       maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
-                      disabled={mutation.isPending}
+                      disabled={saving}
                       onChange={(event) => {
                         field.onChange(event.currentTarget.value);
                         clearErrors("description");
@@ -302,6 +320,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                       value={statusValue}
                       options={statusOptions}
                       onChange={(next) => {
+                        if (saving) return;
                         statusMutation.reset();
                         setStatusDraft(next);
                       }}
@@ -313,16 +332,6 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                       {projectLifecycleLabel(project.status)}
                     </CalmBadge>
                   )}
-                  <Button
-                    htmlType="button"
-                    className="secondary-button"
-                    data-testid="save-project-status"
-                    disabled={!canEditStatus || !statusDirty}
-                    loading={statusMutation.isPending}
-                    onClick={() => void submitStatus()}
-                  >
-                    保存状态
-                  </Button>
                 </div>
               </Form.Item>
               <Text type="secondary" style={{ display: "block", fontSize: 12 }}>
@@ -338,14 +347,6 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                   )}
                   style={{ marginTop: 16 }}
                 />
-              ) : null}
-              {statusMutation.isSuccess && !statusDirty ? (
-                <Text
-                  data-testid="project-status-saved"
-                  style={{ display: "block", marginTop: 8, fontSize: 12 }}
-                >
-                  状态已更新为「{projectLifecycleLabel(project.status)}」。
-                </Text>
               ) : null}
             </div>
           </Form>

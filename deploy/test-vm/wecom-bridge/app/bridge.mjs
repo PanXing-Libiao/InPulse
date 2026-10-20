@@ -3,6 +3,8 @@
 // v5 变化（ADR-077 第二批，2026-10-16）：新增项目群投递物化——把新的 task.assigned
 // 通知与 MEMBER 可见项目动态写成 app.wecom_group_deliveries 的 PENDING 行，
 // 由 long-conn 消费并回写 SENT / FAILED；个人单聊推送逻辑不变。
+// v7 变化（ADR-091，2026-10-20）：项目封箱个人通知发送「文字 + 冻结快照海报」，
+// 海报渲染失败时降级为纯文本；群动态由 long-conn 按同样两段投递。
 // v6 变化（ADR-090，2026-10-20）：物化前读取项目群通知开关，按五个类别过滤；
 // 缺行或未识别的新事件默认放行，关闭只影响此后物化，不回溯历史或已排队消息。
 // 可选键：groupDeliveries=false 关闭物化、groupNotificationTypes 覆盖类型清单
@@ -24,6 +26,12 @@ import {
   groupCategoryForNotification,
   groupCategoryIsEnabled,
 } from "./notification-categories.mjs";
+import {
+  buildPersonalWrapText,
+  imageMessageFromPoster,
+  normalizeWrapSnapshot,
+  renderWrapPoster,
+} from "./wrap-poster.mjs";
 
 const { Pool } = pg;
 const here = dirname(fileURLToPath(import.meta.url));
@@ -147,6 +155,7 @@ const POLL_SQL = [
   "select",
   "  n.id,",
   "  n.recipient_id,",
+  "  n.project_id,",
   "  n.notification_type,",
   "  n.title,",
   "  n.body as task_code,",
@@ -162,6 +171,15 @@ const POLL_SQL = [
   "where n.id > $1",
   "order by n.id asc",
   "limit 100",
+].join(" ");
+
+const WRAP_NOTIFICATION_DETAIL_SQL = [
+  "select",
+  "  w.snapshot,",
+  "  u.name as recipient_name",
+  "from app.project_wraps w",
+  "join app.users u on u.id = $2",
+  "where w.project_id = $1",
 ].join(" ");
 
 function log(...parts) {
@@ -450,6 +468,68 @@ async function materializeGroupDeliveries() {
   return created;
 }
 
+function summarizeMessage(message) {
+  if (message && message.msgtype === "image") {
+    return "image(" + String(message.image && message.image.md5) + ")";
+  }
+  if (message && message.msgtype === "markdown") {
+    return (
+      "markdown(" +
+      clamp(clean(message.markdown && message.markdown.content), 80) +
+      ")"
+    );
+  }
+  if (message && message.msgtype === "template_card") {
+    return (
+      "template_card(" +
+      clamp(
+        clean(
+          message.template_card &&
+            message.template_card.main_title &&
+            message.template_card.main_title.title,
+        ),
+        80,
+      ) +
+      ")"
+    );
+  }
+  return "unknown";
+}
+
+async function buildWrapPersonalMessages(row) {
+  const projectId = Number(row.project_id);
+  if (!Number.isSafeInteger(projectId) || projectId <= 0) {
+    throw new Error("项目封箱通知缺少有效 project_id");
+  }
+  const detail = await pool.query(WRAP_NOTIFICATION_DETAIL_SQL, [
+    projectId,
+    row.recipient_id,
+  ]);
+  const item = detail.rows[0];
+  if (item === undefined) {
+    throw new Error("项目封箱快照不存在");
+  }
+  const snapshot = normalizeWrapSnapshot(item.snapshot);
+  const textMessage = {
+    msgtype: "markdown",
+    markdown: { content: buildPersonalWrapText(snapshot) },
+  };
+  try {
+    const poster = await renderWrapPoster({
+      snapshot,
+      recipientName: clean(item.recipient_name),
+    });
+    return [textMessage, imageMessageFromPoster(poster)];
+  } catch (error) {
+    log(
+      "项目封箱海报渲染失败，降级为纯文本: 项目",
+      projectId,
+      error && error.message ? error.message : String(error),
+    );
+    return [textMessage];
+  }
+}
+
 async function pollOnce() {
   await reloadRecipients();
   let materialized = 0;
@@ -478,17 +558,36 @@ async function pollOnce() {
       );
       continue;
     }
-    const card = buildCard(row);
+    let messages;
+    if (row.notification_type === "project.wrapped") {
+      try {
+        messages = await buildWrapPersonalMessages(row);
+      } catch (error) {
+        log(
+          "项目封箱通知内容生成失败，降级为普通卡片: 通知",
+          row.id,
+          error && error.message ? error.message : String(error),
+        );
+        messages = [buildCard(row)];
+      }
+    } else {
+      messages = [buildCard(row)];
+    }
     if (dryRun) {
       log("[dry-run] 将发送给", wecomUserId, ":");
-      console.log(JSON.stringify(card, null, 2));
+      for (const message of messages) {
+        console.log(JSON.stringify(message, null, 2));
+      }
     } else {
-      appendCommand("raw " + wecomUserId + " " + JSON.stringify(card));
+      for (const message of messages) {
+        appendCommand("raw " + wecomUserId + " " + JSON.stringify(message));
+      }
       log(
         "已投递发送队列: 通知",
         row.id,
         "[" + row.notification_type + "] ->",
-        card.template_card.main_title.title,
+        summarizeMessage(messages[0]),
+        messages.length > 1 ? "+ " + summarizeMessage(messages[1]) : "",
       );
     }
     delivered += 1;
@@ -511,7 +610,7 @@ function persistState() {
 
 async function main() {
   log(
-    "通知桥 v6 启动",
+    "通知桥 v7 启动",
     dryRun ? "(dry-run)" : "(实发)",
     "| 转发范围:",
     forwardAll ? "全部类型" : [...forwardTypes].join(","),

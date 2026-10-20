@@ -40,6 +40,10 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
     setCreatedProject(null);
   }, []);
 
+  const handleDismissCreatedProject = useCallback(() => {
+    setCreatedProject(null);
+  }, []);
+
   const handleOpenActivity = useCallback(
     (projectId: number) => {
       navigate(`/projects/${projectId}/activity`);
@@ -76,6 +80,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
       onCreated={handleCreated}
       onImportedProject={handleImportedProject}
       onStartCreate={handleStartCreate}
+      onDismissCreatedProject={handleDismissCreatedProject}
       onOpenActivity={handleOpenActivity}
       onAddModule={handleAddModule}
       onOpenModules={(projectId) => navigate(`/projects/${projectId}/modules`)}

@@ -32,6 +32,7 @@ const notificationTypeLabels: Readonly<Record<string, string>> = {
   PROJECT_CREATED: "项目创建",
   PROJECT_JOINED: "加入项目",
   "project.status.change": "变更项目状态",
+  "project.wrapped": "项目封箱",
   "task.assigned": "任务指派",
   TASK_ASSIGNED: "任务指派",
   "task.complete": "任务完成",

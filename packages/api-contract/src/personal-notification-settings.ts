@@ -34,7 +34,7 @@ export const notificationTypesByPersonalSetting: Readonly<
   "record.version.create": ["record.version.create"],
   "record.leftover.add": ["record.leftover.add"],
   "leftover.convert": ["leftover.convert"],
-  "project.status.change": ["project.status.change"],
+  "project.status.change": ["project.status.change", "project.wrapped"],
 };
 
 export function isPersonalNotificationSetting(

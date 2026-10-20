@@ -40,6 +40,7 @@ import {
 } from "@features/project-overview/ProjectWorkspaceModals";
 import { useAuth } from "@features/auth/auth-context";
 import { EditProjectModal } from "@features/projects/ProjectManagementModals";
+import { ProjectSuccessToast } from "@features/projects/ProjectSuccessToast";
 import {
   canDeleteProject,
   canManageProjectResources,
@@ -190,7 +191,11 @@ export function ModulesPageView({
           }
         >
           {projectNotice && (
-            <Alert type="success" showIcon title={projectNotice} />
+            <ProjectSuccessToast
+              testId="project-update-success"
+              title={projectNotice}
+              onDismiss={() => setProjectNotice(null)}
+            />
           )}
           {success && <Alert type="success" showIcon title="模块操作成功" />}
           {query.isPending ? (
@@ -384,16 +389,15 @@ export function ModulesPageView({
           canDeleteProject={canDeleteCurrentProject}
           onClose={() => setProjectEditOpen(false)}
           onUpdated={(updated) => {
+            const previousStatus = projectQuery.data?.project.status;
+            const statusNote =
+              previousStatus !== undefined && previousStatus !== updated.status
+                ? `，状态已改为${projectLifecycleLabel(updated.status)}`
+                : "";
             applyProjectUpdate(updated);
             setProjectEditOpen(false);
             setProjectNotice(
-              `项目「${updated.name}」已更新，当前版本 v${updated.rowVersion}。`,
-            );
-          }}
-          onStatusChanged={(updated) => {
-            applyProjectUpdate(updated);
-            setProjectNotice(
-              `项目状态已改为${projectLifecycleLabel(updated.status)}。`,
+              `项目「${updated.name}」已更新${statusNote}，当前版本 v${updated.rowVersion}。`,
             );
           }}
           onDeleted={() => {

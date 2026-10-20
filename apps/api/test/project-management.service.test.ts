@@ -7,12 +7,14 @@ import type { ProjectAccessQueryPort } from "../src/modules/projects/project-acc
 import type { ProjectMembersQueryPort } from "../src/modules/projects/project-members-query.port.js";
 import type { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
 import type { ProjectStartNotifier } from "../src/modules/projects/project-start.notifier.js";
+import type { ProjectWrapNotifier } from "../src/modules/projects/project-wrap.notifier.js";
 import {
   ProjectManagementService,
   ProjectManagementError,
 } from "../src/modules/projects/project-management.service.js";
 import type {
   ProjectChangeRecord,
+  ProjectWrapRecord,
   ProjectsWritePort,
 } from "../src/modules/projects/projects-write.port.js";
 import type { SearchProjectionWritePort } from "../src/modules/search/search-projection.write-port.js";
@@ -34,6 +36,46 @@ const current: ProjectChangeRecord = {
     activeFeatureCount: 1,
     openTaskCount: 3,
     completedTaskCount: 1,
+  },
+};
+
+const wrapRecord: ProjectWrapRecord = {
+  projectId: 7,
+  sealedAt: "2026-09-10T00:00:00.000Z",
+  templateVersion: 1,
+  snapshot: {
+    version: 1,
+    project: { id: 7, code: "SHOP", name: "商城系统" },
+    stats: {
+      completedTaskCount: 5,
+      publishedRecordCount: 3,
+      activeMemberCount: 2,
+      activeModuleCount: 2,
+      activeFeatureCount: 1,
+      openTaskCount: 0,
+      durationDays: 12,
+      completionPercent: 100,
+    },
+    participants: [
+      {
+        userId: 2,
+        name: "成员甲",
+        role: "LEADER",
+        completedTaskCount: 3,
+      },
+      {
+        userId: 3,
+        name: "成员乙",
+        role: "MEMBER",
+        completedTaskCount: 2,
+      },
+    ],
+    timeline: {
+      foundedAt: "2026-08-30T00:00:00.000Z",
+      firstRecordAt: "2026-09-01T00:00:00.000Z",
+      lastTaskCompletedAt: "2026-09-09T01:00:00.000Z",
+      sealedAt: "2026-09-10T00:00:00.000Z",
+    },
   },
 };
 
@@ -67,6 +109,7 @@ function setup(
     updatedAt: "2026-09-10T00:00:00.000Z",
   });
   const updateProjectStatus = vi.fn().mockResolvedValue(statusUpdated);
+  const createProjectWrap = vi.fn().mockResolvedValue(wrapRecord);
   const countOpenTasks = vi.fn().mockResolvedValue(0);
   const appendAudit = vi
     .fn()
@@ -77,11 +120,13 @@ function setup(
   const listActiveMemberIds = vi.fn().mockResolvedValue([2, 3]);
   const manageRole = vi.fn().mockResolvedValue("LEADER");
   const notifyProjectStarted = vi.fn().mockResolvedValue(undefined);
+  const notifyProjectWrapped = vi.fn().mockResolvedValue(undefined);
   const service = new ProjectManagementService(
     {
       findProjectForChange,
       updateProjectDetails,
       updateProjectStatus,
+      createProjectWrap,
       countOpenTasks,
     } as unknown as ProjectsWritePort,
     { checkProjectForWrite } as unknown as ProjectAccessQueryPort,
@@ -94,6 +139,7 @@ function setup(
     } as unknown as ProjectMembersQueryPort,
     { manageRole } as unknown as ProjectRoleGateService,
     { notify: notifyProjectStarted } as unknown as ProjectStartNotifier,
+    { notify: notifyProjectWrapped } as unknown as ProjectWrapNotifier,
   );
   return {
     service,
@@ -101,11 +147,13 @@ function setup(
     findProjectForChange,
     updateProjectDetails,
     updateProjectStatus,
+    createProjectWrap,
     countOpenTasks,
     appendAudit,
     appendActivity,
     upsertSearch,
     findActiveRole,
+    notifyProjectWrapped,
   };
 }
 
@@ -225,7 +273,7 @@ describe("ProjectManagementService", () => {
     ).rejects.toBeInstanceOf(ProjectManagementError);
   });
 
-  it("把项目切换为维护中：写审计、活动与搜索投影", async () => {
+  it("把项目切换为维护中：首次封箱写快照、动态、搜索投影与个人通知", async () => {
     const s = setup();
     const result = await s.service.changeProjectStatus(tx, {
       actorId: 9,
@@ -241,18 +289,28 @@ describe("ProjectManagementService", () => {
       expectedRowVersion: 1,
       status: "MAINTENANCE",
     });
+    expect(s.createProjectWrap).toHaveBeenCalledWith(tx, {
+      projectId: 7,
+      actorId: 9,
+      sealedAt: expect.any(Date),
+    });
     expect(s.appendAudit).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
         action: "project.status.change",
         requestId: "req-status",
+        eventPayload: expect.objectContaining({
+          wrapped: true,
+          wrapTemplateVersion: 1,
+        }),
       }),
     );
     expect(s.appendActivity).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
-        activityType: "PROJECT_STATUS_CHANGED",
+        activityType: "PROJECT_WRAPPED",
         sourceRowVersion: 2,
+        summary: expect.stringContaining("项目封箱"),
       }),
     );
     expect(s.upsertSearch).toHaveBeenCalledWith(
@@ -262,10 +320,36 @@ describe("ProjectManagementService", () => {
         sourceRowVersion: 2,
       }),
     );
+    expect(s.notifyProjectWrapped).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        projectId: 7,
+        chainId: "chain-1",
+        sequenceNo: 4,
+        snapshot: wrapRecord.snapshot,
+      }),
+    );
     expect(result.project).toMatchObject({
       status: "MAINTENANCE",
       rowVersion: 2,
     });
+  });
+
+  it("再次进入维护中不重复封箱，只写普通状态动态", async () => {
+    const s = setup();
+    s.createProjectWrap.mockResolvedValueOnce(undefined);
+    await s.service.changeProjectStatus(tx, {
+      actorId: 9,
+      projectId: 7,
+      version: 1,
+      target: "MAINTENANCE",
+      requestId: "req-status-again",
+    });
+    expect(s.appendActivity).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ activityType: "PROJECT_STATUS_CHANGED" }),
+    );
+    expect(s.notifyProjectWrapped).not.toHaveBeenCalled();
   });
 
   it("维护中门禁：仍有未收尾任务时拒绝进入维护中且不写任何副作用", async () => {

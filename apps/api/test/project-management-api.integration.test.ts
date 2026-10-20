@@ -30,6 +30,7 @@ import { PostgresNotificationWritePort } from "../src/modules/notifications/post
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
 import { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
 import { ProjectStartNotifier } from "../src/modules/projects/project-start.notifier.js";
+import { ProjectWrapNotifier } from "../src/modules/projects/project-wrap.notifier.js";
 import { PostgresProjectsWritePort } from "../src/modules/projects/postgres-projects-write-port.js";
 import { ProjectManagementController } from "../src/modules/projects/project-management.controller.js";
 import { ProjectManagementHttpService } from "../src/modules/projects/project-management-http.service.js";
@@ -179,6 +180,10 @@ beforeAll(async () => {
       new PostgresProjectMembersQueryPort(),
     ),
     new ProjectStartNotifier(
+      new PostgresProjectMembersQueryPort(),
+      new PostgresNotificationWritePort(),
+    ),
+    new ProjectWrapNotifier(
       new PostgresProjectMembersQueryPort(),
       new PostgresNotificationWritePort(),
     ),
@@ -510,6 +515,13 @@ describe("F-06.3 项目状态变更 API", () => {
       "PROJECT_STATUS_CHANGED",
       "PROJECT_STATUS_CHANGED",
     ]);
+
+    const wraps = (await client.sql`
+      SELECT count(*)::int AS "total"
+        FROM app.project_wraps
+       WHERE project_id = ${value.project.projectId}
+    `) as unknown as readonly { total: number }[];
+    expect(wraps[0]!.total).toBe(0);
   });
 
   it("普通成员可改状态、非成员 404、版本冲突与同态各自返回 409", async () => {
@@ -706,6 +718,60 @@ describe("F-06.3 项目状态变更 API", () => {
         await maintenance.json(),
       ).project.status,
     ).toBe("MAINTENANCE");
+
+    const wraps = (await client.sql`
+      SELECT sealed_by AS "sealedBy",
+             template_version AS "templateVersion",
+             snapshot
+        FROM app.project_wraps
+       WHERE project_id = ${value.project.projectId}
+    `) as unknown as readonly {
+      sealedBy: number;
+      templateVersion: number;
+      snapshot: {
+        stats: { completedTaskCount: number; openTaskCount: number };
+        participants: readonly unknown[];
+        timeline: { sealedAt: string; lastTaskCompletedAt: string };
+      };
+    }[];
+    expect(wraps).toHaveLength(1);
+    expect(wraps[0]).toMatchObject({
+      sealedBy: value.owner.userId,
+      templateVersion: 1,
+      snapshot: {
+        stats: { completedTaskCount: 1, openTaskCount: 0 },
+      },
+    });
+    expect(wraps[0]!.snapshot.participants).toHaveLength(1);
+    expect(wraps[0]!.snapshot.timeline.lastTaskCompletedAt).toBeTruthy();
+
+    const wrapActivities = (await client.sql`
+      SELECT activity_type AS "activityType"
+        FROM app.activity_projection
+       WHERE project_id = ${value.project.projectId}
+       ORDER BY id ASC
+    `) as unknown as readonly { activityType: string }[];
+    expect(wrapActivities.map((row) => row.activityType)).toEqual([
+      "PROJECT_STATUS_CHANGED",
+      "PROJECT_WRAPPED",
+    ]);
+
+    const wrapNotifications = (await client.sql`
+      SELECT recipient_id AS "recipientId",
+             notification_type AS "notificationType"
+        FROM app.notifications
+       WHERE project_id = ${value.project.projectId}
+         AND notification_type = 'project.wrapped'
+    `) as unknown as readonly {
+      recipientId: number;
+      notificationType: string;
+    }[];
+    expect(wrapNotifications).toEqual([
+      {
+        recipientId: value.owner.userId,
+        notificationType: "project.wrapped",
+      },
+    ]);
   });
 
   it("已完成或已取消的任务不算未收尾，可进入维护中", async () => {

@@ -403,11 +403,9 @@
   line-height: 16.5px;
 }
 
-/* 「编辑项目」弹层的状态分区：灰色分段条与「保存状态」按钮同行。
+/* 「编辑项目」弹层的状态分区：分段条占满整行，状态与字段共用页脚保存。
  * `.dialog-form` 的 grid 会把每个子级拉成整行（本文件 L37），`.segmented` 自身又是
- * `display: flex` 的块级盒，未声明的 `.project-status-control` 因此只是普通块级容器，
- * 按钮被挤到第二行。这里让容器成为行内 flex：分段条占满剩余宽度，按钮吸排在
- * 该行右端；只读态（`CalmBadge`）不伸展，靠按钮的 `margin-left: auto` 仍贴右。 */
+ * `display: flex` 的块级盒，因此这里让容器成为行内 flex 并让分段条吃满宽度。 */
 .project-status-control {
   display: flex;
   align-items: center;
@@ -417,11 +415,6 @@
 .project-status-control > .segmented {
   flex: 1;
   min-width: 0;
-}
-
-.project-status-control > .ant-btn {
-  flex: 0 0 auto;
-  margin-left: auto;
 }
 
 /* 新建项目表单字段一律整行堆叠（并排只保留「编码 + 卡片简称」`.form-row`）：
@@ -2104,6 +2097,67 @@
   color: #4c7c63;
 }
 
+/* 项目成功提示改为固定气泡：不占文档流，创建/状态变更不会横向堆叠在页面里。 */
+.project-success-toast {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  z-index: 1200;
+  width: min(680px, calc(100vw - 40px));
+  max-height: calc(100vh - 100px);
+  margin: 0;
+  overflow-y: auto;
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(45, 74, 102, 0.16);
+  transform: translateX(-50%);
+  animation: project-success-toast-in 180ms ease-out;
+}
+
+.project-success-toast .creation-success-body {
+  padding-right: 22px;
+}
+
+.project-success-toast-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #6b8b77;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.project-success-toast-close:hover {
+  background: #e3f4ea;
+  color: #2b6d4d;
+}
+
+@keyframes project-success-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-success-toast {
+    animation: none;
+  }
+}
+
 .creation-success-icon {
   display: inline-flex;
   align-items: center;
@@ -2295,8 +2349,10 @@
 }
 
 @media (max-width: 700px) {
-  .creation-success {
-    flex-direction: column;
+  .project-success-toast {
+    top: 68px;
+    width: calc(100vw - 24px);
+    flex-direction: row;
   }
 
   .creation-success-actions {

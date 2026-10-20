@@ -12,7 +12,9 @@
 - `bridge.env`、`app/bridge-config.json`、`app/config.json`、`test-bridge-config.json`：运行配置
   （不含任何 Secret；密钥与密码由 VM 上只读挂载）。
 - `node_modules` 不入库：VM 侧 `app/node_modules` 是上一次安装的结果；仅当 `package.json`
-  变化时，同步脚本会在 VM 上用既有桥接镜像执行 `npm install --omit=dev` 刷新。
+  变化时，同步脚本会在 VM 上用固定 Node 镜像
+  `node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e`
+  执行 `npm install --omit=dev` 刷新（挂 `egress` 网络，不依赖桥接运行镜像里的 npm）。
 
 ## 进入会话欢迎语与限频（2026-10-16）
 
@@ -23,7 +25,7 @@
 - `config.json` 可选键：`welcomeUnboundThrottleMs`、`welcomeBoundThrottleMs`（毫秒，0 = 该类用户
   不再自动发）、`welcomeStateFile`。
 
-## 项目群消息投递（2026-10-16，本地实现，VM 未同步）
+## 项目群消息投递（2026-10-16 本地实现，2026-10-20 已同步到 VM）
 
 - 范围（ADR-077 第二批）：`app.notifications` 的 `task.assigned`（同一次指派事件的多个
   收件人只占一行，正文聚合「指派给」姓名）与 `app.activity_projection` 中
@@ -58,6 +60,16 @@
   （errcode=0，投递行 `SENT`）；同批 ADMIN_ONLY 动态未产生投递行；假 chatid 绑定验证
   失败回写（`errcode 93006 invalid chatid` -> `FAILED` + 绑定行 `last_delivery_error`）；
   long-conn 停机期间 PENDING 行保留、重启后续传送达。联调合成数据已清理。
+
+## 项目封箱彩蛋（ADR-091，2026-10-20）
+
+- 来源：项目第一次从进行中进入维护中、存在有效完成任务且没有未收尾任务时，API 在状态变更事务内写一次 `app.project_wraps` 冻结快照，并写 `project.wrapped` 个人通知与 `PROJECT_WRAPPED` / MEMBER 项目动态。重复进入维护中不重复生成。
+- 个人单聊：`bridge.mjs` 读取快照和收件人姓名，先发 Markdown「这一箱，有你的名字。」，再发带署名的 1080 × 1350 JPEG 海报。海报失败时只保留文字；快照缺失时降级为普通通知卡片。
+- 项目群：`long-conn.mjs` 消费 `PROJECT_WRAPPED` 动态，发送「叮——最后一盏灯灭了。」与无个人署名的海报。该动态归入 `project.member`，受项目群「项目与成员变化」开关控制。
+- 图片协议：图片先经 `aibot_upload_media_init` → `aibot_upload_media_chunk` → `aibot_upload_media_finish` 取得 `media_id`，再以 `aibot_send_msg` 的 `msgtype=image` 发送；不使用普通 HTTP 素材上传接口。
+- 分段续传：`app.wecom_group_deliveries.delivered_step_count` 记录已成功的文字 / 图片段数。图片失败或进程重启后从下一段继续，两段都成功才置 `SENT`。
+- 渲染依赖：`app/wrap-poster.mjs` 使用 `@napi-rs/canvas`；海报字体在 `app/assets/fonts`（Noto Sans SC Regular / Black，SIL OFL 1.1），Windows 与容器加载同一组文件，避免微软雅黑、黑体或 Arial 的许可风险。Dockerfile 仍安装 `fonts-noto-cjk` 作为系统兜底；字体资产缺失时海报渲染 fail closed，桥接只发文字。
+- 测试：`npm test` 同时运行通知分类与海报用例；海报测试会实际生成 JPEG 并校验尺寸、文件头和 MD5 / base64 一致性。
 
 ## 同步到 VM
 

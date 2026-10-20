@@ -35,6 +35,7 @@ import { ProjectManagementHttpService } from "../src/modules/projects/project-ma
 import { ProjectManagementService } from "../src/modules/projects/project-management.service.js";
 import { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
 import { ProjectStartNotifier } from "../src/modules/projects/project-start.notifier.js";
+import { ProjectWrapNotifier } from "../src/modules/projects/project-wrap.notifier.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import {
   createProject,
@@ -314,6 +315,33 @@ async function seedPurgeableRecords(
   });
 }
 
+async function seedProjectWrap(
+  project: ProjectFixture,
+  actorId: number,
+): Promise<void> {
+  await client.sql`
+    INSERT INTO app.project_wraps (
+      project_id, sealed_at, sealed_by, sealed_by_snapshot,
+      template_version, snapshot
+    )
+    SELECT p.id,
+           now(),
+           ${actorId},
+           jsonb_build_object('id', ${actorId}::integer, 'name', u.name),
+           1,
+           jsonb_build_object(
+             'version', 1,
+             'project', jsonb_build_object('id', p.id, 'code', p.code, 'name', p.name),
+             'stats', jsonb_build_object(),
+             'participants', '[]'::jsonb,
+             'timeline', jsonb_build_object()
+           )
+      FROM app.projects p
+      JOIN app.users u ON u.id = ${actorId}
+     WHERE p.id = ${project.projectId}
+  `;
+}
+
 /** 走夹具之外的路径重建项目行，用于验证编码已随物理删除释放。 */
 async function insertProjectWithCode(
   code: string,
@@ -466,6 +494,7 @@ beforeAll(async () => {
     members,
     new ProjectRoleGateService(access, members),
     new ProjectStartNotifier(members, new PostgresNotificationWritePort()),
+    new ProjectWrapNotifier(members, new PostgresNotificationWritePort()),
   );
   const http = new ProjectManagementHttpService(
     new AuthenticatedMutationService(auth, csrf, tokens),
@@ -503,6 +532,14 @@ describe("ADR-062 project delete API", () => {
     const path = `/projects/${projectId}`;
     await seedPurgeableRecords(value.project, value.owner.userId);
     await seedProjectAudit(value.project, value.owner.userId);
+    await seedProjectWrap(value.project, value.owner.userId);
+
+    const beforeWraps = (await client.sql`
+      SELECT count(*)::int AS "total"
+        FROM app.project_wraps
+       WHERE project_id = ${projectId}
+    `) as unknown as readonly { total: number }[];
+    expect(beforeWraps[0]!.total).toBe(1);
 
     const before = await projectBusinessRowCounts(projectId);
     const beforeAudit = await projectAuditRowCounts(projectId);
@@ -538,6 +575,12 @@ describe("ADR-062 project delete API", () => {
     // 项目行与全部下级业务数据消失，但项目自己的审计日志与链头原样保留。
     expect(await projectExists(projectId)).toBe(false);
     expect(await projectChainHeadExists(projectId)).toBe(true);
+    const afterWraps = (await client.sql`
+      SELECT count(*)::int AS "total"
+        FROM app.project_wraps
+       WHERE project_id = ${projectId}
+    `) as unknown as readonly { total: number }[];
+    expect(afterWraps[0]!.total).toBe(0);
     expect(await projectBusinessRowCounts(projectId)).toEqual(
       Object.fromEntries(PROJECT_SCOPED_TABLES.map((table) => [table, 0])),
     );

@@ -9,6 +9,7 @@ import type {
 } from "@generated/api";
 import { CreateProjectModal } from "./CreateProjectModal";
 import { EditProjectModal } from "./ProjectManagementModals";
+import { ProjectSuccessToast } from "./ProjectSuccessToast";
 import { useProjectStars } from "./project-star";
 import {
   CalmBadge,
@@ -76,6 +77,7 @@ export interface ProjectsPageViewProps {
    * 一直挂在页面上，重新点「新建项目」时它仍显示旧项目名，属于「上次残留」，先清掉。
    */
   readonly onStartCreate?: (() => void) | undefined;
+  readonly onDismissCreatedProject?: (() => void) | undefined;
   readonly onCreated?: (response: CreateProjectResponse) => void;
   /** 整项目导入成功（ADR-064）：结果含项目 ID 与计数，去向由调用方决定。 */
   readonly onImportedProject?:
@@ -99,6 +101,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
   isAdmin = false,
   createdProject,
   onStartCreate,
+  onDismissCreatedProject,
   onCreated,
   onImportedProject,
   onOpenActivity,
@@ -119,6 +122,11 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
   const [managementSuccess, setManagementSuccess] = useState<string | null>(
     null,
   );
+
+  const showManagementSuccess = (message: string) => {
+    onDismissCreatedProject?.();
+    setManagementSuccess(message);
+  };
   // 本地过滤（2026-09-30 用户指示）：只在项目列表页搜索当前列表，不走全局搜索。
   const [search, setSearch] = useState("");
   // 生命周期分档（2026-10-09 用户指示）：与任务中心「未完成 / 已完成」同形态的滑块，
@@ -243,78 +251,66 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
         </p>
       ) : null}
 
-      {createdProject ? (
-        <div className="creation-success" data-testid="created-project-success">
-          <div className="creation-success-icon">
-            <InpulseIcon name="check" size={18} />
-          </div>
-          <div className="creation-success-body">
-            <strong>项目创建成功</strong>
-            <span>
-              {createdProject.project.name}（{createdProject.project.code}） ·
-              现在可以新增模块，或在新建任务时创建模块和功能。
-            </span>
-          </div>
-          <div className="creation-success-actions">
-            {/* 创建后的下一步就是「添加模块」：带一次性信号进入项目工作区，
-                落地即打开新增模块弹窗；没有该回调时退化为普通打开模块列表。 */}
-            <Button
-              className="primary-button"
-              data-testid="add-module-after-create"
-              {...routePreloadHandlers(
-                `/projects/${createdProject.project.id}/modules`,
-              )}
-              onClick={() =>
-                (onAddModule ?? onOpenModules)?.(createdProject.project.id)
-              }
-            >
-              添加模块
-            </Button>
-            {isAdmin && onOpenMembers ? (
+      {managementSuccess ? (
+        <ProjectSuccessToast
+          testId="project-management-success"
+          title={managementSuccess}
+          onDismiss={() => setManagementSuccess(null)}
+        />
+      ) : createdProject ? (
+        <ProjectSuccessToast
+          testId="created-project-success"
+          title="项目创建成功"
+          description={`${createdProject.project.name}（${createdProject.project.code}） · 现在可以新增模块，或在新建任务时创建模块和功能。`}
+          onDismiss={onDismissCreatedProject}
+          actions={
+            <>
+              {/* 创建后的下一步就是「添加模块」：带一次性信号进入项目工作区，
+                  落地即打开新增模块弹窗；没有该回调时退化为普通打开模块列表。 */}
+              <Button
+                className="primary-button"
+                data-testid="add-module-after-create"
+                {...routePreloadHandlers(
+                  `/projects/${createdProject.project.id}/modules`,
+                )}
+                onClick={() =>
+                  (onAddModule ?? onOpenModules)?.(createdProject.project.id)
+                }
+              >
+                添加模块
+              </Button>
+              {isAdmin && onOpenMembers ? (
+                <Button
+                  className="text-button"
+                  {...routePreloadHandlers(
+                    `/projects/${createdProject.project.id}/members`,
+                  )}
+                  onClick={() => onOpenMembers(createdProject.project.id)}
+                >
+                  管理成员
+                </Button>
+              ) : null}
               <Button
                 className="text-button"
+                data-testid="open-created-project-activity"
                 {...routePreloadHandlers(
-                  `/projects/${createdProject.project.id}/members`,
+                  `/projects/${createdProject.project.id}/activity`,
                 )}
-                onClick={() => onOpenMembers(createdProject.project.id)}
+                onClick={() => onOpenActivity?.(createdProject.project.id)}
               >
-                管理成员
+                查看项目动态
               </Button>
-            ) : null}
-            <Button
-              className="text-button"
-              data-testid="open-created-project-activity"
-              {...routePreloadHandlers(
-                `/projects/${createdProject.project.id}/activity`,
-              )}
-              onClick={() => onOpenActivity?.(createdProject.project.id)}
-            >
-              查看项目动态
-            </Button>
-            <Button
-              className="text-button"
-              data-testid="search-created-project"
-              {...routePreloadHandlers("/search")}
-              onClick={() => onSearch?.(createdProject.project.code)}
-            >
-              搜索项目
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {managementSuccess ? (
-        <div
-          className="creation-success"
-          data-testid="project-management-success"
-        >
-          <div className="creation-success-icon">
-            <InpulseIcon name="check" size={18} />
-          </div>
-          <div className="creation-success-body">
-            <strong>{managementSuccess}</strong>
-          </div>
-        </div>
+              <Button
+                className="text-button"
+                data-testid="search-created-project"
+                {...routePreloadHandlers("/search")}
+                onClick={() => onSearch?.(createdProject.project.code)}
+              >
+                搜索项目
+              </Button>
+            </>
+          }
+        />
       ) : null}
 
       {projectsLoading ? (
@@ -514,24 +510,22 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
             setEditingRole(null);
           }}
           onUpdated={(updated) => {
+            const statusNote =
+              editing.status === updated.status
+                ? ""
+                : `，状态已改为${projectLifecycleLabel(updated.status)}`;
             setEditing(null);
             setEditingRole(null);
-            setManagementSuccess(
-              `项目「${updated.name}」已更新，当前版本 ${updated.rowVersion}。`,
+            showManagementSuccess(
+              `项目「${updated.name}」已更新${statusNote}，当前版本 ${updated.rowVersion}。`,
             );
           }}
           onDeleted={() => {
             const name = editing.name;
             setEditing(null);
             setEditingRole(null);
-            setManagementSuccess(
+            showManagementSuccess(
               `项目「${name}」已删除，其业务数据已清除；项目历史审计链与系统审计链中的「删除项目」记录均已保留，仅供管理员追溯。`,
-            );
-          }}
-          onStatusChanged={(updated) => {
-            setEditing(updated);
-            setManagementSuccess(
-              `项目「${updated.name}」状态已改为${projectLifecycleLabel(updated.status)}，当前版本 ${updated.rowVersion}。`,
             );
           }}
         />

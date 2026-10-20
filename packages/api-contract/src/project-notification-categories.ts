@@ -42,6 +42,7 @@ export const notificationTypesByProjectCategory: Readonly<
     "PROJECT_CREATED",
     "PROJECT_JOINED",
     "project.status.change",
+    "project.wrapped",
   ],
   "scope.delete": [],
 };

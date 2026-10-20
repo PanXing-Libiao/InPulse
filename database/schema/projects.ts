@@ -113,3 +113,39 @@ export const projectMembers = appSchema.table(
     ),
   ],
 );
+
+export const projectWraps = appSchema.table(
+  "project_wraps",
+  {
+    projectId: integer("project_id").primaryKey(),
+    sealedAt: timestamptz("sealed_at").notNull(),
+    sealedBy: integer("sealed_by").notNull(),
+    sealedBySnapshot: jsonb("sealed_by_snapshot").notNull(),
+    templateVersion: integer("template_version").notNull().default(1),
+    snapshot: jsonb("snapshot").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: "project_wraps_project_fk",
+      columns: [table.projectId],
+      foreignColumns: [projects.id],
+    }).onDelete("cascade"),
+    check("project_wraps_sealed_by_check", sql.raw("sealed_by > 0")),
+    check(
+      "project_wraps_template_version_check",
+      sql.raw("template_version >= 1"),
+    ),
+    check(
+      "project_wraps_sealed_by_snapshot_check",
+      sql.raw(
+        "jsonb_typeof(sealed_by_snapshot) = 'object' AND jsonb_typeof(sealed_by_snapshot->'id') = 'number' AND jsonb_typeof(sealed_by_snapshot->'name') = 'string' AND length(btrim(sealed_by_snapshot->>'name')) BETWEEN 1 AND 200 AND sealed_by_snapshot->>'id' = sealed_by::text",
+      ),
+    ),
+    check(
+      "project_wraps_snapshot_check",
+      sql.raw(
+        "jsonb_typeof(snapshot) = 'object' AND snapshot->>'version' = template_version::text AND jsonb_typeof(snapshot->'project') = 'object' AND jsonb_typeof(snapshot->'stats') = 'object' AND jsonb_typeof(snapshot->'participants') = 'array' AND jsonb_typeof(snapshot->'timeline') = 'object' AND pg_column_size(snapshot) <= 262144",
+      ),
+    ),
+  ],
+);

@@ -12,7 +12,7 @@
       2. scp 逐文件上传到 VM /home/<user>/inpulse-deploy/.bridge-upload-<时间戳>/；
       3. VM 上 sha256sum -c 逐文件校验，不通过立即停止；
       4. 备份 VM 现有 wecom-bridge/ 源码为 backups/wecom-bridge-src-<时间戳>.tgz；
-      5. app/package.json 变化时，用现有桥接镜像执行 npm install --omit=dev 刷新依赖；
+      5. app/package.json 变化时，用固定 Node 镜像执行 npm install --omit=dev 刷新依赖；
       6. docker build inpulse-wecom-bridge:<Tag> 并推入本地 registry 127.0.0.1:5000；
       7. 按固定安全参数重建容器（只读根、cap-drop ALL、tmpfs、10001，先接 egress 再 connect backend），
          等待日志出现「订阅成功」；失败时打印回滚命令；
@@ -256,10 +256,7 @@ if [ "$MODE" = "update" ]; then
 
   if [ "$DEPS_CHANGED" = "1" ]; then
     echo "[deps] app/package.json 有变化，刷新依赖（npm install --omit=dev）"
-    NPM_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER" 2>/dev/null || true)"
-    if [ -z "$NPM_IMAGE" ]; then
-      NPM_IMAGE="$(sed -n 's/^FROM //p' "$BRIDGE_DIR/Dockerfile" | head -n1)"
-    fi
+    NPM_IMAGE="node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e"
     docker run --rm --network "$NET_EGRESS" --entrypoint npm -v "$BRIDGE_DIR/app:/work" -w /work "$NPM_IMAGE" install --omit=dev --no-audit --no-fund
     chown -R 10001:10001 "$BRIDGE_DIR/app/node_modules"
     if [ -f "$BRIDGE_DIR/app/package-lock.json" ]; then chown 10001:10001 "$BRIDGE_DIR/app/package-lock.json"; fi
