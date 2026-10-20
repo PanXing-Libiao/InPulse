@@ -654,7 +654,7 @@ export type LeftoverListItem = {
   readonly author: UserRef;
   readonly publishedAt: string;
   readonly content: string;
-  readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED");
+  readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED" | "VOIDED");
   readonly sourceTask: (AggregateTaskRef | null);
   readonly followupTask: (AggregateTaskRef | null);
 };
@@ -1349,7 +1349,7 @@ export type PublishedRecord = {
   readonly leftovers: readonly ({
     readonly id: number;
     readonly content: string;
-    readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED");
+    readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED" | "VOIDED");
     readonly rowVersion: number;
     readonly linkedTaskId: (number | null);
   })[];
@@ -1580,7 +1580,7 @@ export type RecordSummaryIssue = {
   readonly projectName: string;
   readonly author: UserRef;
   readonly content: string;
-  readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED");
+  readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED" | "VOIDED");
   readonly followupTaskId: (number | null);
   readonly followupTaskCode: (string | null);
   readonly publishedAt: string;
@@ -2296,7 +2296,7 @@ export type VoidedRecord = {
   readonly leftovers: readonly ({
     readonly id: number;
     readonly content: string;
-    readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED");
+    readonly status: ("ACTIVE" | "CONVERTED" | "RESOLVED" | "VOIDED");
     readonly rowVersion: number;
     readonly linkedTaskId: (number | null);
   })[];

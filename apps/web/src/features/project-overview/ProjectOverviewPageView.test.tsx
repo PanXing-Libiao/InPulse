@@ -254,7 +254,7 @@ describe("ProjectOverviewPageView", () => {
       }),
     });
     expect(await screen.findByText("暂无已发布记录")).toBeInTheDocument();
-    expect(screen.getByText("没有待闭环的遗留问题")).toBeInTheDocument();
+    expect(screen.getByText("没有未处理的遗留问题")).toBeInTheDocument();
   });
 
   it("surfaces the adapter error message", async () => {

@@ -165,6 +165,36 @@ it("renders the source task link and the four content sections", async () => {
   expect(within(region).getByText("改动效果")).toBeVisible();
   expect(within(region).getByText("遗留问题")).toBeVisible();
 });
+it("renders leftovers of a void record as 已作废 and keeps the follow-up task link", async () => {
+  const api = withNameSources({
+    getChangeRecord: vi.fn().mockResolvedValue({
+      ...item,
+      status: "VOID",
+      featureId: 2,
+      voidedAt: first.createdAt,
+      voidReason: "记录作废",
+      leftovers: [
+        {
+          id: 31,
+          content: "随记录作废的遗留问题",
+          status: "VOIDED",
+          rowVersion: 1,
+          linkedTaskId: 8,
+        },
+      ],
+    }),
+    listChangeRecordVersions: vi
+      .fn()
+      .mockResolvedValue({ items: [second, first] }),
+  });
+  mountDetail(api);
+  const region = await screen.findByRole("region", { name: "遗留问题列表" });
+  expect(await within(region).findByText("已作废")).toBeVisible();
+  expect(within(region).getByText("随记录作废的遗留问题")).toBeVisible();
+  expect(
+    within(region).getByRole("link", { name: "查看跟进任务" }),
+  ).toHaveAttribute("href", "/projects/1/modules/2/features/2?taskId=8");
+});
 it("opens the source task in place when the host passes onOpenTask", async () => {
   const api = withNameSources({
     getChangeRecord: vi

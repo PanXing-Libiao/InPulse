@@ -366,7 +366,7 @@ describe("ChangeRecordReadPort.summaryRecords", () => {
 });
 
 describe("ChangeRecordReadPort.summaryLeftovers", () => {
-  test("按来源记录发布日过滤，closedTotal 只数已闭环项", async () => {
+  test("按来源记录发布日过滤，closedTotal 计入已处理与父记录已作废项", async () => {
     const recordId = await newPublishedRecord(scope, {
       featureId: scope.featureId,
       publishedAt: isoAt(1),
@@ -377,6 +377,17 @@ describe("ChangeRecordReadPort.summaryLeftovers", () => {
       recordId,
       "CONVERTED",
       "已转任务跟进",
+    );
+    const voidRecord = await newPublishedRecord(scope, {
+      featureId: scope.featureId,
+      publishedAt: isoAt(2),
+      status: "VOID",
+    });
+    const voided = await newLeftover(
+      scope,
+      voidRecord,
+      "ACTIVE",
+      "来源记录已作废",
     );
     const outOfRange = await newPublishedRecord(scope, {
       featureId: scope.featureId,
@@ -394,14 +405,18 @@ describe("ChangeRecordReadPort.summaryLeftovers", () => {
     const ids = page.items.map((row) => row.leftoverItemId);
     expect(ids).toContain(active);
     expect(ids).toContain(converted);
+    expect(ids).toContain(voided);
     expect(page.items.some((row) => row.content === "范围外遗留")).toBe(false);
-    expect(page.total).toBe(2);
-    expect(page.closedTotal).toBe(1);
+    expect(page.total).toBe(3);
+    expect(page.closedTotal).toBe(2);
     const convertedRow = page.items.find(
       (row) => row.leftoverItemId === converted,
     );
     expect(convertedRow?.status).toBe("CONVERTED");
     expect(convertedRow?.recordCode.startsWith(scope.code)).toBe(true);
+    const voidedRow = page.items.find((row) => row.leftoverItemId === voided);
+    expect(voidedRow?.status).toBe("VOIDED");
+    expect(voidedRow?.followupTaskId).toBeNull();
   });
 });
 

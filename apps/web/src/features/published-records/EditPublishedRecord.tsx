@@ -55,7 +55,7 @@ export function EditPublishedRecord({
   const submittedIds = new Set(
     remaining.flatMap((entry) => (entry.id === undefined ? [] : [entry.id])),
   );
-  // 移除（或清空）当前版本里未闭环的遗留项会被标记为已解决，必须显式确认。
+  // 移除（或清空）当前版本里未处理的遗留项会被标记为已处理，必须显式确认。
   const removedActive = (baseline ?? item).leftovers.filter(
     (leftover) =>
       leftover.status === "ACTIVE" && !submittedIds.has(leftover.id),
@@ -357,7 +357,7 @@ export function EditPublishedRecord({
                   checked={confirmed}
                   onChange={(e) => setConfirmed(e.target.checked)}
                 />
-                确认移除的遗留问题已解决（标记为已完成，不会删除历史；
+                确认移除的遗留问题已处理（不会删除历史；
                 {removedActive.length} 条）
               </label>
             )}

@@ -869,7 +869,7 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
     expect(resolved.followupTask).toBeNull();
 
     const voided = page.items[0]!;
-    expect(voided).toMatchObject({ recordId: rVoid, status: "ACTIVE" });
+    expect(voided).toMatchObject({ recordId: rVoid, status: "VOIDED" });
     expect(voided.sourceTask).toEqual({
       taskId: tSourceB,
       code: await taskCode(tSourceB, project!),
@@ -880,30 +880,27 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
     expect(voided.followupTask).toBeNull();
   });
 
-  test("bucket=OPEN 只含 ACTIVE（含作废记录的遗留项），bucket=CLOSED 含 CONVERTED 与 RESOLVED", async () => {
+  test("bucket=OPEN 只含 PUBLISHED 记录的 ACTIVE 项，bucket=CLOSED 含已处理与父记录作废的项", async () => {
     const open = leftoverItemPageSchema.parse(
       (await getJson("/api/v1/leftover-items?bucket=OPEN", memberCookie)).body,
     );
     expect(open.items.map((item) => item.leftoverItemId)).toEqual([
-      loVoid,
       loOrphan,
       loLinked,
     ]);
-    expect(open.items.map((item) => item.status)).toEqual([
-      "ACTIVE",
-      "ACTIVE",
-      "ACTIVE",
-    ]);
+    expect(open.items.map((item) => item.status)).toEqual(["ACTIVE", "ACTIVE"]);
 
     const closed = leftoverItemPageSchema.parse(
       (await getJson("/api/v1/leftover-items?bucket=CLOSED", memberCookie))
         .body,
     );
     expect(closed.items.map((item) => item.leftoverItemId)).toEqual([
+      loVoid,
       loResolved,
       loConverted,
     ]);
     expect(closed.items.map((item) => item.status)).toEqual([
+      "VOIDED",
       "RESOLVED",
       "CONVERTED",
     ]);
@@ -918,7 +915,6 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
       ).body,
     );
     expect(narrowed.items.map((item) => item.leftoverItemId)).toEqual([
-      loVoid,
       loOrphan,
       loLinked,
     ]);
@@ -991,6 +987,101 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
       422,
       "INVALID_CURSOR",
     );
+  });
+
+  test("记录作废时遗留项派生为 VOIDED，恢复 PUBLISHED 后回到原状态并保留跟进", async () => {
+    const projectId = project!.projectId;
+    const setVoid = async (recordId: number) => {
+      await runtime!.sql`
+        UPDATE app.change_records
+           SET status = 'VOID',
+               voided_at = GREATEST(clock_timestamp(), published_at),
+               void_reason = '遗留状态回归夹具',
+               row_version = row_version + 1,
+               updated_at = GREATEST(clock_timestamp(), updated_at)
+         WHERE id = ${recordId} AND project_id = ${projectId}
+      `;
+    };
+    const setPublished = async (recordId: number) => {
+      await runtime!.sql`
+        UPDATE app.change_records
+           SET status = 'PUBLISHED',
+               row_version = row_version + 1,
+               updated_at = GREATEST(clock_timestamp(), updated_at)
+         WHERE id = ${recordId} AND project_id = ${projectId}
+      `;
+    };
+
+    try {
+      await setPublished(rVoid);
+      const reopened = leftoverItemPageSchema.parse(
+        (await getJson("/api/v1/leftover-items?bucket=OPEN", memberCookie))
+          .body,
+      );
+      expect(
+        reopened.items.find((item) => item.leftoverItemId === loVoid)?.status,
+      ).toBe("ACTIVE");
+
+      await setVoid(rResolved);
+      const closedResolvedVoided = leftoverItemPageSchema.parse(
+        (await getJson("/api/v1/leftover-items?bucket=CLOSED", memberCookie))
+          .body,
+      );
+      expect(
+        closedResolvedVoided.items.find(
+          (item) => item.leftoverItemId === loResolved,
+        )?.status,
+      ).toBe("VOIDED");
+      await setPublished(rResolved);
+      const restoredResolved = leftoverItemPageSchema.parse(
+        (await getJson("/api/v1/leftover-items?bucket=CLOSED", memberCookie))
+          .body,
+      );
+      expect(
+        restoredResolved.items.find(
+          (item) => item.leftoverItemId === loResolved,
+        )?.status,
+      ).toBe("RESOLVED");
+
+      await setVoid(rConverted);
+      const closedWhileVoided = leftoverItemPageSchema.parse(
+        (await getJson("/api/v1/leftover-items?bucket=CLOSED", memberCookie))
+          .body,
+      );
+      expect(
+        closedWhileVoided.items.find(
+          (item) => item.leftoverItemId === loConverted,
+        )?.status,
+      ).toBe("VOIDED");
+      const openWhileVoided = leftoverItemPageSchema.parse(
+        (await getJson("/api/v1/leftover-items?bucket=OPEN", memberCookie))
+          .body,
+      );
+      expect(
+        openWhileVoided.items.map((item) => item.leftoverItemId),
+      ).not.toContain(loConverted);
+
+      await setPublished(rConverted);
+      const restored = leftoverItemPageSchema.parse(
+        (await getJson("/api/v1/leftover-items?bucket=CLOSED", memberCookie))
+          .body,
+      );
+      const restoredConverted = restored.items.find(
+        (item) => item.leftoverItemId === loConverted,
+      );
+      expect(restoredConverted).toMatchObject({ status: "CONVERTED" });
+      expect(restoredConverted?.followupTask).toEqual({
+        taskId: tFollowup,
+        code: await taskCode(tFollowup, project!),
+        projectId,
+        moduleId: project!.moduleId,
+        featureId: featureB,
+      });
+    } finally {
+      await setVoid(rVoid);
+      await setPublished(rConverted);
+      await setPublished(rResolved);
+    }
   });
 
   test("其他项目成员只看到自己项目的遗留项", async () => {

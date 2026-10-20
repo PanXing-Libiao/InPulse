@@ -39,7 +39,7 @@ export const publishedRecordSchema = recordDraftItemSchema
     publishedAt: z.iso.datetime(),
     leftovers: z.array(
       recordVersionLeftoverSchema.extend({
-        status: z.enum(["ACTIVE", "CONVERTED", "RESOLVED"]),
+        status: z.enum(["ACTIVE", "CONVERTED", "RESOLVED", "VOIDED"]),
         rowVersion: id,
         linkedTaskId: id.nullable(),
       }),

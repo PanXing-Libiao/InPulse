@@ -22,19 +22,31 @@ import {
 } from "@features/published-records/RecordDetailModal";
 import { useProjects } from "@features/projects/project-query";
 import type { TaskLocation } from "@features/tasks/task-links";
-import { isLeftoverClosed, issueOriginParts } from "./issues-format";
+import {
+  isLeftoverClosed,
+  issueOriginParts,
+  leftoverStatusText,
+  leftoverStatusTone,
+} from "./issues-format";
 import { describeIssuesError, useLeftoverItemsQuery } from "./issues-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+import {
+  DeleteLeftoverItemModal,
+  type DeleteLeftoverTarget,
+} from "./DeleteLeftoverItemModal";
 
 /**
- * F-20 遗留问题页（R-6）：未闭环与已闭环两个分桶各自按服务端签名游标分页，
- * 行内保留来源记录与来源 / 跟进任务引用，未闭环项可直接转为跟进任务（复用
+ * F-20 遗留问题页（R-6）：未处理与已处理 / 已作废两个分桶各自按服务端签名游标
+ * 分页，行内保留来源记录与来源 / 跟进任务引用，未处理项可直接转为跟进任务（复用
  * 已发布记录页的转换弹窗：CSRF、If-Match 与幂等键语义完全一致）。
  * 项目筛选与迭代记录页同口径：projectId 进 URL（服务端参数），0 表示全部项目。
  *
- * 与设计稿的显式差异：CLOSED 桶按服务端口径同时包含 CONVERTED 与 RESOLVED，
- * 其中 RESOLVED 没有跟进任务，因此「转为任务」入口只出现在未闭环项；
- * 已闭环且无跟进任务的行不再提供无法完成的入口。
+ * CLOSED 桶按服务端口径同时包含 CONVERTED / RESOLVED（已处理）与父记录 VOID
+ * 派生的 VOIDED（已作废），因此「转为任务」入口只出现在未处理项；已处理或
+ * 已作废且无跟进任务的行不再提供无法完成的入口。
+ *
+ * 未处理且没有跟进任务的 ACTIVE 项可「删除」：确认后创建新的正式记录版本并把该项
+ * 标记为 RESOLVED，历史版本、来源记录与审计全部保留，不做物理删除。
  */
 
 export interface IssuesPageViewProps {
@@ -58,6 +70,10 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
   const projects = useProjects({ client });
   const [convertTarget, setConvertTarget] =
     useState<LeftoverConvertTarget | null>(null);
+  /** 删除 = 从当前记录版本移除并标记已解决；确认框负责说明历史保留。 */
+  const [deleteTarget, setDeleteTarget] = useState<DeleteLeftoverTarget | null>(
+    null,
+  );
   const openQuery = useLeftoverItemsQuery({
     client,
     bucket: "OPEN",
@@ -136,8 +152,8 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
       >
         <div className="issue-main">
           <div className="issue-head">
-            <CalmBadge tone={closed ? "green" : "amber"}>
-              {closed ? "已闭环" : "待闭环"}
+            <CalmBadge tone={leftoverStatusTone(item.status)}>
+              {leftoverStatusText(item.status)}
             </CalmBadge>
             <span className="task-id">{item.recordCode}</span>
             <strong>{item.content}</strong>
@@ -205,6 +221,25 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
             </button>
           )}
         </div>
+        {closed || followupTask !== null ? null : (
+          <button
+            type="button"
+            className="issue-delete-button"
+            aria-label="删除遗留问题"
+            title="删除遗留问题"
+            onClick={() =>
+              setDeleteTarget({
+                projectId: item.projectId,
+                recordId: item.recordId,
+                recordCode: item.recordCode,
+                leftoverItemId: item.leftoverItemId,
+                content: item.content,
+              })
+            }
+          >
+            <InpulseIcon name="trash" size={15} />
+          </button>
+        )}
       </article>
     );
   };
@@ -252,9 +287,9 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
         </div>
       )}
 
-      {/* 未闭环分档标题（含条数与排序说明）2026-10-10 按用户指示整条删除：这一
-          档的卡片本来就都带「待闭环」徽章，标题属于重复信息，条数与排序说明用户
-          确认不重要。已闭环那档的标题是折叠区开关，仍然保留。 */}
+      {/* 未处理分档标题（含条数与排序说明）2026-10-10 按用户指示整条删除：这一
+          档的卡片本来就都带「未处理」徽章，标题属于重复信息，条数与排序说明用户
+          确认不重要。已处理 / 已作废那档的标题是折叠区开关，仍然保留。 */}
       {openQuery.isPending ? (
         <CalmSkeleton variant="list" rows={4} label="正在加载遗留问题…" />
       ) : openQuery.isError ? (
@@ -262,11 +297,11 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
       ) : openItems.length === 0 ? (
         <CalmEmptyState
           icon="check"
-          title="没有待闭环的遗留问题"
+          title="没有未处理的遗留问题"
           description={
             projectId > 0
-              ? "该项目已发布记录的遗留事项都已经转为跟进任务。"
-              : "所有已发布记录的遗留事项都已经转为跟进任务。"
+              ? "该项目记录的遗留事项都已处理或作废。"
+              : "所有记录的遗留事项都已处理或作废。"
           }
         />
       ) : (
@@ -290,7 +325,7 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
       {closedItems.length > 0 || closedQuery.isError ? (
         <details className="calm-disclosure history-block">
           <summary>
-            {"已闭环 " + String(closedItems.length) + " 条 · 已生成跟进任务"}
+            {"已处理或已作废 " + String(closedItems.length) + " 条"}
           </summary>
           {closedQuery.isError ? (
             <Alert
@@ -323,7 +358,7 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
         <div>
           <strong>问题不是任务</strong>
           <p>
-            转为任务时系统会自动带入来源项目、模块、功能与遗留问题描述，并把来源记录标记为已闭环；原记录内容不会被修改。
+            转为任务时系统会自动带入来源项目、模块、功能与遗留问题描述，并把来源问题标记为已处理；原记录内容不会被修改。删除只会把问题移入已处理，来源记录与历史版本同样保留。
           </p>
         </div>
       </div>
@@ -354,6 +389,14 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
               taskId: created.taskId,
             });
           }}
+        />
+      )}
+
+      {deleteTarget === null ? null : (
+        <DeleteLeftoverItemModal
+          target={deleteTarget}
+          api={api}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
     </section>

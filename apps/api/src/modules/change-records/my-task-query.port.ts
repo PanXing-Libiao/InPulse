@@ -447,7 +447,7 @@ export class PostgresMyTaskQueryPort extends MyTaskQueryPort {
           JOIN app.change_records cr
             ON cr.id = li.record_id
            AND cr.project_id = li.project_id
-           AND cr.status IN ('PUBLISHED', 'VOID')
+           AND cr.status = 'PUBLISHED'
           JOIN LATERAL (
             SELECT v.content_snapshot
               FROM app.change_record_version_leftovers v

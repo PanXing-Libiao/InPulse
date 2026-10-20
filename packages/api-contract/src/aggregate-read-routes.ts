@@ -202,7 +202,7 @@ export const aggregateReadRoutes: readonly RouteDefinition[] = [
     path: "/leftover-items",
     operationId: "listLeftoverItems",
     summary:
-      "R-6 遗留问题列表（F-20 / F-32）：跨项目按 AuthorizedProjectScope 汇总可见记录的稳定遗留项；bucket 区分未闭环 / 已闭环，游标按 leftoverItemId DESC；内容取最新版本快照，来源任务与跟进任务只返回任务引用，不复制任务实体。",
+      "R-6 遗留问题列表（F-20 / F-32）：跨项目按 AuthorizedProjectScope 汇总可见记录的稳定遗留项；bucket 区分未处理 / 已处理或已作废，游标按 leftoverItemId DESC；内容取最新版本快照，来源任务与跟进任务只返回任务引用，不复制任务实体。",
     request: {
       path: "none",
       query: "LeftoverListQueryRequest",

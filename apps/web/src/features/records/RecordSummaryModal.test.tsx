@@ -256,7 +256,7 @@ describe("RecordSummaryModal 明细展开", () => {
     expect(screen.getByText("具体改动正文")).toBeVisible();
     expect(screen.getByText("改动效果正文")).toBeVisible();
     expect(screen.getByText("遗留问题正文")).toBeVisible();
-    expect(screen.getByText("未闭环")).toBeVisible();
+    expect(screen.getByText("未处理")).toBeVisible();
     expect(client.getChangeRecord).toHaveBeenCalledWith(1, 7, signalInit);
     // 只读形态：不可变版本、GitHub 关联、修订与作废入口都不渲染、不发请求。
     expect(client.listChangeRecordVersions).not.toHaveBeenCalled();

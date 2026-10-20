@@ -1035,7 +1035,7 @@ describe("ChangeRecordReadPort", () => {
     ).rejects.toMatchObject({ reason: "invalid-limit" });
   });
 
-  test("active leftovers use the newest snapshot of visible records only", async () => {
+  test("active leftovers use the newest snapshot of published records only", async () => {
     const scope = await newProject();
     const featureId = await newFeature(scope, scope.moduleId, "遗留功能");
     const record = await newPublishedRecord(scope, { featureId });
@@ -1069,9 +1069,8 @@ describe("ChangeRecordReadPort", () => {
     const ids = leftovers
       .map((item) => item.leftoverItemId)
       .sort((left, right) => left - right);
-    expect(ids).toEqual(
-      [activeLeftover, voidLeftover].sort((left, right) => left - right),
-    );
+    expect(ids).toEqual([activeLeftover]);
+    expect(ids).not.toContain(voidLeftover);
     expect(ids).not.toContain(resolvedLeftover);
     expect(ids).not.toContain(draftLeftover);
     expect(ids).not.toContain(otherLeftover);
@@ -1101,9 +1100,7 @@ describe("ChangeRecordReadPort", () => {
         limit: 10,
       }),
     );
-    expect(moduleScoped.map((item) => item.leftoverItemId)).toEqual([
-      voidLeftover,
-    ]);
+    expect(moduleScoped).toEqual([]);
     const capped = await uow.run((tx) =>
       records.listActiveLeftovers(tx, {
         projectId: scope.projectId,

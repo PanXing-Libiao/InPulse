@@ -6882,3 +6882,35 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ORG-SELECT-UI-002 | 浏览器复核 | 实际页面下拉外观 | 管理员进入「加入组织」后打开目标组织下拉，弹层为应用统一浅色菜单，选项为 `NEXT-HUB` 与「＋ 新建组织」，无浏览器默认灰色选中块 | 本地通过（2026-10-20，手动复核 `/settings`） |
 
 验证结果（2026-10-20）：`AdminUsersPageView.test.tsx` 31/31、全量 Web 单测 116 文件 978 例、Web typecheck、定向 ESLint、Prettier、`check:docs` 与浏览器手动复核均通过。
+
+## 2026-10-20 遗留问题页布局收口与角落删除入口（用户指示，本地落库）
+
+用户先指出遗留问题页布局不协调、并要求增加删除，随后要求把删除收成角落里的小图标。前端把页面标题、项目筛选、卡片列表、已闭环折叠区与底部说明统一收进同一条 1020px 阅读列；移除卡片标题与来源行强制预留的两行高度；已闭环标题改为「已闭环 N 条」，避免把 RESOLVED 项误称为「已生成跟进任务」。删除入口现为卡片右上角的 30×30 淡灰垃圾桶图标，卡片右侧预留 48px，动作按钮与图标之间保持约 10px 水平间距，窄屏纵向布局下也不会重叠。
+
+删除不做物理删除：遗留项被版本快照和任务链接以 RESTRICT 外键引用，仓库规则也要求保留业务历史。删除确认框复用正式记录修订命令：先读取完整记录，校验目标仍为 PUBLISHED 记录中的 ACTIVE 项，再从提交列表移除该 id 并传 `confirmLeftoverResolved: true`；服务端在同一事务中把它标记为 RESOLVED，来源记录、全部历史版本与审计保留。请求携带 CSRF、`If-Match`、`X-Record-Version` 与幂等键；同一记录版本与同一目标重试复用同一幂等键，成功后失效遗留问题、记录、动态、搜索、通知与侧栏计数查询。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| F-20-UI-003 | Web 单元 | 删除 ACTIVE 遗留项 | 右上角删除图标可打开确认框并说明会移入已闭环且历史保留；提交体不含目标项、包含其余项且 `confirmLeftoverResolved=true`；请求头含 CSRF、`If-Match`、`X-Record-Version` 与 `leftover-delete-` 幂等键；成功后关闭确认框 | 本地通过（2026-10-20，`IssuesPageView.test.tsx` 10/10） |
+| F-20-UI-004 | Web 单元 | 已闭环无删除入口 | CONVERTED 与 RESOLVED 行均不渲染「删除遗留问题」按钮 | 本地通过（2026-10-20，同上） |
+| F-20-UI-005 | Web 单元 | 409 冲突重试 | 409 后确认框保持打开并提示刷新；再次确认复用同一幂等键 | 本地通过（2026-10-20，同上） |
+| F-20-UI-006 | 浏览器视觉 | 页面轨道、角标与确认框 | 1440px 宽页面中标题、筛选、卡片、折叠区与底部说明左右边缘一致；删除图标位于卡片右上角，与动作按钮水平间距约 10px；确认框为危险色条弹层并显示历史保留说明 | 本地通过（2026-10-20，Edge 本地开发环境手动复核） |
+
+验证结果（2026-10-20）：定向 Web 单测 10/10、全量 Web 单测 116 文件 980 例、Web typecheck、定向 ESLint、Prettier check、Web 生产构建与前端依赖边界检查均通过。未新增后端路由、Schema 或数据库迁移；未运行全量 API 集成、Playwright 与 GitHub Actions。
+
+## 2026-10-20 遗留问题状态改为未处理 / 已处理 / 已作废并随记录作废（用户指示，本地落库）
+
+用户要求把「未闭环」改为「未处理」，已收尾项按实际状态显示「已处理」或「已作废」，迭代记录详情同步，并在记录作废时一并作废遗留问题。实现采用读取时派生，不新增数据库状态、不修改历史迁移：`change_record_leftover_items.status` 仍只持久化 `ACTIVE / CONVERTED / RESOLVED`；父 `change_records.status = VOID` 时，R-6 列表、迭代记录详情和记录总结统一输出 `VOIDED`。`OPEN` 只含 PUBLISHED 记录的 ACTIVE 项，`CLOSED` 含已处理项及作废记录的全部遗留项；恢复记录为 PUBLISHED 后自动恢复原状态与跟进任务关联。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| LEFTOVER-STATUS-WEB-001 | Web 单元 | 状态文案与色调 | ACTIVE 显示未处理 / amber，CONVERTED 与 RESOLVED 显示已处理 / green，VOIDED 显示已作废 / gray；折叠区标题为「已处理或已作废 N 条」 | 本地通过（2026-10-20，`IssuesPageView.test.tsx`、`issues-format.test.ts`） |
+| LEFTOVER-STATUS-WEB-002 | Web 单元 | 已作废项无操作入口 | VOIDED 行不渲染「转为任务」或「删除遗留问题」，且不会误报跟进任务 | 本地通过（2026-10-20，`IssuesPageView.test.tsx`） |
+| LEFTOVER-STATUS-WEB-003 | Web 单元 | 迭代记录详情联动 | 父记录 VOID 的遗留项显示「已作废」；已有跟进任务链接仍可打开 | 本地通过（2026-10-20，`PublishedRecordDetail.test.tsx`） |
+| LEFTOVER-STATUS-WEB-004 | Web 单元 | 概览、总结与修订文案 | 空态为「没有未处理的遗留问题」；总结标签为「遗留问题（未处理）」，正文区分已处理或已作废；修订确认文字使用「已处理」 | 本地通过（2026-10-20，`ProjectOverviewPageView.test.tsx`、`RecordSummaryModal.test.tsx`、`record-summary-document.test.ts`、`EditPublishedRecord.test.tsx`） |
+| LEFTOVER-STATUS-API-001 | 真实 PostgreSQL 集成 | R-6 分桶与派生状态 | VOID 记录遗留项返回 VOIDED（含底层 RESOLVED 的截图同款场景）；OPEN 排除该记录，CLOSED 包含 VOIDED 与已处理项 | 本地通过（2026-10-20，`aggregate-read-list-api.integration.test.ts`） |
+| LEFTOVER-STATUS-API-002 | 真实 PostgreSQL 集成 | 作废后恢复 | 父记录恢复 PUBLISHED 后，原 ACTIVE 项回到 OPEN；原 CONVERTED 项恢复 CONVERTED 且保留跟进任务链接 | 本地通过（2026-10-20，同上） |
+| LEFTOVER-STATUS-API-003 | 真实 PostgreSQL 集成 | 概览与总结口径 | 项目概览的未处理计数排除 VOID 记录；记录总结 `closedTotal` 计入 VOIDED；任务中心遗留项计数不再包含作废记录 | 本地通过（2026-10-20，`aggregate-read-api.integration.test.ts`、`aggregate-read-ports.integration.test.ts`、`record-summary.integration.test.ts`） |
+| LEFTOVER-STATUS-BROWSER-001 | 浏览器复核 | 真实作废记录 | T1-CR-1 记录为 VOID 且底层遗留项为 RESOLVED，重启 API 后遗留问题页折叠区显示「已作废」而非「已处理」 | 本地通过（2026-10-20，Edge 本地开发页） |
+
+验证结果（2026-10-20）：定向 Web 单测 6 文件 58 例、全量 Web 单测 116 文件 982 例、API 单测 80 文件 517 例、相关真实 PostgreSQL 集成 3 文件 44 例及项目概览 1 文件 22 例均通过；工作区 typecheck、契约 drift（6 个产物）与 validate（126 条路由）、前端依赖边界、全量 build、Prettier、`check:docs`（137 个 Markdown 文件）与 `git diff --check` 通过；本地 API 已重建并重启，健康检查返回 ok，`dist` 中确认包含 VOIDED 派生 SQL；Edge 本地开发页复核 T1-CR-1 已显示「已作废」。全量 API 集成 64 文件 629 例中 628 例通过，唯一失败为未改动的 `project-member-management-api.integration.test.ts` ADR-040 用例（期望接手人只保留 `first`，实际第二接手人仍在），与本轮改动无关，未修改。未运行 Playwright E2E 与 GitHub Actions。

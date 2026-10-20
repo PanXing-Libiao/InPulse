@@ -71,7 +71,11 @@ interface LeftoverItemRowRaw extends Omit<LeftoverItemSummary, "createdAt"> {
   readonly createdAt: string;
 }
 
-/** R-6 遗留问题列表的展示分桶：OPEN = ACTIVE；CLOSED = CONVERTED / RESOLVED。 */
+/**
+ * R-6 遗留问题列表的展示分桶：OPEN = 父记录 PUBLISHED 且遗留项 ACTIVE；
+ * CLOSED = 父记录 VOID 或遗留项 CONVERTED / RESOLVED。VOIDED 为父记录状态派生的
+ * 有效状态，不写入 change_record_leftover_items，恢复记录后自然回到原状态。
+ */
 export type LeftoverListBucket = "OPEN" | "CLOSED";
 
 /** R-6 列表入参；projectIds 必须来自服务端 AuthorizedProjectScope，端口不校验授权。 */
@@ -95,7 +99,7 @@ export interface LeftoverListRow {
   readonly authorName?: string;
   readonly publishedAt: Date;
   readonly content: string;
-  readonly status: "ACTIVE" | "CONVERTED" | "RESOLVED";
+  readonly status: "ACTIVE" | "CONVERTED" | "RESOLVED" | "VOIDED";
   /** 来源任务（记录归属任务）；独立记录为 null。 */
   readonly sourceTaskId: number | null;
   /** 已生成跟进任务；未转换或「已解决」遗留项为 null。 */
@@ -209,7 +213,8 @@ export interface RecordSummaryLeftoverReadInput {
 
 /**
  * F-33 遗留问题行：内容取最新版本快照（与 R-6 同一口径）；status 为遗留项当前
- * 处置状态，CONVERTED / RESOLVED 计入已闭环。
+ * 有效处置状态，CONVERTED / RESOLVED 为已处理，父记录 VOID 时为 VOIDED（已作废）。
+ * 三者在 totals.closedLeftoverCount 中统一计入已收尾数量。
  */
 export interface RecordSummaryLeftoverRow {
   readonly leftoverItemId: number;
@@ -220,7 +225,7 @@ export interface RecordSummaryLeftoverRow {
   readonly authorId: number;
   readonly authorName?: string;
   readonly content: string;
-  readonly status: "ACTIVE" | "CONVERTED" | "RESOLVED";
+  readonly status: "ACTIVE" | "CONVERTED" | "RESOLVED" | "VOIDED";
   readonly followupTaskId: number | null;
   readonly publishedAt: Date;
 }
@@ -229,7 +234,7 @@ export interface RecordSummaryLeftoverPage {
   readonly items: readonly RecordSummaryLeftoverRow[];
   /** 与筛选同口径的遗留项总数。 */
   readonly total: number;
-  /** 其中已闭环（CONVERTED / RESOLVED）的数量。 */
+  /** 其中已处理或已作废（CONVERTED / RESOLVED / VOIDED）的数量。 */
   readonly closedTotal: number;
   readonly hasMore: boolean;
 }
@@ -271,8 +276,9 @@ export abstract class ChangeRecordReadPort {
   ): Promise<readonly RecentRecordItem[]>;
 
   /**
-   * F-29 待处理遗留问题：只取 status = ACTIVE，且记录本身对当前产品可见
-   * （PUBLISHED / VOID）。按 created_at DESC, id DESC 稳定排序。
+   * F-29 未处理遗留问题：只取 status = ACTIVE 且父记录为 PUBLISHED；父记录
+   * VOID 时遗留项派生为已作废，不再进入待处理统计。按 created_at DESC, id DESC
+   * 稳定排序。
    */
   abstract listActiveLeftovers(
     tx: TransactionContext,
@@ -353,8 +359,9 @@ export abstract class ChangeRecordReadPort {
 
   /**
    * F-33 迭代总结遗留问题：来源记录在范围内且仍可见（PUBLISHED / VOID）的遗留项，
-   * 内容取最新版本快照；closedTotal 为其中 CONVERTED / RESOLVED 的数量，用于总结
-   * 正文的「已闭环 X 条」口径。固定 leftoverItemId DESC；只读、不取锁。
+   * 内容取最新版本快照；父记录 VOID 时 status 派生为 VOIDED；closedTotal 为其中
+   * CONVERTED / RESOLVED / VOIDED 的数量，用于总结
+   * 正文的「已处理或已作废 X 条」口径。固定 leftoverItemId DESC；只读、不取锁。
    * projectIds 为空时短路返回空页，不发出 SQL。
    */
   abstract summaryLeftovers(
@@ -497,7 +504,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
         JOIN app.change_records cr
           ON cr.id = li.record_id
          AND cr.project_id = li.project_id
-         AND cr.status IN ('PUBLISHED', 'VOID')
+         AND cr.status = 'PUBLISHED'
         JOIN LATERAL (
           SELECT v.content_snapshot
             FROM app.change_record_version_leftovers v
@@ -530,12 +537,12 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
       return { items: [], nextLeftoverItemId: null, hasMore: false };
     }
     const projects = [...input.projectIds];
-    const statuses =
+    const bucketCondition =
       input.bucket === undefined
-        ? null
+        ? tx.sql``
         : input.bucket === "OPEN"
-          ? ["ACTIVE"]
-          : ["CONVERTED", "RESOLVED"];
+          ? tx.sql`AND cr.status = 'PUBLISHED' AND li.status = 'ACTIVE'`
+          : tx.sql`AND (cr.status = 'VOID' OR li.status IN ('CONVERTED', 'RESOLVED'))`;
     const after = input.afterLeftoverItemId ?? null;
     const rows = await tx.sql<LeftoverListRowRaw[]>`
       SELECT li.id AS "leftoverItemId",
@@ -549,7 +556,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              cr.author_snapshot->>'name' AS "authorName",
              cr.published_at AS "publishedAt",
              vl.content_snapshot AS content,
-             li.status AS status,
+             CASE WHEN cr.status = 'VOID' THEN 'VOIDED' ELSE li.status END AS status,
              cr.task_id AS "sourceTaskId",
              ltl.task_id AS "followupTaskId"
         FROM app.change_record_leftover_items li
@@ -570,7 +577,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
           ON ltl.leftover_item_id = li.id
          AND ltl.project_id = li.project_id
        WHERE li.project_id = ANY(${projects}::integer[])
-         AND (${statuses}::text[] IS NULL OR li.status = ANY(${statuses}::text[]))
+         ${bucketCondition}
          AND (${after}::integer IS NULL OR li.id < ${after})
        ORDER BY li.id DESC
        LIMIT ${input.limit + 1}
@@ -602,7 +609,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
         JOIN app.change_records cr
           ON cr.id = li.record_id
          AND cr.project_id = li.project_id
-         AND cr.status IN ('PUBLISHED', 'VOID')
+         AND cr.status = 'PUBLISHED'
        WHERE li.project_id = ${input.projectId}
          AND li.status = 'ACTIVE'
          AND (${moduleId}::integer IS NULL OR cr.module_id = ${moduleId})
@@ -775,7 +782,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              cr.author_id AS "authorId",
              cr.author_snapshot->>'name' AS "authorName",
              vl.content_snapshot AS content,
-             li.status AS status,
+             CASE WHEN cr.status = 'VOID' THEN 'VOIDED' ELSE li.status END AS status,
              ltl.task_id AS "followupTaskId",
              cr.published_at AS "publishedAt"
         FROM app.change_record_leftover_items li
@@ -805,7 +812,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
     `;
     const [countRow] = await tx.sql<{ total: number; closedTotal: number }[]>`
       SELECT COUNT(*)::integer AS total,
-             COUNT(*) FILTER (WHERE li.status IN ('CONVERTED', 'RESOLVED'))::integer AS "closedTotal"
+             COUNT(*) FILTER (WHERE cr.status = 'VOID' OR li.status IN ('CONVERTED', 'RESOLVED'))::integer AS "closedTotal"
         FROM app.change_record_leftover_items li
         JOIN app.change_records cr
           ON cr.id = li.record_id

@@ -70,18 +70,20 @@ export function PublishedRecordCard({
           {record.leftovers.length > 0 ? (
             <CalmBadge
               tone={
-                record.leftovers.every(
-                  (leftover) => leftover.status !== "ACTIVE",
+                record.leftovers.some(
+                  (leftover) => leftover.status === "ACTIVE",
                 )
-                  ? "gray"
-                  : "amber"
+                  ? "amber"
+                  : "gray"
               }
               title={
-                record.leftovers.every(
-                  (leftover) => leftover.status !== "ACTIVE",
-                )
-                  ? "遗留问题已全部转为任务或已闭环"
-                  : "本记录仍有未闭环的遗留问题"
+                record.status === "VOID"
+                  ? "记录已作废，遗留问题一并作废"
+                  : record.leftovers.some(
+                        (leftover) => leftover.status === "ACTIVE",
+                      )
+                    ? "本记录仍有未处理的遗留问题"
+                    : "遗留问题已全部处理或已作废"
               }
             >
               遗留问题

@@ -4699,28 +4699,27 @@ td.due-overdue {
   margin: 24px 0 0;
 }
 
-/* 2026-10-19 用户反馈「布局放中间点，右边留白太多了」：卡片保留 1020px 的
- * 阅读宽度，但在内容区内水平居中，避免定宽列表全部贴左、把空白堆到右侧。
- * 窄于 1020px 时宽度仍由容器决定，左右自动外边距自然为 0。 */
+/* 2026-10-20 用户反馈「页面布局怪怪的」：此前只有卡片列表与已闭环折叠区
+ * 是 1020px 居中，页头标题、项目筛选和底部说明仍占满 1450px 内容区，三条轨道
+ * 左右都不对齐。现在整页收进同一条 1020px 阅读列，页头动作区随该列右缘对齐；
+ * 窄于 1020px 时宽度仍由容器决定。 */
+.issues-page {
+  width: 100%;
+  max-width: 1020px;
+  margin-inline: auto;
+}
 .issue-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 1020px;
-  margin-inline: auto;
-}
-
-/* 已闭环折叠区与上方定宽列表同宽同中心：折叠标题和展开后的卡片都跟随
- * 同一内容列，不再次贴回内容区左缘。 */
-.issues-page > .history-block {
-  max-width: 1020px;
-  margin-inline: auto;
 }
 .issue-row {
+  position: relative;
   display: flex;
   gap: 18px;
   align-items: flex-start;
-  padding: 18px 20px;
+  /* 右侧预留 48px 给角落删除图标：不论动作区是否换行，图标都不会压住按钮。 */
+  padding: 18px 48px 18px 20px;
   background: white;
   border: 1px solid #dfe7ef;
   border-radius: 10px;
@@ -4739,15 +4738,13 @@ td.due-overdue {
   font-size: 13px;
   color: #2f4a63;
   line-height: 1.6;
-  /* 统一卡：标题恒独占一行（flex-basis: 100%），最多 2 行并恒预留 2 行位置
-     （min-height 用 em 跟随自身行高）。此前短标题跟徽章、编号挤同一行，
-     长标题才独占一行，同一列表里出现两种版式与两档卡高。 */
+  /* 统一卡：标题恒独占一行（flex-basis: 100%），最多 2 行并截断。2026-10-20
+     起不再固定预留 2 行高度：短标题的卡片会自然收紧，避免标题下方出现大块空白。 */
   flex-basis: 100%;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 3.2em;
 }
 /* 来源行行首：项目标识 + 项目名（2026-10-10 用户指示）。标识与项目名之间用 margin
    留距，不写空白文本节点，避免行首间距受 JSX 空白折叠影响。 */
@@ -4763,21 +4760,46 @@ td.due-overdue {
   color: #8494a6;
   font-size: 11px;
   line-height: 1.75;
-  /* 来源行同理：项目 / 模块 / 功能名长短不一，封顶 2 行并恒预留 2 行，
-     否则换行的卡片比同列表其它卡片高出一行（19px）。 */
+  /* 来源行同理：项目 / 模块 / 功能名长短不一，封顶 2 行；不再固定预留
+     2 行高度，短来源行的卡片随内容收紧。 */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 3.5em;
 }
 .issue-actions {
   display: flex;
   gap: 8px;
   align-items: center;
+  align-self: center;
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+/* 2026-10-20 用户指示：删除收成卡片右上角的小图标，避免与「来源迭代 / 转为任务」
+   在同一条按钮带里争视觉权重。默认只显示淡灰垃圾桶，悬停或键盘聚焦时转红。 */
+.issue-delete-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #7f91a3;
+}
+.issue-delete-button:hover {
+  border-color: #f3d2cf;
+  background: #fdf0ee;
+  color: #bf4a45;
+}
+.issue-delete-button:focus-visible {
+  outline: 2px solid #e7a6a0;
+  outline-offset: 1px;
 }
 
 .filter-panel {

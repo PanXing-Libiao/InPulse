@@ -1,5 +1,5 @@
 /**
- * F-20 遗留问题页组件测试：未闭环/已闭环分桶、来源与跟进任务入口、
+ * F-20 遗留问题页组件测试：未处理/已处理与已作废分桶、来源与跟进任务入口、
  * 转为任务入口（转换弹窗以桩替换，避免在列表测试中加载真实预览）。
  */
 import React from "react";
@@ -15,9 +15,12 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import {
+  ApiError,
   type InpulseApiClient,
   type LeftoverListItem,
   type LeftoverItemPage,
+  type PublishedRecord,
+  type PublishedRecordContent,
 } from "@generated/api";
 import type { TaskLocation } from "@features/tasks/task-links";
 import { IssuesPageView } from "./IssuesPageView";
@@ -140,10 +143,62 @@ const closedItem: LeftoverListItem = {
   },
 };
 
+const voidedItem: LeftoverListItem = {
+  ...openItem,
+  leftoverItemId: 2,
+  recordCode: "CR-190",
+  content: "来源迭代记录已作废，这条遗留问题随之作废。",
+  status: "VOIDED",
+  followupTask: null,
+};
+
 const closedPage: LeftoverItemPage = {
-  items: [closedItem, resolvedItem],
+  items: [closedItem, resolvedItem, voidedItem],
   nextCursor: null,
   hasMore: false,
+};
+
+const publishedRecord: PublishedRecord = {
+  title: "充电策略支持参数配置",
+  contextProblem: "高峰期车辆等待充电时间过长。",
+  changeSolution: "增加参数配置入口。",
+  resultVerification: "调度等待时间下降。",
+  remainingIssues: [
+    { id: 8, content: openItem.content },
+    { id: 9, content: followupItem.content },
+  ],
+  id: 7,
+  projectId: 1,
+  moduleId: 2,
+  featureId: 3,
+  scopeType: "FEATURE",
+  taskId: 105,
+  impactFeatureIds: [],
+  handlerId: 3,
+  authorId: 3,
+  status: "PUBLISHED",
+  code: "CR-201",
+  currentVersion: 3,
+  publishedAt: "2026-08-18T03:00:00.000Z",
+  rowVersion: 12,
+  createdAt: "2026-08-18T03:00:00.000Z",
+  updatedAt: "2026-08-18T03:00:00.000Z",
+  leftovers: [
+    {
+      id: 8,
+      content: openItem.content,
+      status: "ACTIVE",
+      rowVersion: 2,
+      linkedTaskId: null,
+    },
+    {
+      id: 9,
+      content: followupItem.content,
+      status: "ACTIVE",
+      rowVersion: 1,
+      linkedTaskId: null,
+    },
+  ],
 };
 
 interface ClientOptions {
@@ -151,6 +206,8 @@ interface ClientOptions {
   readonly closed?: LeftoverItemPage;
   readonly openError?: Error;
   readonly onOpen?: (query: unknown) => void;
+  readonly record?: PublishedRecord;
+  readonly recordError?: Error;
 }
 
 const createClient = (options: ClientOptions = {}) => {
@@ -177,23 +234,37 @@ const createClient = (options: ClientOptions = {}) => {
       { id: 2, code: "WMS", name: "WMS 仓储调度平台", status: "ACTIVE" },
     ],
   });
-  /** 「来源迭代」弹窗按 recordId 二次读取记录（列表项契约不含记录状态）。 */
-  const getChangeRecord = vi.fn().mockResolvedValue({
-    id: 7,
-    code: "CR-201",
-    title: "充电策略支持参数配置",
-    status: "PUBLISHED",
-    publishedAt: "2026-08-18T03:00:00.000Z",
+  /** 「来源迭代」弹窗与删除流程都会按 recordId 二次读取完整记录。 */
+  const getChangeRecord = vi.fn(() =>
+    options.recordError === undefined
+      ? Promise.resolve(options.record ?? publishedRecord)
+      : Promise.reject(options.recordError),
+  );
+  const issueCsrfToken = vi.fn().mockResolvedValue({
+    csrfToken: "csrf-token",
   });
+  type VersionCall = [
+    projectId: number,
+    recordId: number,
+    body: PublishedRecordContent,
+    init: { headers: Record<string, string> },
+  ];
+  const createChangeRecordVersion = vi.fn<
+    (...args: VersionCall) => Promise<PublishedRecord>
+  >(() => Promise.resolve(publishedRecord));
   return {
     client: {
       listLeftoverItems,
       listProjects,
       getChangeRecord,
+      issueCsrfToken,
+      createChangeRecordVersion,
     } as unknown as InpulseApiClient,
     listLeftoverItems,
     listProjects,
     getChangeRecord,
+    issueCsrfToken,
+    createChangeRecordVersion,
   };
 };
 
@@ -203,7 +274,7 @@ interface RenderOptions extends ClientOptions {
 }
 
 const renderView = (options: RenderOptions = {}) => {
-  const { client } = createClient(options);
+  const { client, ...mocks } = createClient(options);
   const onBackToRecords = options.onBackToRecords ?? vi.fn();
   const onOpenTask = options.onOpenTask ?? vi.fn();
   render(
@@ -221,7 +292,7 @@ const renderView = (options: RenderOptions = {}) => {
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { onBackToRecords, onOpenTask };
+  return { onBackToRecords, onOpenTask, ...mocks };
 };
 
 /** CalmSelect 交互：打开下拉并点选目标项（弹层项带 title 属性）。 */
@@ -239,7 +310,7 @@ describe("IssuesPageView", () => {
   it("renders open leftovers with badge, record code, content and origin", async () => {
     renderView();
     const row = await screen.findByTestId("leftover-item-8");
-    expect(within(row).getByText("待闭环")).toBeInTheDocument();
+    expect(within(row).getByText("未处理")).toBeInTheDocument();
     expect(within(row).getByText("CR-201")).toBeInTheDocument();
     expect(
       within(row).getByText("高峰期多车同时等待充电的调度策略仍需优化。"),
@@ -256,6 +327,9 @@ describe("IssuesPageView", () => {
     ).toBeInTheDocument();
     expect(
       within(row).getByRole("button", { name: /转为任务/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: "删除遗留问题" }),
     ).toBeInTheDocument();
   });
   it("opens the source record modal and the follow-up task", async () => {
@@ -305,20 +379,37 @@ describe("IssuesPageView", () => {
 
   it("renders closed leftovers inside a collapsible history block", async () => {
     renderView();
-    expect(
-      await screen.findByText("已闭环 2 条 · 已生成跟进任务"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("已处理或已作废 3 条")).toBeInTheDocument();
     const converted = await screen.findByTestId("leftover-item-3");
-    expect(within(converted).getByText("已闭环")).toBeInTheDocument();
+    expect(within(converted).getByText("已处理")).toBeInTheDocument();
     expect(
       within(converted).getByRole("button", { name: /查看跟进任务 T-141/ }),
     ).toBeInTheDocument();
     expect(
       within(converted).queryByRole("button", { name: /转为任务/ }),
     ).toBeNull();
+    expect(
+      within(converted).queryByRole("button", { name: "删除遗留问题" }),
+    ).toBeNull();
     const resolved = await screen.findByTestId("leftover-item-4");
+    expect(within(resolved).getByText("已处理")).toBeInTheDocument();
     expect(
       within(resolved).queryByRole("button", { name: /转为任务|查看跟进任务/ }),
+    ).toBeNull();
+    expect(
+      within(resolved).queryByRole("button", { name: "删除遗留问题" }),
+    ).toBeNull();
+
+    const voided = await screen.findByTestId("leftover-item-2");
+    expect(within(voided).getByText("已作废")).toBeInTheDocument();
+    expect(
+      within(voided).getByRole("button", { name: "来源迭代" }),
+    ).toBeInTheDocument();
+    expect(
+      within(voided).queryByRole("button", { name: /转为任务|查看跟进任务/ }),
+    ).toBeNull();
+    expect(
+      within(voided).queryByRole("button", { name: "删除遗留问题" }),
     ).toBeNull();
   });
 
@@ -327,8 +418,8 @@ describe("IssuesPageView", () => {
       open: { items: [], nextCursor: null, hasMore: false },
       closed: { items: [], nextCursor: null, hasMore: false },
     });
-    expect(await screen.findByText("没有待闭环的遗留问题")).toBeInTheDocument();
-    expect(screen.queryByText(/已闭环 .* 条/)).toBeNull();
+    expect(await screen.findByText("没有未处理的遗留问题")).toBeInTheDocument();
+    expect(screen.queryByText(/已处理或已作废 .* 条/)).toBeNull();
   });
 
   it("renders an error alert when the open bucket fails", async () => {
@@ -378,6 +469,82 @@ describe("IssuesPageView", () => {
     pickSelectOption("项目", "全部项目");
     await waitFor(() =>
       expect(seen).toContainEqual({ bucket: "OPEN", limit: 20 }),
+    );
+  });
+
+  it("deletes an active leftover by saving a version without it", async () => {
+    const { createChangeRecordVersion, issueCsrfToken } = renderView();
+    const user = userEvent.setup();
+    const row = await screen.findByTestId("leftover-item-8");
+    await user.click(within(row).getByRole("button", { name: "删除遗留问题" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "确认删除遗留问题" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/来源迭代记录、历史版本与审计记录都会保留/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "删除后这条问题会移入「已处理」，并从待处理列表和未处理计数中移除。",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() =>
+      expect(createChangeRecordVersion).toHaveBeenCalledTimes(1),
+    );
+    const [projectId, recordId, body, init] =
+      createChangeRecordVersion.mock.calls[0]!;
+    expect(projectId).toBe(1);
+    expect(recordId).toBe(7);
+    expect(body.remainingIssues).toEqual([
+      { id: 9, content: followupItem.content },
+    ]);
+    expect(body.confirmLeftoverResolved).toBe(true);
+    expect(issueCsrfToken).toHaveBeenCalledTimes(1);
+    expect(init.headers).toMatchObject({
+      "x-csrf-token": "csrf-token",
+      "If-Match": '"12"',
+      "X-Record-Version": "3",
+    });
+    expect(init.headers["Idempotency-Key"]).toMatch(/^leftover-delete-/);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "确认删除遗留问题" }),
+      ).toBeNull(),
+    );
+  });
+
+  it("keeps the confirmation open on a 409 and reuses the idempotency key", async () => {
+    const { createChangeRecordVersion } = renderView();
+    createChangeRecordVersion.mockRejectedValueOnce(
+      new ApiError(409, {
+        code: "RECORD_VERSION_CONFLICT",
+        message: "记录版本冲突",
+        details: {},
+        requestId: "req-1",
+      }),
+    );
+    const user = userEvent.setup();
+    const row = await screen.findByTestId("leftover-item-8");
+    await user.click(within(row).getByRole("button", { name: "删除遗留问题" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(
+      await screen.findByText("记录已被他人更新，请刷新页面后重试。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "确认删除遗留问题" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /确认删除/ }));
+    await waitFor(() =>
+      expect(createChangeRecordVersion).toHaveBeenCalledTimes(2),
+    );
+    const [first, second] = createChangeRecordVersion.mock.calls;
+    expect(first![3].headers["Idempotency-Key"]).toBe(
+      second![3].headers["Idempotency-Key"],
     );
   });
 });
