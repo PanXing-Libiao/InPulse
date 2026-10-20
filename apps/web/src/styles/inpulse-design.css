@@ -2468,6 +2468,27 @@
   text-align: center;
 }
 
+.notification-policy-panel .calm-section-title h3 {
+  color: #132238;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.notification-policy-panel .calm-section-title {
+  margin-bottom: 0;
+}
+
+/* 标题带已自带分隔线，首行不再重复画一条。 */
+.notification-policy-table tr:first-child td {
+  border-top: 0;
+}
+
+.notification-policy-table th.switch-cell,
+.notification-policy-table td.switch-cell {
+  width: 96px;
+  text-align: right;
+}
+
 .member-list {
   display: flex;
   flex-direction: column;
@@ -3250,6 +3271,24 @@
   border: 1px solid #e3edf8;
   border-radius: 10px;
   background: #f5f9fe;
+}
+
+/* ADR-081 普通成员只读视图：小组名直接作为面板标题。 */
+.my-org-panel .calm-section-title-head {
+  min-width: 0;
+}
+
+.my-org-panel .calm-section-title-head h3 {
+  overflow: hidden;
+  max-width: 46vw;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-org-count {
+  flex: 0 0 auto;
+  color: #8d9bab;
+  font-size: 12px;
 }
 
 .settings-members-panel .member-row {

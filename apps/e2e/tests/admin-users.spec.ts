@@ -21,9 +21,7 @@ test("普通成员可进入成员与设置并只读查看同组织成员", async
       page.getByRole("heading", { name: "成员与设置" }),
     ).toBeVisible();
     await expect(page.getByTestId("admin-forbidden")).toHaveCount(0);
-    await expect(
-      page.getByRole("heading", { name: "成员与角色" }),
-    ).toBeVisible();
+    await expect(page.locator(".settings-members-panel h3")).toHaveText(/\S+/);
     await expect(page.getByRole("button", { name: "加入组织" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "批量管理" })).toHaveCount(0);
   } finally {
