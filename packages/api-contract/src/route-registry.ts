@@ -816,7 +816,7 @@ export const routeRegistry = [
     path: "/notifications",
     operationId: "getNotifications",
     summary:
-      "当前用户自己的站内通知列表；SQL 强制 recipient_id=当前用户，cursor 为服务端签名、校验并带过期时间的不透明字符串。",
+      "当前用户自己的站内通知列表；SQL 强制 recipient_id=当前用户，cursor 为服务端签名、校验并带过期时间的不透明字符串；mutedProjectCategories 为逗号分隔的 projectId:category 对，用于按浏览器中的项目通知选项过滤当前用户的只读视图与未读数。",
     request: {
       path: "none",
       query: "NotificationQueryRequest",
@@ -871,10 +871,11 @@ export const routeRegistry = [
     method: "GET",
     path: "/notifications/unread-count",
     operationId: "getNotificationUnreadCount",
-    summary: "返回当前登录用户的未读通知数量。",
+    summary:
+      "返回当前登录用户的未读通知数量；mutedProjectCategories 与通知列表使用同一过滤口径，隐藏类别不会计入未读数。",
     request: {
       path: "none",
-      query: "none",
+      query: "NotificationMuteQueryRequest",
       headers: "none",
       body: { noBody: true },
     },

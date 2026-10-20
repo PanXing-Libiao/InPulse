@@ -437,33 +437,59 @@ export function FeaturesPageView({
                 {moduleTasks.query.data?.items.length ?? 0} 项
               </small>
             </details>
-            <CalmTabs
-              className="calm-tabs module-work-tabs"
-              label="模块工作区"
-              activeKey="功能目录"
-              onChange={(key) => {
-                if (key === "模块级任务")
-                  navigate(
-                    "/projects/" +
-                      projectId +
-                      "/modules/" +
-                      moduleId +
-                      "/tasks",
-                  );
-              }}
-              items={[
-                {
-                  key: "功能目录",
-                  label: <>功能目录 {query.data?.items.length ?? 0}</>,
-                },
-                {
-                  key: "模块级任务",
-                  label: (
-                    <>模块级任务 {moduleTasks.query.data?.items.length ?? 0}</>
-                  ),
-                },
-              ]}
-            />
+            <div className="module-work-bar">
+              <CalmTabs
+                className="calm-tabs module-work-tabs"
+                label="模块工作区"
+                activeKey="功能目录"
+                onChange={(key) => {
+                  if (key === "模块级任务")
+                    navigate(
+                      "/projects/" +
+                        projectId +
+                        "/modules/" +
+                        moduleId +
+                        "/tasks",
+                    );
+                }}
+                items={[
+                  {
+                    key: "功能目录",
+                    label: <>功能目录 {query.data?.items.length ?? 0}</>,
+                  },
+                  {
+                    key: "模块级任务",
+                    label: (
+                      <>
+                        模块级任务 {moduleTasks.query.data?.items.length ?? 0}
+                      </>
+                    ),
+                  },
+                ]}
+              />
+              {query.isSuccess && query.data.items.length > 0 ? (
+                <div className="feature-view-controls">
+                  <CalmSegmented
+                    label="功能展示方式"
+                    value={display}
+                    options={[
+                      { value: "cards", label: "卡片" },
+                      { value: "list", label: "列表" },
+                    ]}
+                    onChange={setDisplay}
+                  />
+                  <div className="task-search">
+                    <InpulseIcon name="search" size={15} />
+                    <input
+                      aria-label="搜索当前模块的功能"
+                      placeholder="搜索当前模块的功能"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
             {success && <Alert type="success" showIcon title="功能操作成功" />}
             {moduleSuccess && (
               <Alert type="success" showIcon title="模块操作成功" />
@@ -499,29 +525,6 @@ export function FeaturesPageView({
               </CalmEmptyState>
             ) : (
               <>
-                <div className="calm-feature-toolbar">
-                  <h3>功能</h3>
-                  <div className="feature-view-controls">
-                    <CalmSegmented
-                      label="功能展示方式"
-                      value={display}
-                      options={[
-                        { value: "cards", label: "卡片" },
-                        { value: "list", label: "列表" },
-                      ]}
-                      onChange={setDisplay}
-                    />
-                    <div className="task-search">
-                      <InpulseIcon name="search" size={15} />
-                      <input
-                        aria-label="搜索当前模块的功能"
-                        placeholder="搜索当前模块的功能"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                      />
-                    </div>
-                  </div>
-                </div>
                 {visibleItems.length === 0 ? (
                   <CalmEmptyState
                     icon="search"

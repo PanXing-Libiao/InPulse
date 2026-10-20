@@ -2640,20 +2640,6 @@ a:focus-visible {
   font-size: 14px;
   font-weight: 600;
 }
-.calm-feature-toolbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 0 0 24px;
-}
-.calm-feature-toolbar > input {
-  width: 230px;
-  border: 1px solid #dce5ef;
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: white;
-  font-size: 12px;
-}
 .calm-feature-card h2 {
   font-size: 18px;
   margin: 23px 0 10px;
@@ -2662,9 +2648,14 @@ a:focus-visible {
    底部信息行逐行推低，同一网格行里只剩它自己不对齐；溢出按省略号截断，
    完整名称在点击后的功能档案里可见。做法与任务卡标题一致。
    用固定高度而不是 max-height：一行 27px、两行 54px，同一排仍会差整整一行。 */
+/* 2026-10-20 用户「标签水平上限和功能名称的下线对齐」：标题盒不再固定两行高，
+   随实际行数收缩（最多两行，超出省略），状态标签紧跟最后一行文字底部。
+   代价是同排卡片按各自标题行数落位，不再强行把说明与底部信息行逐行对齐。 */
 .calm-feature-card:not(.module-card) > h2 {
   line-height: 1.5;
-  height: 54px;
+  height: auto;
+  max-height: 54px;
+  margin-bottom: 0;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2676,6 +2667,11 @@ a:focus-visible {
   color: #647c92;
   min-height: 44px;
   margin-bottom: 25px;
+}
+/* 2026-10-20 用户「功能详情稍微往下一点」：状态标签紧跟标题后，说明文字与标签
+   之间再留 8px，避免两段贴在一起；模块卡不套这条。 */
+.calm-feature-card:not(.module-card) > p {
+  margin-top: 8px;
 }
 /* 底部信息行贴底（2026-09-24）：卡片等高，这一行把「说明」与卡片底部之间的剩余空间
    全部吃掉，整排卡片的统计行才能落在同一条水平线上。固定最小高度与模块卡里那颗
@@ -3111,12 +3107,6 @@ a:focus-visible {
   .calm-feature-grid {
     grid-template-columns: 1fr;
   }
-  .calm-feature-toolbar {
-    flex-wrap: wrap;
-  }
-  .calm-feature-toolbar > input {
-    width: 100%;
-  }
   .calm-task-actions {
     flex-wrap: wrap;
   }
@@ -3210,11 +3200,6 @@ a:focus-visible {
   display: inline-flex;
   justify-content: center;
   align-items: center;
-}
-.calm-feature-toolbar h3 {
-  margin: 0;
-  font-size: 14px;
-  color: #344b63;
 }
 .task-belonging {
   white-space: nowrap;
@@ -3924,7 +3909,7 @@ a:focus-visible {
   .feature-view-controls {
     width: 100%;
   }
-  .feature-view-controls input {
+  .feature-view-controls > input {
     min-width: 0;
     flex: 1;
     width: 150px;
@@ -3937,7 +3922,9 @@ a:focus-visible {
   }
 }
 
-.feature-view-controls input {
+/* 只作用于直接挂在控件组下的独立输入框；搜索框的 input 已由 .task-search
+   统一提供外观（透明底、无边框），这里再加一层就会叠出双框。 */
+.feature-view-controls > input {
   border: 1px solid #e0e8f1;
   border-radius: 7px;
   background: white;
@@ -3946,12 +3933,12 @@ a:focus-visible {
   color: #344b63;
   width: 230px;
 }
-.feature-view-controls input:focus {
+.feature-view-controls > input:focus {
   outline: 2px solid #2d84e6;
   outline-offset: 1px;
 }
 @media (max-width: 700px) {
-  .feature-view-controls input {
+  .feature-view-controls > input {
     width: 150px;
   }
 }
@@ -3986,8 +3973,21 @@ a:focus-visible {
 .feature-document .feature-reading section {
   min-height: 85px;
 }
-.module-work-tabs {
-  margin-bottom: 24px;
+/* 2026-10-20：模块工作区切换条与功能视图控件合并成一行——左侧标签、
+   右侧卡片/列表与搜索，整行共用底部一条分隔线。 */
+.module-work-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 15px 0 24px;
+  border-bottom: 1px solid #e2e9f0;
+}
+
+.module-work-bar .module-work-tabs {
+  margin: 0;
+  border-bottom: 0;
 }
 .writing-context {
   background: #f5f8fc;

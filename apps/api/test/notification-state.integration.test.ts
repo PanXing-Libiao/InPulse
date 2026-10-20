@@ -16,6 +16,7 @@ import {
   NotificationNotFoundError,
   NotificationStateService,
 } from "../src/modules/notifications/notification.service.js";
+import { notificationMuteRules } from "../src/modules/notifications/notification-muted-categories.js";
 import {
   NotificationWriteValidationError,
   type NotificationWriteInput,
@@ -192,6 +193,87 @@ describe("PostgresNotificationWritePort / NotificationStateService (real Postgre
       true,
     );
     expect(await state!.countUnread(ownerId!)).toBe(unread.items.length);
+  });
+
+  test("项目通知选项只过滤对应项目的站内通知与未读数", async () => {
+    const otherProject = await createProject(client!.sql, ownerId!);
+    const rules = notificationMuteRules(project!.projectId + ":task.assign");
+    const beforeAll = await state!.countUnread(ownerId!);
+    const beforeMuted = await state!.countUnread(ownerId!, rules);
+
+    await appendNotification(ownerId!, {
+      projectId: project!.projectId,
+      notificationType: "task.assigned",
+      title: "项目 A 任务派发",
+      body: "应被项目通知选项隐藏",
+      targetPath: "/projects/" + project!.projectId + "/tasks",
+      createdAt: new Date("2026-09-08T00:01:01.000Z"),
+    });
+    await appendNotification(ownerId!, {
+      projectId: project!.projectId,
+      notificationType: "record.publish",
+      title: "项目 A 记录发布",
+      body: "未关闭的类别保留",
+      targetPath: "/projects/" + project!.projectId + "/records",
+      createdAt: new Date("2026-09-08T00:01:02.000Z"),
+    });
+    const otherAudit = await uow!.run((tx) =>
+      auditPort!.append(tx, {
+        ...auditInput("PROJECT_B_TASK_ASSIGNED"),
+        projectId: otherProject.projectId,
+        targetId: String(otherProject.projectId),
+      }),
+    );
+    await uow!.run((tx) =>
+      writePort!.write(tx, {
+        recipientId: ownerId!,
+        projectId: otherProject.projectId,
+        sourceChainId: "PROJECT:" + otherProject.projectId,
+        sourceSequence: otherAudit.sequenceNo,
+        notificationType: "task.assigned",
+        title: "项目 B 任务派发",
+        body: "只关闭项目 A 的类别",
+        targetPath: "/projects/" + otherProject.projectId + "/tasks",
+        createdAt: new Date("2026-09-08T00:01:03.000Z"),
+      }),
+    );
+    const systemAudit = await uow!.run((tx) =>
+      auditPort!.append(tx, {
+        ...auditInput("SYSTEM_TASK_ASSIGNED"),
+        projectId: null,
+        targetType: "SYSTEM",
+        targetId: "0",
+      }),
+    );
+    await uow!.run((tx) =>
+      writePort!.write(tx, {
+        recipientId: ownerId!,
+        projectId: null,
+        sourceChainId: "SYSTEM",
+        sourceSequence: systemAudit.sequenceNo,
+        notificationType: "task.assigned",
+        title: "系统任务提醒",
+        body: "",
+        targetPath: null,
+        createdAt: new Date("2026-09-08T00:01:04.000Z"),
+      }),
+    );
+
+    const page = await state!.read({
+      recipientId: ownerId!,
+      unreadOnly: false,
+      limit: 50,
+      after: null,
+      hiddenRules: rules,
+    });
+    const titles = page.items.map((item) => item.title);
+    expect(titles).not.toContain("项目 A 任务派发");
+    expect(titles).toContain("项目 A 记录发布");
+    expect(titles).toContain("项目 B 任务派发");
+    expect(titles).toContain("系统任务提醒");
+
+    expect(await state!.countUnread(ownerId!)).toBe(beforeAll + 4);
+    expect(await state!.countUnread(ownerId!, rules)).toBe(beforeMuted + 3);
   });
 
   test("签名游标绑定当前用户并支持无重叠分页", async () => {

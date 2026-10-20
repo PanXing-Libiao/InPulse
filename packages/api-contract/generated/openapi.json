@@ -4479,7 +4479,7 @@
     "/notifications": {
       "get": {
         "operationId": "getNotifications",
-        "summary": "当前用户自己的站内通知列表；SQL 强制 recipient_id=当前用户，cursor 为服务端签名、校验并带过期时间的不透明字符串。",
+        "summary": "当前用户自己的站内通知列表；SQL 强制 recipient_id=当前用户，cursor 为服务端签名、校验并带过期时间的不透明字符串；mutedProjectCategories 为逗号分隔的 projectId:category 对，用于按浏览器中的项目通知选项过滤当前用户的只读视图与未读数。",
         "responses": {
           "200": {
             "description": "成功",
@@ -4538,6 +4538,14 @@
           "auditAction": "none"
         },
         "parameters": [
+          {
+            "name": "mutedProjectCategories",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/NotificationMutedProjectCategories"
+            }
+          },
           {
             "name": "cursor",
             "in": "query",
@@ -4882,7 +4890,7 @@
     "/notifications/unread-count": {
       "get": {
         "operationId": "getNotificationUnreadCount",
-        "summary": "返回当前登录用户的未读通知数量。",
+        "summary": "返回当前登录用户的未读通知数量；mutedProjectCategories 与通知列表使用同一过滤口径，隐藏类别不会计入未读数。",
         "responses": {
           "200": {
             "description": "成功",
@@ -4929,7 +4937,17 @@
           "versionPolicy": "none",
           "concurrencyPolicy": "none",
           "auditAction": "none"
-        }
+        },
+        "parameters": [
+          {
+            "name": "mutedProjectCategories",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/NotificationMutedProjectCategories"
+            }
+          }
+        ]
       }
     },
     "/organizations/me/members": {
@@ -22908,6 +22926,21 @@
         ],
         "additionalProperties": false
       },
+      "NotificationMuteQueryRequest": {
+        "type": "object",
+        "properties": {
+          "mutedProjectCategories": {
+            "$ref": "#/components/schemas/NotificationMutedProjectCategories"
+          }
+        },
+        "additionalProperties": false
+      },
+      "NotificationMutedProjectCategories": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "pattern": "^(?:[1-9][0-9]*:(?:task\\.assign|task\\.status|record|project\\.member|scope\\.delete))(?:,[1-9][0-9]*:(?:task\\.assign|task\\.status|record|project\\.member|scope\\.delete))*$"
+      },
       "NotificationPage": {
         "type": "object",
         "properties": {
@@ -22958,6 +22991,9 @@
       "NotificationQueryRequest": {
         "type": "object",
         "properties": {
+          "mutedProjectCategories": {
+            "$ref": "#/components/schemas/NotificationMutedProjectCategories"
+          },
           "cursor": {
             "type": "string",
             "minLength": 1,

@@ -992,6 +992,12 @@ export type NotificationItem = {
   readonly readAt: (string | null);
 };
 
+export type NotificationMuteQueryRequest = {
+  readonly mutedProjectCategories?: NotificationMutedProjectCategories;
+};
+
+export type NotificationMutedProjectCategories = string;
+
 export type NotificationPage = {
   readonly items: readonly NotificationItem[];
   readonly nextCursor: (string | null);
@@ -1003,6 +1009,7 @@ export type NotificationPath = {
 };
 
 export type NotificationQueryRequest = {
+  readonly mutedProjectCategories?: NotificationMutedProjectCategories;
   readonly cursor?: string;
   readonly limit?: number;
   readonly unreadOnly?: boolean;

@@ -4,6 +4,10 @@ import {
   type TimeCursorValue,
 } from "../../cursors/time-cursor.js";
 import {
+  InvalidMutedProjectCategoriesError,
+  notificationMuteRules,
+} from "./notification-muted-categories.js";
+import {
   NotificationStateService,
   type NotificationItem,
 } from "./notification.service.js";
@@ -16,6 +20,7 @@ export interface NotificationQueryCommand {
   readonly unreadOnly?: boolean;
   readonly limit?: number;
   readonly after?: string;
+  readonly mutedProjectCategories?: string;
 }
 
 export interface NotificationQueryPage {
@@ -25,7 +30,7 @@ export interface NotificationQueryPage {
 }
 
 export class NotificationQueryValidationError extends Error {
-  readonly status: "invalid-limit" | "invalid-cursor";
+  readonly status: "invalid-limit" | "invalid-cursor" | "invalid-mute";
 
   constructor(
     status: NotificationQueryValidationError["status"],
@@ -77,11 +82,24 @@ export class NotificationQueryService {
       }
       throw error;
     }
+    let hiddenRules: readonly string[];
+    try {
+      hiddenRules = notificationMuteRules(command.mutedProjectCategories);
+    } catch (error) {
+      if (error instanceof InvalidMutedProjectCategoriesError) {
+        throw new NotificationQueryValidationError(
+          "invalid-mute",
+          error.message,
+        );
+      }
+      throw error;
+    }
     const page = await this.#state.read({
       recipientId: command.actorUserId,
       unreadOnly: command.unreadOnly === true,
       limit,
       after,
+      hiddenRules,
     });
     return {
       items: page.items,
@@ -99,7 +117,23 @@ export class NotificationQueryService {
     };
   }
 
-  async unreadCount(actorUserId: number): Promise<number> {
-    return this.#state.countUnread(actorUserId);
+  async unreadCount(
+    actorUserId: number,
+    mutedProjectCategories?: string,
+  ): Promise<number> {
+    try {
+      return await this.#state.countUnread(
+        actorUserId,
+        notificationMuteRules(mutedProjectCategories),
+      );
+    } catch (error) {
+      if (error instanceof InvalidMutedProjectCategoriesError) {
+        throw new NotificationQueryValidationError(
+          "invalid-mute",
+          error.message,
+        );
+      }
+      throw error;
+    }
   }
 }

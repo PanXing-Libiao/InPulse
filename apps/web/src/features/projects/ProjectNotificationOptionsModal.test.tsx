@@ -1,20 +1,29 @@
 import { ConfigProvider } from "antd";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ProjectNotificationOptionsModal,
   projectNotificationOptions,
 } from "./ProjectNotificationOptionsModal";
+import { PROJECT_NOTIFICATION_POLICY_STORAGE_KEY } from "@shared/notifications/project-notification-policy";
 
-function mount(onClose: () => void = () => undefined) {
+function mount(onClose: () => void = () => undefined, projectId: number = 7) {
   render(
     <ConfigProvider theme={{ token: { motion: false } }}>
-      <ProjectNotificationOptionsModal open onClose={onClose} />
+      <ProjectNotificationOptionsModal
+        open
+        projectId={projectId}
+        onClose={onClose}
+      />
     </ConfigProvider>,
   );
   return screen.getByRole("dialog", { name: "通知选项" });
 }
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 describe("ProjectNotificationOptionsModal", () => {
   it("shows the project name as the header eyebrow", () => {
@@ -22,6 +31,7 @@ describe("ProjectNotificationOptionsModal", () => {
       <ConfigProvider theme={{ token: { motion: false } }}>
         <ProjectNotificationOptionsModal
           open
+          projectId={7}
           projectName="智慧园区访客管理平台"
           onClose={() => undefined}
         />
@@ -69,6 +79,45 @@ describe("ProjectNotificationOptionsModal", () => {
         name: "项目群推送" + second.event,
       }),
     ).toBeChecked();
+  });
+
+  it("saves each change immediately and restores it for the same project", () => {
+    const first = projectNotificationOptions[0];
+    if (!first) throw new Error("missing option");
+    const name = "项目群推送" + first.event;
+
+    const firstView = render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <ProjectNotificationOptionsModal
+          open
+          projectId={7}
+          onClose={() => undefined}
+        />
+      </ConfigProvider>,
+    );
+    fireEvent.click(screen.getByRole("switch", { name }));
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(PROJECT_NOTIFICATION_POLICY_STORAGE_KEY) ??
+          "null",
+      ),
+    ).toEqual({ "7": [first.key] });
+    firstView.unmount();
+
+    const sameProject = mount(undefined, 7);
+    expect(within(sameProject).getByRole("switch", { name })).not.toBeChecked();
+    sameProject.remove();
+
+    const otherProject = mount(undefined, 8);
+    expect(within(otherProject).getByRole("switch", { name })).toBeChecked();
+  });
+
+  it("explains that disabled categories also hide in-site notifications", () => {
+    const dialog = mount();
+
+    expect(
+      within(dialog).getByText(/站内通知列表和未读计数/),
+    ).toBeInTheDocument();
   });
 
   it("closes from the 完成 button", () => {

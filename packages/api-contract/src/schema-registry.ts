@@ -98,6 +98,7 @@ import {
   notificationPageSchema,
   notificationPathSchema,
   notificationQueryRequestSchema,
+  notificationMuteQueryRequestSchema,
   notificationReplayContextSchema,
   notificationUnreadCountResponseSchema,
 } from "./contracts/notification.zod.js";
@@ -518,6 +519,11 @@ export const schemaRegistry = {
   NotificationQueryRequest: {
     schema: notificationQueryRequestSchema,
     summary: "当前用户通知列表查询参数",
+    sensitiveFieldPaths: [],
+  },
+  NotificationMuteQueryRequest: {
+    schema: notificationMuteQueryRequestSchema,
+    summary: "站内通知按项目关闭类别过滤的只读查询参数",
     sensitiveFieldPaths: [],
   },
   NotificationItem: {

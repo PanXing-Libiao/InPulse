@@ -1,12 +1,18 @@
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { InpulseApiClient, NotificationPage } from "@generated/api";
 import {
   useNotificationActions,
   useNotificationsInfiniteQuery,
+  useNotificationUnreadCount,
 } from "./notification-query";
+import {
+  PROJECT_NOTIFICATION_POLICY_STORAGE_KEY,
+  type ProjectNotificationCategory,
+  writeDisabledProjectNotificationTypes,
+} from "@shared/notifications/project-notification-policy";
 
 function createQueryWrapper() {
   const queryClient = new QueryClient({
@@ -19,6 +25,10 @@ function createQueryWrapper() {
     ),
   };
 }
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 describe("notification query hooks", () => {
   it("loads notification pages with the unread filter and cursor", async () => {
@@ -64,6 +74,64 @@ describe("notification query hooks", () => {
     expect(getNotifications).toHaveBeenLastCalledWith(
       { cursor: "cursor-1", unreadOnly: true, limit: 20 },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("filters notification pages by the muted project categories", async () => {
+    window.localStorage.setItem(
+      PROJECT_NOTIFICATION_POLICY_STORAGE_KEY,
+      JSON.stringify({ "7": ["record"] }),
+    );
+    const getNotifications = vi.fn().mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      hasMore: false,
+    } satisfies NotificationPage);
+    const client = { getNotifications } as unknown as InpulseApiClient;
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(
+      () => useNotificationsInfiniteQuery({ client, filter: "all" }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getNotifications).toHaveBeenCalledWith(
+      { mutedProjectCategories: "7:record", limit: 20 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("passes the muted categories to unread count and refetches after a policy change", async () => {
+    window.localStorage.setItem(
+      PROJECT_NOTIFICATION_POLICY_STORAGE_KEY,
+      JSON.stringify({ "12": ["task.assign"] }),
+    );
+    const getNotificationUnreadCount = vi
+      .fn()
+      .mockResolvedValue({ unreadCount: 2 });
+    const client = {
+      getNotificationUnreadCount,
+    } as unknown as InpulseApiClient;
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(
+      () => useNotificationUnreadCount({ client }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getNotificationUnreadCount).toHaveBeenCalledWith({
+      mutedProjectCategories: "12:task.assign",
+    });
+
+    act(() => {
+      writeDisabledProjectNotificationTypes(
+        12,
+        new Set<ProjectNotificationCategory>(),
+      );
+    });
+
+    await waitFor(() =>
+      expect(getNotificationUnreadCount).toHaveBeenLastCalledWith({}),
     );
   });
 
