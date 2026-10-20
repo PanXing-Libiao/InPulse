@@ -1,6 +1,19 @@
 import { z } from "zod";
 
+import { projectNotificationCategories } from "../project-notification-categories.js";
+
 const id = z.number().int().positive().max(2147483647);
+
+/** 项目群通知选项：disabledCategories 为关闭推送的类别，缺行等价于空数组（全开）。 */
+export const projectWecomGroupNotificationOptionsSchema = z
+  .object({
+    disabledCategories: z
+      .array(z.enum(projectNotificationCategories))
+      .max(projectNotificationCategories.length)
+      .overwrite((values) => [...new Set(values)].sort()),
+  })
+  .strict()
+  .meta({ id: "ProjectWecomGroupNotificationOptions" });
 
 /**
  * ADR-077 项目企微群绑定三态：
@@ -48,6 +61,9 @@ export const projectWecomGroupStatusSchema = z
       .describe(
         "管理员配置的机器人资料链接；未配置为 null；用于指引成员在企业微信中打开机器人",
       ),
+    notificationOptions: projectWecomGroupNotificationOptionsSchema.describe(
+      "项目群推送开关；只影响此后物化的群消息",
+    ),
   })
   .strict()
   .meta({ id: "ProjectWecomGroupStatus" });
@@ -96,6 +112,9 @@ export type ProjectWecomGroupStatus = z.infer<
   typeof projectWecomGroupStatusSchema
 >;
 export type ProjectWecomGroupCode = z.infer<typeof projectWecomGroupCodeSchema>;
+export type ProjectWecomGroupNotificationOptions = z.infer<
+  typeof projectWecomGroupNotificationOptionsSchema
+>;
 export type ProjectWecomGroupReplayContext = z.infer<
   typeof projectWecomGroupReplayContextSchema
 >;
@@ -110,6 +129,11 @@ export const projectWecomGroupSchemas = {
     schema: projectWecomGroupCodeSchema,
     summary: "一次性项目群绑定码；明文只返回一次，服务端只存 Hash",
     sensitiveFieldPaths: ["code"],
+  },
+  ProjectWecomGroupNotificationOptions: {
+    schema: projectWecomGroupNotificationOptionsSchema,
+    summary: "项目群通知开关；disabledCategories 为空表示五类全部推送",
+    sensitiveFieldPaths: [],
   },
   ProjectWecomGroupPath: {
     schema: projectWecomGroupPathSchema,

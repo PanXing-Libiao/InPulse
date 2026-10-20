@@ -491,6 +491,27 @@ export const permissionMatrix = [
     },
   },
   {
+    operationId: "updateProjectWecomGroupNotificationOptions",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: {
+        kind: "conditional",
+        allowedWhen:
+          "ADR-090：系统管理员或本项目组长可保存项目群通知开关（普通成员 403 PROJECT_WECOM_GROUP_FORBIDDEN）；项目必须已绑定 ACTIVE 群（409）；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.notificationOptions.update",
+        deniedWith: 403,
+      },
+      其他项目成员: { kind: "deny", status: 404 },
+      已移除成员: { kind: "deny", status: 404 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: {
+        kind: "conditional",
+        allowedWhen:
+          "完整系统管理员 Session；CSRF 与 Idempotency-Key 必填；项目必须已绑定 ACTIVE 群；写审计 project.wecomGroup.notificationOptions.update",
+        deniedWith: 403,
+      },
+    },
+  },
+  {
     operationId: "deleteProjectWecomGroup",
     outcomes: {
       匿名: { kind: "deny", status: 401 },

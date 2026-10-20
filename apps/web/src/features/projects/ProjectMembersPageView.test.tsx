@@ -144,6 +144,7 @@ function baseClient() {
       boundByName: null,
       lastDeliveryError: null,
       botProfileUrl: null,
+      notificationOptions: { disabledCategories: [] },
     }),
     createProjectWecomGroupCode: vi.fn().mockResolvedValue({
       code: "ABCD-EFGH-JKMN-PQRS",

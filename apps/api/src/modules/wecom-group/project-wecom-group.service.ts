@@ -2,9 +2,13 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import type {
   ProjectWecomGroupCode,
+  ProjectWecomGroupNotificationOptions,
   ProjectWecomGroupStatus,
 } from "@inpulse/api-contract";
-import { projectWecomGroupReplayContextSchema } from "@inpulse/api-contract";
+import {
+  projectNotificationCategories,
+  projectWecomGroupReplayContextSchema,
+} from "@inpulse/api-contract";
 
 import { AuditWritePort } from "../../audit/audit.port.js";
 import type { TransactionContext } from "../../database/transaction-context.js";
@@ -20,12 +24,62 @@ import {
   hashWecomBindingCode,
 } from "../wecom-binding/index.js";
 
+interface NotificationOptionFlags {
+  readonly taskAssignEnabled: boolean;
+  readonly taskStatusEnabled: boolean;
+  readonly recordEnabled: boolean;
+  readonly projectMemberEnabled: boolean;
+  readonly scopeDeleteEnabled: boolean;
+}
+
+function notificationOptionFlagsFromOptions(
+  options: ProjectWecomGroupNotificationOptions,
+): NotificationOptionFlags {
+  const disabled = new Set(options.disabledCategories);
+  return {
+    taskAssignEnabled: !disabled.has("task.assign"),
+    taskStatusEnabled: !disabled.has("task.status"),
+    recordEnabled: !disabled.has("record"),
+    projectMemberEnabled: !disabled.has("project.member"),
+    scopeDeleteEnabled: !disabled.has("scope.delete"),
+  };
+}
+
+interface NotificationOptionRow {
+  readonly taskAssignEnabled?: boolean | null;
+  readonly taskStatusEnabled?: boolean | null;
+  readonly recordEnabled?: boolean | null;
+  readonly projectMemberEnabled?: boolean | null;
+  readonly scopeDeleteEnabled?: boolean | null;
+}
+
+function notificationOptionsFromRow(
+  row: NotificationOptionRow | null | undefined,
+): ProjectWecomGroupNotificationOptions {
+  const checks: readonly [
+    (typeof projectNotificationCategories)[number],
+    boolean | null | undefined,
+  ][] = [
+    ["task.assign", row?.taskAssignEnabled],
+    ["task.status", row?.taskStatusEnabled],
+    ["record", row?.recordEnabled],
+    ["project.member", row?.projectMemberEnabled],
+    ["scope.delete", row?.scopeDeleteEnabled],
+  ];
+  return {
+    disabledCategories: checks
+      .filter(([, enabled]) => enabled === false)
+      .map(([category]) => category)
+      .sort(),
+  };
+}
+
 /** 绑定码有效期沿用 ADR-069 的 10 分钟（ADR-077 复用同一编码与哈希规则）。 */
 const CODE_TTL_SECONDS = Math.floor(WECOM_BINDING_CODE_TTL_MS / 1000);
 
 export class ProjectWecomGroupError extends Error {
   constructor(
-    readonly status: 403 | 404,
+    readonly status: 403 | 404 | 409,
     readonly code: string,
     message: string,
   ) {
@@ -94,6 +148,31 @@ export class ProjectWecomGroupService {
            LIMIT 1
         ) AS last_delivery_error,
         (
+          SELECT o.task_assign_enabled
+            FROM app.project_wecom_group_notification_options AS o
+           WHERE o.project_id = ${input.projectId}
+        ) AS "taskAssignEnabled",
+        (
+          SELECT o.task_status_enabled
+            FROM app.project_wecom_group_notification_options AS o
+           WHERE o.project_id = ${input.projectId}
+        ) AS "taskStatusEnabled",
+        (
+          SELECT o.record_enabled
+            FROM app.project_wecom_group_notification_options AS o
+           WHERE o.project_id = ${input.projectId}
+        ) AS "recordEnabled",
+        (
+          SELECT o.project_member_enabled
+            FROM app.project_wecom_group_notification_options AS o
+           WHERE o.project_id = ${input.projectId}
+        ) AS "projectMemberEnabled",
+        (
+          SELECT o.scope_delete_enabled
+            FROM app.project_wecom_group_notification_options AS o
+           WHERE o.project_id = ${input.projectId}
+        ) AS "scopeDeleteEnabled",
+        (
           SELECT r.bot_profile_url
             FROM app.wecom_robot_config AS r
            WHERE r.id = 1
@@ -103,6 +182,11 @@ export class ProjectWecomGroupService {
       bound_by_name: string | null;
       code_expires_at: string | null;
       last_delivery_error: string | null;
+      taskAssignEnabled: boolean | null;
+      taskStatusEnabled: boolean | null;
+      recordEnabled: boolean | null;
+      projectMemberEnabled: boolean | null;
+      scopeDeleteEnabled: boolean | null;
       bot_profile_url: string | null;
     }[];
     const row = rows[0];
@@ -120,6 +204,7 @@ export class ProjectWecomGroupService {
       boundByName: row?.bound_by_name ?? null,
       lastDeliveryError: row?.last_delivery_error ?? null,
       botProfileUrl: row?.bot_profile_url ?? null,
+      notificationOptions: notificationOptionsFromRow(row),
     };
   }
 
@@ -221,6 +306,139 @@ export class ProjectWecomGroupService {
       responseBody: null,
       replayAuthContext: { projectId: input.projectId },
     };
+  }
+
+  /**
+   * ADR-090：整组替换项目群通知开关。先锁 ACTIVE 群绑定，确保项目仍处于已绑定状态；
+   * 再插入缺省行并 FOR UPDATE 读取旧值，随后更新与审计共用同一事务。
+   */
+  async updateNotificationOptions(
+    tx: TransactionContext,
+    input: {
+      readonly actorId: number;
+      readonly projectId: number;
+      readonly options: ProjectWecomGroupNotificationOptions;
+      readonly requestId: string;
+    },
+  ): Promise<IdempotencyExecutionResult> {
+    await this.requireBinderRole(tx, input);
+    const bindings = (await tx.sql`
+      SELECT id
+        FROM app.project_wecom_groups
+       WHERE project_id = ${input.projectId}
+         AND status = 'ACTIVE'
+       FOR UPDATE
+    `) as unknown as readonly { id: number }[];
+    const binding = bindings[0];
+    if (binding === undefined) {
+      throw new ProjectWecomGroupError(
+        409,
+        "PROJECT_WECOM_GROUP_NOT_BOUND",
+        "项目尚未绑定企业微信群，无法保存群通知选项",
+      );
+    }
+
+    await tx.sql`
+      INSERT INTO app.project_wecom_group_notification_options (project_id)
+      VALUES (${input.projectId})
+      ON CONFLICT (project_id) DO NOTHING
+    `;
+    const beforeRows = (await tx.sql`
+      SELECT
+        task_assign_enabled AS "taskAssignEnabled",
+        task_status_enabled AS "taskStatusEnabled",
+        record_enabled AS "recordEnabled",
+        project_member_enabled AS "projectMemberEnabled",
+        scope_delete_enabled AS "scopeDeleteEnabled"
+        FROM app.project_wecom_group_notification_options
+       WHERE project_id = ${input.projectId}
+       FOR UPDATE
+    `) as unknown as readonly NotificationOptionFlags[];
+    const beforeRow = beforeRows[0];
+    if (beforeRow === undefined) {
+      throw new Error("project wecom group notification options row missing");
+    }
+    const enabled = notificationOptionFlagsFromOptions(input.options);
+    const afterRows = (await tx.sql`
+      UPDATE app.project_wecom_group_notification_options
+         SET task_assign_enabled = ${enabled.taskAssignEnabled},
+             task_status_enabled = ${enabled.taskStatusEnabled},
+             record_enabled = ${enabled.recordEnabled},
+             project_member_enabled = ${enabled.projectMemberEnabled},
+             scope_delete_enabled = ${enabled.scopeDeleteEnabled},
+             updated_at = now(),
+             row_version = row_version + 1
+       WHERE project_id = ${input.projectId}
+       RETURNING
+         task_assign_enabled AS "taskAssignEnabled",
+         task_status_enabled AS "taskStatusEnabled",
+         record_enabled AS "recordEnabled",
+         project_member_enabled AS "projectMemberEnabled",
+         scope_delete_enabled AS "scopeDeleteEnabled"
+    `) as unknown as readonly NotificationOptionFlags[];
+    const afterRow = afterRows[0];
+    if (afterRow === undefined) {
+      throw new Error(
+        "project wecom group notification options update returned no row",
+      );
+    }
+    const before = notificationOptionsFromRow(beforeRow);
+    const after = notificationOptionsFromRow(afterRow);
+    await this.audit.append(tx, {
+      projectId: input.projectId,
+      actorType: "USER",
+      actorId: input.actorId,
+      action: "project.wecomGroup.notificationOptions.update",
+      targetType: "PROJECT",
+      targetId: String(input.projectId),
+      eventPayload: {
+        groupBindingId: binding.id,
+        before,
+        after,
+      },
+      requestId: input.requestId,
+      occurredAt: new Date(),
+    });
+    return {
+      responseStatus: 200,
+      responseSchemaRef: "ProjectWecomGroupNotificationOptions",
+      responseHasBody: true,
+      responseBody: after,
+      replayAuthContext: { projectId: input.projectId },
+    };
+  }
+
+  /**
+   * ADR-090 保存开关的幂等重放门禁：除重新校验组长 / 管理员身份外，
+   * 项目还必须仍存在 ACTIVE 群绑定；解绑或换绑后不得再重放旧保存响应。
+   */
+  async notificationOptionsReplayAuthorizer(
+    tx: TransactionContext,
+    actorId: number,
+    context: unknown,
+  ): Promise<void> {
+    const parsed = projectWecomGroupReplayContextSchema.safeParse(context);
+    if (!parsed.success) {
+      throw new Error("invalid project wecom group replay context");
+    }
+    await this.requireBinderRole(tx, {
+      actorId,
+      projectId: parsed.data.projectId,
+    });
+    const bindings = (await tx.sql`
+      SELECT id
+        FROM app.project_wecom_groups
+       WHERE project_id = ${parsed.data.projectId}
+         AND status = 'ACTIVE'
+       LIMIT 1
+    `) as unknown as readonly { id: number }[];
+    if (bindings[0] === undefined) {
+      throw new ProjectWecomGroupError(
+        409,
+        "PROJECT_WECOM_GROUP_NOT_BOUND",
+        "项目尚未绑定企业微信群，无法重放群通知选项保存请求",
+      );
+    }
   }
 
   /**

@@ -627,6 +627,12 @@
       "fingerprint": "de09f7523b61ee9b614c51785a821958ccf0bc29c964295a5f6cb2e3620f2f31"
     }
   ],
+  "updateProjectWecomGroupNotificationOptions": [
+    {
+      "version": "1.0.0",
+      "fingerprint": "5f3fe2b4fecb93a80cac6afda2d0a302b305a6a1c8ef7b3c098cd8a42df0f7ed"
+    }
+  ],
   "updateTask": [
     {
       "version": "1.0.0",

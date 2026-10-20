@@ -87,6 +87,66 @@ export const projectWecomGroupRoutes: readonly RouteDefinition[] = [
     auditAction: "none",
   },
   {
+    method: "PUT",
+    path: "/projects/{projectId}/wecom-group/notification-options",
+    operationId: "updateProjectWecomGroupNotificationOptions",
+    summary:
+      "保存项目企业微信群的通知开关：整组替换 disabledCategories；仅系统管理员或本项目组长可写，且项目必须已绑定 ACTIVE 群；设置只影响之后物化的群消息，历史与已排队消息不回溯；CSRF 与 Idempotency-Key 必填，写审计 project.wecomGroup.notificationOptions.update。",
+    request: {
+      path: "ProjectWecomGroupPath",
+      query: "none",
+      headers: "ProjectWecomGroupMutationHeaders",
+      body: {
+        contentTypes: [
+          {
+            contentType: "application/json",
+            schemaRef: "ProjectWecomGroupNotificationOptions",
+          },
+        ],
+      },
+    },
+    responses: {
+      "200": json("ProjectWecomGroupNotificationOptions"),
+      "400": error,
+      "401": error,
+      "403": error,
+      "404": error,
+      "409": error,
+      "422": error,
+      "500": error,
+    },
+    authPolicy: "session",
+    csrfPolicy: "required",
+    idempotencyPolicy: "idempotencyRequired",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "1.0.0",
+    idempotencyFingerprintVersion: "1.0.0",
+    behaviorHeaders: [],
+    idempotencyReplayPolicy: {
+      version: "1.0.0",
+      success: {
+        "200": {
+          body: {
+            responseSchemaRef: "ProjectWecomGroupNotificationOptions",
+            safeBodyFieldPaths: ["disabledCategories[]"],
+          },
+        },
+      },
+    },
+    replayAuthorizationPolicy: {
+      version: "1.0.0",
+      resources: {
+        contextSchemaRef: "ProjectWecomGroupReplayContext",
+        resultRefExtractor: "projectId",
+        currentReadAuthorizer: "projectWecomGroupNotificationOptionsAuthorizer",
+      },
+    },
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "project.wecomGroup.notificationOptions.update",
+  },
+  {
     method: "DELETE",
     path: "/projects/{projectId}/wecom-group",
     operationId: "deleteProjectWecomGroup",

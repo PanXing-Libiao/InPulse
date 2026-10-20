@@ -19,6 +19,7 @@ const unbound: ProjectWecomGroupStatus = {
   boundByName: null,
   lastDeliveryError: null,
   botProfileUrl: null,
+  notificationOptions: { disabledCategories: [] },
 };
 
 const bound: ProjectWecomGroupStatus = {
@@ -29,6 +30,7 @@ const bound: ProjectWecomGroupStatus = {
   lastDeliveryError: null,
   botProfileUrl:
     "https://work.weixin.qq.com/wework_admin/common/openBotProfile/test-only",
+  notificationOptions: { disabledCategories: [] },
 };
 
 const issuedCode = {
@@ -48,6 +50,9 @@ function mount(options: {
     return status;
   });
   const createProjectWecomGroupCode = vi.fn().mockResolvedValue(issuedCode);
+  const updateProjectWecomGroupNotificationOptions = vi
+    .fn()
+    .mockImplementation(async (_projectId: number, body) => body);
   const deleteProjectWecomGroup = vi.fn().mockResolvedValue(undefined);
   const issueCsrfToken = vi
     .fn()
@@ -55,6 +60,7 @@ function mount(options: {
   const client = {
     getProjectWecomGroup,
     createProjectWecomGroupCode,
+    updateProjectWecomGroupNotificationOptions,
     deleteProjectWecomGroup,
     issueCsrfToken,
   } as unknown as InpulseApiClient;
@@ -76,6 +82,7 @@ function mount(options: {
   return {
     getProjectWecomGroup,
     createProjectWecomGroupCode,
+    updateProjectWecomGroupNotificationOptions,
     deleteProjectWecomGroup,
     issueCsrfToken,
   };
@@ -202,15 +209,38 @@ describe("ProjectWecomGroupCard（ADR-077）", () => {
     expect(writeText).toHaveBeenLastCalledWith("ABCD-EFGH-JKMN-PQRS");
   });
 
-  it("已绑定且管理员：通知选项按钮打开设置弹窗", async () => {
-    mount({ statuses: [bound], canManage: true });
+  it("已绑定且管理员：通知选项切换后通过服务端接口保存", async () => {
+    const { updateProjectWecomGroupNotificationOptions } = mount({
+      statuses: [bound],
+      canManage: true,
+    });
     await screen.findByText("已绑定企业微信群");
 
     fireEvent.click(screen.getByRole("button", { name: "通知选项" }));
 
     const dialog = await screen.findByRole("dialog", { name: "通知选项" });
-    expect(
-      within(dialog).getByRole("switch", { name: "项目群推送任务派发" }),
-    ).toBeChecked();
+    const switchButton = within(dialog).getByRole("switch", {
+      name: "项目群推送任务派发",
+    });
+    expect(switchButton).toBeChecked();
+    fireEvent.click(switchButton);
+
+    await waitFor(() =>
+      expect(updateProjectWecomGroupNotificationOptions).toHaveBeenCalledTimes(
+        1,
+      ),
+    );
+    const [projectId, body, init] = updateProjectWecomGroupNotificationOptions
+      .mock.calls[0] as [
+      number,
+      { readonly disabledCategories: readonly string[] },
+      { readonly headers: Record<string, string> },
+    ];
+    expect(projectId).toBe(7);
+    expect(body).toEqual({ disabledCategories: ["task.assign"] });
+    expect(init.headers["x-csrf-token"]).toBe("a".repeat(43));
+    expect(init.headers["Idempotency-Key"]).toMatch(
+      /^pwg-notification-options-/,
+    );
   });
 });

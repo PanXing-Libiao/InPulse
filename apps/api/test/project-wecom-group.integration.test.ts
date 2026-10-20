@@ -193,6 +193,21 @@ async function deleteGroup(
   });
 }
 
+async function updateGroupNotificationOptions(
+  projectId: number,
+  headers: Record<string, string>,
+  body: unknown,
+): Promise<Response> {
+  return fetch(
+    `${baseUrl}/api/v1/projects/${projectId}/wecom-group/notification-options`,
+    {
+      method: "PUT",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 async function redeemGroup(
   sql: Sql,
   code: string,
@@ -862,6 +877,222 @@ describe("项目企微群绑定（真实 PostgreSQL + 真实 HTTP，ADR-077）",
     expect(replay.status).toBe(403);
   });
 
+  test("项目群通知开关：默认全开、成员只读、组长/管理员保存、审计、幂等重放与解绑门禁", async () => {
+    const sql = requireRuntime();
+    const { actor, project } = await leaderContext(sql);
+    const member = await createActor(sql);
+    await addMember(sql, project.projectId, member.userId);
+    const outsider = await createActor(sql);
+    const admin = await createActor(sql, { admin: true });
+    const wecomUserid = nextWecomId("member");
+    await bindPersonal(sql, member.userId, wecomUserid);
+    const chatId = nextWecomId("chat");
+
+    const code = (
+      (await (
+        await createGroupCode(project.projectId, mutationHeaders(actor))
+      ).json()) as { readonly code: string }
+    ).code;
+    await redeemGroup(sql, code, chatId, wecomUserid);
+
+    const defaultStatus = await getGroup(project.projectId, member.cookie);
+    expect(defaultStatus.status).toBe(200);
+    expect(
+      (
+        (await defaultStatus.json()) as {
+          readonly notificationOptions: unknown;
+        }
+      ).notificationOptions,
+    ).toEqual({ disabledCategories: [] });
+
+    const memberWrite = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(member),
+        "idempotency-key": `pwg-options-${nextWecomId("key")}`,
+      },
+      { disabledCategories: ["task.assign"] },
+    );
+    expect(memberWrite.status).toBe(403);
+
+    const outsiderWrite = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(outsider),
+        "idempotency-key": `pwg-options-${nextWecomId("key")}`,
+      },
+      { disabledCategories: ["task.assign"] },
+    );
+    expect(outsiderWrite.status).toBe(404);
+
+    const missingCsrf = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        cookie: actor.cookie,
+        host: new URL(baseUrl).host,
+        origin: new URL(baseUrl).origin,
+        "idempotency-key": `pwg-options-${nextWecomId("key")}`,
+      },
+      { disabledCategories: ["task.assign"] },
+    );
+    expect(missingCsrf.status).toBe(422);
+
+    const invalidCategory = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": `pwg-options-${nextWecomId("key")}`,
+      },
+      { disabledCategories: ["unknown"] },
+    );
+    expect(invalidCategory.status).toBe(422);
+
+    const adminSaved = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(admin),
+        "idempotency-key": `pwg-options-${nextWecomId("key")}`,
+      },
+      { disabledCategories: ["record"] },
+    );
+    expect(adminSaved.status).toBe(200);
+
+    const key = `pwg-options-${nextWecomId("key")}`;
+    const payload = {
+      disabledCategories: ["scope.delete", "task.assign", "task.assign"],
+    };
+    const saved = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": key,
+      },
+      payload,
+    );
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual({
+      disabledCategories: ["scope.delete", "task.assign"],
+    });
+
+    const readBack = await getGroup(project.projectId, member.cookie);
+    expect(
+      (
+        (await readBack.json()) as {
+          readonly notificationOptions: unknown;
+        }
+      ).notificationOptions,
+    ).toEqual({ disabledCategories: ["scope.delete", "task.assign"] });
+
+    const rows = (await sql`
+      SELECT
+        task_assign_enabled AS "taskAssignEnabled",
+        task_status_enabled AS "taskStatusEnabled",
+        record_enabled AS "recordEnabled",
+        project_member_enabled AS "projectMemberEnabled",
+        scope_delete_enabled AS "scopeDeleteEnabled",
+        row_version AS "rowVersion"
+        FROM app.project_wecom_group_notification_options
+       WHERE project_id = ${project.projectId}
+    `) as unknown as readonly {
+      taskAssignEnabled: boolean;
+      taskStatusEnabled: boolean;
+      recordEnabled: boolean;
+      projectMemberEnabled: boolean;
+      scopeDeleteEnabled: boolean;
+      rowVersion: number;
+    }[];
+    expect(rows[0]).toEqual({
+      taskAssignEnabled: false,
+      taskStatusEnabled: true,
+      recordEnabled: true,
+      projectMemberEnabled: true,
+      scopeDeleteEnabled: false,
+      rowVersion: 3,
+    });
+
+    const audits = (await requireAuditReader()`
+      SELECT actor_id AS "actorId", event_payload AS "eventPayload"
+        FROM app.audit_logs
+       WHERE action = 'project.wecomGroup.notificationOptions.update'
+         AND target_id = ${String(project.projectId)}
+       ORDER BY sequence_no DESC
+       LIMIT 1
+    `) as unknown as readonly {
+      actorId: number;
+      eventPayload: {
+        readonly before: unknown;
+        readonly after: unknown;
+      };
+    }[];
+    expect(audits[0]?.actorId).toBe(actor.userId);
+    expect(audits[0]?.eventPayload.before).toEqual({
+      disabledCategories: ["record"],
+    });
+    expect(audits[0]?.eventPayload.after).toEqual({
+      disabledCategories: ["scope.delete", "task.assign"],
+    });
+
+    const replay = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": key,
+      },
+      payload,
+    );
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({
+      disabledCategories: ["scope.delete", "task.assign"],
+    });
+    const replayRows = (await sql`
+      SELECT row_version AS "rowVersion"
+        FROM app.project_wecom_group_notification_options
+       WHERE project_id = ${project.projectId}
+    `) as unknown as readonly { rowVersion: number }[];
+    expect(replayRows[0]?.rowVersion).toBe(3);
+
+    const differentBody = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": key,
+      },
+      { disabledCategories: ["record"] },
+    );
+    expect(differentBody.status).toBe(409);
+
+    const unbound = await deleteGroup(project.projectId, {
+      ...mutationHeaders(actor),
+      "idempotency-key": `pwg-unbind-${nextWecomId("key")}`,
+    });
+    expect(unbound.status).toBe(204);
+
+    const afterUnbind = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": `pwg-options-${nextWecomId("key")}`,
+      },
+      { disabledCategories: ["record"] },
+    );
+    expect(afterUnbind.status).toBe(409);
+    expect(((await afterUnbind.json()) as { readonly code: string }).code).toBe(
+      "PROJECT_WECOM_GROUP_NOT_BOUND",
+    );
+
+    const replayAfterUnbind = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": key,
+      },
+      payload,
+    );
+    expect(replayAfterUnbind.status).toBe(409);
+    expect(
+      ((await replayAfterUnbind.json()) as { readonly code: string }).code,
+    ).toBe("PROJECT_WECOM_GROUP_NOT_BOUND");
+  });
   test("最小授权探针：app_runtime 对三张表无 DELETE，app_backup 只读", async () => {
     const sql = requireRuntime();
     await expectPrivilegeDenied(
@@ -870,6 +1101,10 @@ describe("项目企微群绑定（真实 PostgreSQL + 真实 HTTP，ADR-077）",
     );
     await expectPrivilegeDenied(sql, "DELETE FROM app.project_wecom_groups");
     await expectPrivilegeDenied(sql, "DELETE FROM app.wecom_group_deliveries");
+    await expectPrivilegeDenied(
+      sql,
+      "DELETE FROM app.project_wecom_group_notification_options",
+    );
     await expectPrivilegeDenied(sql, "SET ROLE app_owner");
 
     const backup = connect(urls.backup, 2);
@@ -878,6 +1113,11 @@ describe("项目企微群绑定（真实 PostgreSQL + 真实 HTTP，ADR-077）",
         SELECT count(*)::integer AS total FROM app.project_wecom_groups
       `) as unknown as readonly { total: number }[];
       expect(readable[0]?.total).toBeGreaterThanOrEqual(0);
+      const optionCount = (await backup`
+        SELECT count(*)::integer AS total
+          FROM app.project_wecom_group_notification_options
+      `) as unknown as readonly { total: number }[];
+      expect(optionCount[0]?.total).toBeGreaterThanOrEqual(0);
       try {
         await backup.unsafe(
           "UPDATE app.project_wecom_groups SET last_delivery_error = 'x'",

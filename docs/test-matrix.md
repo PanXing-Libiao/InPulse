@@ -6916,3 +6916,17 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | LEFTOVER-STATUS-BROWSER-001 | 浏览器复核 | 真实作废记录 | T1-CR-1 记录为 VOID 且底层遗留项为 RESOLVED，重启 API 后遗留问题页折叠区显示「已作废」而非「已处理」 | 本地通过（2026-10-20，Edge 本地开发页） |
 
 验证结果（2026-10-20）：定向 Web 单测 6 文件 58 例、全量 Web 单测 116 文件 982 例、API 单测 80 文件 517 例、相关真实 PostgreSQL 集成 3 文件 44 例及项目概览 1 文件 22 例均通过；工作区 typecheck、契约 drift（6 个产物）与 validate（126 条路由）、前端依赖边界、全量 build、Prettier、`check:docs`（137 个 Markdown 文件）与 `git diff --check` 通过；本地 API 已重建并重启，健康检查返回 ok，`dist` 中确认包含 VOIDED 派生 SQL；Edge 本地开发页复核 T1-CR-1 已显示「已作废」。全量 API 集成 64 文件 629 例中 628 例通过，唯一失败为未改动的 `project-member-management-api.integration.test.ts` ADR-040 用例（期望接手人只保留 `first`，实际第二接手人仍在），与本轮改动无关，未修改。未运行 Playwright E2E 与 GitHub Actions。
+
+
+## 2026-10-20 企业微信项目群通知策略与机器人对齐（ADR-090）
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| WECOM-GROUP-POLICY-API-001 | API 集成（真实 PostgreSQL + HTTP） | 项目群开关默认值与权限 | 未保存时 `notificationOptions.disabledCategories` 为空；普通成员写 403、非成员写 404、缺 CSRF 422、非法类别 422 | 本地通过（2026-10-20，`project-wecom-group.integration.test.ts` 11/11） |
+| WECOM-GROUP-POLICY-API-002 | API 集成（真实 PostgreSQL） | 保存、规范化、审计与幂等 | 组长与系统管理员均可保存；重复类别去重并排序；数据库五列与 `row_version` 正确；审计记录 before / after；同 Key 重放 200 且不重复递增；不同 body 409 | 本地通过（2026-10-20，同上） |
+| WECOM-GROUP-POLICY-API-003 | API 集成（真实 PostgreSQL） | 解绑和重放门禁 | 未绑定 ACTIVE 群时保存返回 409 `PROJECT_WECOM_GROUP_NOT_BOUND`；解绑后同 Key 重放原保存请求同样 409 | 本地通过（2026-10-20，同上） |
+| WECOM-GROUP-POLICY-BRIDGE-001 | Bridge 单元 | 五类映射与默认放行 | task.assigned / task.create / task.update 映射到 task.assign；状态、记录、项目成员、删除事件映射正确；未知事件与缺行默认放行；显式 FALSE 才关闭 | 本地通过（2026-10-20，`notification-categories.test.mjs` 4/4） |
+| WECOM-GROUP-POLICY-WEB-001 | Web 单元 | 切换即保存与失败回滚 | 开关切换提交完整 `disabledCategories`，保存期间禁用，成功提示保留，失败回滚并显示服务端错误；成功后当前浏览器站内筛选同步 | 本地通过（2026-10-20，`ProjectNotificationOptionsModal.test.tsx`、`ProjectWecomGroupCard.test.tsx`、`ProjectMembersPageView.test.tsx` 3 文件 24 例） |
+| WECOM-GROUP-POLICY-GATE-001 | 静态门禁 | 契约、权限与类型 | API / Web typecheck；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由；`permissions:check` 129 条操作 / 129 条路由 | 本地通过（2026-10-20） |
+
+已知边界：桥接过滤在物化 `app.wecom_group_deliveries` 前执行，关闭或重新开启都不回溯历史、已排队或已发送消息；未识别的未来事件默认放行。个人单聊和企业微信个人通知偏好不受本 ADR 影响。未运行全量 API / Web 单测、Playwright、生产构建、Trivy 与 GitHub Actions。

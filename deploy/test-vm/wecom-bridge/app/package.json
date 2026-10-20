@@ -2,5 +2,8 @@
   "dependencies": {
     "pg": "^8.23.0",
     "ws": "^8.21.3"
+  },
+  "scripts": {
+    "test": "node --test notification-categories.test.mjs"
   }
 }

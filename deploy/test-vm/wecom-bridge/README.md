@@ -29,6 +29,13 @@
   收件人只占一行，正文聚合「指派给」姓名）与 `app.activity_projection` 中
   `visibility_scope = 'MEMBER'` 的项目动态；`ADMIN_ONLY` 动态不进群；个人单聊推送
   不受影响，两条通道并存。
+- 项目级开关（ADR-090，2026-10-20）：项目成员页「通知选项」保存到
+  `app.project_wecom_group_notification_options`，五个开关分别对应 `task.assign` /
+  `task.status` / `record` / `project.member` / `scope.delete`。`bridge.mjs` 每轮
+  物化前读取开关并按 `notification-categories.mjs` 的固定映射过滤通知与 MEMBER
+  动态；缺行（从未保存）与未识别的新事件默认放行，显式 FALSE 才阻断。
+- 生效边界：开关只影响此后新写入的 PENDING 行；关闭期间游标照常前进，重新开启
+  不补发，历史、已排队和已发送消息都不回溯。个人单聊与个人通知偏好不受影响。
 - 两级分工：`bridge.mjs` 按独立游标物化——在「该项目当前 ACTIVE 群绑定」下插入
   `app.wecom_group_deliveries` 的 `PENDING` 行（按「绑定行 + 来源类型 + 来源 id」去重；
   只物化绑定时间之后发生的来源）；`long-conn.mjs` 消费 PENDING 队列，按 id 升序用
@@ -45,6 +52,8 @@
   `startFromGroupNotificationId` / `startFromActivityId` 指定游标初值。`config.json`
   可选键 `groupDeliveries=false`、`groupDeliveryPollMs`、`groupDeliveriesPerMinute`、
   `groupDeliveriesPerHour`。
+- 分类单元测试：`node --test deploy/test-vm/wecom-bridge/app/notification-categories.test.mjs`
+  覆盖五类映射、未识别事件默认放行、缺行全开与显式 FALSE 关闭。
 - 本地实测（2026-10-16，真实群绑定：项目 1）：任务指派与 MEMBER 动态各 1 条真实送达
   （errcode=0，投递行 `SENT`）；同批 ADMIN_ONLY 动态未产生投递行；假 chatid 绑定验证
   失败回写（`errcode 93006 invalid chatid` -> `FAILED` + 绑定行 `last_delivery_error`）；
