@@ -78,8 +78,10 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
   }
 
   return (
-    <section className="panel settings-panel settings-members-panel">
-      <CalmSectionTitle title="成员与角色" />
+    <section className="panel settings-panel settings-members-panel my-org-panel">
+      <CalmSectionTitle title={organization.name}>
+        <span className="my-org-count">共 {items.length} 位成员</span>
+      </CalmSectionTitle>
       <div className="member-list">
         {items.map((user) => (
           <div className="member-row" key={user.id}>
@@ -88,7 +90,6 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
             </span>
             <div className="member-id">
               <strong>{user.name}</strong>
-              <small>{organization.name}</small>
             </div>
             <div className="member-meta">
               {currentUserId !== undefined && user.id === currentUserId ? (
@@ -100,11 +101,6 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
             </div>
           </div>
         ))}
-      </div>
-      <div className="permission-note">
-        <span>
-          只读视图：仅展示同组织成员的姓名、头像与角色；调整组织归属请联系系统管理员。
-        </span>
       </div>
     </section>
   );

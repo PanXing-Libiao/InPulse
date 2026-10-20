@@ -185,22 +185,77 @@ export const permissionMatrixRows: readonly PermissionMatrixRow[] = [
 ];
 
 export interface NotificationScenarioRow {
+  /** 后端通知类型；同一类型对应同一个开关。 */
+  readonly key: string;
   readonly event: string;
   readonly audience: string;
 }
 
 export const notificationScenarios: readonly NotificationScenarioRow[] = [
-  { event: "项目成员被加入", audience: "被加入用户" },
-  { event: "任务被指派", audience: "新负责人" },
-  { event: "任务负责人被修改", audience: "新负责人，旧负责人可选" },
-  { event: "任务完成", audience: "任务创建人、相关记录作者" },
-  { event: "任务重新打开", audience: "任务负责人、创建人" },
   {
-    event: "任务被合并",
-    audience: "主任务负责人、分支任务负责人、双方创建人",
+    key: "PROJECT_JOINED",
+
+    event: "项目成员被加入",
+    audience: "你被加入一个项目时提醒你",
   },
-  { event: "任务解除合并", audience: "相关任务负责人和创建人" },
-  { event: "迭代记录发布", audience: "相关任务负责人、功能相关人员" },
-  { event: "迭代记录被修改", audience: "原记录作者、任务负责人" },
-  { event: "遗留问题转为任务", audience: "新任务负责人" },
+  {
+    key: "task.assigned",
+
+    event: "任务被指派 / 负责人变更",
+    audience: "新任务指派或负责人变更（含新增负责人）",
+  },
+  {
+    key: "task.complete",
+
+    event: "任务完成",
+    audience: "你创建的任务被完成时",
+  },
+  {
+    key: "task.reopen",
+
+    event: "任务重新打开",
+    audience: "你负责或创建的任务被重新打开时",
+  },
+  {
+    key: "task.merge",
+
+    event: "任务被合并",
+    audience: "你是主任务 / 分支任务的负责人或创建人时",
+  },
+  {
+    key: "task.unmerge",
+
+    event: "任务解除合并",
+    audience: "相关任务的负责人或创建人",
+  },
+  {
+    key: "record.publish",
+
+    event: "迭代记录发布",
+    audience: "相关任务负责人、功能相关人",
+  },
+  {
+    key: "record.version.create",
+
+    event: "迭代记录被修改",
+    audience: "原记录作者、相关任务负责人",
+  },
+  {
+    key: "record.leftover.add",
+
+    event: "迭代记录追加遗留问题",
+    audience: "原记录作者、相关任务负责人",
+  },
+  {
+    key: "leftover.convert",
+
+    event: "遗留问题转为任务",
+    audience: "遗留问题转成任务并指派给你时",
+  },
+  {
+    key: "project.status.change",
+
+    event: "项目开工 / 状态变化",
+    audience: "你所在项目的状态发生变化时",
+  },
 ];

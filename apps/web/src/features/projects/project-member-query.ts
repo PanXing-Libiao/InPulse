@@ -83,6 +83,9 @@ export function useProjectMembers(
     enabled: Number.isInteger(projectId) && projectId > 0,
     // 与其它项目级页面同一口径（2026-10-10）：换项目保留上一份成员列表。
     placeholderData: keepPreviousData,
+    // 全局关闭了窗口聚焦重取；成员列表由他人改动时靠回到页面自动同步，
+    // 不再依赖手动「刷新成员」按钮。
+    refetchOnWindowFocus: true,
   });
 
   const addMutation = useMutation({

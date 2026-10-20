@@ -147,19 +147,15 @@ describe("F-03 admin users page", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("puts unfinished task counts before the role badges", async () => {
+  it("places unfinished task counts in the last member column", async () => {
     const busy: AdminUserItem = { ...member, openTaskCount: 3 };
     mount({
       listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, busy] }),
     } as unknown as InpulseApiClient);
     await screen.findByText("Bob");
-    const bob = userCard("Bob");
-    const count = within(bob).getByText("3 个未完成任务");
-    const roleBadge = within(bob).getByText("项目成员");
     expect(
-      count.compareDocumentPosition(roleBadge) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      userCard("Bob").querySelector(".member-meta")?.lastElementChild,
+    ).toHaveTextContent("3 个未完成任务");
     expect(
       within(userCard("Alice")).queryByText(/个未完成任务/),
     ).not.toBeInTheDocument();
@@ -196,10 +192,22 @@ describe("F-03 admin users page", () => {
       (row) => row.querySelector("strong")?.textContent ?? "",
     );
     expect(rendered).toEqual(["Alice", "Carol", "Bob"]);
-    expect(within(userCard("Alice")).getByText("当前账号")).toHaveClass(
-      "badge",
-      "badge-violet",
-    );
+  });
+
+  it("starts every member tag row with the role badge", async () => {
+    const listAdminUsers = vi
+      .fn()
+      .mockResolvedValue({ items: [admin, member] });
+    mount({ listAdminUsers } as unknown as InpulseApiClient, admin.id);
+    await screen.findByText("Alice");
+
+    expect(within(userCard("Alice")).queryByText("当前账号")).toBeNull();
+    expect(
+      userCard("Alice").querySelector(".member-meta")?.firstElementChild,
+    ).toHaveTextContent("系统管理员");
+    expect(
+      userCard("Bob").querySelector(".member-meta")?.firstElementChild,
+    ).toHaveTextContent("项目成员");
   });
 
   it("edits a user and sends row version via If-Match", async () => {

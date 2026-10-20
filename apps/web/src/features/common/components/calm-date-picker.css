@@ -246,13 +246,13 @@ div.ant-popover.calm-date-popover
 
 /* 出现动画（2026-10-14）：与侧栏气泡 / 下拉弹层统一「缓冲后呈现」。
  * antd 在全局 `token.motion: false` 下仍会给弹层挂 `ant-zoom-big-fast-*`（0s 关键帧 + fill both），
- * 会盖掉普通 transition，所以这里直接接管 animation：只做 150ms 淡入、不动 transform——
+ * 会盖掉普通 transition，所以这里直接接管 animation：只做 180ms 柔和淡入、不动 transform——
  * transform 会让 rc-align 在缩放后的尺寸上完成首帧测量而错位（同 calm-select.css 的注释）。
  * 面板每次展开都是新挂载（destroyOnHidden），因此动画每次打开都会重播。 */
 div.ant-popover.calm-date-popover {
   animation-name: calm-date-popover-in !important;
-  animation-duration: 150ms;
-  animation-timing-function: ease-out;
+  animation-duration: 180ms;
+  animation-timing-function: var(--motion-soft-ease);
   animation-fill-mode: both;
 }
 

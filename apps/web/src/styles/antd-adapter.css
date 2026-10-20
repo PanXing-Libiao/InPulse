@@ -31,8 +31,9 @@
    * 实测空档 27–72ms，机器越慢越长）。给遮罩一段 160ms 淡入后，那一帧的遮罩还在近乎
    * 透明的起步段，实测空档降到 0。
    * 这里原来写 `animation: none`，是为了挡住 antd 在 `motion: false` 下仍会挂上的
-   * `ant-fade-*` 类（0s 动画 + `fill-mode: both` 会让遮罩停在一帧透明态）。 */
-  animation: surface-mask-in 160ms linear both;
+   * `ant-fade-*` 类（0s 动画 + `fill-mode: both` 会让遮罩停在一帧透明态）。
+   * 2026-10-20 用户「所有跳转要柔和」：160ms linear → 200ms 柔和减速。 */
+  animation: surface-mask-in 200ms var(--motion-soft-ease) both;
 }
 
 @keyframes surface-mask-in {
@@ -52,8 +53,8 @@
    * `display: none`），所以面板只能用「起始样式 + 过渡」——`animation` 只在元素首次挂载
    * 时跑一次，复开就不动了（2026-10-08 实测：关闭后 `.surface-modal` 仍在 DOM 里、元素
    * 未被重建）。用户反馈「开始慢后面突然出现」正是因为只淡了遮罩：背景慢慢压暗、盒子仍
-   * 硬蹦出来。两处同为 160ms linear，压暗与盒子才是一起渐显。 */
-  transition: opacity 160ms linear;
+   * 硬蹦出来。两处同为 200ms 柔和减速，压暗与盒子才是一起渐显。 */
+  transition: opacity 200ms var(--motion-soft-ease);
 }
 
 @starting-style {

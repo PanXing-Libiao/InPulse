@@ -6843,7 +6843,13 @@ td.due-overdue {
    2. 全局搜索浮层（.overlay 遮罩 + .palette 面板）：自绘浮层，改前遮罩与面板同一帧硬蹦出来；
       现在与 antd 弹窗同口径——遮罩 160ms linear 淡入，面板同步淡入。
    3. 侧栏浮层（.popover：账户菜单、通知中心）：改前硬蹦，现在 140ms 淡入 + 4px 上浮。
-   三处都只作用于「出现」这一下，静止外观与改前完全一致；prefers-reduced-motion 下全部瞬时出现。 */
+   三处都只作用于「出现」这一下，静止外观与改前完全一致；prefers-reduced-motion 下全部瞬时出现。
+   2026-10-20 用户「所有跳转要柔和」：时长整体放慢、缓动统一为「慢起慢收」的
+   cubic-bezier(0.22, 0.61, 0.36, 1)：内容立刻起显、尾段缓慢收住，不出现开头空白。
+   路由 240ms、浮层 200ms、侧栏气泡 180ms。 */
+:root {
+  --motion-soft-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
 @keyframes route-content-in {
   from {
     opacity: 0;
@@ -6854,7 +6860,7 @@ td.due-overdue {
 }
 
 .page-content > * {
-  animation: route-content-in 180ms ease-out both;
+  animation: route-content-in 240ms var(--motion-soft-ease) both;
 }
 
 @keyframes surface-fade-in {
@@ -6867,17 +6873,17 @@ td.due-overdue {
 }
 
 .overlay {
-  animation: surface-fade-in 160ms linear both;
+  animation: surface-fade-in 200ms var(--motion-soft-ease) both;
 }
 
 .palette {
-  animation: surface-fade-in 160ms linear both;
+  animation: surface-fade-in 200ms var(--motion-soft-ease) both;
 }
 
 @keyframes popover-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-3px);
   }
   to {
     opacity: 1;
@@ -6886,7 +6892,7 @@ td.due-overdue {
 }
 
 .popover {
-  animation: popover-in 140ms ease-out both;
+  animation: popover-in 180ms var(--motion-soft-ease) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7728,12 +7734,12 @@ div.ant-popover.import-member-popover {
   z-index: 1080;
 }
 /* 出现动画（2026-10-14）：成员候选挂在编辑器下方、编辑期间一直开着，改前是从无到有硬蹦；
- * 与侧栏气泡 / 下拉弹层统一成 150ms 淡入。只动 opacity：transform 会影响 rc-align 的首帧测量。
+ * 与侧栏气泡 / 下拉弹层统一成 180ms 柔和淡入（2026-10-20 放慢）。只动 opacity：transform 会影响 rc-align 的首帧测量。
  * 每次进入编辑态都是新挂载（destroyOnHidden），所以每次打开都会重播。 */
 div.ant-popover.import-member-popover {
   animation-name: import-member-popover-in !important;
-  animation-duration: 150ms;
-  animation-timing-function: ease-out;
+  animation-duration: 180ms;
+  animation-timing-function: var(--motion-soft-ease);
   animation-fill-mode: both;
 }
 

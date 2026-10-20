@@ -1,34 +1,42 @@
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { NotificationPolicyPanel } from "./NotificationPolicyPanel";
 import { notificationScenarios } from "./settings-content";
 
 describe("NotificationPolicyPanel", () => {
-  it("renders every notification scenario with its audience", () => {
+  it("renders every personal notification scenario with a switch", () => {
     render(<NotificationPolicyPanel />);
     const table = screen.getByRole("table", { name: "通知场景" });
-    expect(
-      within(table).getByRole("columnheader", { name: "事件" }),
-    ).toBeInTheDocument();
-    expect(
-      within(table).getByRole("columnheader", { name: "通知对象" }),
-    ).toBeInTheDocument();
     expect(within(table).getAllByRole("row")).toHaveLength(
-      notificationScenarios.length + 1,
+      notificationScenarios.length,
     );
     for (const scenario of notificationScenarios) {
       expect(within(table).getByText(scenario.event)).toBeInTheDocument();
-      expect(within(table).getByText(scenario.audience)).toBeInTheDocument();
+      expect(
+        within(table).getAllByText(scenario.audience).length,
+      ).toBeGreaterThan(0);
+      expect(
+        within(table).getByRole("switch", {
+          name: "接收" + scenario.event + "提醒",
+        }),
+      ).toBeChecked();
     }
   });
 
-  it("explains how notifications are surfaced", () => {
+  it("toggles only the selected notification type", () => {
     render(<NotificationPolicyPanel />);
+    const target = notificationScenarios[0];
+    if (!target) throw new Error("missing scenario");
+    const toggle = screen.getByRole("switch", {
+      name: "接收" + target.event + "提醒",
+    });
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    const other = notificationScenarios[1];
+    if (!other) throw new Error("missing scenario");
     expect(
-      screen.getByText(
-        /左侧导航底部的铃铛在收到未读通知时显示红点，悬停可看到未读条数；点击铃铛展开通知中心，点开单条通知会直达对应的任务、迭代记录或项目动态。/,
-      ),
-    ).toBeInTheDocument();
+      screen.getByRole("switch", { name: "接收" + other.event + "提醒" }),
+    ).toBeChecked();
   });
 });

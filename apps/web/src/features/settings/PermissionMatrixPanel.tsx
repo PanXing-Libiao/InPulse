@@ -12,7 +12,7 @@ export const PermissionMatrixPanel: React.FC = () => (
     <CalmSectionTitle title="权限矩阵" hint="系统管理员与项目成员的权限对照" />
 
     <div className="table-wrap">
-      <table className="settings-table">
+      <table className="settings-table permission-matrix-table">
         <caption className="sr-only">权限矩阵</caption>
         <thead>
           <tr>

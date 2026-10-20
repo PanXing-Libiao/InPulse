@@ -373,8 +373,8 @@
 .ant-select-dropdown.calm-select-popup-animated.ant-slide-up-appear.ant-slide-up-appear-active {
   transform-origin: center top;
   animation-name: calm-select-popup-in-from-top !important;
-  animation-duration: 150ms;
-  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-duration: 180ms;
+  animation-timing-function: var(--motion-soft-ease);
   animation-fill-mode: both;
 }
 .ant-select-dropdown.calm-select-popup-animated[class*="placement-top"].ant-slide-up-enter.ant-slide-up-enter-active,

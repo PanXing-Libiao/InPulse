@@ -805,7 +805,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 ) : null}
               </CalmEmptyState>
             ) : (
-              <div className="member-list">
+              <div className="member-list admin-member-list">
                 {visibleMembers.map((user) => (
                   <div
                     className={
@@ -839,14 +839,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       </small>
                     </div>
                     <div className="member-meta">
-                      {(user.openTaskCount ?? 0) > 0 ? (
-                        <span className="member-task-count">
-                          {user.openTaskCount + " 个未完成任务"}
-                        </span>
-                      ) : null}
-                      {selfAdmin(user) ? (
-                        <CalmBadge tone="violet">当前账号</CalmBadge>
-                      ) : null}
                       <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
                         {user.isAdmin ? "系统管理员" : "项目成员"}
                       </CalmBadge>
@@ -868,6 +860,11 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       >
                         {user.status === "ACTIVE" ? "启用" : "停用"}
                       </span>
+                      {(user.openTaskCount ?? 0) > 0 ? (
+                        <span className="member-task-count">
+                          {user.openTaskCount + " 个未完成任务"}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="member-actions">
                       {selfAdmin(user) && user.status === "ACTIVE" ? (
