@@ -17,6 +17,7 @@ import {
 
 let runtime: DatabaseClient | undefined;
 let reader: DatabaseClient | undefined;
+let bootstrap: DatabaseClient | undefined;
 let uow: PostgresUnitOfWork | undefined;
 let port: PostgresAuditWritePort | undefined;
 let userId: number | undefined;
@@ -41,11 +42,15 @@ beforeAll(async () => {
   reader = createDatabaseClient(testUrls().auditReader, {
     applicationName: "inpulse-audit-write-reader-test",
   });
+  bootstrap = createDatabaseClient(testUrls().bootstrap, {
+    applicationName: "inpulse-audit-write-bootstrap-test",
+  });
 });
 
 afterAll(async () => {
   await runtime?.close();
   await reader?.close();
+  await bootstrap?.close();
 });
 
 test("port appends a record into a project audit chain and links prev_hash", async () => {
@@ -108,6 +113,11 @@ test("port appends a record into a project audit chain and links prev_hash", asy
   expect(Buffer.from(rows[1]!.prevHash)).toEqual(rows[0]!.recordHash);
   expect(rows[0]!.eventPayload["code"]).toBe(project!.code);
   expect(rows[0]!.eventPayload["action"]).toBe("PROJECT_CREATED");
+  expect(rows[0]!.eventPayload["actorSnapshot"]).toEqual({
+    id: userId,
+    name: expect.any(String),
+    loginName: expect.any(String),
+  });
 
   const [head] = (await reader!.sql`
     SELECT last_sequence AS "lastSequence", last_hash AS "lastHash"
@@ -118,7 +128,53 @@ test("port appends a record into a project audit chain and links prev_hash", asy
   expect(Buffer.from(head?.lastHash ?? [])).toEqual(rows[1]!.recordHash);
 });
 
+test("hard-deleting an actor keeps the audit row and its identity snapshot", async () => {
+  const deletedActorId = await createUser(runtime!.sql);
+  const requestId = randomUUID();
+  const action = "SYSTEM_TEST_ACTOR_SNAPSHOT";
+  await uow!.run((tx) =>
+    port!.append(tx, {
+      projectId: null,
+      actorType: "USER",
+      actorId: deletedActorId,
+      action,
+      targetType: "USER",
+      targetId: String(deletedActorId),
+      eventPayload: { marker: "actor-deleted-after-audit" },
+      requestId,
+      occurredAt: new Date(),
+    }),
+  );
+
+  await bootstrap!.sql`DELETE FROM app.users WHERE id = ${deletedActorId}`;
+
+  const [actor] = (await bootstrap!.sql`
+    SELECT count(*)::INTEGER AS count
+      FROM app.users
+     WHERE id = ${deletedActorId}
+  `) as unknown as readonly { count: number }[];
+  expect(actor?.count).toBe(0);
+
+  const rows = (await reader!.sql`
+    SELECT actor_id AS "actorId", event_payload AS "eventPayload"
+      FROM app.audit_logs
+     WHERE request_id = ${requestId}
+       AND action = ${action}
+  `) as unknown as readonly {
+    actorId: number;
+    eventPayload: Record<string, unknown>;
+  }[];
+  expect(rows).toHaveLength(1);
+  expect(rows[0]!.actorId).toBe(deletedActorId);
+  expect(rows[0]!.eventPayload["actorSnapshot"]).toEqual({
+    id: deletedActorId,
+    name: expect.any(String),
+    loginName: expect.any(String),
+  });
+});
+
 test("SYSTEM chain is used when projectId is null", async () => {
+  const requestId = randomUUID();
   const result = await uow!.run((tx) =>
     port!.append(tx, {
       projectId: null,
@@ -128,7 +184,7 @@ test("SYSTEM chain is used when projectId is null", async () => {
       targetType: "SYSTEM",
       targetId: null,
       eventPayload: { marker: "system" },
-      requestId: randomUUID(),
+      requestId,
       clientRequestId: null,
       ipAddress: null,
       userAgent: null,
@@ -137,11 +193,33 @@ test("SYSTEM chain is used when projectId is null", async () => {
   );
   expect(result.chainId).toBe("SYSTEM");
   const rows = (await reader!.sql`
-    SELECT count(*)::int AS count
+    SELECT event_payload AS "eventPayload"
       FROM app.audit_logs
      WHERE chain_id = 'SYSTEM'
-  `) as unknown as readonly { count: number }[];
-  expect(rows[0]!.count).toBeGreaterThanOrEqual(1);
+       AND request_id = ${requestId}
+  `) as unknown as readonly {
+    eventPayload: Record<string, unknown>;
+  }[];
+  expect(rows).toHaveLength(1);
+  expect(rows[0]!.eventPayload["actorSnapshot"]).toBeNull();
+});
+
+test("USER audit fails closed when the actor row is missing", async () => {
+  await expect(
+    uow!.run((tx) =>
+      port!.append(tx, {
+        projectId: null,
+        actorType: "USER",
+        actorId: 2_147_483_647,
+        action: "SYSTEM_TEST_MISSING_ACTOR",
+        targetType: "USER",
+        targetId: "2147483647",
+        eventPayload: { marker: "must-not-write" },
+        requestId: randomUUID(),
+        occurredAt: new Date(),
+      }),
+    ),
+  ).rejects.toThrow("audit actor does not exist");
 });
 
 test("port lazily rotates an existing chain when the keyring current version increases", async () => {

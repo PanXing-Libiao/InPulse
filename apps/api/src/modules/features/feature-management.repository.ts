@@ -51,7 +51,7 @@ export class FeatureManagementRepository {
   ): Promise<FeatureItem[]> {
     const rows = await tx.sql<
       Row[]
-    >`SELECT f.id, f.project_id AS "projectId", f.module_id AS "moduleId", f.code, f.name, f.current_behavior AS "currentBehavior", f.acceptance_criteria AS "acceptanceCriteria", f.tags, f.created_by AS "createdBy", f.row_version AS "rowVersion", f.created_at AS "createdAt", f.updated_at AS "updatedAt", ${featureStatColumns(tx.sql, "f")} FROM app.features f WHERE f.project_id = ${projectId} AND f.module_id = ${moduleId} AND f.deleted_at IS NULL ORDER BY ${lifecycleRankExpression(tx.sql, "feature", "f")}, f.created_at DESC, f.id DESC`;
+    >`SELECT f.id, f.project_id AS "projectId", f.module_id AS "moduleId", f.code, f.name, f.current_behavior AS "currentBehavior", f.acceptance_criteria AS "acceptanceCriteria", f.tags, f.created_by AS "createdBy", f.created_by_snapshot->>'name' AS "createdByName", f.row_version AS "rowVersion", f.created_at AS "createdAt", f.updated_at AS "updatedAt", ${featureStatColumns(tx.sql, "f")} FROM app.features f WHERE f.project_id = ${projectId} AND f.module_id = ${moduleId} AND f.deleted_at IS NULL ORDER BY ${lifecycleRankExpression(tx.sql, "feature", "f")}, f.created_at DESC, f.id DESC`;
     return rows.map(dto);
   }
 
@@ -64,7 +64,7 @@ export class FeatureManagementRepository {
   ): Promise<FeatureItem | undefined> {
     const rows = await tx.sql<
       Row[]
-    >`SELECT f.id, f.project_id AS "projectId", f.module_id AS "moduleId", f.code, f.name, f.current_behavior AS "currentBehavior", f.acceptance_criteria AS "acceptanceCriteria", f.tags, f.created_by AS "createdBy", f.row_version AS "rowVersion", f.created_at AS "createdAt", f.updated_at AS "updatedAt", ${featureStatColumns(tx.sql, "f")} FROM app.features f WHERE f.project_id = ${projectId} AND f.id = ${featureId} AND f.module_id = ${moduleId} AND f.deleted_at IS NULL ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
+    >`SELECT f.id, f.project_id AS "projectId", f.module_id AS "moduleId", f.code, f.name, f.current_behavior AS "currentBehavior", f.acceptance_criteria AS "acceptanceCriteria", f.tags, f.created_by AS "createdBy", f.created_by_snapshot->>'name' AS "createdByName", f.row_version AS "rowVersion", f.created_at AS "createdAt", f.updated_at AS "updatedAt", ${featureStatColumns(tx.sql, "f")} FROM app.features f WHERE f.project_id = ${projectId} AND f.id = ${featureId} AND f.module_id = ${moduleId} AND f.deleted_at IS NULL ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
     return rows[0] === undefined ? undefined : dto(rows[0]);
   }
 

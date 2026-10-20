@@ -271,6 +271,17 @@ export class RecordSummaryQueryService {
       }
       return user;
     };
+    const snapshotUserOf = (
+      userId: number,
+      snapshotName: string | undefined,
+    ): UserRefItem => {
+      const user = userById.get(userId);
+      const name = snapshotName ?? user?.name;
+      if (name === undefined) {
+        throw inconsistentError("总结缺少用户 " + String(userId));
+      }
+      return { userId, name, avatarUrl: user?.avatarUrl ?? null };
+    };
     const featureNameOf = (featureId: number | null): string | null => {
       if (featureId === null) {
         return null;
@@ -302,7 +313,7 @@ export class RecordSummaryQueryService {
         row.changeSolution,
         row.resultVerification,
       ),
-      author: toUserRef(userOf(row.authorId)),
+      author: toUserRef(snapshotUserOf(row.authorId, row.authorName)),
       publishedAt: row.publishedAt.toISOString(),
       taskId: row.taskId,
       taskCode:
@@ -317,7 +328,7 @@ export class RecordSummaryQueryService {
         recordTitle: row.recordTitle,
         projectId: row.projectId,
         projectName: projectNameOf(row.projectId),
-        author: toUserRef(userOf(row.authorId)),
+        author: toUserRef(snapshotUserOf(row.authorId, row.authorName)),
         content: row.content,
         status: row.status,
         followupTaskId: row.followupTaskId,

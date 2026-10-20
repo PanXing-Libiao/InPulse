@@ -1,4 +1,3 @@
-import { UserReadPort } from "../../auth/user-read.port.js";
 import { Inject, Injectable } from "@nestjs/common";
 import type {
   RecordDraftCommandPort,
@@ -78,7 +77,6 @@ export class RecordDraftsService
     @Inject(PostgresUnitOfWork) private readonly uow: PostgresUnitOfWork,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(TimeCursorService) private readonly cursor: TimeCursorService,
-    @Inject(UserReadPort) private readonly users: UserReadPort,
   ) {}
   /**
    * 草稿列表分页（B-1 / C-006）：items / nextCursor / hasMore；签名游标绑定
@@ -134,10 +132,6 @@ export class RecordDraftsService
     tx: TransactionContext,
     items: readonly RecordDraftItem[],
   ) {
-    const users = await this.users.listByIds(tx, [
-      ...new Set(items.flatMap((item) => [item.authorId, item.handlerId])),
-    ]);
-    const names = new Map(users.map((user) => [user.userId, user.name]));
     const projectIds = [...new Set(items.map((item) => item.projectId))];
     const moduleNames = await this.moduleRead.listNames(tx, {
       projectIds,
@@ -171,8 +165,6 @@ export class RecordDraftsService
             (f) => f.projectId === item.projectId && f.featureId === id,
           )?.name ?? "名称暂不可用",
       ),
-      authorName: names.get(item.authorId) ?? null,
-      handlerName: names.get(item.handlerId) ?? null,
     }));
   }
 

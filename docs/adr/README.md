@@ -99,6 +99,9 @@
 | [ADR-083](ADR-083.md) | Accepted | 移除管理员强制退出 `forceLogoutUser`：删除前端入口之后继续删除路由、Controller、HTTP 编排、Service、Repository、权限矩阵、OpenAPI 与生成客户端（126 → 125）；历史审计动作码保留中文展示但不产生新事件；停用是撤销目标会话的唯一管理员操作 |
 | [ADR-084](ADR-084.md) | Accepted | 停用账号前的任务交接：新增 `getAdminUserOffboarding`（125 → 126），`disableUser` 改为接收任务交接请求体并把幂等契约升至 2.0.0；多负责人任务默认保留其他负责人，唯一负责人任务必须指定一名或多名接手人或标记删除，全部清理后同事务停用、撤销 Session 与写审计；前端采用 D 方案弹窗，无迁移 |
 | [ADR-085](ADR-085.md) | Accepted | 项目物理删除保留项目审计链：`app.purge_project` 继续删除业务数据，但不再删除 `PROJECT:<id>` 的 `audit_logs` / `audit_chain_heads`；移除审计表到 `projects` 的外键，项目 ID 仍不复用；SYSTEM 链继续写 `project.delete` 并增加 `retainedAuditLogs`；无新路由、无依赖变化 |
+| [ADR-086](ADR-086.md) | Accepted | 审计日志固化操作人身份快照：新 USER 审计在 `eventPayload.actorSnapshot` 保存 id/姓名/登录名并纳入 HMAC；移除 `audit_logs.actor_id` 到 `users` 的外键，保留 actor CHECK 与索引；历史行不回填、不重算；无新路由、无依赖变化 |
+| [ADR-087](ADR-087.md) | Accepted | 项目动态固化操作人身份快照：`activity_projection.actor_snapshot` 保存 id/姓名/登录名，读取优先使用快照；移除用户外键并停止删除时改写动态摘要；历史行不回填；无新路由、无依赖变化 |
+| [ADR-088](ADR-088.md) | Accepted | 离职账号物理删除：删除已停用且无 ACTIVE 项目成员关系的账号，7 类私有运行态数据级联删除；26 类业务署名写入事件时身份快照，保留审计、项目动态、项目/任务/记录等历史；`deleteUser` 幂等契约升至 2.0.0；替代 ADR-082 的墓碑化机制 |
 
 ## 关联基线
 

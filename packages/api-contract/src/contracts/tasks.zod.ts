@@ -48,7 +48,7 @@ export const taskItemSchema = taskEditRequestSchema
      */
     assigneeId: id,
     creatorId: id,
-    /** 服务端派生展示名；墓碑账号固定为「删除用户」，不依赖前端活跃目录。 */
+    /** 服务端派生的历史署名；账号删除后仍使用创建时的身份快照。 */
     creatorName: z.string().min(1).max(200).optional(),
     assigneeNames: z.array(z.string().min(1).max(200)).max(20).optional(),
     workStatus: z.enum(["TODO", "DONE", "CANCELED"]),

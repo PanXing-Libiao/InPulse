@@ -56,7 +56,7 @@ const lifecycleCopy: Readonly<
   delete: {
     title: "强制删除",
     description:
-      "删除不可撤销：账号会被墓碑化，登录名与个人资料清除，历史业务记录中的显示名改为「删除用户」。原始审计快照保持不可变。",
+      "删除不可撤销：账号及个人会话、TOTP、通知与企业微信绑定会被永久删除；项目、任务、迭代记录、审计和项目动态保留事件当时姓名。",
   },
 };
 
@@ -240,7 +240,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       setSuccess(
         lifecycle.action === "enable"
           ? "用户已启用"
-          : "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
+          : "账号已删除，审计与项目动态保留事件当时姓名",
       );
       setLifecycle(null);
     } catch {
@@ -839,6 +839,11 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       </small>
                     </div>
                     <div className="member-meta">
+                      {(user.openTaskCount ?? 0) > 0 ? (
+                        <span className="member-task-count">
+                          {user.openTaskCount + " 个未完成任务"}
+                        </span>
+                      ) : null}
                       {selfAdmin(user) ? (
                         <CalmBadge tone="violet">当前账号</CalmBadge>
                       ) : null}
@@ -863,11 +868,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       >
                         {user.status === "ACTIVE" ? "启用" : "停用"}
                       </span>
-                      {(user.openTaskCount ?? 0) > 0 ? (
-                        <span className="member-task-count">
-                          {user.openTaskCount + " 个未完成任务"}
-                        </span>
-                      ) : null}
                     </div>
                     <div className="member-actions">
                       {selfAdmin(user) && user.status === "ACTIVE" ? (
@@ -1145,7 +1145,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           lifecycle ? "账号 · " + lifecycle.user.loginName : "账号生命周期"
         }
         title={lifecycle ? lifecycleCopy[lifecycle.action].title : ""}
-        // 停用与强制删除是破坏性动作（红）、启用是挽回（绿）。
+        // 停用与删除是破坏性动作（红）、启用是挽回（绿）。
         tone={
           lifecycle !== null && lifecycle.action === "enable"
             ? "success"

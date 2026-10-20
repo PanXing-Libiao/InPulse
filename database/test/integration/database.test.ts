@@ -94,11 +94,28 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       "0047_user_deletion_tombstone.sql",
       "0048_organizations_backup_sequence_grant.sql",
       "0049_project_delete_audit_retention.sql",
+      "0050_audit_actor_snapshot.sql",
+      "0051_activity_actor_snapshot.sql",
+      "0052_actor_identity_snapshots.sql",
+      "0053_physical_user_delete.sql",
     ]);
   });
 
-  test("user tombstones are irreversible and schema-enforced", async () => {
+  test("physical user deletion archives identity and keeps only cascading private references", async () => {
     const userId = await createUser(runtime);
+    const [firstUser] = (await runtime`
+      SELECT login_name AS "loginName",
+             name,
+             row_version AS "rowVersion"
+        FROM app.users
+       WHERE id = ${userId}
+    `) as unknown as readonly {
+      readonly loginName: string;
+      readonly name: string;
+      readonly rowVersion: number;
+    }[];
+    if (!firstUser) throw new Error("user fixture returned no row");
+    await createProject(runtime, userId);
     await runtime`
       UPDATE app.users
          SET status = 'DISABLED',
@@ -107,143 +124,149 @@ describe("PostgreSQL schema, invariants, and roles", () => {
              updated_at = now()
        WHERE id = ${userId}
     `;
-    await runtime`
-      UPDATE app.users
-         SET login_name = 'deleted-user-' || id::text,
-             name = '删除用户',
-             email = NULL,
-             avatar_url = NULL,
-             password_hash = NULL,
-             organization_id = NULL,
-             is_admin = false,
-             status = 'DISABLED',
-             disabled_at = COALESCE(disabled_at, now()),
-             deleted_at = COALESCE(deleted_at, now()),
-             row_version = row_version + 1,
-             updated_at = now()
-       WHERE id = ${userId}
-         AND deleted_at IS NULL
-    `;
-
-    const [tombstone] = (await runtime`
-      SELECT login_name AS "loginName",
-             name,
-             email,
-             password_hash IS NULL AS "passwordCleared",
-             is_admin AS "isAdmin",
-             organization_id AS "organizationId",
-             status,
-             disabled_at IS NOT NULL AS "disabled",
-             deleted_at IS NOT NULL AS "deleted"
+    const [disabledFirst] = (await runtime`
+      SELECT row_version AS "rowVersion"
         FROM app.users
        WHERE id = ${userId}
+    `) as unknown as readonly { readonly rowVersion: number }[];
+    await expectPostgresError(
+      runtime`SELECT app.delete_user_account(${userId}, ${disabledFirst!.rowVersion})`,
+      "23514",
+    );
+    expect(
+      (await runtime`SELECT 1 FROM app.users WHERE id = ${userId}`).length,
+    ).toBe(1);
+
+    const deletableId = await createUser(runtime);
+    const [deletable] = (await runtime`
+      SELECT login_name AS "loginName",
+             name,
+             row_version AS "rowVersion"
+        FROM app.users
+       WHERE id = ${deletableId}
     `) as unknown as readonly {
       readonly loginName: string;
       readonly name: string;
-      readonly email: string | null;
-      readonly passwordCleared: boolean;
-      readonly isAdmin: boolean;
-      readonly organizationId: number | null;
-      readonly status: string;
-      readonly disabled: boolean;
-      readonly deleted: boolean;
+      readonly rowVersion: number;
     }[];
-    expect(tombstone).toEqual({
-      loginName: `deleted-user-${userId}`,
-      name: "删除用户",
-      email: null,
-      passwordCleared: true,
-      isAdmin: false,
-      organizationId: null,
-      status: "DISABLED",
-      disabled: true,
-      deleted: true,
-    });
+    if (!deletable) throw new Error("deletable fixture returned no row");
+    await runtime`
+      UPDATE app.users
+         SET status = 'DISABLED',
+             disabled_at = now(),
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${deletableId}
+    `;
+    const [disabledDeletable] = (await runtime`
+      SELECT row_version AS "rowVersion"
+        FROM app.users
+       WHERE id = ${deletableId}
+    `) as unknown as readonly { readonly rowVersion: number }[];
+    const [versionProbe] = (await runtime`
+      SELECT app.delete_user_account(
+               ${deletableId},
+               ${disabledDeletable!.rowVersion - 1}
+             ) AS deleted
+    `) as unknown as readonly { readonly deleted: boolean }[];
+    expect(versionProbe?.deleted).toBe(false);
+    await expectPostgresError(
+      runtime`DELETE FROM app.users WHERE id = ${deletableId}`,
+      "42501",
+    );
+    expect(
+      (await runtime`SELECT 1 FROM app.users WHERE id = ${deletableId}`).length,
+    ).toBe(1);
 
-    await expectPostgresError(
-      runtime`
-        UPDATE app.users
-           SET name = '仍可修改',
-               row_version = row_version + 1,
-               updated_at = now()
-         WHERE id = ${userId}
-      `,
-      "23514",
-    );
-    await expectPostgresError(
-      runtime`
-        UPDATE app.users
-           SET deleted_at = NULL,
-               row_version = row_version + 1,
-               updated_at = now()
-         WHERE id = ${userId}
-      `,
-      "23514",
-    );
-    await expectPostgresError(
-      runtime`
-        UPDATE app.users
-           SET login_name = 'another-name',
-               row_version = row_version + 1,
-               updated_at = now()
-         WHERE id = ${userId}
-      `,
-      "23514",
-    );
+    const [deleted] = (await runtime`
+      SELECT app.delete_user_account(
+               ${deletableId},
+               ${disabledDeletable!.rowVersion}
+             ) AS deleted
+    `) as unknown as readonly { readonly deleted: boolean }[];
+    expect(deleted?.deleted).toBe(true);
+    expect(
+      (await runtime`SELECT 1 FROM app.users WHERE id = ${deletableId}`).length,
+    ).toBe(0);
 
-    const [schema] = (await bootstrap`
-      SELECT
-        EXISTS (
-          SELECT 1
-            FROM pg_attribute a
-            JOIN pg_class c ON c.oid = a.attrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-           WHERE n.nspname = 'app'
-             AND c.relname = 'users'
-             AND a.attname = 'deleted_at'
-             AND a.attnum > 0
-             AND NOT a.attisdropped
-        ) AS "columnExists",
-        EXISTS (
-          SELECT 1
-            FROM pg_constraint c
-            JOIN pg_class t ON t.oid = c.conrelid
-            JOIN pg_namespace n ON n.oid = t.relnamespace
-           WHERE n.nspname = 'app'
-             AND t.relname = 'users'
-             AND c.conname = 'users_deleted_state_check'
-             AND c.contype = 'c'
-             AND c.convalidated
-        ) AS "constraintValidated",
-        EXISTS (
-          SELECT 1
-            FROM pg_proc p
-            JOIN pg_namespace n ON n.oid = p.pronamespace
-           WHERE n.nspname = 'app'
-             AND p.proname = 'enforce_users_immutable_columns'
-        ) AS "functionExists",
-        EXISTS (
-          SELECT 1
-            FROM pg_trigger t
-            JOIN pg_class c ON c.oid = t.tgrelid
-            JOIN pg_namespace n ON n.oid = c.relnamespace
-           WHERE n.nspname = 'app'
-             AND c.relname = 'users'
-             AND t.tgname = 'users_immutable_columns'
-             AND t.tgfoid = 'app.enforce_users_immutable_columns()'::regprocedure
-        ) AS "triggerBound"
+    const [archivedIdentity] = (await runtime`
+      SELECT user_id AS "userId",
+             name,
+             login_name AS "loginName",
+             deleted_at AS "deletedAt"
+        FROM app.deleted_user_identities
+       WHERE user_id = ${deletableId}
     `) as unknown as readonly {
-      readonly columnExists: boolean;
-      readonly constraintValidated: boolean;
-      readonly functionExists: boolean;
-      readonly triggerBound: boolean;
+      readonly userId: number;
+      readonly name: string;
+      readonly loginName: string;
+      readonly deletedAt: Date;
     }[];
-    expect(schema).toEqual({
-      columnExists: true,
-      constraintValidated: true,
-      functionExists: true,
-      triggerBound: true,
+    expect(archivedIdentity).toMatchObject({
+      userId: deletableId,
+      name: deletable.name,
+      loginName: deletable.loginName,
     });
+    expect(archivedIdentity?.deletedAt).toBeInstanceOf(Date);
+    const [identityColumns] = (await bootstrap`
+      SELECT array_agg(a.attname ORDER BY a.attnum) AS columns
+        FROM pg_attribute AS a
+        JOIN pg_class AS c ON c.oid = a.attrelid
+        JOIN pg_namespace AS n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'app'
+         AND c.relname = 'deleted_user_identities'
+         AND a.attnum > 0
+         AND NOT a.attisdropped
+    `) as unknown as readonly { readonly columns: readonly string[] }[];
+    expect(identityColumns?.columns).toEqual([
+      "user_id",
+      "name",
+      "login_name",
+      "deleted_at",
+    ]);
+
+    const [secondDelete] = (await runtime`
+      SELECT app.delete_user_account(
+               ${deletableId},
+               ${disabledDeletable!.rowVersion}
+             ) AS deleted
+    `) as unknown as readonly { readonly deleted: boolean }[];
+    expect(secondDelete?.deleted).toBe(false);
+
+    const foreignKeys = (await bootstrap`
+      SELECT n.nspname || '.' || c.relname AS "tableName",
+             p.conname,
+             p.confdeltype::text AS "deleteAction"
+        FROM pg_constraint AS p
+        JOIN pg_class AS c ON c.oid = p.conrelid
+        JOIN pg_namespace AS n ON n.oid = c.relnamespace
+       WHERE p.confrelid = 'app.users'::regclass
+         AND p.contype = 'f'
+       ORDER BY n.nspname, c.relname, p.conname
+    `) as unknown as readonly {
+      readonly tableName: string;
+      readonly conname: string;
+      readonly deleteAction: string;
+    }[];
+    expect(foreignKeys.map((row) => row.tableName)).toEqual([
+      "app.idempotency_records",
+      "app.mfa_recovery_codes",
+      "app.notifications",
+      "app.user_sessions",
+      "app.user_totp_factors",
+      "app.user_wecom_bindings",
+      "app.wecom_binding_codes",
+    ]);
+    expect(foreignKeys.every((row) => row.deleteAction === "c")).toBe(true);
+    const [trigger] = (await bootstrap`
+      SELECT t.tgenabled::text AS enabled
+        FROM pg_trigger AS t
+       WHERE t.tgrelid = 'app.users'::regclass
+         AND t.tgname = 'users_archive_deleted_identity'
+         AND NOT t.tgisinternal
+    `) as unknown as readonly { readonly enabled: string }[];
+    expect(trigger?.enabled).toBe("O");
+    expect(firstUser.name).not.toBe("");
   });
 
   test("project bootstrap requires creator history and allows an empty module list", async () => {

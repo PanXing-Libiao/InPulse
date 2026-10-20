@@ -56,9 +56,8 @@ export class AdminUserOffboardingRepository {
          AND self.user_id = ${userId}
         JOIN LATERAL (
           SELECT array_agg(ta.user_id ORDER BY ta.user_id) AS ids,
-                 array_agg(u.name ORDER BY ta.user_id) AS names
+                 array_agg(ta.user_snapshot->>'name' ORDER BY ta.user_id) AS names
             FROM app.task_assignees AS ta
-            JOIN app.users AS u ON u.id = ta.user_id
            WHERE ta.task_id = t.id
              AND ta.project_id = t.project_id
         ) AS a ON true

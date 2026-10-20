@@ -172,7 +172,6 @@ beforeAll(async () => {
             uow,
             new PublishedRecordRepository(),
             new TimeCursorService(ring, "CHANGE_RECORDS"),
-            new PostgresUserReadPort(),
           ),
         ),
       },
@@ -400,7 +399,6 @@ describe("F21 ADR-024 lifecycle", () => {
       uow,
       new PublishedRecordRepository(),
       new TimeCursorService(ring, "CHANGE_RECORDS"),
-      new PostgresUserReadPort(),
     );
     await expect(
       reader.read(f.userId, f.projectId, f.draft.id),

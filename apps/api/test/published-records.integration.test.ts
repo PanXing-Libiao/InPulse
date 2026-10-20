@@ -55,7 +55,6 @@ beforeAll(() => {
     uow,
     new PublishedRecordRepository(),
     new TimeCursorService(ring, "CHANGE_RECORDS"),
-    new PostgresUserReadPort(),
   );
   http = new PublishedRecordsHttpService(
     new SessionAuthService(

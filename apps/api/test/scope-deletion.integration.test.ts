@@ -121,7 +121,6 @@ beforeAll(async () => {
       new PostgresNotificationWritePort(),
       new PostgresModuleReadPort(),
       new PostgresProjectsWritePort(),
-      new PostgresUserReadPort(),
     ),
     tasks = new SqlTaskDeletionCommandPort(
       management,

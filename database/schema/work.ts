@@ -5,6 +5,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   primaryKey,
   text,
   timestamp,
@@ -12,7 +13,6 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { users } from "./identity.js";
 import { projects } from "./projects.js";
 import { appSchema } from "./shared.js";
 
@@ -31,9 +31,8 @@ export const modules = appSchema.table(
     /** ADR-044：模块层面下线归档，`status` 只有 `ACTIVE`（见 modules_status_check）。 */
     status: text("status").notNull().default("ACTIVE"),
     sortOrder: integer("sort_order").notNull().default(0),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
@@ -45,9 +44,8 @@ export const modules = appSchema.table(
      */
     deletedAt: timestamptz("deleted_at"),
     /** 执行删除的用户；与 deleted_at 成对写入（见 modules_deleted_state_check）。 */
-    deletedBy: integer("deleted_by").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    deletedBy: integer("deleted_by"),
+    deletedBySnapshot: jsonb("deleted_by_snapshot"),
   },
   (table) => [
     unique("modules_project_code_unique").on(table.projectId, table.code),
@@ -105,9 +103,8 @@ export const features = appSchema.table(
     tags: text("tags").array().notNull().default(sql.raw("'{}'::text[]")),
     /** ADR-045：功能层面下线归档，`status` 只有 `ACTIVE`（见 features_status_check）。 */
     status: text("status").notNull().default("ACTIVE"),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
@@ -119,9 +116,8 @@ export const features = appSchema.table(
      */
     deletedAt: timestamptz("deleted_at"),
     /** 执行删除的用户；与 deleted_at 成对写入（见 features_deleted_state_check）。 */
-    deletedBy: integer("deleted_by").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    deletedBy: integer("deleted_by"),
+    deletedBySnapshot: jsonb("deleted_by_snapshot"),
   },
   (table) => [
     unique("features_project_code_unique").on(table.projectId, table.code),
@@ -184,9 +180,8 @@ export const tasks = appSchema.table(
     code: text("code").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
-    creatorId: integer("creator_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    creatorId: integer("creator_id").notNull(),
+    creatorSnapshot: jsonb("creator_snapshot").notNull(),
     priority: text("priority").notNull().default("NORMAL"),
     workStatus: text("work_status").notNull().default("TODO"),
     lifecycleStatus: text("lifecycle_status").notNull().default("ACTIVE"),
@@ -196,6 +191,9 @@ export const tasks = appSchema.table(
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    deletedAt: timestamptz("deleted_at"),
+    deletedBy: integer("deleted_by"),
+    deletedBySnapshot: jsonb("deleted_by_snapshot"),
   },
   (table) => [
     unique("tasks_project_code_unique").on(table.projectId, table.code),
@@ -312,9 +310,8 @@ export const taskAssignees = appSchema.table(
   "task_assignees",
   {
     taskId: integer("task_id").notNull(),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    userId: integer("user_id").notNull(),
+    userSnapshot: jsonb("user_snapshot").notNull(),
     projectId: integer("project_id").notNull(),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
@@ -345,9 +342,8 @@ export const taskStatusHistory = appSchema.table(
     completedAtSnapshot: timestamptz("completed_at_snapshot"),
     completionNoteSnapshot: text("completion_note_snapshot"),
     reason: text("reason"),
-    changedBy: integer("changed_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    changedBy: integer("changed_by").notNull(),
+    changedBySnapshot: jsonb("changed_by_snapshot").notNull(),
     changedAt: timestamptz("changed_at").notNull().defaultNow(),
   },
   (table) => [

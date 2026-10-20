@@ -21,7 +21,7 @@ import {
   formatDayKeySlash,
 } from "@features/common/beijing-time";
 import { useProjects } from "@features/projects/project-query";
-import { useUserDirectoryQuery } from "@features/users/user-directory-query";
+import { useAdminUserDirectoryQuery } from "@features/users/admin-user-query";
 import {
   auditActionLabel,
   auditActionWithCode,
@@ -105,6 +105,36 @@ function readText(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+interface AuditActorSnapshot {
+  readonly name: string | null;
+  readonly loginName: string | null;
+}
+
+/**
+ * 新审计在 eventPayload.actorSnapshot 中固化操作人姓名与登录名（ADR-086）。
+ * 只用与 actorId 匹配的快照，避免把旧行或异常载荷误当成当前操作人；没有
+ * 快照的历史记录继续回退到实时用户目录。
+ */
+function actorSnapshotOf(item: AuditLogItem): AuditActorSnapshot | null {
+  if (item.actorType !== "USER" || item.actorId === null) {
+    return null;
+  }
+  const raw = item.eventPayload["actorSnapshot"];
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const snapshot = raw as Record<string, unknown>;
+  if (snapshot["id"] !== item.actorId) {
+    return null;
+  }
+  const name = readText(snapshot["name"]);
+  const loginName = readText(snapshot["loginName"]);
+  if (name === null && loginName === null) {
+    return null;
+  }
+  return { name, loginName };
 }
 
 /**
@@ -195,7 +225,7 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
   }, []);
 
   const projectsQuery = useProjects(client ? { client } : {});
-  const directoryQuery = useUserDirectoryQuery(client ? { client } : {});
+  const directoryQuery = useAdminUserDirectoryQuery(client);
   const auditQuery = useAuditLogsInfiniteQuery({
     chain,
     filters,
@@ -228,12 +258,15 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
     ];
     return options;
   }, [projects]);
-  // 审计展示只使用启用账号目录与事件载荷里的历史姓名。墓碑化不会让旧审计行
-  // 突然改名，也不会把本不属于事件当时的信息回写到界面上。
+  // 审计展示优先使用事件载荷里的操作人快照，再回退管理员用户目录。
+  // 目录包含已停用账号，避免旧审计在账号停用后退化成「用户 #id」。
   const directoryNames = useMemo(
     () =>
       new Map(
-        (directoryQuery.data ?? []).map((entry) => [entry.id, entry.name]),
+        (directoryQuery.data?.items ?? []).map((entry) => [
+          entry.id,
+          entry.name,
+        ]),
       ),
     [directoryQuery.data],
   );
@@ -263,6 +296,13 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
       if (item.actorId === null) {
         return "未知用户";
       }
+      const snapshot = actorSnapshotOf(item);
+      if (snapshot?.name !== null && snapshot?.name !== undefined) {
+        return snapshot.name;
+      }
+      if (snapshot?.loginName !== null && snapshot?.loginName !== undefined) {
+        return snapshot.loginName;
+      }
       return directoryNames.get(item.actorId) ?? "用户 #" + item.actorId;
     },
     [directoryNames],
@@ -276,7 +316,8 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
       if (item.actorId === null) {
         return "?";
       }
-      const name = directoryNames.get(item.actorId);
+      const name =
+        actorSnapshotOf(item)?.name ?? directoryNames.get(item.actorId);
       return name === undefined ? "U" + (item.actorId % 100) : name.slice(0, 1);
     },
     [directoryNames],
@@ -592,11 +633,16 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
             }
             placeholder="全员（可勾选多人）"
             loading={directoryQuery.isPending}
-            options={(directoryQuery.data ?? []).map((entry) => ({
+            options={(directoryQuery.data?.items ?? []).map((entry) => ({
               value: entry.id,
               label: entry.name,
               avatarUrl: entry.avatarUrl ?? null,
-              description: entry.isAdmin ? "系统管理员" : "项目成员",
+              description:
+                entry.status === "DISABLED"
+                  ? "已停用/离职"
+                  : entry.isAdmin
+                    ? "系统管理员"
+                    : "项目成员",
             }))}
             animated
           />

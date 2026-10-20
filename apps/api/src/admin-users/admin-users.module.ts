@@ -4,7 +4,6 @@ import { AuthModule } from "../auth/auth.module.js";
 import { AuditModule } from "../audit/audit.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { IdempotencyModule } from "../idempotency/idempotency.module.js";
-import { ActivityProjectionModule } from "../modules/activity/activity-projection.module.js";
 import { ProjectsModule } from "../modules/projects/projects.module.js";
 import { TasksManagementModule } from "../modules/tasks/index.js";
 import { TaskCompletionModule } from "../workflows/task-completion.module.js";
@@ -21,7 +20,6 @@ import { AdminUsersHttpService } from "./admin-user-http.service.js";
     AuditModule,
     DatabaseModule,
     IdempotencyModule,
-    ActivityProjectionModule,
     ProjectsModule,
     TasksManagementModule,
     TaskCompletionModule,

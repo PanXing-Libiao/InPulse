@@ -6,6 +6,7 @@ import {
   check,
   foreignKey,
   integer,
+  jsonb,
   primaryKey,
   text,
   timestamp,
@@ -13,7 +14,6 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { changeRecords } from "./change-records.js";
-import { users } from "./identity.js";
 import { projects } from "./projects.js";
 import { appSchema } from "./shared.js";
 import { features, tasks } from "./work.js";
@@ -35,9 +35,8 @@ export const externalLinks = appSchema.table(
     externalSha: text("external_sha"),
     titleSnapshot: text("title_snapshot"),
     stateSnapshot: text("state_snapshot"),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [

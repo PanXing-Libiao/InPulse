@@ -147,6 +147,24 @@ describe("F-03 admin users page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("puts unfinished task counts before the role badges", async () => {
+    const busy: AdminUserItem = { ...member, openTaskCount: 3 };
+    mount({
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, busy] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Bob");
+    const bob = userCard("Bob");
+    const count = within(bob).getByText("3 个未完成任务");
+    const roleBadge = within(bob).getByText("项目成员");
+    expect(
+      count.compareDocumentPosition(roleBadge) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(userCard("Alice")).queryByText(/个未完成任务/),
+    ).not.toBeInTheDocument();
+  });
+
   it("pins the current account to the top of the list", async () => {
     const listAdminUsers = vi
       .fn()
@@ -432,9 +450,7 @@ describe("F-03 admin users page", () => {
         }),
       }),
     );
-    await screen.findByText(
-      "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
-    );
+    await screen.findByText("账号已删除，审计与项目动态保留事件当时姓名");
   });
 
   it("keeps disabled and deleted accounts out of organization adjustment", async () => {

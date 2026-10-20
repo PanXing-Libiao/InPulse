@@ -37,7 +37,7 @@ export const users = appSchema.table(
       .notNull()
       .defaultNow(),
     disabledAt: timestamptz("disabled_at"),
-    /** ADR-082：非空表示不可逆墓碑化；此时名称固定为“删除用户”。 */
+    /** ADR-082 的墓碑列；ADR-088 起删除改为物理删除，正常账号恒为空。 */
     deletedAt: timestamptz("deleted_at"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
@@ -99,6 +99,26 @@ export const users = appSchema.table(
       sql.raw(
         "deleted_at IS NULL OR (status = 'DISABLED' AND disabled_at IS NOT NULL AND login_name = 'deleted-user-' || id::text AND name = '删除用户' AND email IS NULL AND avatar_url IS NULL AND password_hash IS NULL AND organization_id IS NULL AND is_admin = false)",
       ),
+    ),
+  ],
+);
+
+export const deletedUserIdentities = appSchema.table(
+  "deleted_user_identities",
+  {
+    userId: integer("user_id").primaryKey(),
+    name: text("name").notNull(),
+    loginName: text("login_name").notNull(),
+    deletedAt: timestamptz("deleted_at").notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      "deleted_user_identities_name_check",
+      sql.raw("length(btrim(name)) BETWEEN 1 AND 200"),
+    ),
+    check(
+      "deleted_user_identities_login_check",
+      sql.raw("length(btrim(login_name)) BETWEEN 1 AND 100"),
     ),
   ],
 );
@@ -412,7 +432,7 @@ export const idempotencyRecords = appSchema.table(
       .generatedByDefaultAsIdentity(),
     actorId: integer("actor_id")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, { onDelete: "cascade" }),
     operationId: text("operation_id").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     idempotencyContractVersion: text("idempotency_contract_version").notNull(),

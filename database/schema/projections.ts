@@ -55,7 +55,7 @@ export const notifications = appSchema.table(
       .generatedByDefaultAsIdentity(),
     recipientId: integer("recipient_id")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => users.id, { onDelete: "cascade" }),
     projectId: integer("project_id").references(() => projects.id, {
       onDelete: "restrict",
     }),
@@ -128,9 +128,8 @@ export const activityProjection = appSchema.table(
     sourceEntityType: text("source_entity_type").notNull(),
     sourceEntityId: integer("source_entity_id").notNull(),
     activityType: text("activity_type").notNull(),
-    actorId: integer("actor_id").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    actorId: integer("actor_id"),
+    actorSnapshot: jsonb("actor_snapshot"),
     summary: text("summary").notNull(),
     metadata: jsonb("metadata").notNull().default(sql.raw("'{}'::jsonb")),
     visibilityScope: text("visibility_scope").notNull().default("MEMBER"),
@@ -184,6 +183,12 @@ export const activityProjection = appSchema.table(
       "activity_projection_metadata_check",
       sql.raw(
         "jsonb_typeof(metadata) = 'object' AND pg_column_size(metadata) <= 65536",
+      ),
+    ),
+    check(
+      "activity_projection_actor_snapshot_check",
+      sql.raw(
+        "actor_snapshot IS NULL OR (actor_id IS NOT NULL AND jsonb_typeof(actor_snapshot) = 'object' AND pg_column_size(actor_snapshot) <= 4096 AND jsonb_typeof(actor_snapshot->'id') = 'number' AND jsonb_typeof(actor_snapshot->'name') = 'string' AND jsonb_typeof(actor_snapshot->'loginName') = 'string' AND length(btrim(actor_snapshot->>'name')) BETWEEN 1 AND 200 AND length(btrim(actor_snapshot->>'loginName')) BETWEEN 1 AND 100 AND actor_snapshot->>'id' = actor_id::text)",
       ),
     ),
     check(

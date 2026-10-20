@@ -201,7 +201,7 @@ describe("登录纵切片（真实 PostgreSQL）", () => {
     expect(sessions[0]?.count).toBe(0);
   });
 
-  test("墓碑化账号登录返回 401 且不签发 Session", async () => {
+  test("历史墓碑账号登录返回 401 且不签发 Session", async () => {
     const user = await createLoginUser();
     await client!.sql`
       UPDATE app.users

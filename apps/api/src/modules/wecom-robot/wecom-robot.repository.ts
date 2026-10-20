@@ -65,11 +65,10 @@ export class WecomRobotConfigRepository {
              c.secret_key_version AS "secretKeyVersion",
              c.secret_hint AS "secretHint",
              c.bot_profile_url AS "botProfileUrl",
-             u.name AS "updatedByName",
+             c.updated_by_snapshot->>'name' AS "updatedByName",
              c.updated_at AS "updatedAt",
              c.row_version AS "rowVersion"
         FROM app.wecom_robot_config c
-        LEFT JOIN app.users u ON u.id = c.updated_by
        WHERE c.id = 1
        ${forUpdate ? tx.sql`FOR UPDATE OF c` : tx.sql``}
     `;

@@ -15,7 +15,6 @@ import { AdminHighRiskAuthService } from "../auth/admin-high-risk.service.js";
 import { notAdmin } from "../auth/admin-high-risk.error.js";
 import { PostgresUserSessionRepository } from "../auth/user-session.repository.js";
 import { AuditWritePort } from "../audit/index.js";
-import { ActivityWritePort } from "../modules/activity/index.js";
 import { ProjectMembersQueryPort } from "../modules/projects/index.js";
 import {
   ProjectMemberTaskCommandError,
@@ -56,7 +55,6 @@ export class AdminUserService {
     private readonly highRisk: AdminHighRiskAuthService,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     private readonly projectMembers: ProjectMembersQueryPort,
-    @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
     @Inject(ProjectMemberTaskCommandPort)
     private readonly projectMemberTasks: ProjectMemberTaskCommandPort,
     @Inject(TaskDeletionCommandPort)
@@ -386,19 +384,23 @@ export class AdminUserService {
     if (memberships.length > 0) throw adminUserActiveProjectMembership();
     const actor = await this.lockActorSessionAndVerify(tx, meta.headers);
     this.assertActor(actor.userId, meta.actorId);
-    const deleted = await this.repository.delete(tx, current);
-    if (deleted === undefined) throw adminUserVersionConflict();
+    // 会话在物理删除后会按外键级联消失，必须先撤销并记录数量。
     const revoked = await this.sessions.revokeAllForUser(tx, userId);
-    const renamedActivityCount = await this.activity.renameUserReferences(tx, {
-      userId,
-      previousName: current.name,
-      replacementName: "删除用户",
-    });
-    await this.appendAudit(tx, meta, "admin.user.delete", deleted.id, {
+    let deleted: boolean;
+    try {
+      deleted = await this.repository.delete(tx, current);
+    } catch (error) {
+      if (isActiveProjectMembershipDatabaseError(error)) {
+        throw adminUserActiveProjectMembership();
+      }
+      throw error;
+    }
+    if (!deleted) throw adminUserVersionConflict();
+    await this.appendAudit(tx, meta, "admin.user.delete", current.id, {
       before: this.summary(current),
-      after: this.summary(deleted),
+      after: null,
+      physicalDeleted: true,
       revokedSessionCount: revoked,
-      renamedActivityCount,
     });
   }
 
@@ -410,6 +412,23 @@ export class AdminUserService {
     const parsed = adminUserReplayContextSchema.parse(context);
     if (parsed.actorUserId !== actorId) throw notAdmin();
     if ((await this.repository.find(tx, parsed.userId)) === undefined) {
+      throw adminUserNotFound();
+    }
+  }
+
+  /**
+   * 物理删除后的幂等重放：目标用户行已不存在，只校验原始操作人仍是当前
+   * 完整管理员，并确认删除身份快照存在。其他资源的当前权限由 HTTP 层的
+   * 管理员门禁重新验证。
+   */
+  async replayDelete(
+    tx: TransactionContext,
+    actorId: number,
+    context: unknown,
+  ): Promise<void> {
+    const parsed = adminUserReplayContextSchema.parse(context);
+    if (parsed.actorUserId !== actorId) throw notAdmin();
+    if (!(await this.repository.hasDeletedIdentity(tx, parsed.userId))) {
       throw adminUserNotFound();
     }
   }
@@ -514,4 +533,15 @@ export class AdminUserService {
       rowVersion: user.rowVersion,
     };
   }
+}
+
+function isActiveProjectMembershipDatabaseError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "23514" &&
+    "message" in error &&
+    String(error.message).includes("active project membership")
+  );
 }

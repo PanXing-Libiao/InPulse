@@ -88,9 +88,8 @@ export class DocumentImportRunRepository {
     const [row] = await tx.sql<DuplicateRow[]>`
       SELECT r.project_id AS "projectId",
              r.created_at AS "createdAt",
-             u.name AS "actorName"
+             r.actor_snapshot->>'name' AS "actorName"
         FROM app.document_import_runs r
-        JOIN app.users u ON u.id = r.actor_id
        WHERE r.project_id = ${projectId}
          AND r.document_digest = ${documentDigest}
        ORDER BY r.created_at ASC, r.id ASC
@@ -106,9 +105,8 @@ export class DocumentImportRunRepository {
     const [row] = await tx.sql<DuplicateRow[]>`
       SELECT r.project_id AS "projectId",
              r.created_at AS "createdAt",
-             u.name AS "actorName"
+             r.actor_snapshot->>'name' AS "actorName"
         FROM app.document_import_runs r
-        JOIN app.users u ON u.id = r.actor_id
        WHERE r.document_digest = ${documentDigest}
        ORDER BY r.created_at ASC, r.id ASC
        LIMIT 1

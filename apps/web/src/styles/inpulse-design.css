@@ -3328,6 +3328,8 @@
 .member-task-count {
   color: #b25e12;
   font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .member-check-placeholder {

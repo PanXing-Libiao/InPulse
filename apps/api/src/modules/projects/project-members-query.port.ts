@@ -48,7 +48,7 @@ export abstract class ProjectMembersQueryPort {
     input: { projectId: number; userId: number },
   ): Promise<"MEMBER" | "LEADER" | undefined>;
   /**
-   * ADR-082：用户墓碑化前检查是否仍属于任一项目的 ACTIVE 成员。
+   * ADR-088：物理删除用户前检查是否仍属于任一项目的 ACTIVE 成员。
    * 调用方持有目标用户行锁；这里按 project_id 升序并锁定成员行。
    */
   abstract listActiveMembershipsForUser(

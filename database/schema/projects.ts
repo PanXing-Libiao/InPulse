@@ -4,13 +4,13 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   text,
   timestamp,
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { users } from "./identity.js";
 import { appSchema } from "./shared.js";
 
 const timestamptz = (name: string) =>
@@ -23,9 +23,8 @@ export const projects = appSchema.table(
     code: text("code").notNull(),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     /** ADR-043：项目生命周期三态（未开始 / 进行中 / 维护中）；新建项目从未开始起步，归档已下线。 */
     status: text("status").notNull().default("NOT_STARTED"),
     /**
@@ -38,15 +37,7 @@ export const projects = appSchema.table(
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
     /** ADR-043：归档时代的只读历史列，项目侧恒为空（见 projects_archived_at_null_check）。 */
     archivedAt: timestamptz("archived_at"),
-    /**
-     * ADR-049 软删除：非空表示项目已退出全部可见范围。业务历史、成员关系与审计链
-     * 全部保留，只从列表、详情、搜索、动态与项目级读写中排除。
-     */
-    deletedAt: timestamptz("deleted_at"),
-    /** 执行删除的用户；与 deleted_at 成对写入（见 projects_deleted_state_check）。 */
-    deletedBy: integer("deleted_by").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    /** ADR-062：项目删除为不可逆物理删除，不存在软删除列。 */
   },
   (table) => [
     unique("projects_code_unique").on(table.code),
@@ -70,10 +61,6 @@ export const projects = appSchema.table(
     ),
     check("projects_row_version_check", sql.raw("row_version > 0")),
     check("projects_archived_at_null_check", sql.raw("archived_at IS NULL")),
-    check(
-      "projects_deleted_state_check",
-      sql.raw("(deleted_at IS NULL) = (deleted_by IS NULL)"),
-    ),
   ],
 );
 
@@ -82,9 +69,8 @@ export const projectMembers = appSchema.table(
   {
     id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     projectId: integer("project_id").notNull(),
-    userId: integer("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    userId: integer("user_id").notNull(),
+    userSnapshot: jsonb("user_snapshot").notNull(),
     status: text("status").notNull().default("ACTIVE"),
     /** ADR-033/ADR-039：项目内角色（组长或普通成员）；成员被移除即失效，重新加入从 MEMBER 开始。 */
     role: text("role").notNull().default("MEMBER"),

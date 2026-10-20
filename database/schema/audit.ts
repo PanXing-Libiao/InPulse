@@ -15,7 +15,6 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { users } from "./identity.js";
 import { appSchema, bytea } from "./shared.js";
 
 const timestamptz = (name: string) =>
@@ -58,9 +57,7 @@ export const auditLogs = appSchema.table(
     sequenceNo: bigint("sequence_no", { mode: "number" }).notNull(),
     projectId: integer("project_id"),
     actorType: text("actor_type").notNull(),
-    actorId: integer("actor_id").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    actorId: integer("actor_id"),
     action: text("action").notNull(),
     targetType: text("target_type").notNull(),
     targetId: text("target_id"),

@@ -86,7 +86,6 @@ beforeAll(async () => {
     uow,
     audit,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
-    new PostgresUserReadPort(),
   );
   const auth = new SessionAuthService(
     uow,

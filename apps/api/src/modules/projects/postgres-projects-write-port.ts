@@ -150,14 +150,14 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
       SELECT pm.id AS "membership_id",
              pm.project_id,
              pm.user_id,
-             u.name,
+             pm.user_snapshot->>'name' AS name,
              u.avatar_url,
              pm.status,
              pm.role,
              pm.joined_at,
              pm.removed_at
         FROM app.project_members AS pm
-        JOIN app.users AS u ON u.id = pm.user_id
+        LEFT JOIN app.users AS u ON u.id = pm.user_id
        WHERE pm.project_id = ${input.projectId}
        ORDER BY pm.joined_at ASC, pm.id ASC
     `) as unknown as readonly MemberRow[];
@@ -496,14 +496,14 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
       SELECT pm.id AS "membership_id",
              pm.project_id,
              pm.user_id,
-             u.name,
+             pm.user_snapshot->>'name' AS name,
              u.avatar_url,
              pm.status,
              pm.role,
              pm.joined_at,
              pm.removed_at
         FROM app.project_members AS pm
-        JOIN app.users AS u ON u.id = pm.user_id
+        LEFT JOIN app.users AS u ON u.id = pm.user_id
        WHERE pm.project_id = ${input.projectId}
          AND pm.user_id = ${input.userId}
        ORDER BY pm.joined_at DESC, pm.id DESC

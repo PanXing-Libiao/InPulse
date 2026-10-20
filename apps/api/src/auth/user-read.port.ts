@@ -30,8 +30,18 @@ export class PostgresUserReadPort extends UserReadPort {
       return [];
     }
     const ids = [...userIds];
-    return (await tx.sql<
-      UserRefItem[]
-    >`SELECT id AS "userId", name, avatar_url AS "avatarUrl" FROM app.users WHERE id = ANY(${ids}::integer[]) ORDER BY id ASC`) as unknown as readonly UserRefItem[];
+    return (await tx.sql<UserRefItem[]>`
+      SELECT id AS "userId", name, avatar_url AS "avatarUrl"
+        FROM app.users
+       WHERE id = ANY(${ids}::integer[])
+      UNION ALL
+      SELECT d.user_id AS "userId", d.name, NULL::text AS "avatarUrl"
+        FROM app.deleted_user_identities AS d
+       WHERE d.user_id = ANY(${ids}::integer[])
+         AND NOT EXISTS (
+           SELECT 1 FROM app.users AS u WHERE u.id = d.user_id
+         )
+      ORDER BY "userId" ASC
+    `) as unknown as readonly UserRefItem[];
   }
 }

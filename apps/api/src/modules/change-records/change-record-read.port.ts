@@ -92,6 +92,7 @@ export interface LeftoverListRow {
   readonly moduleId: number;
   readonly featureId: number | null;
   readonly authorId: number;
+  readonly authorName?: string;
   readonly publishedAt: Date;
   readonly content: string;
   readonly status: "ACTIVE" | "CONVERTED" | "RESOLVED";
@@ -182,6 +183,7 @@ export interface RecordSummaryRecordRow {
   readonly changeSolution: string;
   readonly resultVerification: string;
   readonly authorId: number;
+  readonly authorName?: string;
   readonly publishedAt: Date;
   readonly taskId: number | null;
 }
@@ -216,6 +218,7 @@ export interface RecordSummaryLeftoverRow {
   readonly recordTitle: string;
   readonly projectId: number;
   readonly authorId: number;
+  readonly authorName?: string;
   readonly content: string;
   readonly status: "ACTIVE" | "CONVERTED" | "RESOLVED";
   readonly followupTaskId: number | null;
@@ -543,6 +546,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              cr.module_id AS "moduleId",
              cr.feature_id AS "featureId",
              cr.author_id AS "authorId",
+             cr.author_snapshot->>'name' AS "authorName",
              cr.published_at AS "publishedAt",
              vl.content_snapshot AS content,
              li.status AS status,
@@ -716,6 +720,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              COALESCE(cr.current_payload->>'changeSolution', '') AS "changeSolution",
              COALESCE(cr.current_payload->>'resultVerification', '') AS "resultVerification",
              cr.author_id AS "authorId",
+             cr.author_snapshot->>'name' AS "authorName",
              cr.published_at AS "publishedAt",
              cr.task_id AS "taskId"
         FROM app.change_records cr
@@ -768,6 +773,7 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              cr.title AS "recordTitle",
              li.project_id AS "projectId",
              cr.author_id AS "authorId",
+             cr.author_snapshot->>'name' AS "authorName",
              vl.content_snapshot AS content,
              li.status AS status,
              ltl.task_id AS "followupTaskId",

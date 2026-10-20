@@ -1,17 +1,25 @@
 import type { TransactionContext } from "../../database/transaction-context.js";
 import {
   ActivityWritePort,
-  validateActivityUserRenameInput,
+  ActivityWriteValidationError,
   validateActivityVisibilityUpdateInput,
   validateActivityWriteInput,
-  type ActivityUserRenameInput,
   type ActivityVisibilityUpdateInput,
   type ActivityWriteInput,
 } from "./activity.write-port.js";
 
+interface ActivityActorSnapshot {
+  readonly id: number;
+  readonly name: string;
+  readonly loginName: string;
+}
+
 /**
  * 显式接收调用方事务的活动投影写适配器。来源审计唯一约束由数据库兜底；
  * 可见性更新只允许向更高版本推进，避免过期事件覆盖最新状态。
+ *
+ * ADR-087：USER 动态在写入时固化操作人身份快照，后续用户行被删除也不会
+ * 影响项目动态的展示名。SYSTEM 动态不读取用户表。
  */
 export class PostgresActivityWritePort extends ActivityWritePort {
   async append(
@@ -19,6 +27,7 @@ export class PostgresActivityWritePort extends ActivityWritePort {
     input: ActivityWriteInput,
   ): Promise<void> {
     validateActivityWriteInput(input);
+    const actorSnapshot = await this.loadActorSnapshot(tx, input.actorId);
     await tx.sql`
       INSERT INTO app.activity_projection (
         project_id,
@@ -28,6 +37,7 @@ export class PostgresActivityWritePort extends ActivityWritePort {
         source_entity_id,
         activity_type,
         actor_id,
+        actor_snapshot,
         summary,
         metadata,
         visibility_scope,
@@ -43,6 +53,7 @@ export class PostgresActivityWritePort extends ActivityWritePort {
         ${input.sourceEntityId},
         ${input.activityType},
         ${input.actorId},
+        ${actorSnapshot === null ? null : JSON.stringify(actorSnapshot)},
         ${input.summary},
         ${JSON.stringify(input.metadata)},
         ${input.visibilityScope},
@@ -52,26 +63,6 @@ export class PostgresActivityWritePort extends ActivityWritePort {
       )
       ON CONFLICT (source_chain_id, source_sequence) DO NOTHING
     `;
-  }
-
-  async renameUserReferences(
-    tx: TransactionContext,
-    input: ActivityUserRenameInput,
-  ): Promise<number> {
-    validateActivityUserRenameInput(input);
-    const previous = "用户 " + input.previousName;
-    const replacement = "用户 " + input.replacementName;
-    const rows = (await tx.sql`
-      UPDATE app.activity_projection
-         SET summary = replace(summary, ${previous}, ${replacement})
-       WHERE position(${previous} in summary) > 0
-         AND (
-           actor_id = ${input.userId}
-           OR metadata->>'userId' = ${String(input.userId)}
-         )
-      RETURNING id
-    `) as unknown as readonly { id: string }[];
-    return rows.length;
   }
 
   async updateEntityVisibility(
@@ -89,5 +80,28 @@ export class PostgresActivityWritePort extends ActivityWritePort {
          AND source_entity_id = ${input.sourceEntityId}
          AND source_row_version < ${input.sourceRowVersion}
     `;
+  }
+
+  private async loadActorSnapshot(
+    tx: TransactionContext,
+    actorId: number | null,
+  ): Promise<ActivityActorSnapshot | null> {
+    if (actorId === null) {
+      return null;
+    }
+    const rows = (await tx.sql`
+      SELECT id, name, login_name AS "loginName"
+        FROM app.users
+       WHERE id = ${actorId}
+    `) as unknown as readonly ActivityActorSnapshot[];
+    const actor = rows[0];
+    if (actor === undefined) {
+      throw new ActivityWriteValidationError("activity actor does not exist");
+    }
+    return {
+      id: actor.id,
+      name: actor.name,
+      loginName: actor.loginName,
+    };
   }
 }

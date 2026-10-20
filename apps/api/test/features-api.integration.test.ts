@@ -101,7 +101,6 @@ beforeAll(async () => {
     audit,
     activity,
     search,
-    new PostgresUserReadPort(),
   );
   const http = new FeaturesHttpService(
     auth,

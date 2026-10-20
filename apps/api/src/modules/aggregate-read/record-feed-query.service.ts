@@ -215,15 +215,16 @@ export class RecordFeedQueryService {
         featureName = name;
       }
       const author = userById.get(record.authorId);
-      if (author === undefined) {
-        throw inconsistentError("记录作者不存在 " + String(record.authorId));
-      }
       return {
         record,
         projectName,
         moduleName,
         featureName,
-        author: toUserRef(author),
+        author: {
+          userId: record.authorId,
+          name: record.authorName ?? author?.name ?? "删除用户",
+          avatarUrl: author?.avatarUrl ?? null,
+        },
       };
     });
 

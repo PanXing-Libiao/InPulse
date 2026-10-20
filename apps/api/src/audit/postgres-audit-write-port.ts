@@ -18,6 +18,12 @@ interface AuditLockRow {
   readonly locked_key_version: number;
 }
 
+interface AuditActorSnapshot {
+  readonly id: number;
+  readonly name: string;
+  readonly loginName: string;
+}
+
 /**
  * 基于 PostgreSQL 有限追加函数的审计写适配器（技术设计 §7）。
  *
@@ -37,6 +43,7 @@ export class PostgresAuditWritePort extends AuditWritePort {
   ): Promise<AuditAppendResult> {
     // 调用方显式提供的三字段优先，缺省取请求级审计上下文；两处都没有则留空。
     const effective = applyRequestAuditMeta(input);
+    const actorSnapshot = await this.loadActorSnapshot(tx, effective);
     const chainId = auditChainId(effective.projectId);
     let lock = await this.lockHead(tx, chainId, effective.projectId);
     const currentVersion = this.keyProvider.currentVersion;
@@ -45,21 +52,27 @@ export class PostgresAuditWritePort extends AuditWritePort {
       effective.nextKeyVersion === undefined &&
       currentVersion > lock.keyVersion
     ) {
-      const rotation = await this.appendLocked(tx, chainId, lock, {
-        projectId: effective.projectId,
-        actorType: "SYSTEM",
-        actorId: null,
-        action: "AUDIT_KEY_ROTATED",
-        targetType: "SYSTEM",
-        targetId: null,
-        eventPayload: { newKeyVersion: currentVersion },
-        requestId: effective.requestId,
-        clientRequestId: effective.clientRequestId ?? null,
-        ipAddress: effective.ipAddress ?? null,
-        userAgent: effective.userAgent ?? null,
-        occurredAt: effective.occurredAt ?? new Date(),
-        nextKeyVersion: currentVersion,
-      });
+      const rotation = await this.appendLocked(
+        tx,
+        chainId,
+        lock,
+        {
+          projectId: effective.projectId,
+          actorType: "SYSTEM",
+          actorId: null,
+          action: "AUDIT_KEY_ROTATED",
+          targetType: "SYSTEM",
+          targetId: null,
+          eventPayload: { newKeyVersion: currentVersion },
+          requestId: effective.requestId,
+          clientRequestId: effective.clientRequestId ?? null,
+          ipAddress: effective.ipAddress ?? null,
+          userAgent: effective.userAgent ?? null,
+          occurredAt: effective.occurredAt ?? new Date(),
+          nextKeyVersion: currentVersion,
+        },
+        null,
+      );
       lock = {
         chainId,
         projectId: effective.projectId,
@@ -69,7 +82,7 @@ export class PostgresAuditWritePort extends AuditWritePort {
       };
     }
 
-    return this.appendLocked(tx, chainId, lock, effective);
+    return this.appendLocked(tx, chainId, lock, effective, actorSnapshot);
   }
 
   private async appendLocked(
@@ -77,6 +90,7 @@ export class PostgresAuditWritePort extends AuditWritePort {
     chainId: string,
     lock: AuditHeadLock,
     input: AuditWriteInput,
+    actorSnapshot: AuditActorSnapshot | null,
   ): Promise<AuditAppendResult> {
     const sequenceNo = lock.lastSequence + 1;
     const keyVersion = lock.keyVersion;
@@ -84,7 +98,11 @@ export class PostgresAuditWritePort extends AuditWritePort {
 
     this.assertRotation(input, keyVersion, nextKeyVersion);
 
-    const eventPayload = buildEventPayload(input, nextKeyVersion);
+    const eventPayload = buildEventPayload(
+      input,
+      nextKeyVersion,
+      actorSnapshot,
+    );
     const envelope = {
       chainScope: chainId,
       sequenceNo,
@@ -157,6 +175,32 @@ export class PostgresAuditWritePort extends AuditWritePort {
     };
   }
 
+  private async loadActorSnapshot(
+    tx: TransactionContext,
+    input: AuditWriteInput,
+  ): Promise<AuditActorSnapshot | null> {
+    if (input.actorType === "SYSTEM") {
+      return null;
+    }
+    if (input.actorId === null) {
+      throw new Error("user audit requires an actor id");
+    }
+    const rows = (await tx.sql`
+      SELECT id, name, login_name AS "loginName"
+        FROM app.users
+       WHERE id = ${input.actorId}
+    `) as unknown as readonly AuditActorSnapshot[];
+    const actor = rows[0];
+    if (actor === undefined) {
+      throw new Error("audit actor does not exist");
+    }
+    return {
+      id: actor.id,
+      name: actor.name,
+      loginName: actor.loginName,
+    };
+  }
+
   private assertRotation(
     input: AuditWriteInput,
     keyVersion: number,
@@ -182,6 +226,7 @@ function auditChainId(projectId: number | null): string {
 function buildEventPayload(
   input: AuditWriteInput,
   nextKeyVersion: number,
+  actorSnapshot: AuditActorSnapshot | null,
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     ...input.eventPayload,
@@ -195,6 +240,7 @@ function buildEventPayload(
     ipAddress: input.ipAddress ?? null,
     userAgent: input.userAgent ?? null,
     occurredAt: (input.occurredAt ?? new Date()).toISOString(),
+    actorSnapshot,
   };
   if (input.nextKeyVersion !== undefined) {
     payload["newKeyVersion"] = nextKeyVersion;

@@ -6783,3 +6783,65 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR084-GATE-001 | 静态门禁 | 契约 / 权限 / 类型 / 构建 | `contract:generate` 与 `contract:drift`（6 产物）、`permissions:check`（125 / 125）、`pnpm typecheck`（8 workspace）、`pnpm lint`、`pnpm build` 通过 | 本地通过（2026-10-19） |
 
 已知边界：审计页的“审计链”下拉仍只列活跃项目；已删除项目链通过跨链列表可见，`projectId` 查询仍由 API 支持。本地演示库 `app` 已从 `0047` 升级并应用 `0048`/`0049`；迁移前由旧 `app.purge_project` 删除的项目链无法从当前库恢复。未运行全量 API / Web / 数据库集成、全量 Playwright、生产镜像构建与 Trivy、GitHub Actions。
+
+## 2026-10-20 审计操作人身份快照（ADR-086，用户指示，本地落库）
+
+用户要求先改造审计日志，使账号后续被物理删除时仍保留事件当时的操作人身份。落 [ADR-086](adr/ADR-086.md)（`Accepted`）：新 USER 审计在 `eventPayload.actorSnapshot` 中固化 `id / name / loginName` 并纳入 JCS 信封与 HMAC；SYSTEM 审计写 `null`；USER 审计在用户行缺失时 fail closed。迁移 `0050_audit_actor_snapshot.sql` 移除 `audit_logs.actor_id` 到 `users` 的 RESTRICT 外键，保留 actor CHECK 与 `(actor_id, occurred_at)` 索引。历史行不补写快照、不重算哈希；旧记录仍回退实时用户目录。
+
+- **写入**：`PostgresAuditWritePort` 在同一 `TransactionContext` 内读取操作人姓名与登录名；快照位于 `eventPayload` 内，参与完整 `record_hash` 计算，不能事后补写。
+- **读取**：审计页优先使用与 `actorId` 匹配的 `actorSnapshot.name`，其次登录名，最后回退用户目录；审计 API 契约、路由、权限与游标均不变。
+- **历史边界**：迁移前的旧审计没有快照，若其用户行已被物理删除，操作人显示名无法从审计中恢复；本轮不伪造历史姓名。
+- **非目标**：本轮只解除审计表到用户表的外键，不实现用户物理删除；其他业务表对用户的引用仍需后续 ADR 处理。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR086-DB-001 | PostgreSQL 迁移 | 0050 部署不变量 | `db:migrations:check` 识别 49 个 SQL 迁移；在全新 PostgreSQL 18.6 临时实例上 49 个迁移全部应用成功；迁移内断言 `audit_logs_actor_id_users_id_fk` 已移除且 `audit_logs_actor_check` 存在并已验证 | 本地通过（2026-10-20） |
+| ADR086-API-001 | API 集成（真实 PostgreSQL） | 快照写入、哈希覆盖与缺失操作人 fail closed | `audit-write.integration.test.ts`：USER 事件载荷包含 `actorSnapshot`；SYSTEM 事件为 `null`；缺失用户时事务失败；密钥轮换用例按数据库原始载荷重算 HMAC 仍匹配 | 本地通过（2026-10-20，与 audit-logs 合计 2 文件 17 例） |
+| ADR086-API-002 | API 集成（真实 PostgreSQL） | 物理删除操作人后审计仍可读 | 写入 USER 审计后由 bootstrap 角色直接 `DELETE FROM app.users`，用户行归零，审计行仍存在，`actor_id` 与 `actorSnapshot` 保持原值，`audit_reader` 可读 | 本地通过（2026-10-20） |
+| ADR086-WEB-001 | Web 单元 | 快照姓名优先于实时目录 | 用户目录中同 ID 显示为「Bob」时，带 `actorSnapshot.name = 离职员工小吴` 的审计行显示「离职员工小吴」；无快照旧行仍按目录回退 | 本地通过（2026-10-20，`AuditLogPageView.test.tsx` 20/20） |
+| ADR086-DB-002 | PostgreSQL 数据库集成 | 迁移清单与既有约束 | `database.test.ts` 的迁移清单包含 `0050_audit_actor_snapshot.sql`；数据库集成 2 文件 28 例通过 | 本地通过（2026-10-20） |
+| ADR086-GATE-001 | 静态门禁 | 类型、Lint、格式 | API/Web typecheck 通过；改动 TypeScript 文件 ESLint 与 Prettier check 通过 | 本地通过（2026-10-20） |
+
+已知边界：API 全量集成本轮 64 文件中 623/624 通过；唯一失败为 `project-member-management-api.integration.test.ts` 的「accepts several replacement members ...」用例，断言多负责人任务改派后只剩 `[first]`，实际为 `[first, second]`，与 `ProjectMemberTaskCommandPort.reassign` 当前“保留其他负责人并合并调用方接手人”的代码注释一致，与本轮审计快照链路无调用关系，单文件复跑仍失败，未修改该无关用例。未运行全量 Playwright、生产镜像构建、Trivy 与 GitHub Actions。
+
+## 2026-10-20 项目动态操作人身份快照（ADR-087，用户指示，本地落库）
+
+用户确认：即使后续完全删除用户，也不得影响项目动态记录。落 [ADR-087](adr/ADR-087.md)（`Accepted`）：新 USER 动态在 `activity_projection.actor_snapshot` 中固化 `id / name / loginName`，读取优先使用与 `actorId` 匹配的快照；SYSTEM 动态写 `NULL`；USER 动态的操作人缺失时 fail closed。迁移 `0051_activity_actor_snapshot.sql` 移除 `activity_projection.actor_id` 到 `users` 的外键，并停止在删除用户时改写动态摘要。
+
+- **写入**：`PostgresActivityWritePort` 在同一 `TransactionContext` 内读取操作人身份；快照由 CHECK 约束校验结构与 `actor_id` 一致性。
+- **读取**：快照姓名优先，迁移前旧行动态回退实时用户目录；Activity API 契约、路由、权限与游标不变。
+- **删除语义**：`admin.user.delete` 不再调用 `renameUserReferences`，不再产生 `renamedActivityCount`；操作人快照与已写入的摘要保持不变；任务等仍按实时用户目录展示的字段继续显示「删除用户」。
+- **历史边界**：旧动态不回填；已被旧墓碑化流程改写成「删除用户」的摘要无法自动还原。
+- **非目标**：本批未实现用户物理删除；该能力与其余业务表引用由后续 ADR-088 实现。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR087-DB-001 | PostgreSQL 迁移 | 0051 部署不变量 | `db:migrations:check` 识别 50 个 SQL 迁移；全新 PostgreSQL 18.6 实例 50 个迁移全部应用成功；迁移内断言用户外键已移除，`actor_snapshot` 列与 CHECK 存在且已验证 | 本地通过（2026-10-20） |
+| ADR087-API-001 | API 集成（真实 PostgreSQL） | 动态身份快照写入与 fail closed | USER 动态的 `actor_snapshot` 与用户行一致；SYSTEM 动态为 `NULL`；缺失操作人时写入失败；物理删除操作人后审计外键不再阻断，动态行与原摘要仍存在，读取返回快照姓名 | 本地通过（2026-10-20，活动投影 / 活动查询 / 用户删除 3 文件 26 例） |
+| ADR087-API-002 | API 集成（真实 PostgreSQL） | 删除用户不再改写动态 | `admin.user.delete` 后原 `summary` 与 `actor_snapshot` 保持不变，审计载荷不再包含 `renamedActivityCount` | 本地通过（2026-10-20，含于上述 3 文件 26 例） |
+| ADR087-WEB-001 | Web 单元 | 删除提示与历史口径 | 成员页删除提示与成功文案说明审计和项目动态保留事件当时姓名；`AdminUsersPageView.test.tsx` 29/29 通过 | 本地通过（2026-10-20） |
+| ADR087-DB-002 | PostgreSQL 数据库集成 | 既有迁移与约束 | `database.test.ts` 迁移清单包含 `0051_activity_actor_snapshot.sql`；数据库集成 2 文件 28 例通过 | 本地通过（2026-10-20） |
+| ADR087-GATE-001 | 静态门禁 | 类型、Lint、格式 | API / Web / Database typecheck 通过；改动 TypeScript 文件 ESLint 与 Prettier check 通过；迁移清单校验 50 个 SQL、文档链接/空白检查通过 | 本地通过（2026-10-20） |
+
+已知边界：本轮未运行全量 API 集成、全部 Web 单测、Playwright、生产镜像构建、Trivy 与 GitHub Actions；只验证了与动态快照、审计回归、用户删除和迁移直接相关的测试。
+
+## 2026-10-20 离职账号物理删除与历史身份快照（ADR-088，用户指示，本地落库）
+
+用户确认：离职账号直接物理删除，不做墓碑化；删除后审计日志、项目动态及历史业务记录仍保留事件当时的账户名。落 [ADR-088](adr/ADR-088.md)（`Accepted`），替代 [ADR-082](adr/ADR-082.md) 的墓碑化机制；成员页「启用 / 已停用/离职」筛选与已删除账号不进列表的口径继续有效。
+
+- **删除入口**：`POST /api/v1/admin/users/{userId}/delete` 仍要求完整管理员 Session、CSRF、`Idempotency-Key` 与 `If-Match`；目标必须已 `DISABLED`、无 `ACTIVE` 项目成员关系且不是当前操作者。
+- **数据库**：迁移 `0053_physical_user_delete.sql` 增加最小身份留档表、`BEFORE DELETE` 触发器与 `app.delete_user_account(integer, integer)`；`app_runtime` 只获得函数执行权，没有 `app.users` 表级 `DELETE`。
+- **级联与保留**：Session、CSRF、TOTP、恢复码、幂等记录、通知、企业微信绑定码与个人企业微信绑定共 7 类私有运行态数据级联删除；项目、成员历史、任务、迭代记录、遗留项、外部链接、文档导入、AI 设置、企业微信机器人与项目群配置保留。
+- **历史署名**：迁移 `0052_actor_identity_snapshots.sql` 为 26 个业务署名列固化 `{ id, name, loginName }` 快照；审计使用 `eventPayload.actorSnapshot`，项目动态使用 `activity_projection.actor_snapshot`；读取优先快照，旧数据按既有回退口径处理。
+- **幂等与错误**：`deleteUser` 幂等契约升至 `2.0.0`，重放授权为 `actorOnly`；同 Key 重放返回 204 且不重复写审计，新请求删除已不存在用户返回 404。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR088-DB-001 | PostgreSQL 迁移 | 全新库迁移与删除不变量 | 全新 PostgreSQL 18.6 的 `app_ci` 从零应用 52 个迁移；`deleted_user_identities` 仅含 `user_id / name / login_name / deleted_at`；身份留档触发器存在；`users` 只剩 7 个级联私有外键且无非级联引用；`app_runtime` 无表级 `DELETE`，`delete_user_account` 复核版本、停用态与 ACTIVE 成员关系 | 本地通过（2026-10-20，`database.test.ts` 15/15） |
+| ADR088-API-001 | API 集成（真实 PostgreSQL + HTTP） | 物理删除全链路 | 未停用 409、仍有 ACTIVE 成员 409；删除成功 204 后目标 `app.users` 行与 7 类私有数据归零，身份留档保留；项目/成员历史/任务/任务状态/审计/项目动态及快照保留；成员列表不再返回目标；删除后新请求 404；同 Key 重放 204 且审计不重复；旧 Session 401；登录名可被新账号复用 | 本地通过（2026-10-20，`admin-users-api.integration.test.ts` 8/8） |
+| ADR088-API-002 | API 集成（真实 PostgreSQL） | 快照读取回归 | 活动投影、正式记录、草稿、任务、功能、遗留项、外部链接等读取链路在快照优先口径下保持通过；记录清单分页单测通过 | 本地通过（2026-10-20，7 文件 148 例 + `record-list-pagination.test.ts` 4 例） |
+| ADR088-WEB-001 | Web 单元 | 成员页与审计页 | 已删除账号不进入成员列表、停用账号才显示强制删除、删除文案说明不可恢复且历史署名保留；审计页显示中文「强制删除用户」并保留删除前姓名 | 本地通过（2026-10-20，`AdminUsersPageView.test.tsx` + `AuditLogPageView.test.tsx` 49/49） |
+| ADR088-WEB-002 | Web 单元 | 停用账号的历史审计姓名与筛选 | 无快照旧审计在账号停用后仍显示姓名（管理员目录包含 `DISABLED`），不回退为「用户 #id」；操作人筛选可选择已停用账号并提交 `actorIds` | 本地通过（2026-10-20，`AuditLogPageView.test.tsx` 21/21） |
+| ADR088-GATE-001 | 静态门禁 | 类型与契约 | API / Database / API-Contract typecheck 通过；`db:migrations:check` 校验 52 个迁移；`permissions:check` 126 条操作 / 126 条路由通过；契约生成物已重生成 | 本地通过（2026-10-20） |
+
+已知边界：未运行全量 API 集成、全量 Web 单测、Playwright、生产镜像构建、Trivy 与 GitHub Actions；本轮只验证与物理删除、身份快照、迁移和成员/审计页面直接相关的测试。迁移 `0052` 在本地首次集成测试中暴露 `is_actor_identity_snapshot` 未授权给 `app_runtime` 导致 42501，已补 `GRANT EXECUTE` 并从全新库复验。

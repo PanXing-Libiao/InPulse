@@ -4,13 +4,13 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   text,
   timestamp,
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { users } from "./identity.js";
 import { projects } from "./projects.js";
 import { appSchema } from "./shared.js";
 import { tasks } from "./work.js";
@@ -26,9 +26,8 @@ export const taskGroups = appSchema.table(
     code: text("code").notNull(),
     name: text("name").notNull(),
     status: text("status").notNull().default("ACTIVE"),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
@@ -82,15 +81,12 @@ export const taskGroupMembers = appSchema.table(
     sourceKind: text("source_kind"),
     status: text("status").notNull().default("ACTIVE"),
     originalWorkStatus: text("original_work_status"),
-    originalAssigneeId: integer("original_assignee_id").references(
-      () => users.id,
-      { onDelete: "restrict" },
-    ),
+    originalAssigneeId: integer("original_assignee_id"),
+    originalAssigneeSnapshot: jsonb("original_assignee_snapshot"),
     joinedAt: timestamptz("joined_at").notNull().defaultNow(),
     detachedAt: timestamptz("detached_at"),
-    detachedBy: integer("detached_by").references(() => users.id, {
-      onDelete: "restrict",
-    }),
+    detachedBy: integer("detached_by"),
+    detachedBySnapshot: jsonb("detached_by_snapshot"),
     detachReason: text("detach_reason"),
   },
   (table) => [

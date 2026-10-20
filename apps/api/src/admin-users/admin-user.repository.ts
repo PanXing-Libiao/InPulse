@@ -204,37 +204,27 @@ export class AdminUserRepository {
   }
 
   /**
-   * 不可逆墓碑化：清除登录名、个人资料、口令、组织与管理员身份，保留主键。
-   * 只有服务层校验完停用态、版本与活跃项目关系后才可调用。
+   * 物理删除账号：由数据库函数再次校验停用态、版本与活跃项目关系。
+   * 用户行删除前由 BEFORE DELETE 触发器保存最小身份快照；个人运行态
+   * 由外键级联删除，业务历史保留原用户编号。
    */
   async delete(
     tx: TransactionContext,
     current: AdminUserItem,
-  ): Promise<AdminUserItem | undefined> {
-    const rows = (await tx.sql`
-      UPDATE app.users
-         SET login_name = 'deleted-user-' || id::text,
-             name = '删除用户',
-             email = NULL,
-             avatar_url = NULL,
-             password_hash = NULL,
-             organization_id = NULL,
-             is_admin = false,
-             status = 'DISABLED',
-             disabled_at = COALESCE(disabled_at, now()),
-             auth_version = auth_version + 1,
-             deleted_at = now(),
-             row_version = row_version + 1,
-             updated_at = now()
-       WHERE id = ${current.id}
-         AND deleted_at IS NULL
-         AND row_version = ${current.rowVersion}
-      RETURNING id
-    `) as unknown as readonly { id: number }[];
-    if (rows.length === 0) {
-      return undefined;
-    }
-    return this.find(tx, current.id);
+  ): Promise<boolean> {
+    const [row] = await tx.sql<
+      { readonly deleted: boolean }[]
+    >`SELECT app.delete_user_account(${current.id}, ${current.rowVersion}) AS deleted`;
+    return row?.deleted === true;
+  }
+
+  async hasDeletedIdentity(
+    tx: TransactionContext,
+    userId: number,
+  ): Promise<boolean> {
+    const [row] =
+      await tx.sql`SELECT 1 FROM app.deleted_user_identities WHERE user_id = ${userId} LIMIT 1`;
+    return row !== undefined;
   }
 
   /**

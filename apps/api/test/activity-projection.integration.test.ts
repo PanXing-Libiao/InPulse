@@ -10,6 +10,7 @@ import {
   ActivityWriteValidationError,
   type ActivityWriteInput,
 } from "../src/modules/activity/activity.write-port.js";
+import { PostgresActivityProjectionReader } from "../src/modules/activity/activity-projection.reader.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import {
   createProject,
@@ -19,6 +20,7 @@ import {
 } from "./database.helpers.js";
 
 let client: DatabaseClient | undefined;
+let bootstrap: DatabaseClient | undefined;
 let uow: PostgresUnitOfWork | undefined;
 let auditPort: PostgresAuditWritePort | undefined;
 let activityPort: PostgresActivityWritePort | undefined;
@@ -30,6 +32,9 @@ const auditKey = Buffer.alloc(32, 0x7a);
 beforeAll(async () => {
   client = createDatabaseClient(testUrls().runtime, {
     applicationName: "inpulse-activity-projection-test",
+  });
+  bootstrap = createDatabaseClient(testUrls().bootstrap, {
+    applicationName: "inpulse-activity-projection-bootstrap-test",
   });
   uow = new PostgresUnitOfWork(client);
   auditPort = new PostgresAuditWritePort({
@@ -43,6 +48,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await client?.close();
+  await bootstrap?.close();
 });
 
 describe("PostgresActivityWritePort (real PostgreSQL)", () => {
@@ -76,6 +82,7 @@ describe("PostgresActivityWritePort (real PostgreSQL)", () => {
       SELECT id::text AS id,
              source_entity_id AS "sourceEntityId",
              activity_type AS "activityType",
+             actor_snapshot AS "actorSnapshot",
              summary,
              visibility_scope AS "visibilityScope",
              source_status AS "sourceStatus",
@@ -86,6 +93,11 @@ describe("PostgresActivityWritePort (real PostgreSQL)", () => {
       id: string;
       sourceEntityId: number;
       activityType: string;
+      actorSnapshot: {
+        readonly id: number;
+        readonly name: string;
+        readonly loginName: string;
+      };
       summary: string;
       visibilityScope: string;
       sourceStatus: string;
@@ -95,10 +107,140 @@ describe("PostgresActivityWritePort (real PostgreSQL)", () => {
     expect(rows[0]).toMatchObject({
       sourceEntityId: 101,
       activityType: "TASK_COMPLETED",
+      actorSnapshot: {
+        id: userA!,
+        name: expect.any(String),
+        loginName: expect.any(String),
+      },
       summary: "完成登录任务",
       visibilityScope: "MEMBER",
       sourceStatus: "DONE",
       sourceRowVersion: 1,
+    });
+  });
+
+  test("USER 操作人缺失时动态写入失败并回滚", async () => {
+    await expect(
+      uow!.run((tx) =>
+        activityPort!.append(
+          tx,
+          activityInput(999, {
+            actorId: 2_147_483_647,
+            sourceEntityId: 405,
+            activityType: "TASK_COMPLETED",
+            summary: "不存在的操作人",
+            sourceStatus: "DONE",
+            sourceRowVersion: 1,
+            occurredAt: new Date("2026-09-08T00:00:02.500Z"),
+          }),
+        ),
+      ),
+    ).rejects.toThrow("activity actor does not exist");
+  });
+
+  test("SYSTEM 动态不写操作人身份快照", async () => {
+    const occurredAt = new Date("2026-09-08T00:00:02.600Z");
+    await uow!.run(async (tx) => {
+      const audit = await auditPort!.append(tx, {
+        projectId: project!.projectId,
+        actorType: "SYSTEM",
+        actorId: null,
+        action: "SYSTEM_ACTIVITY_SNAPSHOT_TEST",
+        targetType: "TASK",
+        targetId: "406",
+        eventPayload: { marker: "system-activity" },
+        requestId: randomUUID(),
+        occurredAt,
+      });
+      await activityPort!.append(
+        tx,
+        activityInput(audit.sequenceNo, {
+          actorId: null,
+          sourceEntityId: 406,
+          activityType: "SYSTEM_ACTIVITY_SNAPSHOT_TEST",
+          summary: "系统完成动态",
+          sourceStatus: "DONE",
+          sourceRowVersion: 1,
+          occurredAt,
+        }),
+      );
+    });
+
+    const [row] = (await client!.sql`
+      SELECT actor_id AS "actorId", actor_snapshot AS "actorSnapshot"
+        FROM app.activity_projection
+       WHERE project_id = ${project!.projectId}
+         AND source_entity_id = 406
+    `) as unknown as readonly {
+      actorId: number | null;
+      actorSnapshot: Record<string, unknown> | null;
+    }[];
+    expect(row).toEqual({ actorId: null, actorSnapshot: null });
+  });
+
+  test("物理删除操作人后项目动态仍保留快照与原摘要", async () => {
+    const deletedActorId = await createUser(client!.sql);
+    const [actor] = (await client!.sql`
+      SELECT name, login_name AS "loginName"
+        FROM app.users
+       WHERE id = ${deletedActorId}
+    `) as unknown as readonly { name: string; loginName: string }[];
+    expect(actor).toBeDefined();
+
+    const occurredAt = new Date("2026-09-08T00:00:02.700Z");
+    const summary = `用户 ${actor!.name} 完成了任务`;
+
+    await uow!.run(async (tx) => {
+      const audit = await auditPort!.append(tx, {
+        projectId: project!.projectId,
+        actorType: "USER",
+        actorId: deletedActorId,
+        action: "TASK_COMPLETED_BY_DELETED_ACTOR",
+        targetType: "TASK",
+        targetId: "407",
+        eventPayload: { marker: "deleted-actor-activity" },
+        requestId: randomUUID(),
+        occurredAt,
+      });
+      await activityPort!.append(
+        tx,
+        activityInput(audit.sequenceNo, {
+          actorId: deletedActorId,
+          sourceEntityId: 407,
+          activityType: "TASK_COMPLETED_BY_DELETED_ACTOR",
+          summary,
+          sourceStatus: "DONE",
+          sourceRowVersion: 1,
+          occurredAt,
+        }),
+      );
+    });
+
+    await bootstrap!.sql`DELETE FROM app.users WHERE id = ${deletedActorId}`;
+    const [remaining] = (await client!.sql`
+      SELECT count(*)::INTEGER AS count
+        FROM app.users
+       WHERE id = ${deletedActorId}
+    `) as unknown as readonly { count: number }[];
+    expect(remaining?.count).toBe(0);
+
+    const reader = new PostgresActivityProjectionReader(client!.sql);
+    const page = await reader.read({
+      projectIds: [project!.projectId],
+      adminOnlyProjectIds: [],
+      category: "all",
+      limit: 100,
+      after: null,
+    });
+    const item = page.items.find(
+      (entry) =>
+        entry.activityType === "TASK_COMPLETED_BY_DELETED_ACTOR" &&
+        entry.sourceEntityId === 407,
+    );
+    expect(item).toMatchObject({
+      actorId: deletedActorId,
+      actorName: actor!.name,
+      summary,
     });
   });
 

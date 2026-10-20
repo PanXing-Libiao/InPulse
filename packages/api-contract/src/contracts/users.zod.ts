@@ -48,8 +48,8 @@ export type AdminUserPath = z.infer<typeof adminUserPathSchema>;
 
 /**
  * 管理员可见的用户条目。返回用户管理页面需要的登录名、状态、版本与时间，
- * 不返回密码哈希或任何认证材料。`deletedAt` 非空表示账号已墓碑化：
- * 姓名固定为「删除用户」，原登录名与个人资料不再暴露。
+ * 不返回密码哈希或任何认证材料。ADR-088 起 deleteUser 物理删除账号，
+ * 正常列表不再出现该行；`deletedAt` 仅兼容历史墓碑数据。
  */
 export const adminUserItemSchema = z
   .object({
@@ -64,7 +64,7 @@ export const adminUserItemSchema = z
     openTaskCount: z.number().int().min(0),
     rowVersion: z.number().int().positive(),
     disabledAt: z.iso.datetime().nullable(),
-    /** 墓碑化时间；非空表示账号已删除且不可恢复。 */
+    /** 历史墓碑时间；ADR-088 起的新删除不会再产生该值。 */
     deletedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
@@ -74,7 +74,7 @@ export const adminUserItemSchema = z
 
 export type AdminUserItem = z.infer<typeof adminUserItemSchema>;
 
-/** 用户管理列表响应；一次返回全部未删除用户，墓碑账号不进入成员列表。 */
+/** 用户管理列表响应；只返回仍存在的账号，物理删除与历史墓碑均不进入列表。 */
 export const adminUserListResponseSchema = z
   .object({ items: z.array(adminUserItemSchema).max(ADMIN_USER_LIST_LIMIT) })
   .strict()

@@ -205,6 +205,14 @@ export class AdminUsersHttpService {
         execute,
         replayAuthorizer: async (record, tx) => {
           const actorId = await this.resolveWriteActor(tx, request.headers);
+          if (operation === "deleteUser") {
+            await this.users.replayDelete(
+              tx,
+              actorId,
+              record.replayAuthContext,
+            );
+            return;
+          }
           await this.users.replay(tx, actorId, record.replayAuthContext);
         },
       });

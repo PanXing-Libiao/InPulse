@@ -27,6 +27,7 @@ import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { SessionAuthService } from "../src/auth/session-auth.service.js";
 import { SessionTokenService } from "../src/auth/session-token.service.js";
 import { PostgresUserCredentialRepository } from "../src/auth/user-credential.repository.js";
+import { PostgresActivityProjectionReader } from "../src/modules/activity/activity-projection.reader.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
@@ -440,7 +441,6 @@ beforeAll(async () => {
     new PostgresNotificationWritePort(),
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
-    new PostgresUserReadPort(),
   );
   taskDeletionCommands = new SqlTaskDeletionCommandPort(
     taskManagement,
@@ -479,7 +479,6 @@ beforeAll(async () => {
     highRisk,
     audit,
     new PostgresProjectMembersQueryPort(),
-    activity,
     new ProjectMemberTaskCommandPort(
       new TaskManagementRepository(),
       taskManagement,
@@ -834,7 +833,7 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
     });
   });
 
-  it("只允许墓碑化已停用且无活跃项目关系的用户，并清理历史显示名", async () => {
+  it("物理删除已停用且无活跃项目关系的用户，并保留历史署名与审计", async () => {
     const actor = await seedUser({ admin: true });
     const target = await seedUser({ admin: false });
     const original = await userState(target.userId);
@@ -890,13 +889,79 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
     expect((await membershipDelete.json()) as { code: string }).toMatchObject({
       code: "ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP",
     });
-    expect((await userState(target.userId)).deletedAt).toBeNull();
+    expect(await userState(target.userId)).toMatchObject({
+      status: "DISABLED",
+      deletedAt: null,
+    });
 
     await removeMember(client.sql, project.projectId, target.userId);
     const deletionSession = await createTargetSession(
       target.userId,
       state.authVersion,
     );
+
+    await client.sql`
+      INSERT INTO app.user_totp_factors (
+        user_id, status, enrollment_generation, key_version,
+        nonce, ciphertext, auth_tag, enrolled_at
+      )
+      VALUES (
+        ${target.userId}, 'ACTIVE', 1, 1,
+        ${randomBytes(12)}, ${randomBytes(48)}, ${randomBytes(16)}, now()
+      )
+    `;
+    await client.sql`
+      INSERT INTO app.mfa_recovery_codes (
+        user_id, batch_version, code_hash
+      )
+      VALUES (
+        ${target.userId}, 1,
+        ${"$argon2id$v=19$m=19456,t=2,p=1$" + randomUUID() + "$fixture-recovery"}
+      )
+    `;
+    await client.sql`
+      INSERT INTO app.wecom_binding_codes (user_id, code_hash, expires_at)
+      VALUES (${target.userId}, ${randomBytes(32)}, now() + interval '10 minutes')
+    `;
+    await client.sql`
+      INSERT INTO app.user_wecom_bindings (user_id, wecom_userid, status)
+      VALUES (${target.userId}, ${`private-${randomUUID().slice(0, 12)}`}, 'ACTIVE')
+    `;
+    await client.sql`
+      INSERT INTO app.idempotency_records (
+        actor_id, operation_id, idempotency_key,
+        idempotency_contract_version, request_hash,
+        request_hash_key_version, expires_at
+      )
+      VALUES (
+        ${target.userId}, 'fixture.private', ${randomUUID()},
+        '1.0.0', ${randomBytes(32)}, 1, now() + interval '1 hour'
+      )
+    `;
+
+    const privateRowCounts = async () => {
+      const [row] = (await client.sql`
+        SELECT
+          (SELECT count(*)::int FROM app.user_sessions WHERE user_id = ${target.userId}) AS sessions,
+          (SELECT count(*)::int FROM app.session_csrf_tokens AS c JOIN app.user_sessions AS s ON s.id = c.session_id WHERE s.user_id = ${target.userId}) AS "csrfTokens",
+          (SELECT count(*)::int FROM app.user_totp_factors WHERE user_id = ${target.userId}) AS totp,
+          (SELECT count(*)::int FROM app.mfa_recovery_codes WHERE user_id = ${target.userId}) AS "recoveryCodes",
+          (SELECT count(*)::int FROM app.notifications WHERE recipient_id = ${target.userId}) AS notifications,
+          (SELECT count(*)::int FROM app.wecom_binding_codes WHERE user_id = ${target.userId}) AS "bindingCodes",
+          (SELECT count(*)::int FROM app.user_wecom_bindings WHERE user_id = ${target.userId}) AS "wecomBindings",
+          (SELECT count(*)::int FROM app.idempotency_records WHERE actor_id = ${target.userId}) AS idempotency
+      `) as unknown as readonly {
+        readonly sessions: number;
+        readonly csrfTokens: number;
+        readonly totp: number;
+        readonly recoveryCodes: number;
+        readonly notifications: number;
+        readonly bindingCodes: number;
+        readonly wecomBindings: number;
+        readonly idempotency: number;
+      }[];
+      return row!;
+    };
     const activitySummary = `用户 ${original.name} 完成了任务`;
     await uow.run(async (tx) => {
       const event = await audit.append(tx, {
@@ -928,6 +993,28 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
         sourceRowVersion: 1,
         occurredAt: new Date(),
       });
+      await tx.sql`
+        INSERT INTO app.notifications (
+          recipient_id, project_id, source_chain_id, source_sequence,
+          notification_type, title, body, target_path
+        )
+        VALUES (
+          ${target.userId}, ${project.projectId},
+          ${"PROJECT:" + String(project.projectId)}, ${event.sequenceNo},
+          'PRIVATE_TEST', '私有通知', '', '/tasks'
+        )
+      `;
+    });
+
+    expect(await privateRowCounts()).toEqual({
+      sessions: 3,
+      csrfTokens: 3,
+      totp: 1,
+      recoveryCodes: 1,
+      notifications: 1,
+      bindingCodes: 1,
+      wecomBindings: 1,
+      idempotency: 1,
     });
 
     const deleteKey = randomUUID();
@@ -939,20 +1026,37 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
     );
     expect(deleteResponse.status).toBe(204);
 
-    state = await userState(target.userId);
-    expect(state).toMatchObject({
-      loginName: `deleted-user-${target.userId}`,
-      name: "删除用户",
-      email: null,
-      passwordCleared: true,
-      isAdmin: false,
-      organizationId: null,
-      status: "DISABLED",
-      disabledAt: expect.any(String),
-      deletedAt: expect.any(String),
-      authVersion: original.authVersion + 2,
-      rowVersion: original.rowVersion + 2,
-      activeSessions: 0,
+    const [userRows] = (await client.sql`
+      SELECT count(*)::int AS count
+        FROM app.users
+       WHERE id = ${target.userId}
+    `) as unknown as readonly { readonly count: number }[];
+    expect(userRows?.count).toBe(0);
+    const [archivedIdentity] = (await client.sql`
+      SELECT user_id AS "userId",
+             name,
+             login_name AS "loginName"
+        FROM app.deleted_user_identities
+       WHERE user_id = ${target.userId}
+    `) as unknown as readonly {
+      readonly userId: number;
+      readonly name: string;
+      readonly loginName: string;
+    }[];
+    expect(archivedIdentity).toEqual({
+      userId: target.userId,
+      name: original.name,
+      loginName: original.loginName,
+    });
+    expect(await privateRowCounts()).toEqual({
+      sessions: 0,
+      csrfTokens: 0,
+      totp: 0,
+      recoveryCodes: 0,
+      notifications: 0,
+      bindingCodes: 0,
+      wecomBindings: 0,
+      idempotency: 0,
     });
 
     const afterDeleteList = await request("/admin/users", "GET", actor);
@@ -964,14 +1068,53 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       afterDeleteItems.items.some((item) => item.id === target.userId),
     ).toBe(false);
 
-    const activityRows = (await client.sql`
-      SELECT summary
-        FROM app.activity_projection
-       WHERE source_entity_type = 'TASK'
-         AND source_entity_id = ${taskId}
-         AND actor_id = ${target.userId}
-    `) as unknown as readonly { summary: string }[];
-    expect(activityRows).toEqual([{ summary: `用户 删除用户 完成了任务` }]);
+    const [projectSnapshot] = (await client.sql`
+      SELECT created_by_snapshot->>'name' AS "creatorName"
+        FROM app.projects
+       WHERE id = ${project.projectId}
+    `) as unknown as readonly { readonly creatorName: string }[];
+    expect(projectSnapshot?.creatorName).toBe(original.name);
+    const [memberHistory] = (await client.sql`
+      SELECT status,
+             user_snapshot->>'name' AS name
+        FROM app.project_members
+       WHERE project_id = ${project.projectId}
+         AND user_id = ${target.userId}
+       ORDER BY id DESC
+       LIMIT 1
+    `) as unknown as readonly {
+      readonly status: string;
+      readonly name: string;
+    }[];
+    expect(memberHistory).toEqual({ status: "REMOVED", name: original.name });
+
+    const [taskSnapshots] = (await client.sql`
+      SELECT t.creator_snapshot->>'name' AS "creatorName",
+             ARRAY(
+               SELECT ta.user_snapshot->>'name'
+                 FROM app.task_assignees AS ta
+                WHERE ta.task_id = t.id
+                ORDER BY ta.user_id
+             ) AS "assigneeNames",
+             (
+               SELECT h.changed_by_snapshot->>'name'
+                 FROM app.task_status_history AS h
+                WHERE h.task_id = t.id
+                ORDER BY h.id
+                LIMIT 1
+             ) AS "changedByName"
+        FROM app.tasks AS t
+       WHERE t.id = ${taskId}
+    `) as unknown as readonly {
+      readonly creatorName: string;
+      readonly assigneeNames: readonly string[];
+      readonly changedByName: string;
+    }[];
+    expect(taskSnapshots).toEqual({
+      creatorName: original.name,
+      assigneeNames: [original.name],
+      changedByName: original.name,
+    });
 
     const taskItems = await uow.run((tx) =>
       new TaskManagementRepository().list(tx, {
@@ -981,8 +1124,50 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       }),
     );
     expect(taskItems.find((item) => item.id === taskId)).toMatchObject({
-      creatorName: "删除用户",
-      assigneeNames: ["删除用户"],
+      creatorName: original.name,
+      assigneeNames: [original.name],
+    });
+
+    const activityRows = (await client.sql`
+      SELECT summary,
+             actor_snapshot AS "actorSnapshot"
+        FROM app.activity_projection
+       WHERE source_entity_type = 'TASK'
+         AND source_entity_id = ${taskId}
+         AND actor_id = ${target.userId}
+    `) as unknown as readonly {
+      readonly summary: string;
+      readonly actorSnapshot: {
+        readonly id: number;
+        readonly name: string;
+        readonly loginName: string;
+      };
+    }[];
+    expect(activityRows).toEqual([
+      {
+        summary: activitySummary,
+        actorSnapshot: {
+          id: target.userId,
+          name: original.name,
+          loginName: original.loginName,
+        },
+      },
+    ]);
+    const activityPage = await new PostgresActivityProjectionReader(
+      client.sql,
+    ).read({
+      projectIds: [project.projectId],
+      adminOnlyProjectIds: [],
+      category: "task",
+      limit: 20,
+      after: null,
+    });
+    expect(
+      activityPage.items.find((item) => item.sourceEntityId === taskId),
+    ).toMatchObject({
+      actorId: target.userId,
+      actorName: original.name,
+      summary: activitySummary,
     });
 
     const [deleteAuditCount] = (await auditReader.sql`
@@ -990,7 +1175,7 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
         FROM app.audit_logs
        WHERE action = 'admin.user.delete'
          AND target_id = ${String(target.userId)}
-    `) as unknown as readonly { count: number }[];
+    `) as unknown as readonly { readonly count: number }[];
     expect(deleteAuditCount?.count).toBe(1);
     const [deleteAudit] = (await auditReader.sql`
       SELECT event_payload AS "eventPayload"
@@ -1000,28 +1185,28 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
        ORDER BY sequence_no DESC
        LIMIT 1
     `) as unknown as readonly {
-      eventPayload: {
+      readonly eventPayload: {
         readonly before: { readonly loginName: string; readonly name: string };
-        readonly after: { readonly loginName: string; readonly name: string };
+        readonly after: null;
+        readonly physicalDeleted: boolean;
         readonly revokedSessionCount: number;
-        readonly renamedActivityCount: number;
       };
     }[];
     expect(deleteAudit?.eventPayload).toMatchObject({
       before: { loginName: original.loginName, name: original.name },
-      after: {
-        loginName: `deleted-user-${target.userId}`,
-        name: "删除用户",
-      },
+      after: null,
+      physicalDeleted: true,
       revokedSessionCount: 1,
-      renamedActivityCount: 1,
     });
+    expect(deleteAudit?.eventPayload).not.toHaveProperty(
+      "renamedActivityCount",
+    );
 
     const replay = await request(
       `/admin/users/${target.userId}/delete`,
       "POST",
       actor,
-      { version: state.rowVersion - 1, key: deleteKey },
+      { version: state.rowVersion, key: deleteKey },
     );
     expect(replay.status).toBe(204);
     const [replayedAuditCount] = (await auditReader.sql`
@@ -1029,7 +1214,7 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
         FROM app.audit_logs
        WHERE action = 'admin.user.delete'
          AND target_id = ${String(target.userId)}
-    `) as unknown as readonly { count: number }[];
+    `) as unknown as readonly { readonly count: number }[];
     expect(replayedAuditCount?.count).toBe(1);
 
     for (const [path, method, body] of [
@@ -1041,28 +1226,11 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
         version: state.rowVersion,
         ...(body === undefined ? {} : { body }),
       });
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(404);
       expect((await response.json()) as { code: string }).toMatchObject({
-        code: "ADMIN_USER_STATE_CONFLICT",
+        code: "ADMIN_USER_NOT_FOUND",
       });
     }
-
-    const tombstoneCredential = await uow.run((tx) =>
-      credentials.findByNormalizedLoginName(tx, state.loginName),
-    );
-    expect(tombstoneCredential).toMatchObject({
-      status: "DISABLED",
-      passwordHash: null,
-    });
-    expect(
-      await uow.run((tx) =>
-        credentials.lockForSessionIssue(
-          tx,
-          target.userId,
-          tombstoneCredential!.authVersion,
-        ),
-      ),
-    ).toBeUndefined();
 
     const reused = await request("/admin/users", "POST", actor, {
       body: {
@@ -1167,7 +1335,6 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       highRisk,
       failingAudit,
       new PostgresProjectMembersQueryPort(),
-      new PostgresActivityWritePort(),
       new ProjectMemberTaskCommandPort(
         new TaskManagementRepository(),
         taskManagement,

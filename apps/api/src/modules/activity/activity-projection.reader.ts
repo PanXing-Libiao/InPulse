@@ -59,7 +59,10 @@ export interface ActivityProjectionItem {
   readonly sourceEntityId: number;
   readonly activityType: string;
   readonly actorId: number | null;
-  /** 当前用户展示名；墓碑账号由 app.users.name 固定返回「删除用户」。 */
+  /**
+   * 操作人展示名：ADR-087 起优先使用写入时的身份快照；没有快照的历史行
+   * 才回退当前用户目录。系统事件为 null。
+   */
   readonly actorName: string | null;
   readonly summary: string;
   readonly occurredAt: string;
@@ -121,7 +124,19 @@ export class PostgresActivityProjectionReader {
          source_entity_id,
          activity_type,
          actor_id,
-         (SELECT u.name FROM app.users AS u WHERE u.id = activity_projection.actor_id) AS actor_name,
+         CASE
+           WHEN activity_projection.actor_snapshot->>'id' = activity_projection.actor_id::text
+             AND btrim(activity_projection.actor_snapshot->>'name') <> ''
+             THEN btrim(activity_projection.actor_snapshot->>'name')
+           ELSE COALESCE(
+             (SELECT u.name
+                FROM app.users AS u
+               WHERE u.id = activity_projection.actor_id),
+             (SELECT d.name
+                FROM app.deleted_user_identities AS d
+               WHERE d.user_id = activity_projection.actor_id)
+           )
+         END AS actor_name,
          summary,
          to_char(occurred_at AT TIME ZONE 'UTC',
                  'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at

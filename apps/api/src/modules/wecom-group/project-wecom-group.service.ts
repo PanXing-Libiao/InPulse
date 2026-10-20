@@ -69,9 +69,8 @@ export class ProjectWecomGroupService {
            LIMIT 1
         ) AS bound_at,
         (
-          SELECT u.name
+          SELECT g.bound_by_snapshot->>'name'
             FROM app.project_wecom_groups AS g
-            JOIN app.users AS u ON u.id = g.bound_by_user_id
            WHERE g.project_id = ${input.projectId}
              AND g.status = 'ACTIVE'
            LIMIT 1

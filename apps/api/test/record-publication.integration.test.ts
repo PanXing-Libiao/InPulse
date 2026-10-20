@@ -146,7 +146,6 @@ beforeAll(async () => {
             uow,
             new PublishedRecordRepository(),
             new TimeCursorService(ring, "CHANGE_RECORDS"),
-            new PostgresUserReadPort(),
           ),
         ),
       },

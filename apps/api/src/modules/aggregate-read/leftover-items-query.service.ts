@@ -163,9 +163,6 @@ export class LeftoverItemsQueryService {
         throw inconsistentError("遗留项缺少模块 " + String(row.moduleId));
       }
       const author = userById.get(row.authorId);
-      if (author === undefined) {
-        throw inconsistentError("记录作者不存在 " + String(row.authorId));
-      }
       let featureName: string | null = null;
       if (row.featureId !== null) {
         const name = featureNameById.get(row.featureId);
@@ -185,7 +182,11 @@ export class LeftoverItemsQueryService {
         moduleName,
         featureId: row.featureId,
         featureName,
-        author: toUserRef(author),
+        author: {
+          userId: row.authorId,
+          name: row.authorName ?? author?.name ?? "删除用户",
+          avatarUrl: author?.avatarUrl ?? null,
+        },
         publishedAt: row.publishedAt.toISOString(),
         content: row.content,
         status: row.status,

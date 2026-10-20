@@ -119,7 +119,6 @@ beforeAll(async () => {
     uow,
     audit,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
-    new PostgresUserReadPort(),
   );
   publication = new RecordPublicationService(
     new RecordPublicationAccess(access, modules, features, taskQuery, pubRepo),
@@ -197,7 +196,6 @@ beforeAll(async () => {
         notifications,
         new PostgresModuleReadPort(),
         new PostgresProjectsWritePort(),
-        new PostgresUserReadPort(),
       ),
     ),
     new PostgresLeftoverRecordCommandPort(
@@ -248,7 +246,6 @@ beforeAll(async () => {
               notifications,
               new PostgresModuleReadPort(),
               new PostgresProjectsWritePort(),
-              new PostgresUserReadPort(),
             ),
           ),
         ),

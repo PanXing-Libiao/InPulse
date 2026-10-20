@@ -72,6 +72,19 @@ const noBodyWritePolicy = {
   idempotencyReplayPolicy: noBodyReplayPolicy,
 } as const;
 
+/**
+ * ADR-088 物理删除后目标用户行已不存在，重放只校验原始操作人与删除身份快照；
+ * 安全重放语义变化，幂等契约版本随之升级。
+ */
+const deleteWritePolicy = {
+  ...noBodyWritePolicy,
+  idempotencyContractVersion: "2.0.0",
+  replayAuthorizationPolicy: {
+    version: "1.0.0",
+    actorOnly: true as const,
+  },
+} as const;
+
 /** 停用请求新增任务交接 body，旧幂等 Key 在新契约下返回 409。 */
 const disableWritePolicy = {
   ...noBodyWritePolicy,
@@ -122,7 +135,7 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     path: "/admin/users",
     operationId: "listAdminUsers",
     summary:
-      "系统管理员读取未删除的用户账号，用于编辑、启停与角色管理；墓碑账号不再出现在成员列表，不返回任何认证材料。",
+      "系统管理员读取当前存在的用户账号，用于编辑、启停与角色管理；已物理删除的账号不再出现在列表，不返回任何认证材料。",
     request: {
       path: "none",
       query: "none",
@@ -281,7 +294,7 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     path: "/admin/users/{userId}/delete",
     operationId: "deleteUser",
     summary:
-      "系统管理员强制删除已停用用户：同事务墓碑化账号、清除凭据与个人字段、撤销全部 Session、改写历史成员姓名并写审计；账号仍存在但不可恢复。",
+      "系统管理员物理删除已停用且已退出全部项目的用户：同事务级联清除个人 Session、TOTP、恢复码、通知与企业微信绑定，保留业务历史并写入删除前身份快照；删除不可恢复。",
     request: {
       path: "AdminUserPath",
       query: "none",
@@ -293,7 +306,7 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     csrfPolicy: "required",
     idempotencyPolicy: "idempotencyRequired",
     behaviorHeaders: ["If-Match"],
-    ...noBodyWritePolicy,
+    ...deleteWritePolicy,
     ...versionedWritePolicy,
     auditAction: "admin.user.delete",
   },

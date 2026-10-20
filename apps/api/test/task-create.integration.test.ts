@@ -91,7 +91,6 @@ beforeAll(() => {
     audit,
     activity,
     search,
-    new PostgresUserReadPort(),
   );
   tasks = new TasksManagementService(
     access,
@@ -108,7 +107,6 @@ beforeAll(() => {
     new PostgresNotificationWritePort(),
     moduleRead,
     new PostgresProjectsWritePort(),
-    new PostgresUserReadPort(),
   );
   workflow = new TaskCreateWorkflow(
     new ProjectCreationLockPort(),

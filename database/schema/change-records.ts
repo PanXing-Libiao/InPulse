@@ -11,7 +11,6 @@ import {
   unique,
 } from "drizzle-orm/pg-core";
 
-import { users } from "./identity.js";
 import { appSchema } from "./shared.js";
 import { features, modules, tasks } from "./work.js";
 
@@ -29,12 +28,10 @@ export const changeRecords = appSchema.table(
     scopeType: text("scope_type").notNull(),
     code: text("code"),
     title: text("title").notNull(),
-    handlerId: integer("handler_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    authorId: integer("author_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    handlerId: integer("handler_id").notNull(),
+    handlerSnapshot: jsonb("handler_snapshot").notNull(),
+    authorId: integer("author_id").notNull(),
+    authorSnapshot: jsonb("author_snapshot").notNull(),
     status: text("status").notNull().default("DRAFT"),
     currentVersion: integer("current_version").notNull().default(0),
     currentPayload: jsonb("current_payload")
@@ -153,9 +150,8 @@ export const changeRecordVersions = appSchema.table(
     versionNo: integer("version_no").notNull(),
     titleSnapshot: text("title_snapshot").notNull(),
     payload: jsonb("payload").notNull(),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [
@@ -194,9 +190,8 @@ export const changeRecordLeftoverItems = appSchema.table(
     recordId: integer("record_id").notNull(),
     projectId: integer("project_id").notNull(),
     status: text("status").notNull().default("ACTIVE"),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
@@ -278,9 +273,8 @@ export const leftoverTaskLinks = appSchema.table(
     leftoverItemId: integer("leftover_item_id").primaryKey(),
     taskId: integer("task_id").notNull(),
     projectId: integer("project_id").notNull(),
-    createdBy: integer("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+    createdBy: integer("created_by").notNull(),
+    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
   },
   (table) => [

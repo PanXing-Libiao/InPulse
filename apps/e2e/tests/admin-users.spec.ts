@@ -43,7 +43,7 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
   const name = `F-03 用户 ${suffix}`;
   // 新增用户入口已按「将来只用单点登录」的口径从管理页移除，目标账号改由夹具
   // 直接预置（与 SSO JIT 开通一致：password_hash 为空）；sso_subject 保留夹具
-  // 前缀，使墓碑化后的账号仍能被 global-teardown 的 fixture-cleanup 识别。
+  // 前缀，仍便于清理脚本识别可能残留的夹具数据。
   const sql = postgres(requiredE2eDatabaseUrl(), {
     max: 1,
     onnotice: () => undefined,
@@ -188,10 +188,9 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await deleteDialog.getByRole("button", { name: "确认删除" }).click();
     await expect(deleteDialog).toBeHidden();
     await expect(
-      page.getByText(
-        "账号已强制删除，历史业务记录中的显示名已改为「删除用户」",
-        { exact: true },
-      ),
+      page.getByText("账号已删除，审计与项目动态保留事件当时姓名", {
+        exact: true,
+      }),
     ).toBeVisible();
 
     await expect(card).toHaveCount(0);

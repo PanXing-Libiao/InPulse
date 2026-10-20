@@ -56,7 +56,6 @@ beforeAll(() => {
     new PostgresNotificationWritePort(),
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
-    new PostgresUserReadPort(),
   );
 });
 

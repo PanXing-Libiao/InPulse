@@ -319,6 +319,10 @@
     {
       "version": "1.0.0",
       "fingerprint": "f7892bc48ada41ae9d32aaed3610a904ee98132415c4b1373be5cc40e1d782e0"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "a49a759263b4e0365e9bb30b9a541f555527a36ba366e0c8350d142dae42140d"
     }
   ],
   "deleteWecomBinding": [

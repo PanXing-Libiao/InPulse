@@ -128,7 +128,6 @@ beforeAll(async () => {
     notifications,
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
-    new PostgresUserReadPort(),
   );
   const mutation = new AuthenticatedMutationService(auth, csrf, tokens);
   const idempotency = new IdempotencyHttpService(
@@ -154,7 +153,6 @@ beforeAll(async () => {
     uow,
     audit,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
-    new PostgresUserReadPort(),
   );
   const publication = new RecordPublicationService(
     new RecordPublicationAccess(access, modules, features, taskQuery, pubRepo),

@@ -40,6 +40,25 @@ const systemItem: AuditLogItem = {
   canonicalVersion: "JCS-1",
 };
 
+// ADR-086：新审计写入把操作人姓名固化进受 HMAC 覆盖的载荷；即使该账号已从
+// 用户目录消失，列表也应优先显示事件当时的姓名。
+const snapshotActorItem: AuditLogItem = {
+  ...systemItem,
+  sequenceNo: 22,
+  actorId: 2,
+  eventPayload: {
+    ...systemItem.eventPayload,
+    actorSnapshot: { id: 2, name: "离职员工小吴", loginName: "xiaowu" },
+  },
+};
+
+const disabledActorItem: AuditLogItem = {
+  ...systemItem,
+  sequenceNo: 24,
+  actorId: 4,
+  eventPayload: { loginName: "former", reason: "历史审计" },
+};
+
 const projectItem: AuditLogItem = {
   ...systemItem,
   chainId: "PROJECT:7",
@@ -131,7 +150,7 @@ const documentImportItem: AuditLogItem = {
   eventPayload: { digest: "d".repeat(16), addedMemberCount: 3 },
 };
 
-// ADR-082：删除不可逆，但审计列表仍展示删除前的姓名；原始快照保留删除后的墓碑载荷。
+// ADR-088：物理删除不可逆，审计列表仍展示删除前姓名；原始快照记录 after = null。
 const deleteUserItem: AuditLogItem = {
   ...systemItem,
   sequenceNo: 20,
@@ -140,7 +159,8 @@ const deleteUserItem: AuditLogItem = {
   targetId: "9",
   eventPayload: {
     before: { id: 9, loginName: "xiaowu", name: "小吴" },
-    after: { id: 9, loginName: "deleted-user-9", name: "删除用户" },
+    after: null,
+    physicalDeleted: true,
   },
 };
 
@@ -185,15 +205,33 @@ function queryClient() {
 }
 
 /**
- * 渲染前统一补用户目录 mock（断言里就能看到人名而不是「用户 #N」），
- * 用例自带同名 mock 时以后者为准。
+ * 渲染前统一补管理员用户目录 mock（含已停用账号），断言里就能看到人名。
  */
-function withUserDirectory(client: InpulseApiClient): InpulseApiClient {
+function withAdminUserDirectory(client: InpulseApiClient): InpulseApiClient {
   const defaults = {
-    getUserDirectory: vi.fn().mockResolvedValue({
+    listAdminUsers: vi.fn().mockResolvedValue({
       items: [
-        { id: 1, name: "邵昱宇", avatarUrl: null, isAdmin: true },
-        { id: 2, name: "Bob", avatarUrl: null, isAdmin: false },
+        {
+          id: 1,
+          name: "邵昱宇",
+          avatarUrl: null,
+          isAdmin: true,
+          status: "ACTIVE",
+        },
+        {
+          id: 2,
+          name: "Bob",
+          avatarUrl: null,
+          isAdmin: false,
+          status: "ACTIVE",
+        },
+        {
+          id: 4,
+          name: "停用员工",
+          avatarUrl: null,
+          isAdmin: false,
+          status: "DISABLED",
+        },
       ],
     }),
   };
@@ -205,7 +243,7 @@ function mount(client: InpulseApiClient) {
     <ConfigProvider theme={{ token: { motion: false } }}>
       <AuthStateProvider value={{}}>
         <QueryClientProvider client={queryClient()}>
-          <AuditLogPageView client={withUserDirectory(client)} />
+          <AuditLogPageView client={withAdminUserDirectory(client)} />
         </QueryClientProvider>
       </AuthStateProvider>
     </ConfigProvider>,
@@ -374,6 +412,35 @@ describe("F-08 audit page", () => {
     expect(codes).toContain("project.documentImport");
   });
 
+  it("优先使用受哈希保护的操作人快照，删除账号后仍显示当时姓名", async () => {
+    const getAuditLogs = vi.fn().mockResolvedValue(page([snapshotActorItem]));
+    const listProjects = vi.fn().mockResolvedValue({ items: [project] });
+    mount({ getAuditLogs, listProjects } as unknown as InpulseApiClient);
+
+    const row = await screen.findByTestId("audit-item-SYSTEM-22");
+    expect(within(row).getByText("离职员工小吴")).toBeInTheDocument();
+    expect(within(row).queryByText("Bob")).not.toBeInTheDocument();
+  });
+
+  it("已停用账号的旧审计仍显示姓名，并可作为操作人筛选", async () => {
+    const getAuditLogs = vi.fn().mockResolvedValue(page([disabledActorItem]));
+    const listProjects = vi.fn().mockResolvedValue({ items: [project] });
+    mount({ getAuditLogs, listProjects } as unknown as InpulseApiClient);
+
+    const row = await screen.findByTestId("audit-item-SYSTEM-24");
+    expect(within(row).getByText("停用员工")).toBeInTheDocument();
+    expect(screen.queryByText("用户 #4")).not.toBeInTheDocument();
+
+    pickSelectOption("操作人", "停用员工");
+    fireEvent.click(screen.getByRole("button", { name: "查询" }));
+    await waitFor(() =>
+      expect(getAuditLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ actorIds: [4] }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it("删除用户动作显示中文，并保留审计载荷中的删除前姓名", async () => {
     const user = userEvent.setup();
     const getAuditLogs = vi.fn().mockResolvedValue(page([deleteUserItem]));
@@ -395,7 +462,7 @@ describe("F-08 audit page", () => {
     );
     const payload = screen.getByTestId("audit-snapshot-payload");
     expect(payload.textContent ?? "").toContain('"name": "小吴"');
-    expect(payload.textContent ?? "").toContain('"name": "删除用户"');
+    expect(payload.textContent ?? "").toContain('"physicalDeleted": true');
   });
 
   it("已删除项目仍显示审计载荷中的项目编码和名称，不回退为项目 null", async () => {

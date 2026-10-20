@@ -86,7 +86,7 @@ F-12 本地接口已登记到可执行权限矩阵，真实 HTTP/数据库验收
 | `getAdminUserOffboarding` · `GET /api/v1/admin/users/{userId}/offboarding` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整系统管理员 Session；只读，不要求 CSRF、`Idempotency-Key` 或 `If-Match`；目标不存在 404；返回按项目分组的 TODO 任务、全部负责人、任务 `rowVersion` 与可接手的 ACTIVE 项目成员；无任务返回 `projects: []`；响应 `no-store` |
 | `disableUser` · `POST /api/v1/admin/users/{userId}/disable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；请求体 `AdminUserDisableRequest`（幂等契约 2.0.0）；目标不存在 404、已停用或用户版本冲突 409；禁止停用自己；停用 ACTIVE 管理员时执行最后一名可用管理员保护；多负责人任务默认保留其他负责人；唯一负责人任务必须指定一名或多名接手人或 `delete = true`，否则 422 `ADMIN_USER_OFFBOARDING_TASK_REQUIRED`；任务 scope/版本变化、重复动作或删除主任务按明确错误返回；全部任务处理后重新读取，仍有未完成任务 409 `ADMIN_USER_OFFBOARDING_INCOMPLETE` 并整体回滚；同事务置 `DISABLED`/`disabled_at`、递增 `auth_version` 与 `row_version`、撤销全部 Session 并写审计（含 `reassignedTaskIds` / `deletedTaskIds`）；停用后目标所有受保护请求 401 |
 | `enableUser` · `POST /api/v1/admin/users/{userId}/enable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标不存在 404、已启用或版本冲突 409；同事务清除停用态并递增 `row_version`、写审计；不恢复已撤销 Session 或登录限流历史 |
-| `deleteUser` · `POST /api/v1/admin/users/{userId}/delete` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标必须已停用、尚未墓碑化且无任何 ACTIVE 项目成员关系；禁止删除自己；同事务墓碑化账号（`deleted_at`、固定登录名与姓名、清除邮箱/头像/口令/组织/管理员身份）、递增 `auth_version` 与 `row_version`、撤销全部 Session、改写动态姓名并写 `admin.user.delete` 审计；已删除账号不可登录、启用、编辑或再次删除 |
+| `deleteUser` · `POST /api/v1/admin/users/{userId}/delete` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标必须已停用且无任何 ACTIVE 项目成员关系；禁止删除自己；同事务物理删除账号、级联清理 7 类私有运行态数据、撤销全部 Session、留档最小身份并写 `admin.user.delete` 审计；审计、项目动态与业务历史使用事件时快照保留署名；删除后目标资源返回 404，新删除请求不可再次执行 |
 
 ## F-14 功能级任务接口（2026-09-09 本地实现）
 
@@ -333,13 +333,13 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 六条路由承载 ADR-081 的组织（部门）能力：组织是全局平铺配置，一名成员至多归属一个组织（未分配为 `NULL`，删除组织即回到未分配），组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。路由总数 119 → 125，`permissions:check` 125 条操作 / 125 条路由通过（2026-10-16 实测）；真实 PostgreSQL 集成用例 `apps/api/test/organizations-api.integration.test.ts` 3 例本地通过；迁移 `0046_organizations.sql`。2026-10-16 第二批（部分）与修正：① `getUserDirectory` 增加只读组织字段（未分配为 `null`，仍不含登录名与邮箱），新建项目「初始项目成员」选择器按组织分组并支持「全选组织」快捷按钮（仍受 1～20 人与项目成员约束不变）；② 修正 `/settings` 前端路由守卫——ADR-081 首批声明「入口对全体成员开放」但路由仍要求管理员，已改为登录守卫（`requiresAuth`），普通成员进入后只渲染只读同组织视图，管理能力由页面按 `isAdmin` 收缩；③ 真实 PostgreSQL 集成 `apps/api/test/user-directory.integration.test.ts` 增至 3 例（含组织归属 `null` / 非 `null`）。
 
-## ADR-082 离职账号墓碑化删除（2026-10-19）
+## ADR-088 离职账号物理删除（2026-10-20）
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 | ------------ | ---- | -------- | ------------ | ---------- | -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deleteUser` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（1.0.0）+ `If-Match`；目标不存在 404；未停用、已墓碑化或版本冲突 409；禁止删除自己；仍有 ACTIVE 项目成员关系时 409 `ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP`；成功 204 无 body |
+| `deleteUser` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（2.0.0）+ `If-Match`；目标不存在 404；未停用或版本冲突 409；禁止删除自己；仍有 ACTIVE 项目成员关系时 409 `ADMIN_USER_ACTIVE_PROJECT_MEMBERSHIP`；成功 204 无 body；同一 Key 重放 204 且不重复写审计 |
 
-本路由只服务离职账号清理：管理员必须先把目标停用并移出全部项目，再执行删除。删除不是物理删除，而是不可逆墓碑化 `app.users` 行：保留主键与历史外键，清除登录名、姓名、邮箱、头像、口令、组织归属与管理员身份，撤销全部 Session，并在同一事务内改写项目动态中的姓名引用和写 `admin.user.delete` 审计。墓碑账号不可登录、启用、编辑或再次删除；原登录名可复用，`sso_subject` 保留用于阻止同一统一身份静默接管新账号。审计原始载荷与哈希链保持不可变，审计列表优先使用事件载荷中的历史姓名；历史业务记录显示「删除用户」。成员页默认展示启用账号，可切换到已停用/离职；墓碑账号不进入任何成员筛选。2026-10-19 按 [ADR-083](adr/ADR-083.md) 移除 `forceLogoutUser`：不再保留路由、服务端命令、生成客户端方法或前端入口，撤销目标会话只能通过停用账号完成。随后新增 `getAdminUserOffboarding`，当前路由总数 126，`permissions:check` 126 条操作 / 126 条路由。真实 PostgreSQL 集成 `apps/api/test/admin-users-api.integration.test.ts`、`apps/api/test/login.integration.test.ts` 与 `database/test/integration/database.test.ts` 已覆盖墓碑化、Session 撤销、历史姓名、审计、幂等重放、登录拒绝与数据库不可逆约束。
+本路由只服务离职账号清理：管理员必须先把目标停用、完成 [ADR-084](adr/ADR-084.md) 的任务交接并移出全部项目，再执行删除。删除会从 `app.users` 物理移除账号行，Session、CSRF、TOTP、恢复码、幂等记录、通知、企业微信绑定码与个人绑定随账号级联删除；项目、成员历史、任务、迭代记录、遗留项、外部链接、文档导入、企业微信群配置与审计链保留。删除前以 `deleted_user_identities` 留档最小身份，业务历史、审计和项目动态使用事件时身份快照保持当时姓名。删除后目标资源返回 404，原登录名可复用；同一幂等 Key 重放仍返回 204 且不重复写审计。成员页保留「启用 / 已停用/离职」筛选，停用账号可强制删除，已删除账号不在任何筛选出现。`forceLogoutUser` 仍按 [ADR-083](adr/ADR-083.md) 移除。当前路由总数 126，`permissions:check` 126 条操作 / 126 条路由。
 
 ## ADR-084 停用账号前的任务交接（2026-10-19）
 
