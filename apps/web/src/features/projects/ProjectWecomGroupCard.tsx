@@ -335,6 +335,7 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
 
       <ProjectNotificationOptionsModal
         open={notificationOpen}
+        projectId={projectId}
         projectName={projectName}
         onClose={() => setNotificationOpen(false)}
       />

@@ -78,7 +78,13 @@ class FakeQueryService {
     return { items: [], nextCursor: null, hasMore: false };
   }
 
-  async unreadCount(): Promise<number> {
+  unreadCalls: Array<string | undefined> = [];
+
+  async unreadCount(
+    _actorUserId: number,
+    mutedProjectCategories?: string,
+  ): Promise<number> {
+    this.unreadCalls.push(mutedProjectCategories);
     if (this.error !== undefined) {
       throw this.error;
     }
@@ -194,8 +200,10 @@ describe("NotificationsController", () => {
       await controller.unreadCount(
         { headers: { cookie: "__Host-session=token" } },
         countResponse as never,
+        { mutedProjectCategories: "12:task.assign" },
       ),
     ).toEqual({ unreadCount: 3 });
+    expect(query.unreadCalls).toEqual(["12:task.assign"]);
 
     query.error = new Error("database");
     const errorResponse = responseFixture();
@@ -203,6 +211,7 @@ describe("NotificationsController", () => {
       await controller.unreadCount(
         { headers: { cookie: "__Host-session=token" } },
         errorResponse as never,
+        {},
       ),
     ).toMatchObject({ code: "INTERNAL_ERROR" });
     expect(errorResponse.status).toHaveBeenCalledWith(500);

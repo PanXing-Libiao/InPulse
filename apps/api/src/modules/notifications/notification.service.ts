@@ -19,6 +19,7 @@ export interface NotificationReadInput {
   readonly unreadOnly: boolean;
   readonly limit: number;
   readonly after: TimeCursorValue | null;
+  readonly hiddenRules?: readonly string[];
 }
 
 export class NotificationNotFoundError extends Error {
@@ -61,6 +62,13 @@ export class NotificationStateService {
           OR created_at < $3::timestamptz
           OR (created_at = $3::timestamptz AND id < $4::bigint)
         )
+        AND (
+          project_id IS NULL
+          OR NOT (
+            project_id::text || '|' || notification_type
+              = ANY ($6::text[])
+          )
+        )
       ORDER BY created_at DESC, id DESC
       LIMIT $5`,
       [
@@ -69,6 +77,7 @@ export class NotificationStateService {
         input.after?.at ?? null,
         input.after?.id ?? "0",
         input.limit + 1,
+        input.hiddenRules ?? [],
       ],
     );
     const hasMore = rows.length > input.limit;
@@ -92,13 +101,24 @@ export class NotificationStateService {
     };
   }
 
-  async countUnread(recipientId: number): Promise<number> {
-    const rows = (await this.#sql`
-      SELECT count(*)::INTEGER AS count
-        FROM app.notifications
-       WHERE recipient_id = ${recipientId}
-         AND read_at IS NULL
-    `) as unknown as readonly { count: number }[];
+  async countUnread(
+    recipientId: number,
+    hiddenRules: readonly string[] = [],
+  ): Promise<number> {
+    const rows = (await this.#sql.unsafe<{ count: number }[]>(
+      `SELECT count(*)::INTEGER AS count
+         FROM app.notifications
+        WHERE recipient_id = $1
+          AND read_at IS NULL
+          AND (
+            project_id IS NULL
+            OR NOT (
+              project_id::text || '|' || notification_type
+                = ANY ($2::text[])
+            )
+          )`,
+      [recipientId, hiddenRules],
+    )) as unknown as readonly { count: number }[];
     return rows[0]?.count ?? 0;
   }
 

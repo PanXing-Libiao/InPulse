@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 
 import type {
+  NotificationMuteQueryRequest,
   NotificationPath,
   NotificationQueryRequest,
 } from "@inpulse/api-contract";
@@ -101,6 +102,9 @@ export class NotificationsController {
         ...(query.unreadOnly === undefined
           ? {}
           : { unreadOnly: query.unreadOnly }),
+        ...(query.mutedProjectCategories === undefined
+          ? {}
+          : { mutedProjectCategories: query.mutedProjectCategories }),
       });
       return {
         items: result.items,
@@ -122,6 +126,8 @@ export class NotificationsController {
   async unreadCount(
     @Req() request: NotificationControllerRequest,
     @Res({ passthrough: true }) response: NotificationControllerResponse,
+    @ContractQuery("getNotificationUnreadCount")
+    query: NotificationMuteQueryRequest,
   ): Promise<unknown | ErrorResponseDto> {
     const requestId = randomUUID();
     const actor = await this.sessionAuth.resolveActor(
@@ -131,8 +137,17 @@ export class NotificationsController {
       return unauthorized(requestId, response);
     }
     try {
-      return { unreadCount: await this.queryService.unreadCount(actor.userId) };
-    } catch {
+      return {
+        unreadCount: await this.queryService.unreadCount(
+          actor.userId,
+          query.mutedProjectCategories,
+        ),
+      };
+    } catch (error) {
+      if (error instanceof NotificationQueryValidationError) {
+        response.status(422);
+        return validationResponse(requestId, error.message);
+      }
       response.status(500);
       return internalError(requestId);
     }
