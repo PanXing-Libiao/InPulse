@@ -24,6 +24,7 @@ import {
 export type ProjectWecomGroupOperation =
   | "getProjectWecomGroup"
   | "createProjectWecomGroupCode"
+  | "updateProjectWecomGroupNotificationOptions"
   | "deleteProjectWecomGroup";
 
 export interface ProjectWecomGroupHttpRequest {
@@ -117,6 +118,41 @@ export class ProjectWecomGroupHttpService {
         return { status: 201, body };
       }
 
+      if (operation === "updateProjectWecomGroupNotificationOptions") {
+        const options = this.parseNotificationOptions(request.body);
+        const result = await this.idempotency.run({
+          operationId: operation,
+          actorId: (tx) => this.resolveWriteActor(tx, request.headers),
+          request: {
+            method: route.method,
+            path: route.path,
+            pathParams: { projectId: String(path.projectId) },
+            query: {},
+            headers: request.headers,
+            body: options,
+          },
+          execute: (tx, actorId) =>
+            this.groups.updateNotificationOptions(tx, {
+              actorId,
+              projectId: path.projectId,
+              options,
+              requestId,
+            }),
+          replayAuthorizer: async (record, tx) => {
+            const actorId = await this.resolveWriteActor(tx, request.headers);
+            await this.groups.notificationOptionsReplayAuthorizer(
+              tx,
+              actorId,
+              record.replayAuthContext,
+            );
+          },
+        });
+        return {
+          status: result.responseStatus,
+          body: result.responseBody,
+        };
+      }
+
       const result = await this.idempotency.run({
         operationId: operation,
         actorId: (tx) => this.resolveWriteActor(tx, request.headers),
@@ -155,6 +191,24 @@ export class ProjectWecomGroupHttpService {
       throw new ProjectWecomGroupInputError({ path: "项目参数无效" });
     }
     return { projectId: parsed.data.projectId };
+  }
+
+  private parseNotificationOptions(
+    value: unknown,
+  ): ReturnType<
+    typeof schemaRegistry.ProjectWecomGroupNotificationOptions.schema.parse
+  > {
+    const parsed =
+      schemaRegistry.ProjectWecomGroupNotificationOptions.schema.safeParse(
+        value,
+      );
+    if (!parsed.success) {
+      throw new ProjectWecomGroupInputError({
+        disabledCategories:
+          "只接受 task.assign / task.status / record / project.member / scope.delete",
+      });
+    }
+    return parsed.data;
   }
 
   /** 读路径只要求有效认证 Session；成员关系与管理员标记由服务层同事务实时读取。 */

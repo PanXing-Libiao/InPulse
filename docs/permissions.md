@@ -358,3 +358,12 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | `disableUser` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（3.0.0）+ `If-Match`；任务按 taskId、组长移交按 projectId 升序；每个组长项目必须移交给该项目 ACTIVE 成员，全部交接完成后才停用 |
 
 本批把 ADR-084 的停用交接扩展到项目组长身份：`AdminUserDisableRequest` 新增 `leaderTransfers`，`AdminUserOffboardingProject` 新增 `requiresLeaderTransfer`。组长移交复用项目模块的 `ProjectLeaderTransferPort`，与任务改派/删除、审计、项目动态、Session 撤销和账号停用共用同一事务；不新增路由、不新增迁移，路由总数保持 128，`permissions:check` 128 条操作 / 128 条路由。
+
+## ADR-090 企业微信项目群通知策略（2026-10-20）
+
+| operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
+| ------------ | ---- | -------- | ------------ | ---------- | -------- | ---------- | --- |
+| `getProjectWecomGroup`（扩展） | 401 | 允许 | 404 | 404 | 401 | 允许 | 响应新增 `notificationOptions.disabledCategories`；缺行返回空数组（全开）；其余绑定三态与投递字段不变 |
+| `updateProjectWecomGroupNotificationOptions` | 401 | 403（普通成员）/ 允许（组长） | 404 | 404 | 401 | 允许 | 完整认证 Session + 同源 + CSRF + `Idempotency-Key`（数据库级幂等 1.0.0）；仅系统管理员或本项目组长；项目须有 ACTIVE 群绑定，否则 409 `PROJECT_WECOM_GROUP_NOT_BOUND`；整组替换五类 `disabledCategories`；写审计 `project.wecomGroup.notificationOptions.update`，记录 groupBindingId / before / after；重放重新校验组长或管理员身份及 ACTIVE 绑定 |
+
+本路由把项目群通知选项从浏览器本地状态升级为服务端项目配置；桥接每轮物化前读取同一份开关，缺行与未识别事件默认放行。关闭只影响之后物化的新 `PENDING` 消息，不回溯历史、已排队或已发送消息，也不改变个人单聊和站内个人通知偏好。路由总数 128 → 129，`permissions:check` 129 条操作 / 129 条路由（2026-10-20 实测）。

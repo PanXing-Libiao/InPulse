@@ -103,6 +103,8 @@
 | [ADR-087](ADR-087.md) | Accepted | 项目动态固化操作人身份快照：`activity_projection.actor_snapshot` 保存 id/姓名/登录名，读取优先使用快照；移除用户外键并停止删除时改写动态摘要；历史行不回填；无新路由、无依赖变化 |
 | [ADR-088](ADR-088.md) | Accepted | 离职账号物理删除：删除已停用且无 ACTIVE 项目成员关系的账号，7 类私有运行态数据级联删除；26 类业务署名写入事件时身份快照，保留审计、项目动态、项目/任务/记录等历史；`deleteUser` 幂等契约升至 2.0.0；替代 ADR-082 的墓碑化机制 |
 | [ADR-089](ADR-089.md) | Accepted | 停用账号前的项目组长移交：组长项目即使无未完成任务也进入交接清单；`disableUser` 新增 `leaderTransfers`，只能移交给该项目 ACTIVE 成员，幂等契约升至 3.0.0；任务、组长移交、审计、动态、Session 撤销与停用同事务；无新路由、无迁移 |
+| [ADR-090](ADR-090.md) | Accepted | 企业微信项目群通知策略服务端化：五类项目级开关落库（迁移 `0055_project_wecom_group_notification_options.sql`），`getProjectWecomGroup` 返回 `notificationOptions`，新增 `updateProjectWecomGroupNotificationOptions`（128 → 129，组长 / 系统管理员、CSRF、数据库幂等与审计）；桥接在物化 `wecom_group_deliveries` 前按 `task.assign` / `task.status` / `record` / `project.member` / `scope.delete` 过滤，未识别事件默认放行，关闭只影响之后物化的新消息 |
+
 
 ## 关联基线
 

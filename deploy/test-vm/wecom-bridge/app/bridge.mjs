@@ -3,6 +3,8 @@
 // v5 变化（ADR-077 第二批，2026-10-16）：新增项目群投递物化——把新的 task.assigned
 // 通知与 MEMBER 可见项目动态写成 app.wecom_group_deliveries 的 PENDING 行，
 // 由 long-conn 消费并回写 SENT / FAILED；个人单聊推送逻辑不变。
+// v6 变化（ADR-090，2026-10-20）：物化前读取项目群通知开关，按五个类别过滤；
+// 缺行或未识别的新事件默认放行，关闭只影响此后物化，不回溯历史或已排队消息。
 // 可选键：groupDeliveries=false 关闭物化、groupNotificationTypes 覆盖类型清单
 // （默认 ["task.assigned"]）、startFromGroupNotificationId / startFromActivityId
 // 指定游标初值（缺省从当前最大 id 开始，不回补历史）。
@@ -16,6 +18,12 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import {
+  flagsFromRow,
+  groupCategoryForActivity,
+  groupCategoryForNotification,
+  groupCategoryIsEnabled,
+} from "./notification-categories.mjs";
 
 const { Pool } = pg;
 const here = dirname(fileURLToPath(import.meta.url));
@@ -317,9 +325,31 @@ async function currentMaxActivityId() {
   return Number(result.rows[0].max_id);
 }
 
+// 读取项目级通知开关；缺行等价于五类全开。每轮物化读取一次，保存后下一轮生效。
+async function loadGroupNotificationOptions() {
+  const result = await pool.query(
+    [
+      "select project_id,",
+      "  task_assign_enabled,",
+      "  task_status_enabled,",
+      "  record_enabled,",
+      "  project_member_enabled,",
+      "  scope_delete_enabled",
+      "from app.project_wecom_group_notification_options",
+    ].join(" "),
+  );
+  const byProject = new Map();
+  for (const row of result.rows) {
+    byProject.set(Number(row.project_id), flagsFromRow(row));
+  }
+  return byProject;
+}
+
 // 物化项目群投递：为每条候选来源在「该项目当前 ACTIVE 群绑定」下写一条 PENDING。
 // 同一审计事件的多个收件人（同 chain+sequence+type）只占一行，消费侧再聚合姓名；
 // 只物化「绑定时间之后发生」的来源，桥接停机期间也不会补发绑定前的历史。
+// ADR-090：先读项目通知开关，关闭类别不进入投递队列；游标照常前进，
+// 因此重新开启不会补发关闭期间的历史。
 async function insertGroupDelivery(kind, sourceId, projectId, sourceAt) {
   const result = await pool.query(
     [
@@ -337,6 +367,7 @@ async function insertGroupDelivery(kind, sourceId, projectId, sourceAt) {
 async function materializeGroupDeliveries() {
   if (!groupDeliveriesEnabled || dryRun) return 0;
   let created = 0;
+  const notificationOptions = await loadGroupNotificationOptions();
 
   const notifications = await pool.query(
     [
@@ -355,6 +386,11 @@ async function materializeGroupDeliveries() {
     if (id > maxNotificationId) maxNotificationId = id;
     if (!groupNotificationTypes.has(row.notification_type)) continue;
     if (row.project_id === null || row.project_id === undefined) continue;
+    const projectId = Number(row.project_id);
+    const category = groupCategoryForNotification(row.notification_type);
+    if (!groupCategoryIsEnabled(category, notificationOptions.get(projectId))) {
+      continue;
+    }
     const key =
       row.source_chain_id +
       "|" +
@@ -365,7 +401,7 @@ async function materializeGroupDeliveries() {
     if (current === undefined || id < current.sourceId) {
       representatives.set(key, {
         sourceId: id,
-        projectId: Number(row.project_id),
+        projectId,
         sourceAt: row.created_at,
       });
     }
@@ -382,7 +418,7 @@ async function materializeGroupDeliveries() {
 
   const activities = await pool.query(
     [
-      "select a.id, a.project_id, a.visibility_scope, a.occurred_at",
+      "select a.id, a.project_id, a.visibility_scope, a.occurred_at, a.activity_type, a.source_entity_type",
       "from app.activity_projection a",
       "where a.id > $1",
       "order by a.id asc",
@@ -395,10 +431,18 @@ async function materializeGroupDeliveries() {
     const id = Number(row.id);
     if (id > maxActivityId) maxActivityId = id;
     if (row.visibility_scope !== "MEMBER") continue;
+    const projectId = Number(row.project_id);
+    const category = groupCategoryForActivity(
+      row.activity_type,
+      row.source_entity_type,
+    );
+    if (!groupCategoryIsEnabled(category, notificationOptions.get(projectId))) {
+      continue;
+    }
     created += await insertGroupDelivery(
       "ACTIVITY",
       id,
-      Number(row.project_id),
+      projectId,
       row.occurred_at,
     );
   }
@@ -467,7 +511,7 @@ function persistState() {
 
 async function main() {
   log(
-    "通知桥 v5 启动",
+    "通知桥 v6 启动",
     dryRun ? "(dry-run)" : "(实发)",
     "| 转发范围:",
     forwardAll ? "全部类型" : [...forwardTypes].join(","),

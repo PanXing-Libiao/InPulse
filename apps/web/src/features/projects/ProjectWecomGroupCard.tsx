@@ -5,7 +5,10 @@ import { Alert, Button, Popconfirm } from "antd";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import { CalmSectionTitle } from "@features/common/components/Calm";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
-import type { InpulseApiClient } from "@generated/api";
+import type {
+  InpulseApiClient,
+  ProjectWecomGroupNotificationOptions,
+} from "@generated/api";
 
 import {
   projectWecomGroupErrorMessage,
@@ -21,6 +24,10 @@ export interface ProjectWecomGroupCardProps {
   readonly canManage: boolean;
   readonly client?: InpulseApiClient | undefined;
 }
+
+const EMPTY_NOTIFICATION_OPTIONS: ProjectWecomGroupNotificationOptions = {
+  disabledCategories: [],
+};
 
 function formatTimestamp(value: string): string {
   return formatBeijingSecond(value);
@@ -45,7 +52,8 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
   canManage,
   client,
 }) => {
-  const { query, issueCode, unbind } = useProjectWecomGroup(projectId, client);
+  const { query, issueCode, updateNotificationOptions, unbind } =
+    useProjectWecomGroup(projectId, client);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
@@ -233,8 +241,8 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
             <InpulseIcon name="check" size={17} />
             <span>
               <strong>已绑定企业微信群</strong>
-              本项目的任务派发与全部成员可见动态都会推送到该群；
-              个人单聊提醒不受影响，两者并存。
+              群消息按「通知选项」中的开关推送；默认任务派发与全部成员可见动态。
+              个人单聊提醒不受这些群开关影响，两者并存。
             </span>
           </div>
           <p className="wecom-binding-meta">
@@ -282,7 +290,7 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
                 <InpulseIcon name="bell" size={17} />
                 <span>
                   <strong>绑定后群聊即可收到项目消息</strong>
-                  默认推送任务派发与全部成员可见的项目动态；个人单聊提醒继续并存。
+                  默认推送任务派发与全部成员可见的项目动态；绑定后可在「通知选项」调整。个人单聊提醒继续并存。
                 </span>
               </div>
               <ol className="wecom-binding-steps">
@@ -337,6 +345,11 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
         open={notificationOpen}
         projectId={projectId}
         projectName={projectName}
+        options={status?.notificationOptions ?? EMPTY_NOTIFICATION_OPTIONS}
+        onSave={(options) =>
+          updateNotificationOptions.mutateAsync(options).then(() => undefined)
+        }
+        saveErrorMessage={projectWecomGroupErrorMessage}
         onClose={() => setNotificationOpen(false)}
       />
     </section>

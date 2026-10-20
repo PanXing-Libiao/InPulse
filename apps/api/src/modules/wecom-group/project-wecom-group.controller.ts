@@ -4,12 +4,14 @@ import {
   Get,
   Inject,
   Post,
+  Put,
   Req,
   Res,
   UseGuards,
 } from "@nestjs/common";
 
 import {
+  ContractBody,
   ContractHeaders,
   ContractPath,
   Operation,
@@ -61,6 +63,27 @@ export class ProjectWecomGroupController {
     );
   }
 
+  @Put(":projectId/wecom-group/notification-options")
+  @UseGuards(StrictSameOriginGuard)
+  @Operation("updateProjectWecomGroupNotificationOptions")
+  async updateNotificationOptions(
+    @Req() request: ProjectWecomGroupHttpRequest,
+    @Res({ passthrough: true }) response: ProjectWecomGroupControllerResponse,
+    @ContractPath("updateProjectWecomGroupNotificationOptions")
+    params: unknown,
+    @ContractBody("updateProjectWecomGroupNotificationOptions") body: unknown,
+    @ContractHeaders("updateProjectWecomGroupNotificationOptions")
+    _headers: unknown = undefined,
+  ) {
+    return this.respond(
+      "updateProjectWecomGroupNotificationOptions",
+      request,
+      response,
+      params,
+      body,
+    );
+  }
+
   @Delete(":projectId/wecom-group")
   @UseGuards(StrictSameOriginGuard)
   @Operation("deleteProjectWecomGroup")
@@ -78,12 +101,13 @@ export class ProjectWecomGroupController {
     request: ProjectWecomGroupHttpRequest,
     response: ProjectWecomGroupControllerResponse,
     params: unknown,
+    body: unknown = request.body,
   ) {
     const result = await this.service.handle(operation, {
       headers: request.headers,
       query: request.query,
       params,
-      body: request.body,
+      body,
     });
     response.status(result.status);
     response.setHeader("Cache-Control", "no-store");

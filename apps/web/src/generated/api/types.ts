@@ -1312,6 +1312,10 @@ export type ProjectWecomGroupMutationHeaders = {
   readonly "x-csrf-token": string;
 };
 
+export type ProjectWecomGroupNotificationOptions = {
+  readonly disabledCategories: readonly ("task.assign" | "task.status" | "record" | "project.member" | "scope.delete")[];
+};
+
 export type ProjectWecomGroupPath = {
   readonly projectId: number;
 };
@@ -1327,6 +1331,7 @@ export type ProjectWecomGroupStatus = {
   readonly boundByName: (string | null);
   readonly lastDeliveryError: (string | null);
   readonly botProfileUrl: (string | null);
+  readonly notificationOptions: ProjectWecomGroupNotificationOptions;
 };
 
 export type PublishRecordRequest = Readonly<Record<string, unknown>>;
