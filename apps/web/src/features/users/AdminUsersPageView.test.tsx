@@ -538,6 +538,18 @@ describe("F-03 settings sections", () => {
     await screen.findByText("Alice");
 
     const rail = screen.getByRole("navigation", { name: "成员与设置导航" });
+    expect(
+      within(rail)
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim()),
+    ).toEqual([
+      "成员与角色",
+      "项目成员",
+      "通知策略",
+      "权限矩阵",
+      "AI 辅助转换",
+      "企业微信机器人",
+    ]);
     const memberTab = within(rail).getByRole("button", { name: "成员与角色" });
     const matrixTab = within(rail).getByRole("button", { name: "权限矩阵" });
     const notifyTab = within(rail).getByRole("button", { name: "通知策略" });

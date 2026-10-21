@@ -86,9 +86,6 @@ export const NotificationPolicyPanel: React.FC<
           </tbody>
         </table>
       </div>
-      <p className="form-hint" style={{ marginTop: 12, fontSize: 12 }}>
-        关闭后，服务端不再生成该类型的新通知；通知中心里已有的历史通知保持原状。重新开启也不会补发关闭期间的通知。
-      </p>
     </section>
   );
 };

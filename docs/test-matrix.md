@@ -291,6 +291,8 @@ API 集成 48 文件 444 例、database 单测 15/15 + 集成 26/26 通过。本
 | F03-API-003 | 权限与边界 | 拒绝与保护 | 缺管理员身份 403、缺幂等键 400、非法字段 422、旧版本/状态冲突与自停用/最后一名可用管理员 409（`LAST_ACTIVE_ADMIN_REQUIRED`）；错误响应不泄露 SQL 或约束名；普通成员访问管理页 403 | 本地通过（HTTP 单元、真实 PostgreSQL 与权限矩阵） |
 | F03-UI-001 | 前端单元 | 管理页关键交互 | 列表展示、当前登录账号置顶、隐藏当前管理员停用入口；编辑携带 CSRF、幂等键和 `If-Match`；写失败后保留同一幂等键；错误文案统一映射 | 本地通过（`admin-user-query.test.tsx`、`AdminUsersPageView.test.tsx`；2026-10-19 重跑） |
 | F03-EDIT-FOOTER-001 | Web 单元 | 编辑用户页脚生命周期操作 | 编辑用户弹层的「账号状态」区仅显示状态徽标；启用账号的「停用账号」、停用账号的「启用账号 / 强制删除」均移到「取消 / 保存」同一行右侧，DOM 顺序位于保存按钮之后且不再留在状态区 | 本地通过（2026-10-21，`AdminUsersPageView.test.tsx` 34/34） |
+| F03-PROJ-MEMBERS-UI-001 | Web 单元 | 设置页项目成员总览 | 「项目成员」作为设置页页签原地展示单列项目列表；默认展开首个项目，点击项目行或键盘 Enter / Space 只展开一个项目且 URL 不变；行内「管理成员」跳转 `/projects/:id/members` 且不触发展开；展开区只读，无成员搜索、添加或行内管理；展示组长、成员数、未完成任务、群通知状态与成员任务数；项目搜索、状态筛选、空态及项目 / 成员加载失败重试均可用 | 本地通过（`ProjectMemberOverviewPanel.test.tsx` 10 例，2026-10-21） |
+| F03-PROJ-MEMBERS-HEADER-UI-001 | Web 单元 | 项目内成员与设置页头 | 标题显示「项目名 成员与设置」；标题左侧圆形返回箭头进入当前项目主页 `/projects/:id/modules`，不在设置页项目成员总览标题旁重复出现 | 本地通过（`ProjectMembersPageView.test.tsx` 9 例，2026-10-21） |
 | F03-E2E-001 | Playwright | 领域 E2E | 普通成员访问 `/settings` 显示 403；管理员完成编辑 → 停用 → 启用真实 UI 链路；强制退出链路已由 ADR-083 移除（2026-09-24 起目标账号由夹具预置，管理页不再有新增入口） | 本地通过（历史口径；2026-10-19 移除强退后重跑 `admin-users.spec.ts`） |
 | F03-REMOVE-FORCELOGOUT-001 | 契约 + API + Web + E2E | 强制退出整体移除 | Route Registry 与权限矩阵无 `forceLogoutUser`；Controller 扫描无 `POST /api/v1/admin/users/{userId}/force-logout`；OpenAPI、指纹与生成客户端无该方法；旧路径真实 HTTP 请求返回 404；成员页无入口；历史审计动作码仅保留中文展示标签 | 本地通过（2026-10-19：`contract:validate` 125 条、`permissions:check` 125/125、`contract:drift` 6 产物、契约单测 102 例、API 全量单测 512 例、真实 PostgreSQL 集成 6 例、Web 全量单测 958 例、`admin-users.spec.ts` 2/2） |
 

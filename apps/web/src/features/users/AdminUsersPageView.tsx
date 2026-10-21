@@ -21,6 +21,7 @@ import { AiAssistSettingsPanel } from "@features/settings/AiAssistSettingsPanel"
 import { WecomRobotSettingsPanel } from "@features/settings/WecomRobotSettingsPanel";
 import { NotificationPolicyPanel } from "@features/settings/NotificationPolicyPanel";
 import { PermissionMatrixPanel } from "@features/settings/PermissionMatrixPanel";
+import { ProjectMemberOverviewPanel } from "@features/projects/ProjectMemberOverviewPanel";
 import { adminUserErrorMessage, useAdminUsers } from "./admin-user-query";
 import { DisableAccountModal } from "./DisableAccountModal";
 import { MyOrganizationPanel } from "./MyOrganizationPanel";
@@ -36,7 +37,12 @@ type MemberScope = "active" | "departed";
 
 /** 设计师稿 latest-version/views/settings.tsx L9-11：左栏区块导航。 */
 export type SettingsTab =
-  "members" | "permissions" | "notifications" | "aiAssist" | "wecomRobot";
+  | "members"
+  | "projectMembers"
+  | "permissions"
+  | "notifications"
+  | "aiAssist"
+  | "wecomRobot";
 
 type EditorValues = {
   readonly name: string;
@@ -69,7 +75,6 @@ const lifecycleCopy: Readonly<
 export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   client,
   currentUserId,
-  onOpenProjects,
   initialTab,
   isAdmin = false,
 }) => {
@@ -604,20 +609,18 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
             <InpulseIcon name="users" size={15} />
             成员与角色
           </button>
-          {onOpenProjects ? (
-            <button type="button" onClick={onOpenProjects}>
-              <InpulseIcon name="folder" size={15} />
-              项目成员
-            </button>
-          ) : null}
           <button
             type="button"
-            className={effectiveTab === "permissions" ? "selected" : undefined}
-            aria-current={effectiveTab === "permissions" ? "page" : undefined}
-            onClick={() => setActiveTab("permissions")}
+            className={
+              effectiveTab === "projectMembers" ? "selected" : undefined
+            }
+            aria-current={
+              effectiveTab === "projectMembers" ? "page" : undefined
+            }
+            onClick={() => setActiveTab("projectMembers")}
           >
-            <InpulseIcon name="shield" size={15} />
-            权限矩阵
+            <InpulseIcon name="folder" size={15} />
+            项目成员
           </button>
           <button
             type="button"
@@ -629,6 +632,15 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           >
             <InpulseIcon name="bell" size={15} />
             通知策略
+          </button>
+          <button
+            type="button"
+            className={effectiveTab === "permissions" ? "selected" : undefined}
+            aria-current={effectiveTab === "permissions" ? "page" : undefined}
+            onClick={() => setActiveTab("permissions")}
+          >
+            <InpulseIcon name="shield" size={15} />
+            权限矩阵
           </button>
           {selfIsAdmin ? (
             <button
@@ -654,6 +666,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           ) : null}
         </nav>
 
+        {effectiveTab === "projectMembers" ? (
+          <ProjectMemberOverviewPanel {...(client ? { client } : {})} />
+        ) : null}
         {effectiveTab === "permissions" ? <PermissionMatrixPanel /> : null}
         {effectiveTab === "notifications" ? <NotificationPolicyPanel /> : null}
         {effectiveTab === "aiAssist" ? (
@@ -1238,7 +1253,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 export interface AdminUsersPageViewProps {
   readonly client?: InpulseApiClient | undefined;
   readonly currentUserId?: number | undefined;
-  readonly onOpenProjects?: (() => void) | undefined;
   readonly initialTab?: SettingsTab | undefined;
   readonly isAdmin?: boolean | undefined;
 }

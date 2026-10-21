@@ -9,7 +9,7 @@ import {
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import type {
   InpulseApiClient,
   ProjectMemberRecordItem,
@@ -83,6 +83,11 @@ const unfinishedTask: ProjectMemberUnfinishedTaskItem = {
   impactFeatureIds: [33],
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
+}
+
 function mount(
   client: InpulseApiClient,
   props: {
@@ -92,7 +97,8 @@ function mount(
 ) {
   return render(
     <ConfigProvider theme={{ token: { motion: false } }}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/projects/7/members"]}>
+        <LocationProbe />
         <AuthStateProvider>
           <QueryClientProvider
             client={
@@ -211,6 +217,23 @@ describe("ProjectMembersPageView", () => {
     expect(
       within(dialog).getByText("该成员没有未完成任务。"),
     ).toBeInTheDocument();
+  });
+
+  it("shows the project members setting title and returns to the project overview", async () => {
+    const client = baseClient() as unknown as InpulseApiClient;
+    mount(client);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "InPulse 研发交付平台 成员与设置",
+        level: 1,
+      }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "返回项目主页" }));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/projects/7/modules",
+    );
   });
 
   it("adds several candidate members in one submit with per-user security headers", async () => {

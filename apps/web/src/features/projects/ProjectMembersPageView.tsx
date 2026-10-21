@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Alert, Button } from "antd";
+import { useNavigate } from "react-router-dom";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import type {
   InpulseApiClient,
@@ -69,6 +70,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
   viewerRole = null,
   embedded = false,
 }) => {
+  const navigate = useNavigate();
   const { query, addMutation, removeMutation, roleMutation } =
     useProjectMembers(projectId, client);
   const directory = useUserDirectoryQuery({ client });
@@ -286,7 +288,18 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
       {embedded ? null : (
         <div className="page-header">
           <div>
-            <h1>{project ? project.name : "项目成员管理"}</h1>
+            <div className="page-title-row">
+              <button
+                type="button"
+                className="title-back-button"
+                aria-label="返回项目主页"
+                title="返回项目主页"
+                onClick={() => navigate("/projects/" + projectId + "/modules")}
+              >
+                <InpulseIcon name="chevronLeft" size={20} />
+              </button>
+              <h1>{project ? project.name + " 成员与设置" : "成员与设置"}</h1>
+            </div>
             <p>
               本项目任意活跃成员都可添加或移除项目成员；
               移除不会删除任何历史数据，未改派任务保留原负责人，

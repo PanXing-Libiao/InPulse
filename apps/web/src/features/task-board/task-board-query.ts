@@ -19,15 +19,18 @@ export function describeTaskBoardError(error: unknown): string {
 export interface UseTaskBoardQueryOptions {
   readonly projectId: number;
   readonly adapter: TaskBoardAdapter;
+  readonly enabled?: boolean | undefined;
 }
 
 export function useTaskBoardQuery({
   projectId,
   adapter,
+  enabled = true,
 }: UseTaskBoardQueryOptions) {
   return useQuery({
     queryKey: ["task-board", adapter.source, projectId],
     queryFn: () => adapter.fetchTaskBoard({ projectId }),
+    enabled,
     retry: false,
     // 换项目只换 queryKey（2026-10-10）：看板保留上一份数据，不先塌成骨架再撑回。
     placeholderData: keepPreviousData,
