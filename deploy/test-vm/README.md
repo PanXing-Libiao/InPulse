@@ -21,7 +21,7 @@ Compose + 本地 registry 的测试环境，不是生产发布流程：生产镜
 | 部署目录补充  | `backups/`（同步前的 pg_dump）、`compose.yaml.bak-*`、`.env.deploy.bak-*`（回滚用）                            |
 | 企业微信桥接  | 独立容器 `inpulse-wecom-bridge`（非 compose 管理；源码 `deploy/test-vm/wecom-bridge/` 为本地唯一源，用 `deploy/test-vm/update-bridge.ps1` 同步；个人绑定码自助绑定与项目群绑定兑换均已实现，见「企业微信机器人桥接」） |
 | AI 辅助转换   | 已启用（`AI_ASSIST_ENABLED=1`）；API Key 已于 2026-10-15 在设置页重填并确认可用（见「AI 辅助转换启用」） |
-| 当前版本      | api/web/migrate 为 `0.1.0-20261021-4ce04902`；db-bootstrap/ops 仍为 `0.1.0-20261015-6f23ab4`；桥接为 `0.1.0-20261021-bridge7cddf14`；`BACKUP_GIT_SHA=4ce04902`（2026-10-21 10:33 最新同步） |
+| 当前版本      | api/migrate 为 `0.1.0-20261021-4ce04902`，web 为 `0.1.0-20261021-2c2be247`；db-bootstrap/ops 仍为 `0.1.0-20261015-6f23ab4`；桥接为 `0.1.0-20261021-bridge7cddf14`；`BACKUP_GIT_SHA=2c2be247`（2026-10-21 10:48 最新同步） |
 
 ## 一次性准备
 
@@ -77,6 +77,8 @@ api 容器内访问 Casdoor discovery 返回 200（`egress` 生效）。
 2026-10-20 16:20 再同步 `-Targets api,web,migrate -FixEol -NoMirror` 到 `0.1.0-20261020-a0966c4a`（ADR-089/090：停用账号前项目组长移交、项目企业微信群通知策略服务端化，含迁移 `0054_user_notification_suppressions.sql` 与 `0055_project_wecom_group_notification_options.sql`）：同步前落 `backups/pre-sync-20261020-1606.dump`（734 项，`pg_restore --list` 校验通过）；迁移账本增至 54 条，api/web/db 全部 healthy，`/health/ready` 与 `/` 返回 200；数据保持 users 14、projects 6、audit_logs 1662。桥接源同步到 `0.1.0-20261020-bridge459c176` 并订阅 `errcode=0`；首次因依赖刷新误用桥接运行镜像而报 npm 不存在，现改为固定 Node 镜像（本次 `package.json` 未变化，依赖刷新未触发）。工作区仍有未提交改动，镜像 Tag 仅标明 HEAD，后续重建不要复用同名 Tag。
 
 2026-10-21 10:33 再同步 `-Targets api,web,migrate -FixEol -NoMirror` 到 `0.1.0-20261021-4ce04902`（ADR-091/092：项目封箱海报、成功气泡、权限矩阵整合与项目状态版本解耦，含迁移 `0056_project_wraps.sql`、`0057_project_status_version_semantics.sql`）：同步前落 `backups/pre-sync-20261021-101754.dump`（`pg_restore --list` 747 项）；migrate 报 `2 applied, 54 already present`（账本 56 条），api/web/db 全部 healthy，`/health/ready`、`/`、`/login` 返回 200，匿名 `/api/v1/users` 401，`/api/v1/auth/sso/start` 302；数据为 users 14、projects 6、audit_logs 1665（部署新增 1 条审计）、库 186 MB，`app.project_wraps` 已存在且当时为 0 行。桥接同步到 `0.1.0-20261021-bridge7cddf14`：`package.json` 变化触发依赖刷新（新增 2 个包），镜像安装 `fonts-noto-cjk`，容器内通知分类与海报自检 `10/10`，日志 `通知桥 v7`、`errcode=0` 与「订阅成功」。本次构建期间工作区出现另一任务的未提交 Web 星标排序改动，因此镜像 Tag 只标明 HEAD、不能唯一证明镜像内容；`ops`/`db-bootstrap` 未重建。
+
+2026-10-21 10:48 再同步 `-Targets web -FixEol -NoMirror` 到 `0.1.0-20261021-2c2be247`（星标排序同步到侧栏，对应提交 `2c2be247`）：本次只重建 web，api/migrate 保持 `0.1.0-20261021-4ce04902`；migrate 重跑报 `0 applied, 56 already present`，web 转为 healthy，`/health/ready`、`/`、`/login` 返回 200，匿名 `/api/v1/users` 401，`/api/v1/auth/sso/start` 302；本次无迁移，未另做数据库备份。
 
 常用参数：
 

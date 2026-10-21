@@ -801,6 +801,14 @@ describe("ADR-081 organizations", () => {
     expect(
       screen.getByRole("button", { name: "退出调整" }),
     ).toBeInTheDocument();
+    const batchBar = screen.getByRole("region", { name: "批量操作" });
+    const memberList =
+      document.querySelector<HTMLElement>(".admin-member-list");
+    expect(memberList).not.toBeNull();
+    expect(
+      batchBar.compareDocumentPosition(memberList as Node) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("选择 Bob"));
     expect(

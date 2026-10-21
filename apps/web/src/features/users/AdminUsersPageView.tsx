@@ -765,6 +765,63 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               </div>
             ) : null}
 
+            {orgMode !== "browse" ? (
+              <div
+                className="member-batchbar"
+                role="region"
+                aria-label="批量操作"
+              >
+                <span>{"已选 " + selectedUserIds.length + " 人"}</span>
+                {orgMode === "join" ? (
+                  <>
+                    <CalmSelect
+                      ariaLabel="目标组织"
+                      appearance="menu"
+                      className="member-org-select"
+                      options={joinOrganizationOptions}
+                      placeholder="选择组织…"
+                      value={joinTarget}
+                      width={220}
+                      onChange={(value) => setJoinTarget(String(value))}
+                    />
+                    {joinTarget === "new" ? (
+                      <Input
+                        aria-label="新组织名称"
+                        placeholder="填写组织名称"
+                        value={newOrganizationName}
+                        onChange={(event) =>
+                          setNewOrganizationName(event.target.value)
+                        }
+                      />
+                    ) : null}
+                    <span className="member-batchbar-actions">
+                      <Button
+                        type="primary"
+                        loading={organizationMutation.isPending}
+                        onClick={() => void joinSelected()}
+                      >
+                        加入组织
+                      </Button>
+                      <Button onClick={resetOrgMode}>取消</Button>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>{"「" + organizationName(orgTarget) + "」"}</span>
+                    <span className="member-batchbar-actions">
+                      <Button
+                        loading={organizationMutation.isPending}
+                        onClick={() => void leaveSelected()}
+                      >
+                        移出到未分配
+                      </Button>
+                      <Button onClick={resetOrgMode}>取消</Button>
+                    </span>
+                  </>
+                )}
+              </div>
+            ) : null}
+
             {query.isPending ? (
               <CalmSkeleton variant="list" rows={5} label="正在加载用户列表" />
             ) : query.isError ? (
@@ -934,63 +991,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 ))}
               </div>
             )}
-
-            {orgMode !== "browse" ? (
-              <div
-                className="member-batchbar"
-                role="region"
-                aria-label="批量操作"
-              >
-                <span>{"已选 " + selectedUserIds.length + " 人"}</span>
-                {orgMode === "join" ? (
-                  <>
-                    <CalmSelect
-                      ariaLabel="目标组织"
-                      appearance="menu"
-                      className="member-org-select"
-                      options={joinOrganizationOptions}
-                      placeholder="选择组织…"
-                      value={joinTarget}
-                      width={220}
-                      onChange={(value) => setJoinTarget(String(value))}
-                    />
-                    {joinTarget === "new" ? (
-                      <Input
-                        aria-label="新组织名称"
-                        placeholder="填写组织名称"
-                        value={newOrganizationName}
-                        onChange={(event) =>
-                          setNewOrganizationName(event.target.value)
-                        }
-                      />
-                    ) : null}
-                    <span className="member-batchbar-actions">
-                      <Button
-                        type="primary"
-                        loading={organizationMutation.isPending}
-                        onClick={() => void joinSelected()}
-                      >
-                        加入组织
-                      </Button>
-                      <Button onClick={resetOrgMode}>取消</Button>
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span>{"「" + organizationName(orgTarget) + "」"}</span>
-                    <span className="member-batchbar-actions">
-                      <Button
-                        loading={organizationMutation.isPending}
-                        onClick={() => void leaveSelected()}
-                      >
-                        移出到未分配
-                      </Button>
-                      <Button onClick={resetOrgMode}>取消</Button>
-                    </span>
-                  </>
-                )}
-              </div>
-            ) : null}
           </section>
         ) : null}
       </div>

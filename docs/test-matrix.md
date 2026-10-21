@@ -6734,8 +6734,11 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ORGANIZATION-UI-005 | Web 单元 | 新建项目选择器按组织分组与整组勾选 | `CalmSelect` 按组织分组渲染组标题、未分组选项平铺最后；`CreateProjectModal` 组织按钮整组选择提交 `memberIds`、部分选择显示 `1/2` 与部分选中样式 | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-006 | Web 路由集成 | 普通成员可进入设置页 | 普通成员访问 `/settings` 不再出现「无权访问」管理员门，渲染只读「成员与角色」与同组织成员（mock `getMyOrganizationMembers`） | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-007 | Web 单元 | 列表下方区块加入已有组织与移出组织二次确认 | 在成员列表勾选成员 + 在区块里选已有组织 → 「加入所选 N 人」提交 `{ userIds, organizationId }`；点「移出组织」先出确认块，确认后提交 `organizationId: null` | 本地通过（2026-10-16） |
+| ORGANIZATION-UI-008 | Web 单元 | 批量操作条位于成员列表上方 | 进入加入 / 编辑组织调整态后，`role=region`「批量操作」渲染在 `.admin-member-list` 之前；批量条取消 sticky 吸底并作为普通流式区块展示，加入与移出提交流程保持原行为 | 本地通过（2026-10-21，`AdminUsersPageView.test.tsx` 32/32） |
 | ORGANIZATION-E2E-001 | Playwright 浏览器 | 普通成员只读入口 | 普通成员打开 `/settings` 可见「成员与设置」与只读「成员与角色」，无 `admin-forbidden`、无「调整组织」「批量管理」 | 未运行（用例已改写，本地全量 E2E 待跑） |
 | ORGANIZATION-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:validate` 125 条；`permissions:check` 125 条操作 / 125 条路由；`contract:drift` 5 产物无漂移；全 workspace typecheck / lint / format:check 通过；迁移 `0046` 已在 `app_ci` 应用通过 | 本地通过（2026-10-16） |
+
+2026-10-21 布局修订：用户要求把「加入组织 / 移出到未分配」批量操作条放到成员列表上方；上文的「列表下方」保留为 2026-10-16 当时记录，当前布局以 `ORGANIZATION-UI-008` 为准。
 
 未运行 / 已知偏差（本批）：① 组织管理区块里的改名与删除组织确认流程只有实现路径，无专门自动化用例（勾选加入、新建组织并入人、移出组织二次确认已覆盖，见 ORGANIZATION-UI-001 / 004 / 007）；② 指派选择器的组织视图：新建项目表单已落地（ORGANIZATION-UI-005），任务创建 / 改派选择器仍待落地；③ Playwright 未新增组织管理场景；普通成员只读入口用例已改写（ORGANIZATION-E2E-001）但未运行，全量 E2E 未在本批复跑；④ `pnpm check` 整链未运行、GitHub Actions 未执行；⑤ `/settings` 普通成员入口修正由 Web 路由集成用例覆盖，未做手工浏览器复核（截至本地提交）；⑥ 管理员组织管理已在演示环境手工复核（列表无勾选框、工具条只剩「组织管理」、点开在页内展开且无弹窗遮罩、勾选框直接出现在成员列表行上、区块位于列表下方分「加入组织 / 组织维护」两段、勾选后按钮转可用、选「新建组织」出现名称输入；未提交真实建组 / 归属 / 改名 / 删除），Playwright 仍未覆盖组织管理场景。
 
