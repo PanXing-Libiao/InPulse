@@ -401,6 +401,7 @@ export class TasksManagementService {
    * ADR-056 / ADR-057：任务重新变为未收尾（新建、重新打开或恢复）后，维护中项目
    * 就不再是「主体已完成、只做小修小补」，同一事务内回到进行中，并写审计、活动与
    * 搜索投影；未开始与进行中项目不变，因此重复调用不会反复推高项目版本。
+   * ADR-092：维护中回到进行中只改状态，保持 `row_version` 不变。
    * 通知沿用 ADR-035 口径：不通知成员。
    */
   private async reopenMaintenanceProject(

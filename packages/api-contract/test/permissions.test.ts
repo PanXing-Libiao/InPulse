@@ -277,6 +277,7 @@ export class HealthController {
       "DELETE /api/v1/me/wecom-binding",
       "GET /api/v1/projects/{projectId}/wecom-group",
       "POST /api/v1/projects/{projectId}/wecom-group/codes",
+      "PUT /api/v1/projects/{projectId}/wecom-group/notification-options",
       "DELETE /api/v1/projects/{projectId}/wecom-group",
       "GET /api/v1/admin/wecom-robot",
       "PUT /api/v1/admin/wecom-robot",

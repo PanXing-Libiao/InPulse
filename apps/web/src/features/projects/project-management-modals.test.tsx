@@ -159,7 +159,7 @@ describe("EditProjectModal", () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
     const updateProject = vi.fn();
     const changeProjectStatus = vi.fn().mockResolvedValue({
-      project: { ...project, status: "MAINTENANCE", rowVersion: 4 },
+      project: { ...project, status: "MAINTENANCE", rowVersion: 3 },
     });
     const client = {
       issueCsrfToken,
@@ -202,7 +202,7 @@ describe("EditProjectModal", () => {
     );
     expect(updateProject).not.toHaveBeenCalled();
     expect(onUpdated).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "MAINTENANCE", rowVersion: 4 }),
+      expect.objectContaining({ status: "MAINTENANCE", rowVersion: 3 }),
     );
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -217,7 +217,7 @@ describe("EditProjectModal", () => {
         ...project,
         name: "商城系统二期",
         status: "MAINTENANCE",
-        rowVersion: 5,
+        rowVersion: 4,
       },
     });
     const client = {
@@ -283,7 +283,7 @@ describe("EditProjectModal", () => {
       expect.objectContaining({
         name: "商城系统二期",
         status: "MAINTENANCE",
-        rowVersion: 5,
+        rowVersion: 4,
       }),
     );
     expect(onClose).toHaveBeenCalledTimes(1);

@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from "react";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 
-/** 项目创建/变更成功提示的停留时间：既要能扫到结果，也不能长期占住页面。 */
-export const PROJECT_SUCCESS_NOTICE_DURATION_MS = 6000;
+/** 成功操作的停留时间：既要能扫到结果，也不能长期占住页面。 */
+export const SUCCESS_NOTICE_DURATION_MS = 6000;
 
-export interface ProjectSuccessToastProps {
+export interface SuccessToastProps {
   readonly testId: string;
   readonly title: string;
   readonly description?: string | undefined;
@@ -13,10 +13,10 @@ export interface ProjectSuccessToastProps {
 }
 
 /**
- * 项目级成功气泡：固定浮层、不挤占页面布局，并由组件统一负责自动关闭。
- * 成功结果只保留一个，后到的变更会替换创建提示，避免横向横幅一直堆叠。
+ * 通用成功气泡：固定浮层、不挤占页面布局，并由组件统一负责自动关闭。
+ * 同一时刻只应渲染一个，后到的操作结果会替换前一个提示。
  */
-export const ProjectSuccessToast: React.FC<ProjectSuccessToastProps> = ({
+export const SuccessToast: React.FC<SuccessToastProps> = ({
   testId,
   title,
   description,
@@ -34,14 +34,14 @@ export const ProjectSuccessToast: React.FC<ProjectSuccessToastProps> = ({
     if (!dismissible) return;
     const timeout = window.setTimeout(
       () => onDismissRef.current?.(),
-      PROJECT_SUCCESS_NOTICE_DURATION_MS,
+      SUCCESS_NOTICE_DURATION_MS,
     );
     return () => window.clearTimeout(timeout);
   }, [dismissible]);
 
   return (
     <div
-      className="creation-success project-success-toast"
+      className="creation-success success-toast"
       data-testid={testId}
       role="status"
       aria-live="polite"
@@ -59,7 +59,7 @@ export const ProjectSuccessToast: React.FC<ProjectSuccessToastProps> = ({
       {onDismiss ? (
         <button
           type="button"
-          className="project-success-toast-close"
+          className="success-toast-close"
           aria-label="关闭成功提示"
           onClick={onDismiss}
         >

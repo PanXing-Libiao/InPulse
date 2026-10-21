@@ -98,7 +98,75 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       "0051_activity_actor_snapshot.sql",
       "0052_actor_identity_snapshots.sql",
       "0053_physical_user_delete.sql",
+      "0054_user_notification_suppressions.sql",
+      "0055_project_wecom_group_notification_options.sql",
+      "0056_project_wraps.sql",
+      "0057_project_status_version_semantics.sql",
     ]);
+  });
+
+  test("project status-only updates keep row_version while content updates require a bump", async () => {
+    const userId = await createUser(runtime);
+    const project = await createProject(runtime, userId);
+    const readProject = async () =>
+      (await runtime`
+        SELECT status, name, row_version AS "rowVersion"
+          FROM app.projects
+         WHERE id = ${project.projectId}
+      `) as unknown as readonly {
+        readonly status: string;
+        readonly name: string;
+        readonly rowVersion: number;
+      }[];
+
+    expect((await readProject())[0]).toMatchObject({
+      status: "NOT_STARTED",
+      rowVersion: 1,
+    });
+
+    await runtime`
+      UPDATE app.projects
+         SET status = 'ACTIVE',
+             updated_at = now()
+       WHERE id = ${project.projectId}
+    `;
+    expect((await readProject())[0]).toMatchObject({
+      status: "ACTIVE",
+      rowVersion: 1,
+    });
+
+    await expectPostgresError(
+      runtime`
+        UPDATE app.projects
+           SET name = '状态与内容一起改但未推进版本',
+               status = 'MAINTENANCE',
+               updated_at = now()
+         WHERE id = ${project.projectId}
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        UPDATE app.projects
+           SET name = '只改内容但未推进版本',
+               updated_at = now()
+         WHERE id = ${project.projectId}
+      `,
+      "23514",
+    );
+
+    await runtime`
+      UPDATE app.projects
+         SET name = '内容更新已推进版本',
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${project.projectId}
+    `;
+    expect((await readProject())[0]).toMatchObject({
+      status: "ACTIVE",
+      name: "内容更新已推进版本",
+      rowVersion: 2,
+    });
   });
 
   test("physical user deletion archives identity and keeps only cascading private references", async () => {
@@ -252,6 +320,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       "app.idempotency_records",
       "app.mfa_recovery_codes",
       "app.notifications",
+      "app.user_notification_suppressions",
       "app.user_sessions",
       "app.user_totp_factors",
       "app.user_wecom_bindings",

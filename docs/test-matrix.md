@@ -106,11 +106,11 @@ F-14 业务纵切片，新增路由必须同步 Schema、Route Registry、权限
 | F06-EDIT-API-002 | HTTP + PostgreSQL | 编辑、审计与投影 | 活跃成员编辑返回 200 与递增 `rowVersion`；`app.audit_logs` 恰一条 `project.update`；`PROJECT_UPDATED` 活动与搜索投影同步；同 Key 同摘要重放返回相同响应 | 本地通过（`project-management-api.integration.test.ts`，PostgreSQL 18.6 + PGroonga） |
 | F06-EDIT-API-003 | HTTP + PostgreSQL | 拒绝与边界 | 匿名 401；非成员/已移除 404；版本冲突 409；缺 CSRF、缺/非法 `If-Match`、非法名称 422；非 JSON 400；缺幂等键 400；错误体不泄露数据库细节 | 同上 |
 | F06-EDIT-API-004 | HTTP + PostgreSQL | 重放授权复核 | 成员被移除后同 Key 重放 404，不返回已存成功响应 | 同上 |
-| F06-MAINTENANCE-API-001 | HTTP + PostgreSQL | 维护中门禁 | 项目下存在未收尾（`lifecycle_status = 'ACTIVE'` 且 `work_status NOT IN ('DONE','CANCELED')`）任务时切「维护中」409 `PROJECT_MAINTENANCE_TASKS_OPEN`，且零副作用；全部收尾后 200 且 `rowVersion` 递增 | 本地通过（`project-management-api.integration.test.ts`、`project-management.service.test.ts`） |
+| F06-MAINTENANCE-API-001 | HTTP + PostgreSQL | 维护中门禁 | 项目下存在未收尾（`lifecycle_status = 'ACTIVE'` 且 `work_status NOT IN ('DONE','CANCELED')`）任务时切「维护中」409 `PROJECT_MAINTENANCE_TASKS_OPEN`，且零副作用；全部收尾后 200 且 `rowVersion` 保持不变（ADR-092） | 本地通过（`project-management-api.integration.test.ts`、`project-management.service.test.ts`） |
 | F06-MAINTENANCE-API-002 | HTTP + PostgreSQL | 已归档 / 已取消任务不算未收尾 | 任务已归档或已取消时切「维护中」放行 | 同上 |
 | F06-MAINTENANCE-UI-001 | 前端 | 项目卡与编辑弹窗 | 项目卡片只有编辑与管理成员入口，不再有归档 / 恢复 / 申请 / 批准 / 驳回入口；编辑弹窗按三态切换并提示「切到维护中要求项目下任务全部收尾」 | 本地通过（`ProjectsPageView.test.tsx`、`project-management-modals.test.tsx`） |
-| F06-EDIT-UI-001 | Web 单元 | 编辑弹窗单次保存 | 状态与名称/描述共用页脚「保存修改」，无改动时按钮禁用且提交不发请求；只改状态时仅调 `PATCH /projects/{id}/status`，成功后关闭并回调最终项目；字段与状态同改时先更新字段，再用返回的新 `rowVersion` 更新状态，回调只发生一次 | 本地通过（`project-management-modals.test.tsx` 14 例，2026-10-20） |
-| F06-EDIT-UI-002 | Web 单元 | 项目成功气泡 | 项目创建、编辑与删除成功提示使用固定浮层气泡，不占文档流；创建与变更提示互斥，6 秒后自动关闭，支持手动关闭；列表页与模块工作区共用同一组件 | 本地通过（`ProjectSuccessToast.test.tsx` 2 例 + 页面既有用例，2026-10-20） |
+| F06-EDIT-UI-001 | Web 单元 | 编辑弹窗单次保存 | 状态与名称/描述共用页脚「保存修改」，无改动时按钮禁用且提交不发请求；只改状态时仅调 `PATCH /projects/{id}/status`，成功后关闭并回调最终项目，响应 `rowVersion` 保持不变；字段与状态同改时先更新字段，再用返回的新 `rowVersion` 更新状态，回调只发生一次 | 本地通过（`project-management-modals.test.tsx` 12 例，2026-10-21） |
+| F06-EDIT-UI-002 | Web 单元 | 项目成功气泡 | 项目创建、编辑与删除成功提示使用共享 `SuccessToast` 固定浮层，不占文档流；创建与变更提示互斥，6 秒后自动关闭，支持手动关闭；列表页与模块工作区共用同一组件 | 本地通过（`SuccessToast.test.tsx` 2 例 + 页面既有用例，2026-10-21） |
 | F06-ARCHIVE-E2E-001 | Playwright | ~~归档→只读→恢复关键路径~~ | ~~已被 ADR-043 取代~~：项目层面归档整体下线，`apps/e2e/tests/project-archive.spec.ts` 已删除 | 已下线（2026-09-23） |
 
 ## F-12 未分类模块编辑（2026-09-09 人工确认）
@@ -1983,9 +1983,9 @@ HTML 不允许按钮内嵌链接/按钮，因此三层卡片统一采用「容�
 | --- | --- | --- | --- | --- |
 | ADR035-WEB-UNIT-001 | Web 单元 | 四态标签与配色 | `resource-lifecycle.test.ts`：`projectLifecycleLabel` 四态分别为未开始 / 进行中 / 维护中 / 已归档；`projectLifecycleTone` 为 cyan / violet / amber，进行中沿用调用方主色；`projectLifecycleKind` 直接透传存储状态 | 本地通过 |
 | ADR035-WEB-UNIT-002 | Web 单元 | 项目卡渲染四态 | `ProjectsPageView.test.tsx`：`NOT_STARTED` 渲染「未开始」+ `badge-cyan`、`ACTIVE` 渲染「进行中」+ `badge-blue`、`MAINTENANCE` 渲染「维护中」+ `badge-violet`；`completedTaskCount` 不再影响项目标签 | 本地通过 |
-| ADR035-WEB-UNIT-003 | Web 单元 | 编辑弹窗状态栏（保存入口已由 F06-EDIT-UI-001 收敛） | `project-management-modals.test.tsx`：状态与字段共用「保存修改」；只改状态时以 CSRF + `Idempotency-Key` + `If-Match` 调 `PATCH /projects/{id}/status` 并关闭弹窗；字段与状态同改时按返回的新版本串行保存；已有完成任务时「未开始」置灰并带原因 title；未开始 → 维护中、维护中 → 未开始同样置灰；非成员时只读展示标签 | 本地通过（2026-10-20 更新） |
-| ADR035-API-INT-001 | 真实 PostgreSQL | 手动开工 | `project-management-api.integration.test.ts`：组长把未开始改为进行中返回 200 且 `hasCompletedTask: false`；审计 `project.status.change`、活动 `PROJECT_STATUS_CHANGED`、搜索投影与发给全体活跃成员的 `project.status.change` 通知同事务提交 | 本地通过 |
-| ADR035-API-INT-002 | 真实 PostgreSQL | 越级与成员门禁（~~角色口径已被 ADR-039 修订~~） | 同上：未开始 → 维护中与维护中 → 未开始都 409 `PROJECT_STATUS_LEVEL_SKIP`（且不发通知）；普通成员同样可改状态（200）、非成员 404、版本冲突 409 `PROJECT_VERSION_CONFLICT`、同态 409 `PROJECT_STATE_CONFLICT`、目标态 `ARCHIVED` 422 `PROJECT_VALIDATION_FAILED` | 本地通过（ADR-039 后已重写为正向断言） |
+| ADR035-WEB-UNIT-003 | Web 单元 | 编辑弹窗状态栏（保存入口已由 F06-EDIT-UI-001 收敛） | `project-management-modals.test.tsx`：状态与字段共用「保存修改」；只改状态时以 CSRF + `Idempotency-Key` + `If-Match` 调 `PATCH /projects/{id}/status` 并关闭弹窗，`rowVersion` 保持不变；字段与状态同改时按返回的新版本串行保存；已有完成任务时「未开始」置灰并带原因 title；未开始 → 维护中、维护中 → 未开始同样置灰；非成员时只读展示标签 | 本地通过（2026-10-21 更新） |
+| ADR035-API-INT-001 | 真实 PostgreSQL | 手动开工 | `project-management-api.integration.test.ts`：组长把未开始改为进行中返回 200、`hasCompletedTask: false` 且 `rowVersion` 保持 1；审计 `project.status.change`、活动 `PROJECT_STATUS_CHANGED`、搜索投影与发给全体活跃成员的 `project.status.change` 通知同事务提交 | 本地通过 |
+| ADR035-API-INT-002 | 真实 PostgreSQL | 越级与成员门禁（~~角色口径已被 ADR-039 修订~~） | 同上：未开始 → 维护中与维护中 → 未开始都 409 `PROJECT_STATUS_LEVEL_SKIP`（且不发通知）；普通成员同样可改状态（200、版本不变）、非成员 404、内容版本冲突 409 `PROJECT_VERSION_CONFLICT`、同态 409 `PROJECT_STATE_CONFLICT`、目标态 `ARCHIVED` 422 `PROJECT_VALIDATION_FAILED` | 本地通过（ADR-039 后已重写为正向断言） |
 | ADR035-API-INT-003 | 真实 PostgreSQL | 粘性锁与已归档只读 | 同上：项目出现过已完成任务后回退未开始 409 `PROJECT_STATUS_NOT_STARTED_LOCKED`，切到维护中仍放行且 `hasCompletedTask: true`；已归档项目改状态 409 `PROJECT_ARCHIVED` | 本地通过 |
 | ADR035-API-INT-004 | 真实 PostgreSQL | 任务完成自动开工 | `task-completion.integration.test.ts`：首个任务完成后项目由未开始变为进行中、`first_task_completed_at` 置位、`row_version` 递增，审计 `project.status.change`（`automatic: true` / `trigger: TASK_COMPLETED`）、活动、搜索投影与开工通知同事务；第二个任务完成不重复升级、不再推高项目版本 | 本地通过 |
 | ADR035-API-INT-005 | 真实 PostgreSQL | 写入口径 | `project-access.integration.test.ts`：进行中与维护中都是 `allowed`，只有已归档返回 `parent-not-active`；`external-links.integration.test.ts` 的 PROJECT / FEATURE / TASK 目标在未开始项目下恢复可写 | 本地通过 |
@@ -4794,12 +4794,12 @@ PGroonga 单字可行性实测（演示库 `app`，`search_projection` 435 行�
 - 触发条件：命令执行前项目 `status = 'MAINTENANCE'` 且任务创建成功；功能级 `createTask` 与模块级 `createModuleTask` 共用 `TasksManagementService.execute()`，因此四条真实入口（HTTP 直连、`TaskCreateCommandPort` 联合创建、`ProjectMemberTaskCommandPort`、`PostgresFollowupTaskCommandPort` 遗留问题转任务）全部生效。编辑任务、状态流转、合并 / 解除合并与记录发布都不触发。
 - 实现位置：`ProjectsWritePort.reopenMaintenanceProject`（原名 `reopenMaintenanceProjectOnTaskCreate`，经 [ADR-057](adr/ADR-057.md) 更名；`PostgresProjectsWritePort` 用一条条件 UPDATE，`WHERE p.status = 'MAINTENANCE' AND p.deleted_at IS NULL`，未命中返回 `undefined`）+ `TasksManagementService.execute()` 创建分支（`before === undefined`）末尾调用私有 `reopenMaintenanceProject`。
 - 同事务副作用：审计 `project.status.change`（`automatic: true` / `trigger: "TASK_CREATED"` / `taskId` / `before` / `after`）、活动 `PROJECT_STATUS_CHANGED`（摘要「项目重新开工：{name} 由维护中回到进行中」）、搜索投影 `PROJECT` upsert（`sourceStatus` / `sourceRowVersion` 取切换后项目行）。**不写**通知（沿用 ADR-035「只有未开始 → 进行中通知全体成员」）、**不写** `first_task_completed_at`（粘性标记唯一来源仍是任务完成）。
-- 并发：条件 UPDATE 只命中维护中行，非维护中不取行锁、不推高 `row_version`（`projects_row_version` 触发器要求每次 UPDATE 恰好 +1）；同一事务内由创建路径已持有的 `FOR SHARE` 升级为写锁，不跨事务、不改变父到子的取锁顺序。
+- 并发：条件 UPDATE 只命中维护中行，非维护中不取行锁、不推高 `row_version`；ADR-092 起维护中回到进行中为纯状态更新，命中时也保持版本不变；同一事务内由创建路径已持有的 `FOR SHARE` 升级为写锁，不跨事务、不改变父到子的取锁顺序。
 - 不做：反向自动（项目状态不影响任务状态）、不发通知、不回溯存量「维护中 + 未收尾任务」数据、不放宽进入维护中的 0 未收尾任务门禁（409 `PROJECT_MAINTENANCE_TASKS_OPEN` 不变）。
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
-| ADR056-INT-001 | 真实 PostgreSQL 集成 | 维护中项目新建功能级任务回到进行中 | `apps/api/test/task-create-maintenance-reopen.integration.test.ts`：创建后项目 `status = 'ACTIVE'`、`row_version` 递增、`first_task_completed_at` 仍为 `NULL`；审计恰一条且 `automatic: true` / `trigger: "TASK_CREATED"` / `taskId` / `before` / `after` 齐全；活动与搜索投影的 `sourceStatus` / `sourceRowVersion` 与切换后项目行一致；**无** `project.status.change` 通知 | 本地通过 |
+| ADR056-INT-001 | 真实 PostgreSQL 集成 | 维护中项目新建功能级任务回到进行中 | `apps/api/test/task-create-maintenance-reopen.integration.test.ts`：创建后项目 `status = 'ACTIVE'`、`row_version` 保持不变、`first_task_completed_at` 仍为 `NULL`；审计恰一条且 `automatic: true` / `trigger: "TASK_CREATED"` / `taskId` / `before` / `after` 齐全；活动与搜索投影的 `sourceStatus` / `sourceRowVersion` 与切换后项目行一致；**无** `project.status.change` 通知 | 本地通过 |
 | ADR056-INT-002 | 真实 PostgreSQL 集成 | 重复创建不重复切换 | 同文件：同项目再建任务后项目版本不再变化、审计与活动均不新增（条件 UPDATE 未命中） | 本地通过 |
 | ADR056-INT-003 | 真实 PostgreSQL 集成 | 模块级任务同样触发 | 同文件：`createModuleTask` 后项目回到进行中并写审计与活动（`ProjectMemberTaskCommandPort` / 联合创建共用同一出口） | 本地通过 |
 | ADR056-INT-004 | 真实 PostgreSQL 集成 | 未开始与进行中项目不受影响 | 同文件：两个状态下创建任务后状态与 `row_version` 均不变，且不写审计、不写活动（未开始的升级仍只由首次任务完成触发） | 本地通过 |
@@ -4824,7 +4824,7 @@ PGroonga 单字可行性实测（演示库 `app`，`search_projection` 435 行�
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
-| ADR057-INT-001 | 真实 PostgreSQL 集成 | 维护中项目重新打开任务回到进行中 | 同文件：前置 `COMPLETE` 未改变项目状态（`MAINTENANCE`、版本不变、无审计）；`REOPEN` 后项目 `status = 'ACTIVE'`、`row_version` 递增、`first_task_completed_at` 仍为 `NULL`；审计恰一条且 `trigger: "TASK_REOPENED"` / `taskId` / `before` / `after` 齐全；活动与搜索投影 `sourceRowVersion` 与切换后项目行一致；**无** `project.status.change` 通知 | 本地通过 |
+| ADR057-INT-001 | 真实 PostgreSQL 集成 | 维护中项目重新打开任务回到进行中 | 同文件：前置 `COMPLETE` 未改变项目状态（`MAINTENANCE`、版本不变、无审计）；`REOPEN` 后项目 `status = 'ACTIVE'`、`row_version` 保持不变、`first_task_completed_at` 仍为 `NULL`；审计恰一条且 `trigger: "TASK_REOPENED"` / `taskId` / `before` / `after` 齐全；活动与搜索投影 `sourceRowVersion` 与切换后项目行一致；**无** `project.status.change` 通知 | 本地通过 |
 | ADR057-INT-002 | 真实 PostgreSQL 集成 | 维护中项目恢复已取消任务回到进行中 | 同文件：前置 `CANCEL` 未触发（无项目状态审计）；`RESTORE` 后项目回到进行中，审计 `trigger: "TASK_RESTORED"`，活动 `metadata.trigger` 同值，无项目级通知 | 本地通过 |
 | ADR057-INT-003 | 真实 PostgreSQL 集成 | 进行中项目重新打开不写状态副作用 | 同文件：项目状态与 `row_version` 不变，无审计、无活动（条件 UPDATE 未命中） | 本地通过 |
 | ADR057-INT-004 | 真实 PostgreSQL 集成 | 重新打开与状态切换同一事务 | 同文件：外层抛错后项目仍为 `MAINTENANCE`、任务仍为 `DONE` 且 `row_version` 不变，无审计与活动，无 `task.reopen` 通知 | 本地通过 |
@@ -6958,3 +6958,20 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR091-LIVE-002 | 实机推送（本地演示库 + 当前机器人） | 项目群封箱通知 | 临时绑定项目 140 后，动态 17020 物化为投递 13；文字与海报分段送达，`delivered_step_count=2`、状态 `SENT`，两段响应均 `errcode=0`；测试后删除临时绑定与投递行并恢复原绑定 `REVOKED` | 本地通过（2026-10-20 17:15，投递 13） |
 
 已知边界：实机验证使用邵晨宇（用户 7）的 ACTIVE 绑定与既有真实群；项目 140 现保留在维护中并留有封箱快照，作为本地演示数据。群验证的临时绑定与投递行已清理，原项目 1 群绑定仍为 REVOKED；当前没有 ACTIVE 项目群绑定，正式群通知需重新绑定后才会产生。海报渲染失败会降级为文字，不能作为业务事务失败。
+
+
+## 2026-10-21 项目状态版本语义与通用成功气泡（ADR-092）
+
+用户要求项目状态变更不再推动版本号，并把任务保存、功能 / 模块操作等整行成功提示收敛为会自动消失的浮层气泡。本节按 [ADR-092](adr/ADR-092.md) 登记当前实现与验证证据。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR092-DB-001 | 真实 PostgreSQL 迁移 | 状态与内容版本分界 | 迁移 `0057_project_status_version_semantics.sql` 应用后：只改 `status` / `updated_at` 保持 `row_version`；状态与内容同改但未推进版本被 23514 拒绝；只改内容但未推进版本被 23514 拒绝；内容更新并 `row_version + 1` 成功 | 本地通过（2026-10-21，`database.test.ts` 16/16） |
+| ADR092-API-001 | API 集成（真实 PostgreSQL + HTTP） | 手动状态切换 | 未开始 → 进行中返回 200、响应与库内 `rowVersion` 均为 1；随后进行中 → 维护中继续使用同一 `If-Match: "1"` 成功；无内容变化不产生版本冲突；审计、活动、通知与搜索投影仍写入 | 本地通过（2026-10-21，`project-management-api.integration.test.ts`） |
+| ADR092-API-002 | API 集成（真实 PostgreSQL） | 自动状态与首次完成 | 维护中因新建、重新打开、恢复任务回到进行中时保持 `row_version`；首次任务完成因写 `first_task_completed_at` 仍推进版本；重复触发不命中时不写副作用 | 本地通过（2026-10-21，`task-create-maintenance-reopen.integration.test.ts` 与状态 API 合计 19/19） |
+| ADR092-UNIT-001 | API 单元 | 封箱记录与版本载荷 | 状态切换返回同版本；封箱审计 / 活动 / 搜索投影的 `sourceRowVersion` 使用当前内容版本；`changeProjectStatus` 幂等契约版本为 `1.3.0` | 本地通过（2026-10-21，`project-management.service.test.ts` 7/7） |
+| ADR092-WEB-UNIT-001 | Web 单元 | 状态保存与版本回写 | 只改状态调用状态接口并回写同版本；字段与状态同改按字段响应的新版本串行保存；无改动不请求 | 本地通过（2026-10-21，`project-management-modals.test.tsx` 12/12） |
+| SUCCESS-TOAST-UI-001 | Web 单元 | 成功气泡替换整行横幅 | `SuccessToast` 6 秒自动请求关闭、支持手动关闭；任务保存、功能 / 模块操作、项目创建 / 编辑 / 删除均渲染 `.success-toast` 浮层且不落在 `.ant-alert` 文档流中 | 本地通过（2026-10-21，5 个相关 Web 测试文件 84/84） |
+| ADR092-GATE-001 | 静态 / 全量门禁 | 类型、契约、迁移与回归 | API / Web typecheck；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由；`permissions:check` 129 / 129；`db:migrations:check` 56 个 SQL；`check:docs` 142 个 Markdown；`check:secrets` 1406 个文件；Prettier check；API / Web 生产构建；`check:frontend:boundaries` 383 模块 / 1914 依赖；`check:deps` 905 源文件；API 单测 80 文件 521 例、Web 单测 119 文件 1002 例、契约单测 16 文件 102 例、数据库集成 2 文件 29 例全绿 | 本地通过（2026-10-21） |
+
+已知偏差：完整 API 集成 65 文件 637 例中，64 文件 636 例通过；唯一失败为 `project-member-management-api.integration.test.ts` 的 ADR-040 用例（同一任务改派时现有实现把新增接手人与在任负责人合并，期望只保留在任负责人），单文件复跑同样失败，与本批状态版本及气泡改动无关。全仓 `pnpm lint` 仍被 18 个既有未使用变量 / 控制字符正则告警阻断；本批新增与主要改动文件的定向 ESLint 通过。

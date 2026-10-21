@@ -2097,8 +2097,8 @@
   color: #4c7c63;
 }
 
-/* 项目成功提示改为固定气泡：不占文档流，创建/状态变更不会横向堆叠在页面里。 */
-.project-success-toast {
+/* 成功提示改为固定气泡：不占文档流，连续操作不会横向堆叠在页面里。 */
+.success-toast {
   position: fixed;
   top: 76px;
   left: 50%;
@@ -2110,14 +2110,14 @@
   border-radius: 14px;
   box-shadow: 0 18px 48px rgba(45, 74, 102, 0.16);
   transform: translateX(-50%);
-  animation: project-success-toast-in 180ms ease-out;
+  animation: success-toast-in 180ms ease-out;
 }
 
-.project-success-toast .creation-success-body {
+.success-toast .creation-success-body {
   padding-right: 22px;
 }
 
-.project-success-toast-close {
+.success-toast-close {
   position: absolute;
   top: 8px;
   right: 10px;
@@ -2136,12 +2136,12 @@
   cursor: pointer;
 }
 
-.project-success-toast-close:hover {
+.success-toast-close:hover {
   background: #e3f4ea;
   color: #2b6d4d;
 }
 
-@keyframes project-success-toast-in {
+@keyframes success-toast-in {
   from {
     opacity: 0;
     transform: translate(-50%, -8px);
@@ -2153,7 +2153,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .project-success-toast {
+  .success-toast {
     animation: none;
   }
 }
@@ -2349,7 +2349,7 @@
 }
 
 @media (max-width: 700px) {
-  .project-success-toast {
+  .success-toast {
     top: 68px;
     width: calc(100vw - 24px);
     flex-direction: row;

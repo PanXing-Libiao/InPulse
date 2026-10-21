@@ -46,6 +46,7 @@ import {
   type TaskStatusRequest,
 } from "@generated/api";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
+import { SuccessToast } from "@features/common/components/SuccessToast";
 import {
   beijingTodayStart,
   formatBeijingDate,
@@ -927,7 +928,13 @@ export function TasksPanel({
               当前范围只读，不能新建或修改任务。
             </p>
           )}
-          {success && <Alert type="success" title="任务已保存" />}
+          {success && (
+            <SuccessToast
+              testId="task-save-success"
+              title="任务已保存"
+              onDismiss={() => setSuccess(false)}
+            />
+          )}
           {query.isPending ? (
             <CalmSkeleton variant="list" rows={4} label="正在加载任务" />
           ) : query.isError ? (

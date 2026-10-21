@@ -164,6 +164,10 @@ describe("F-13 forms", () => {
     expect(createFeature.mock.calls[0]![2]).toMatchObject({
       tags: ["支付", "退款"],
     });
+    const toast = await screen.findByTestId("feature-operation-success");
+    expect(toast).toHaveTextContent("功能操作成功");
+    expect(toast).toHaveClass("success-toast");
+    expect(toast.closest(".ant-alert")).toBeNull();
   });
 
   it("merges a name draft with a concurrently changed currentBehavior before using the latest version", async () => {

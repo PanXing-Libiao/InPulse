@@ -15,6 +15,7 @@ import {
   type FeatureItem,
 } from "@generated/api";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
+import { SuccessToast } from "@features/common/components/SuccessToast";
 import { isCardClick } from "@features/common/card-click";
 import { formatBeijingMinute } from "@features/common/beijing-time";
 import {
@@ -117,11 +118,10 @@ export function FeaturesPageView({
     action: FeatureChange["action"];
     item?: FeatureItem;
   } | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [notice, setNotice] = useState<"FEATURE" | "MODULE" | null>(null);
   // ADR-044：模块只有编辑，弹层与模块列表页共用。
   const [moduleRequest, setModuleRequest] =
     useState<ModuleEditorRequest | null>(null);
-  const [moduleSuccess, setModuleSuccess] = useState(false);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
   const [merge, setMerge] = useState<Merge | null>(null);
@@ -161,7 +161,7 @@ export function FeaturesPageView({
     });
     mutation.reset();
     setReloadError(null);
-    setSuccess(false);
+    setNotice(null);
   };
   /**
    * 搭建引导的「添加功能」入口带着一次性信号进来：落地后自动打开新建功能
@@ -198,7 +198,7 @@ export function FeaturesPageView({
     try {
       await mutation.mutateAsync({ ...selection, ...values });
       setSelection(null);
-      setSuccess(true);
+      setNotice("FEATURE");
       reset();
     } catch {
       /* Mutation retains the error and form remains mounted. */
@@ -490,10 +490,20 @@ export function FeaturesPageView({
                 </div>
               ) : null}
             </div>
-            {success && <Alert type="success" showIcon title="功能操作成功" />}
-            {moduleSuccess && (
-              <Alert type="success" showIcon title="模块操作成功" />
-            )}
+            {notice === "FEATURE" ? (
+              <SuccessToast
+                testId="feature-operation-success"
+                title="功能操作成功"
+                onDismiss={() => setNotice(null)}
+              />
+            ) : null}
+            {notice === "MODULE" ? (
+              <SuccessToast
+                testId="module-operation-success"
+                title="模块操作成功"
+                onDismiss={() => setNotice(null)}
+              />
+            ) : null}
             {query.isPending ? (
               <CalmSkeleton variant="list" rows={4} label="正在加载功能" />
             ) : query.isError ? (
@@ -1030,7 +1040,7 @@ export function FeaturesPageView({
         projectName={projectQuery.data?.project?.name ?? null}
         request={moduleRequest}
         onClose={() => setModuleRequest(null)}
-        onSaved={() => setModuleSuccess(true)}
+        onSaved={() => setNotice("MODULE")}
         // ADR-059：在功能档案里删掉当前模块后，本页的模块与功能都不存在了，
         // 回到模块列表（服务端已级联删除其下功能）。
         onDeleted={() => navigate("/projects/" + projectId + "/modules")}

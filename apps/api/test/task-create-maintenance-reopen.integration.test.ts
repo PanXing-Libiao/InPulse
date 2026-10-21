@@ -228,7 +228,8 @@ describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到�
 
     const after = (await readProject(f.projectId))[0]!;
     expect(after.status).toBe("ACTIVE");
-    expect(after.rowVersion).toBe(before.rowVersion + 1);
+    // ADR-092：维护中回到进行中只改状态，项目内容版本保持不变
+    expect(after.rowVersion).toBe(before.rowVersion);
     // ADR-035 的粘性标记只由任务完成置位，创建任务不得写入
     expect(after.firstTaskCompletedAt).toBeNull();
 
@@ -296,7 +297,7 @@ describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到�
     expect(task.featureId).toBeNull();
     const after = (await readProject(f.projectId))[0]!;
     expect(after.status).toBe("ACTIVE");
-    expect(after.rowVersion).toBe(before.rowVersion + 1);
+    expect(after.rowVersion).toBe(before.rowVersion);
     const audits = await statusAudits(f.projectId);
     expect(audits).toHaveLength(1);
     expect(audits[0]!.eventPayload).toMatchObject({
@@ -429,7 +430,7 @@ describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到�
 
     const after = (await readProject(f.projectId))[0]!;
     expect(after.status).toBe("ACTIVE");
-    expect(after.rowVersion).toBe(maintenance.rowVersion + 1);
+    expect(after.rowVersion).toBe(maintenance.rowVersion);
     // ADR-035 的粘性标记只由首次任务完成置位，状态流转不得写入
     expect(after.firstTaskCompletedAt).toBeNull();
 
@@ -500,7 +501,7 @@ describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到�
     const after = (await readProject(f.projectId))[0]!;
     expect(after).toMatchObject({
       status: "ACTIVE",
-      rowVersion: maintenance.rowVersion + 1,
+      rowVersion: maintenance.rowVersion,
     });
     const audits = await statusAudits(f.projectId);
     expect(audits).toHaveLength(1);

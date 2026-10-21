@@ -76,7 +76,7 @@
 - 数据库约束是最终防线：必填归属使用 `NOT NULL`，状态使用 `TEXT + CHECK`，唯一性和引用完整性使用 `UNIQUE`/FK，而不是只靠应用校验。
 - 所有项目内跨层关系必须包含 `project_id`，并使用复合外键阻止跨项目串联。
 - 跨模块业务操作必须在同一事务中完成；审计、通知、活动投影和搜索投影与业务写入使用相同事务。
-- 聚合更新使用条件更新或显式行锁，并在成功后递增 `row_version`。唯一约束、版本冲突和状态冲突映射为明确的 409 业务错误。
+- 聚合更新使用条件更新或显式行锁；内容变化必须递增 `row_version`，项目纯状态变更按 [ADR-092](./docs/adr/ADR-092.md) 保持版本不变。唯一约束、版本冲突和状态冲突映射为明确的 409 业务错误。
 - 多聚合命令固定锁序为：任务 ID 升序 -> 任务组 ID 升序 -> 迭代记录 ID 升序 -> 遗留项 ID 升序。预读结果在获得锁后发生变化时，必须重新读取并从头有限重试。
 - 命令需要验证项目、模块或功能仍可写时，必须先按项目 -> 模块 -> 功能的父到子顺序和各层 ID 升序取得 `FOR SHARE`；归档方按相同顺序取得 `FOR UPDATE`，随后才进入上述业务聚合锁序，防止父级归档与子级写入竞态。
 - 所有写接口（POST、PUT、PATCH、DELETE）默认必须在 Route Registry 声明 `idempotencyRequired` 并实现数据库级幂等；普通 GET、HEAD 和纯校验接口显式声明 `none`。[ADR-023](./docs/adr/ADR-023.md) allowlist 中的 operationId 必须且只能声明 `securityFlow`，包括签发/消费一次性安全材料（预认证 CSRF、Session 与 CSRF）、登录/登出与 SSO 认证导航（`startSsoLogin`/`completeSsoLogin`，共五条，[ADR-032](./docs/adr/ADR-032.md)）；新增例外必须另立 ADR。通用幂等记录禁止保存或重放 Cookie、CSRF Token 或任何一次性安全材料。

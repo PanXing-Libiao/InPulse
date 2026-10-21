@@ -425,8 +425,14 @@ describe("F-06.3 项目状态变更 API", () => {
       id: value.project.projectId,
       status: "ACTIVE",
       hasCompletedTask: false,
-      rowVersion: 2,
+      rowVersion: 1,
     });
+    const storedAfterStatus = (await client.sql`
+      SELECT row_version AS "rowVersion"
+        FROM app.projects
+       WHERE id = ${value.project.projectId}
+    `) as unknown as readonly { rowVersion: number }[];
+    expect(storedAfterStatus[0]?.rowVersion).toBe(1);
 
     const audits = (await auditReader.sql`
       SELECT action AS "action"
@@ -476,7 +482,7 @@ describe("F-06.3 项目状态变更 API", () => {
       path,
       value.owner,
       { status: "MAINTENANCE" },
-      { ifMatch: '"2"' },
+      { ifMatch: '"1"' },
     );
     expect(maintenance.status).toBe(200);
     expect(
@@ -491,7 +497,7 @@ describe("F-06.3 项目状态变更 API", () => {
         path,
         value.owner,
         { status: "NOT_STARTED" },
-        { ifMatch: '"3"' },
+        { ifMatch: '"1"' },
       ),
       409,
       "PROJECT_STATUS_LEVEL_SKIP",
@@ -540,7 +546,7 @@ describe("F-06.3 项目状态变更 API", () => {
         path,
         outsider,
         { status: "ACTIVE" },
-        { ifMatch: '"2"' },
+        { ifMatch: '"1"' },
       ),
       404,
       "PROJECT_NOT_FOUND",
@@ -593,7 +599,7 @@ describe("F-06.3 项目状态变更 API", () => {
       schemaRegistry.ProjectDetailResponse.schema.parse(
         await memberChange.json(),
       ).project,
-    ).toMatchObject({ status: "ACTIVE", rowVersion: 2 });
+    ).toMatchObject({ status: "ACTIVE", rowVersion: 1 });
   });
 
   it("项目出现过已完成任务后不能回退未开始", async () => {
@@ -680,7 +686,7 @@ describe("F-06.3 项目状态变更 API", () => {
         path,
         value.owner,
         { status: "MAINTENANCE" },
-        { ifMatch: '"2"' },
+        { ifMatch: '"1"' },
       ),
       409,
       "PROJECT_MAINTENANCE_TASKS_OPEN",
@@ -710,7 +716,7 @@ describe("F-06.3 项目状态变更 API", () => {
       path,
       value.owner,
       { status: "MAINTENANCE" },
-      { ifMatch: '"2"' },
+      { ifMatch: '"1"' },
     );
     expect(maintenance.status, await maintenance.clone().text()).toBe(200);
     expect(
@@ -841,7 +847,7 @@ describe("F-06.3 项目状态变更 API", () => {
       path,
       value.owner,
       { status: "MAINTENANCE" },
-      { ifMatch: '"2"' },
+      { ifMatch: '"1"' },
     );
     expect(maintenance.status, await maintenance.clone().text()).toBe(200);
   });

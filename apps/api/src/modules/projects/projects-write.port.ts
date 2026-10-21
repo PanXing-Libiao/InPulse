@@ -228,7 +228,7 @@ export abstract class ProjectsWritePort {
   ): Promise<ProjectChangeRecord | undefined>;
 
   /**
-   * 条件迁移项目状态并递增 row_version；版本不匹配返回 undefined。
+   * 条件迁移项目状态并保持 row_version（ADR-092）；内容版本不匹配返回 undefined。
    * ADR-043：项目状态只有三态，archived_at 是归档时代的只读历史列，不再写入。
    */
   abstract updateProjectStatus(
@@ -281,7 +281,7 @@ export abstract class ProjectsWritePort {
    * ADR-056 / ADR-057：任务重新变为未收尾（新建、重新打开或恢复）后维护中项目
    * 重新开工——维护中的语义是「主体已完成、只做小修小补」，一旦有未收尾任务
    * 进来就不再成立，同一事务内回到进行中。
-   * 只命中 status = 'MAINTENANCE' 的行并递增 row_version；未开始与进行中项目
+   * 只命中 status = 'MAINTENANCE' 的行并保持 row_version（ADR-092）；未开始与进行中项目
    * 不命中任何行，因此重复调用不会推高项目版本。
    */
   abstract reopenMaintenanceProject(

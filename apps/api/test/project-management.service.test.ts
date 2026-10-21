@@ -95,7 +95,7 @@ function setup(
   statusUpdated: ProjectChangeRecord | undefined = {
     ...current,
     status: "MAINTENANCE",
-    rowVersion: 2,
+    rowVersion: 1,
     updatedAt: "2026-09-10T00:00:00.000Z",
   },
 ) {
@@ -309,7 +309,7 @@ describe("ProjectManagementService", () => {
       tx,
       expect.objectContaining({
         activityType: "PROJECT_WRAPPED",
-        sourceRowVersion: 2,
+        sourceRowVersion: 1,
         summary: expect.stringContaining("项目封箱"),
       }),
     );
@@ -317,7 +317,7 @@ describe("ProjectManagementService", () => {
       tx,
       expect.objectContaining({
         sourceStatus: "MAINTENANCE",
-        sourceRowVersion: 2,
+        sourceRowVersion: 1,
       }),
     );
     expect(s.notifyProjectWrapped).toHaveBeenCalledWith(
@@ -331,7 +331,7 @@ describe("ProjectManagementService", () => {
     );
     expect(result.project).toMatchObject({
       status: "MAINTENANCE",
-      rowVersion: 2,
+      rowVersion: 1,
     });
   });
 

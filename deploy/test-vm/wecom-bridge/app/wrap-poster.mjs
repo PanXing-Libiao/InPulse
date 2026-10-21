@@ -58,7 +58,9 @@ function asNonNegativeInteger(value, field) {
 
 function asDateText(value, field) {
   if (value === null || value === undefined || value === "") return "—";
-  const date = value instanceof Date ? value : new Date(String(value));
+  const text = String(value).trim();
+  if (text === "—" || /^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text;
+  const date = value instanceof Date ? value : new Date(text);
   if (Number.isNaN(date.getTime())) {
     throw new Error("项目封箱快照时间非法: " + field);
   }

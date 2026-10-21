@@ -62,6 +62,21 @@ test("normalizes a version 1 snapshot and formats dates in Asia/Shanghai", () =>
   assert.equal(value.timeline.sealedAt, "2026.10.20");
 });
 
+test("accepts an already normalized snapshot and renders a missing first record date", async () => {
+  const normalized = normalizeWrapSnapshot({
+    ...snapshot,
+    timeline: { ...snapshot.timeline, firstRecordAt: null },
+  });
+  assert.equal(normalized.timeline.firstRecordAt, "—");
+  assert.deepEqual(normalizeWrapSnapshot(normalized), normalized);
+  const poster = await renderWrapPoster({
+    snapshot: normalized,
+    recipientName: "林雨研",
+  });
+  assert.equal(poster.width, 1080);
+  assert.ok(poster.buffer.length > 20000);
+});
+
 test("rejects unknown template versions and malformed participant rows", () => {
   assert.throws(
     () => normalizeWrapSnapshot({ ...snapshot, version: 2 }),

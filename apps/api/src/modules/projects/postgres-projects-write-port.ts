@@ -285,8 +285,7 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
       WITH updated AS (
         UPDATE app.projects
            SET status = ${input.status},
-               updated_at = now(),
-               row_version = row_version + 1
+               updated_at = now()
          WHERE id = ${input.projectId}
            AND row_version = ${input.expectedRowVersion}
         RETURNING id,
@@ -561,7 +560,8 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
    * ADR-035 任务完成粘性置位：first_task_completed_at 取最早一次完成时间且永不回落；
    * 项目处于未开始时同一语句升级为进行中。
    *
-   * `app.projects` 的 row_version 触发器要求每次 UPDATE 必须恰好 +1，因此这里用 WHERE
+   * `app.projects` 的内容更新必须恰好推进一次 row_version，而纯状态变更允许保持版本；
+   * 因此这里用 WHERE
    * 只命中真正需要变更的行：粘性标记已存在且项目不再是未开始时整条语句不写任何行并返回
    * undefined，避免每次任务完成都把项目版本推高一格、连带作废在途的项目编辑 If-Match。
    * 行锁在语句内的 before CTE 中获取，与项目写路径的 project 优先锁序一致。
@@ -643,7 +643,6 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
     const rows = (await tx.sql`
       UPDATE app.projects p
          SET status = 'ACTIVE',
-             row_version = p.row_version + 1,
              updated_at = now()
        WHERE p.id = ${input.projectId}
          AND p.status = 'MAINTENANCE'

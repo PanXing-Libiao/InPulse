@@ -219,6 +219,7 @@ export class ProjectManagementService {
    * - 进入维护中要求项目下任务全部收尾（未完成且未取消的任务数为 0）。
    *
    * 只有「未开始 → 进行中」通知全体活跃成员；维护中不通知，避免反复切换刷屏。
+   * ADR-092：状态变更不推进 `row_version`，`If-Match` 仍以当前内容版本保护在途编辑；
    * 状态、审计 `project.status.change`、活动与搜索投影在同一事务提交。
    */
   async changeProjectStatus(

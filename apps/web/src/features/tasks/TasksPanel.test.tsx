@@ -148,6 +148,30 @@ function mount(api: InpulseApiClient, writable = true) {
   );
 }
 describe("F-14 功能级任务入口", () => {
+  it("保存成功用浮层气泡提示，不再插入整行成功横幅", async () => {
+    const createTask = vi
+      .fn()
+      .mockResolvedValue({ ...item, id: 2, title: "新任务" });
+    mount(
+      client({
+        listTasks: vi.fn().mockResolvedValue({ items: [] }),
+        createTask,
+      }),
+    );
+    await screen.findByText("暂无任务");
+    fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
+    fireEvent.change(screen.getByLabelText("任务标题"), {
+      target: { value: "新任务" },
+    });
+    pickSelectOption("负责人", "项目成员");
+    fireEvent.click(screen.getByRole("button", { name: /创建任务/ }));
+
+    const toast = await screen.findByTestId("task-save-success");
+    expect(toast).toHaveTextContent("任务已保存");
+    expect(toast).toHaveClass("success-toast");
+    expect(toast.closest(".ant-alert")).toBeNull();
+  });
+
   it("功能面板只保留固定归属的「新建任务」，没有自定义归属入口", async () => {
     mount(client());
     // 任务保存在当前功能下，不需要让用户再选一次归属。

@@ -128,7 +128,7 @@ export const projectRoutes: readonly RouteDefinition[] = [
     path: "/projects/{projectId}/status",
     operationId: "changeProjectStatus",
     summary:
-      "F-06.3 项目状态变更：本项目任意活跃成员或系统管理员（ADR-039）把项目在未开始 / 进行中 / 维护中之间手动切换（2026-09-23 起三态即全部状态，项目不再有归档）；进入维护中要求项目下任务全部收尾，仍有未完成且未取消的任务时 409 PROJECT_MAINTENANCE_TASKS_OPEN；未开始与维护中互改 409 PROJECT_STATUS_LEVEL_SKIP，项目内出现过已完成任务后回退未开始 409 PROJECT_STATUS_NOT_STARTED_LOCKED；维护中不通知，未开始升级为进行中通知全体成员；审计、活动与搜索投影在同一事务提交。",
+      "F-06.3 项目状态变更：本项目任意活跃成员或系统管理员（ADR-039）把项目在未开始 / 进行中 / 维护中之间手动切换（2026-09-23 起三态即全部状态，项目不再有归档）；进入维护中要求项目下任务全部收尾，仍有未完成且未取消的任务时 409 PROJECT_MAINTENANCE_TASKS_OPEN；未开始与维护中互改 409 PROJECT_STATUS_LEVEL_SKIP，项目内出现过已完成任务后回退未开始 409 PROJECT_STATUS_NOT_STARTED_LOCKED；维护中不通知，未开始升级为进行中通知全体成员；审计、活动与搜索投影在同一事务提交；状态变更不推进项目 `row_version`（ADR-092），内容修改仍每次 +1。",
     request: {
       path: "ProjectPath",
       query: "none",
@@ -149,7 +149,8 @@ export const projectRoutes: readonly RouteDefinition[] = [
     idempotencyExceptionAdr: "none",
     // 2026-09-22：ADR-039 门禁改为任意活跃成员且 currentUserRole 枚举收窄，旧 Key 409。
     // 2026-09-23：新增维护中任务收尾门禁与 project.status 取值域收窄，旧 Key 409。
-    idempotencyContractVersion: "1.2.0",
+    // 2026-10-21：ADR-092 状态变更不再推进 row_version，响应版本语义变化，旧 Key 409。
+    idempotencyContractVersion: "1.3.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: replayPolicy,

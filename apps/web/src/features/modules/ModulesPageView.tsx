@@ -40,7 +40,7 @@ import {
 } from "@features/project-overview/ProjectWorkspaceModals";
 import { useAuth } from "@features/auth/auth-context";
 import { EditProjectModal } from "@features/projects/ProjectManagementModals";
-import { ProjectSuccessToast } from "@features/projects/ProjectSuccessToast";
+import { SuccessToast } from "@features/common/components/SuccessToast";
 import {
   canDeleteProject,
   canManageProjectResources,
@@ -191,13 +191,19 @@ export function ModulesPageView({
           }
         >
           {projectNotice && (
-            <ProjectSuccessToast
+            <SuccessToast
               testId="project-update-success"
               title={projectNotice}
               onDismiss={() => setProjectNotice(null)}
             />
           )}
-          {success && <Alert type="success" showIcon title="模块操作成功" />}
+          {success && (
+            <SuccessToast
+              testId="module-operation-success"
+              title="模块操作成功"
+              onDismiss={() => setSuccess(false)}
+            />
+          )}
           {query.isPending ? (
             <CalmSkeleton variant="list" rows={4} label="正在加载模块" />
           ) : query.isError ? (
@@ -354,7 +360,10 @@ export function ModulesPageView({
         projectName={projectName}
         request={request}
         onClose={() => setRequest(null)}
-        onSaved={() => setSuccess(true)}
+        onSaved={() => {
+          setProjectNotice(null);
+          setSuccess(true);
+        }}
       />
       <DocumentImportModal
         open={importOpen}
@@ -364,6 +373,7 @@ export function ModulesPageView({
         onClose={() => setImportOpen(false)}
         onImported={(result: ProjectDocumentImportResult) => {
           setImportOpen(false);
+          setSuccess(false);
           setProjectNotice(
             "文档导入完成：新建 " +
               result.counts.modules +
@@ -396,6 +406,7 @@ export function ModulesPageView({
                 : "";
             applyProjectUpdate(updated);
             setProjectEditOpen(false);
+            setSuccess(false);
             setProjectNotice(
               `项目「${updated.name}」已更新${statusNote}，当前版本 v${updated.rowVersion}。`,
             );

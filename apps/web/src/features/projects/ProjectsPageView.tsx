@@ -9,7 +9,7 @@ import type {
 } from "@generated/api";
 import { CreateProjectModal } from "./CreateProjectModal";
 import { EditProjectModal } from "./ProjectManagementModals";
-import { ProjectSuccessToast } from "./ProjectSuccessToast";
+import { SuccessToast } from "@features/common/components/SuccessToast";
 import { useProjectStars } from "./project-star";
 import {
   CalmBadge,
@@ -252,13 +252,13 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
       ) : null}
 
       {managementSuccess ? (
-        <ProjectSuccessToast
+        <SuccessToast
           testId="project-management-success"
           title={managementSuccess}
           onDismiss={() => setManagementSuccess(null)}
         />
       ) : createdProject ? (
-        <ProjectSuccessToast
+        <SuccessToast
           testId="created-project-success"
           title="项目创建成功"
           description={`${createdProject.project.name}（${createdProject.project.code}） · 现在可以新增模块，或在新建任务时创建模块和功能。`}
