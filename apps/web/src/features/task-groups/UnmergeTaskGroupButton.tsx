@@ -4,6 +4,7 @@ import { AppModal as Modal } from "@features/common/components/AppModal";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, type InpulseApiClient } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * F-24 解除合并（前端）：二次确认 + 解除原因（建议填写，契约允许为空）。
@@ -109,7 +110,7 @@ export function UnmergeTaskGroupButton({
   const errorText =
     error instanceof ApiError
       ? error.status === 401
-        ? "登录已失效，请重新登录。"
+        ? SESSION_EXPIRED_MESSAGE
         : error.status === 403
           ? "当前账号没有解除合并的权限。"
           : error.status === 404

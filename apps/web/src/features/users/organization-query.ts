@@ -7,11 +7,12 @@ import {
   type OrganizationItem,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /** ADR-081 组织操作的统一错误文案。 */
 export function organizationErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403) return "你没有执行组织管理操作的权限。";
     if (error.status === 404) return "组织不存在，或已被删除。";
     if (error.status === 409) {

@@ -20,6 +20,7 @@ import { taskDetailPath } from "@features/tasks/task-links";
 import { CalmSelect } from "@features/common/components/CalmSelect";
 import { CalmDateTimeInput } from "@features/common/components/CalmDateTimeInput";
 import { priorityDotColor } from "@features/common/priority-select-option";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 /** Match the task form's browser-local input and UTC API value, guarding invalid dates. */
 export function parseFollowupDueAt(value: string): string | null | undefined {
   if (value === "") return null;
@@ -43,7 +44,7 @@ function message(error: unknown) {
       return "任务说明加上来源记录与遗留原文后超过 50000 字，请缩短说明。";
     if (error.status === 409)
       return "记录、遗留项或影响功能已变化，请刷新预览并确认后重试。";
-    if (error.status === 401) return "登录已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 404) return "记录或任务不存在，或当前无法访问。";
     if (error.status === 403) return "请求未通过安全校验，请刷新后重试。";
     if (error.status === 422) return "请检查任务信息及负责人当前成员资格。";

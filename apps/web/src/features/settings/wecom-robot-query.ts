@@ -7,6 +7,10 @@ import {
   type WecomRobotConfigUpdateRequest,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import {
+  SESSION_EXPIRED_MESSAGE,
+  SERVICE_NOT_CONFIGURED_MESSAGE,
+} from "@shared/api/request-messages";
 
 /**
  * ADR-070 管理员企业微信机器人配置数据层：GET 读取当前配置与可用状态；
@@ -17,12 +21,11 @@ export const WECOM_ROBOT_QUERY_KEY = ["wecom-robot-config"] as const;
 
 export function wecomRobotErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401)
-      return "登录状态已失效，或缺少完整管理员会话，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403)
       return "只有系统管理员可以查看或修改企业微信机器人配置。";
     if (error.code === "WECOM_ROBOT_CONFIG_KEY_UNAVAILABLE")
-      return "服务器未配置机器人密钥加密主密钥（WECOM_ROBOT_ENCRYPTION_KEY_FILE），暂时无法保存 Secret。";
+      return SERVICE_NOT_CONFIGURED_MESSAGE;
     if (error.status === 409)
       return "该保存请求与先前提交冲突，请刷新页面后按最新状态重试。";
     if (error.status === 422) return "请检查 botId 与 Secret 字段。";

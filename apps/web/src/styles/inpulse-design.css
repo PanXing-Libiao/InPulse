@@ -1942,6 +1942,62 @@
 }
 
 /* ===================== F-05 项目与成员 ===================== */
+/* 柔光伪元素需要被卡片边界裁切，并独立成层，避免压住卡片正文。 */
+.calm-projects .project-card {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* 项目卡右下角的柔和色晕（2026-10-21 用户指定）：沿用统计卡的淡光晕观感，
+   色相跟随项目图标的三档稳定色系。伪元素压在卡片背景之上、正文之下，
+   不参与布局、不拦截点击；维护中卡片的整体淡化仍照常生效。 */
+.calm-projects .project-card::after {
+  position: absolute;
+  right: -76px;
+  bottom: -108px;
+  z-index: -1;
+  width: 224px;
+  height: 224px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    var(--project-blush-core) 0%,
+    var(--project-blush-soft) 34%,
+    transparent 72%
+  );
+  content: "";
+  pointer-events: none;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.calm-projects .project-card:hover::after {
+  transform: scale(1.035);
+}
+
+.calm-projects .project-card.project-blush-cyan {
+  --project-blush-core: rgb(83 193 198 / 0.2);
+  --project-blush-soft: rgb(83 193 198 / 0.08);
+}
+
+.calm-projects .project-card.project-blush-blue {
+  --project-blush-core: rgb(94 144 222 / 0.18);
+  --project-blush-soft: rgb(94 144 222 / 0.07);
+}
+
+.calm-projects .project-card.project-blush-amber {
+  --project-blush-core: rgb(222 168 72 / 0.2);
+  --project-blush-soft: rgb(222 168 72 / 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calm-projects .project-card::after {
+    transition: none;
+  }
+}
+
 /* 维护中项目主体已完成、只做小修小补，卡片整体淡化以拉开与进行中/未开始的
    视觉层级。维护中项目仍可点击、可编辑（ADR-043 三态都可写），所以只降不透明度
    并去掉阴影，悬停或聚焦时恢复满不透明度，避免被误读为不可用。 */

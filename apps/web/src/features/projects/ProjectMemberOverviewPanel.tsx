@@ -216,11 +216,7 @@ function ProjectMemberSummary({
               </Button>
             </CalmEmptyState>
           ) : orderedMembers.length === 0 ? (
-            <CalmEmptyState
-              icon="users"
-              title="暂无项目成员"
-              description="该项目暂时没有活跃成员。"
-            />
+            <CalmEmptyState icon="users" title="暂无项目成员" />
           ) : (
             <div className="project-member-member-list">
               {orderedMembers.map((member) => {

@@ -17,13 +17,13 @@ export const CalmBadge: React.FC<{
 export const CalmEmptyState: React.FC<{
   readonly icon: InpulseIconName;
   readonly title: string;
-  readonly description: string;
+  readonly description?: string;
   readonly children?: React.ReactNode;
 }> = ({ icon, title, description, children }) => (
   <div className="calm-empty calm-empty-state">
     <InpulseIcon name={icon} size={25} />
     <strong>{title}</strong>
-    <p>{description}</p>
+    {description ? <p>{description}</p> : null}
     {children}
   </div>
 );

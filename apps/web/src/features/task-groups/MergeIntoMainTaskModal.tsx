@@ -10,6 +10,7 @@ import {
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { SEARCH_MIN_LENGTH } from "@features/search/search-query";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * F-23 合并到主任务（前端弹窗）。主任务候选来自全局搜索的 TASK 结果
@@ -199,7 +200,7 @@ export function MergeIntoMainTaskModal({
   const errorText =
     error instanceof ApiError
       ? error.status === 401
-        ? "登录已失效，请重新登录。"
+        ? SESSION_EXPIRED_MESSAGE
         : error.status === 403
           ? "当前账号没有执行合并的权限。"
           : error.status === 404

@@ -2,13 +2,14 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ApiError } from "@generated/api";
 
 import type { TaskBoardAdapter } from "./task-board-types";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /** R-8 数据访问层：沿用页面注入的适配器，不引入额外缓存层。 */
 
 export function describeTaskBoardError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
-      return "登录状态已失效，请重新登录后再查看任务看板。";
+      return SESSION_EXPIRED_MESSAGE;
     }
     if (error.status === 404) return "项目不存在或已无权访问。";
     if (error.status === 429) return "请求过于频繁，请稍后重试。";

@@ -5,6 +5,7 @@ import {
   createApiClient,
   type InpulseApiClient,
 } from "@generated/api";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export const SEARCH_MIN_LENGTH = 1;
 export const SEARCH_MAX_LENGTH = 200;
@@ -31,7 +32,7 @@ export function isValidSearchQuery(query: string): boolean {
 export function describeSearchError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
-      return "登录状态已失效，请先登录后再使用全局搜索。";
+      return SESSION_EXPIRED_MESSAGE;
     }
     if (error.status === 422) {
       return "搜索参数无效或结果游标已过期，请重新搜索。";

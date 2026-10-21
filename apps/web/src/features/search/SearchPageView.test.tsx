@@ -207,7 +207,7 @@ describe("SearchPageView", () => {
     );
 
     expect(
-      await screen.findByText("登录状态已失效，请先登录后再使用全局搜索。"),
+      await screen.findByText("登录状态已失效，请重新登录。"),
     ).toBeInTheDocument();
     expect(
       screen.queryByText("server-internal-message"),

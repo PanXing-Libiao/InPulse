@@ -9,6 +9,7 @@ import {
   type WecomBindingStatus,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * ADR-069 个人企微机器人绑定数据层：GET 读取三态状态；POST 签发一次性绑定
@@ -23,7 +24,7 @@ const PENDING_POLL_INTERVAL_MS = 5000;
 
 export function wecomBindingErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403)
       return "当前请求未通过同源校验，请刷新页面后重试。";
     if (error.status === 409)

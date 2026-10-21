@@ -5,6 +5,7 @@ import {
   createApiClient,
   type InpulseApiClient,
 } from "@generated/api";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export interface UserDirectoryQueryOptions {
   readonly client?: InpulseApiClient | undefined;
@@ -14,7 +15,7 @@ export interface UserDirectoryQueryOptions {
 export function describeUserDirectoryError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
-      return "登录状态已失效，请重新登录后再选择成员。";
+      return SESSION_EXPIRED_MESSAGE;
     }
     if (error.status === 429) {
       return "用户目录请求过于频繁，请稍后重试。";

@@ -579,7 +579,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
             />
             <CalmSectionTitle
               title="未完成任务"
-              hint="勾选改派后须选择其他活跃成员，可同时指定多位；不勾选则任务保留原负责人。"
+              hint="勾选后可指定多位活跃成员。"
             />
             {unfinished.isPending ? (
               <CalmSkeleton

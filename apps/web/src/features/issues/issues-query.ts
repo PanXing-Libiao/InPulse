@@ -5,6 +5,7 @@ import {
   createApiClient,
   type InpulseApiClient,
 } from "@generated/api";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * F-20 遗留问题聚合读：R-6 GET /api/v1/leftover-items 的服务端签名游标分页。
@@ -26,8 +27,7 @@ export interface LeftoverItemsQueryOptions {
 
 export function describeIssuesError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401)
-      return "登录状态已失效，请重新登录后再查看遗留问题。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 422) return "遗留问题查询参数无效，请刷新页面后重试。";
     if (error.status === 429) return "请求过于频繁，请稍后重试。";
   }

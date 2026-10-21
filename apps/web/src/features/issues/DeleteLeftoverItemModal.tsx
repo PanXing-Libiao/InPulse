@@ -5,6 +5,7 @@ import { ApiError, type InpulseApiClient } from "@generated/api";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { invalidateShellCounters } from "@shared/api/shell-counters";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * F-20 遗留问题删除：遗留项被版本快照与任务链接引用，仓库规则也不允许物理删除
@@ -24,7 +25,7 @@ export interface DeleteLeftoverTarget {
 /** 删除确认框的错误文案：与表单编辑不同，这里没有输入需要保留。 */
 export function leftoverDeletionErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录后再试。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403) return "请求未通过安全校验，请刷新页面后重试。";
     if (error.status === 404) return "来源迭代记录不存在，或你已无权访问。";
     if (error.status === 409) return "记录已被他人更新，请刷新页面后重试。";

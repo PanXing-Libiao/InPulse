@@ -6,6 +6,7 @@ import {
   type InpulseApiClient,
 } from "@generated/api";
 import { beijingWallClockToIso } from "@features/common/beijing-time";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * F-08 原始审计读取（GET /api/v1/audit-logs）的服务端签名游标分页。
@@ -53,7 +54,7 @@ export function auditChainKey(chain: AuditChain): string {
 export function describeAuditError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
-      return "登录状态已失效，请重新登录后再读取原始审计。";
+      return SESSION_EXPIRED_MESSAGE;
     }
     if (error.status === 403) return "原始审计仅系统管理员可读取。";
     if (error.status === 422) {

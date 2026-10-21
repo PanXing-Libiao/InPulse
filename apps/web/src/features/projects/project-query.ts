@@ -7,6 +7,7 @@ import {
   type InpulseApiClient,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export interface ProjectMutationOptions {
   readonly client?: InpulseApiClient | undefined;
@@ -14,7 +15,7 @@ export interface ProjectMutationOptions {
 
 export function describeProjectListError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录后再查看项目。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 404) return "项目不存在或已无权访问。";
     return "项目列表暂时无法加载，请稍后重试。";
   }
@@ -109,7 +110,7 @@ export function describeCreateProjectError(error: unknown): string {
     }
     switch (error.status) {
       case 401:
-        return "登录状态已失效，请重新登录后再创建项目。";
+        return SESSION_EXPIRED_MESSAGE;
       case 403:
         return "安全校验未通过，请刷新页面后重试。";
       case 409:

@@ -241,7 +241,7 @@ export function ModulesPageView({
             <>
               <CalmSectionTitle
                 title="模块"
-                hint={`${(query.data?.items ?? []).length} 个模块 · 模块负责分类，功能负责沉淀`}
+                hint={`${(query.data?.items ?? []).length} 个模块`}
               >
                 {/* 模块区块标题行是页面唯一的常驻新增入口：设计稿在页头动作区
                     还有一个同名按钮，按产品要求删掉重复入口。 */}

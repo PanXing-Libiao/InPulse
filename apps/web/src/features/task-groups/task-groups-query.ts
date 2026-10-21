@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ApiError } from "@generated/api";
 import type { TaskGroupAdapter } from "./task-groups-types";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * F-25 数据访问层：R-1 聚合组详情与 R-4 记录分页（服务端签名游标）。
@@ -12,8 +13,7 @@ export const TASK_GROUP_RECORDS_PAGE_SIZE = 20;
 
 export function describeTaskGroupError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401)
-      return "登录状态已失效，请重新登录后再查看聚合组。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 404) return "聚合组不存在，或你已无权访问。";
     if (error.status === 429) return "请求过于频繁，请稍后重试。";
   }

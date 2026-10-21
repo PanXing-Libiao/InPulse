@@ -15,6 +15,7 @@ import {
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import { repositoryDisplayPath } from "./repository-path";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 type TargetType = ExternalLinkTargetPath["targetType"];
 type ExternalLinkSource = NonNullable<ExternalLinkItem["sources"]>[number];
 /** 来源标注文案：项目面板聚合任务 / 功能 / 记录上的链接时展示（2026-10-09）。 */
@@ -209,7 +210,7 @@ export function ExternalLinksPanel({
   const message =
     error instanceof ApiError
       ? error.status === 401
-        ? "登录已失效，请重新登录。"
+        ? SESSION_EXPIRED_MESSAGE
         : error.status === 403
           ? "当前操作未获授权，请刷新后重试。"
           : error.status === 404

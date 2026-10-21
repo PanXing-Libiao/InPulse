@@ -39,6 +39,7 @@ import {
   type AuditChain,
   type AuditFilters,
 } from "./audit-query";
+import { SNAPSHOT_READ_FAILED_MESSAGE } from "@shared/api/request-messages";
 
 export interface AuditLogPageViewProps {
   readonly client?: InpulseApiClient | undefined;
@@ -192,7 +193,7 @@ function snapshotPayloadText(item: AuditLogItem): string {
   try {
     return JSON.stringify(item.eventPayload, null, 2);
   } catch {
-    return "事件载荷无法序列化";
+    return SNAPSHOT_READ_FAILED_MESSAGE;
   }
 }
 

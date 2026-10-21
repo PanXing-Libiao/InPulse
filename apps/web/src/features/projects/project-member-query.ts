@@ -12,11 +12,11 @@ import {
   type ProjectMemberReassignmentItem,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export function projectMemberErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401)
-      return "登录状态已失效，请重新登录后再查看项目成员。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403) {
       // ADR-053：角色任命只剩「系统管理员或本项目组长转移组长身份」。
       if (error.code === "PROJECT_MEMBER_ROLE_FORBIDDEN")

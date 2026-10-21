@@ -14,6 +14,7 @@ import {
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { invalidateShellCounters } from "@shared/api/shell-counters";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export type FeatureChange = {
   action: "create" | "update";
@@ -27,7 +28,7 @@ export function featureErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 409)
       return `${error.message}。输入已保留，请检查冲突并加载最新版本后继续编辑。`;
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 404) return "项目或功能不存在，或你已无权访问。";
     if (error.status === 403)
       return "你没有执行此操作的权限，或安全校验未通过。";

@@ -8,6 +8,7 @@ import {
   type ProjectStatusChangeRequest,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export type ProjectManagementAction = "update" | "status" | "delete";
 
@@ -24,7 +25,7 @@ export function describeProjectManagementError(
   const actionLabel = ACTION_LABELS[action];
   if (error instanceof ApiError) {
     if (error.status === 401) {
-      return "登录状态已失效，请重新登录后再操作项目。";
+      return SESSION_EXPIRED_MESSAGE;
     }
     if (error.status === 403) {
       if (error.code === "PROJECT_DELETE_FORBIDDEN") {

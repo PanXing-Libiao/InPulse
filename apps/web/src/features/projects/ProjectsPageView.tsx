@@ -21,7 +21,10 @@ import { DocumentImportModal } from "@features/document-import/DocumentImportMod
 import { isCardClick } from "@features/common/card-click";
 import { canDeleteProject, canManageProjectResources } from "./project-query";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
-import { ProjectLogo } from "@features/common/components/ProjectLogo";
+import {
+  ProjectLogo,
+  projectLogoTone,
+} from "@features/common/components/ProjectLogo";
 import {
   projectLifecycleLabel,
   projectLifecycleTone,
@@ -194,7 +197,6 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
       <div className="page-header">
         <div className="catalog-heading">
           <h1>项目列表</h1>
-          <p>项目负责承载范围，模块负责分类，功能负责沉淀。</p>
         </div>
         <div className="catalog-actions">
           {projects.length > 0 ? (
@@ -378,11 +380,13 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
               {orderedProjects.map((project) => (
                 <article
                   key={project.id}
-                  className={
-                    project.status === "MAINTENANCE"
-                      ? "project-card is-maintenance"
-                      : "project-card"
-                  }
+                  className={[
+                    "project-card",
+                    `project-blush-${projectLogoTone(project.code)}`,
+                    project.status === "MAINTENANCE" ? "is-maintenance" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   {...routePreloadHandlers(`/projects/${project.id}/modules`)}
                   onClick={(event) => {
                     if (!isCardClick(event)) return;

@@ -90,7 +90,7 @@ export const permissionMatrixRows: readonly PermissionMatrixRow[] = [
     feature: "作废/恢复迭代记录",
     admin: true,
     member: false,
-    note: "高风险权限",
+    note: "—",
   },
   {
     feature: "个人通知与企业微信",

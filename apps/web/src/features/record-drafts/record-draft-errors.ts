@@ -1,11 +1,15 @@
 import { ApiError } from "@generated/api";
+import {
+  SESSION_EXPIRED_INPUT_PRESERVED_MESSAGE,
+  SESSION_EXPIRED_MESSAGE,
+} from "@shared/api/request-messages";
 
 /**
  * 草稿创建/编辑与草稿列表的统一错误文案：输入与幂等键始终保留，提示可重试。
  */
 export function recordDraftErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。输入已保留。";
+    if (error.status === 401) return SESSION_EXPIRED_INPUT_PRESERVED_MESSAGE;
     if (error.status === 404)
       return "草稿或所属范围不存在，或你已无权访问。输入已保留。";
     if (error.status === 403) return "权限或安全校验未通过。输入已保留。";
@@ -23,7 +27,7 @@ export function recordDraftErrorMessage(error: unknown) {
  */
 export function recordDraftListErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403) return "权限或安全校验未通过，无法读取草稿列表。";
     if (error.status === 404)
       return "该项目不存在或你已无权访问，无法读取草稿。";
@@ -38,7 +42,7 @@ export function recordDraftListErrorMessage(error: unknown) {
  */
 export function recordDraftDeleteErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403) return "权限或安全校验未通过，无法删除。";
     if (error.status === 404) return "草稿不存在，或已经被删除。";
     if (error.status === 409) return error.message;

@@ -6,6 +6,7 @@ import {
   type InpulseApiClient,
   type RecordSummaryAssistResponse,
 } from "@generated/api";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * ADR-076 迭代总结 AI 改写数据层：POST /record-summaries/assist。
@@ -75,7 +76,7 @@ export function describeRecordSummaryAssistError(error: unknown): string {
     }
     switch (error.status) {
       case 401:
-        return "登录状态已失效，请重新登录后再试。";
+        return SESSION_EXPIRED_MESSAGE;
       case 400:
       case 422:
         return "要求或总结正文不符合格式，请检查后重试。";

@@ -34,7 +34,7 @@ export const PermissionMatrixPanel: React.FC = () => (
               </td>
               <td className="permission-cell">
                 {row.admin ? (
-                  <CalmBadge tone="green" title="允许">
+                  <CalmBadge tone="green">
                     <InpulseIcon name="check" size={13} />
                     <span className="sr-only">允许</span>
                   </CalmBadge>
@@ -44,7 +44,7 @@ export const PermissionMatrixPanel: React.FC = () => (
               </td>
               <td className="permission-cell">
                 {row.member === true ? (
-                  <CalmBadge tone="green" title="允许">
+                  <CalmBadge tone="green">
                     <InpulseIcon name="check" size={13} />
                     <span className="sr-only">允许</span>
                   </CalmBadge>

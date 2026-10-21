@@ -15,6 +15,7 @@ import {
   readMutedProjectCategoriesQuery,
   subscribeProjectNotificationPolicy,
 } from "@shared/notifications/project-notification-policy";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export const NOTIFICATION_PAGE_LIMIT = 20;
 export const NOTIFICATION_POLL_INTERVAL_MS = 30_000;
@@ -41,7 +42,7 @@ export interface NotificationListOptions extends NotificationQueryOptions {
 export function describeNotificationError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
-      return "登录状态已失效，请重新登录后再查看通知。";
+      return SESSION_EXPIRED_MESSAGE;
     }
     if (error.status === 404) {
       return "通知不存在或已不可访问。";

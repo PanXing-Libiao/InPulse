@@ -17,6 +17,7 @@ import {
   useAuditLogsInfiniteQuery,
   type AuditFilters,
 } from "@features/audit/audit-query";
+import { SNAPSHOT_READ_FAILED_MESSAGE } from "@shared/api/request-messages";
 
 /** 动态投影与审计链一一对应，时间窗只需覆盖同一事务内的相邻写入。 */
 const SNAPSHOT_WINDOW_MS = 1000;
@@ -34,7 +35,7 @@ function snapshotPayloadText(entry: AuditLogItem): string {
   try {
     return JSON.stringify(entry.eventPayload, null, 2);
   } catch {
-    return "事件载荷无法序列化";
+    return SNAPSHOT_READ_FAILED_MESSAGE;
   }
 }
 

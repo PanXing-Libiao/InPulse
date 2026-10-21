@@ -9,6 +9,7 @@ import {
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { invalidateShellCounters } from "@shared/api/shell-counters";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 export function RecordLifecycleButton({
   item,
   api,
@@ -99,7 +100,7 @@ export function RecordLifecycleButton({
   const errorText =
     error instanceof ApiError
       ? error.status === 401
-        ? "登录已失效，请重新登录。"
+        ? SESSION_EXPIRED_MESSAGE
         : error.status === 403
           ? "只有系统管理员可以作废或恢复记录。"
           : error.status === 404

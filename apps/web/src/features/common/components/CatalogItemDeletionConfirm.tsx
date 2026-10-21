@@ -2,6 +2,7 @@ import { Alert, Button } from "antd";
 import { ApiError } from "@generated/api";
 
 import { AppModal as Modal } from "./AppModal";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * ADR-059：删除模块 / 功能专用错误文案。`moduleErrorMessage` / `featureErrorMessage`
@@ -11,7 +12,7 @@ import { AppModal as Modal } from "./AppModal";
  */
 export function catalogDeletionError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403) return "权限或安全校验未通过，请重新登录后重试。";
     if (error.status === 404) return "模块或功能不存在，或你已无权访问。";
     if (error.status === 409 || error.status === 422)

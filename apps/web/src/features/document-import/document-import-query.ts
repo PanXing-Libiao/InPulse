@@ -9,6 +9,7 @@ import {
   type ProjectDocumentImportResult,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * ADR-064 文档导入数据层；ADR-067 追加 AI 辅助转换（assistDocumentImport）。
@@ -91,7 +92,7 @@ export function describeDocumentImportError(error: unknown): string {
     }
     switch (error.status) {
       case 401:
-        return "登录状态已失效，请重新登录后再导入。";
+        return SESSION_EXPIRED_MESSAGE;
       case 403:
         return "安全校验未通过，请刷新页面后重试。";
       case 409:
@@ -233,7 +234,7 @@ export function describeDocumentImportAssistError(error: unknown): string {
     }
     switch (error.status) {
       case 401:
-        return "登录状态已失效，请重新登录后再试。";
+        return SESSION_EXPIRED_MESSAGE;
       case 400:
         return "请求内容为空或超出长度上限，请检查后重试。";
       case 422:

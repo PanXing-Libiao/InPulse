@@ -43,7 +43,7 @@ describe("user directory query", () => {
     const error = describeUserDirectoryError(
       await getUserDirectory().catch((value: unknown) => value),
     );
-    expect(error).toBe("登录状态已失效，请重新登录后再选择成员。");
+    expect(error).toBe("登录状态已失效，请重新登录。");
     expect(error).not.toContain("internal-auth-message");
   });
 });

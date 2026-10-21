@@ -519,7 +519,7 @@ describe("ADR-058 删除任务", () => {
     expect(deleteButton).toBeEnabled();
     fireEvent.click(deleteButton);
     const confirm = await screen.findByRole("dialog", { name: "确认删除任务" });
-    expect(within(confirm).getByText(/不能恢复/)).toBeInTheDocument();
+    expect(within(confirm).getByText(/不可恢复/)).toBeInTheDocument();
     // 二次确认前不发请求。
     expect(deleteTask).not.toHaveBeenCalled();
     fireEvent.click(within(confirm).getByTestId("confirm-delete-task"));

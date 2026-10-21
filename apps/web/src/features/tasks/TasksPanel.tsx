@@ -78,6 +78,7 @@ import {
 import { isCardClick } from "@features/common/card-click";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 const labels: Record<TaskField, string> = {
   title: "任务标题",
@@ -227,7 +228,7 @@ function TaskDueBadge({ item }: { readonly item: TaskViewItem }) {
  */
 function deletionError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403) return "权限或安全校验未通过，请重新登录后重试。";
     if (error.status === 404) return "任务不存在，或你已无权访问。";
     if (error.status === 409 || error.status === 422)
@@ -290,7 +291,7 @@ function TaskDeletionConfirm({
             showIcon
             type="warning"
             title={`确认删除任务「${item?.title ?? ""}」？`}
-            description="删除后该任务会从项目、任务中心、看板、搜索与动态中消失，且不能恢复。已关联的 GitHub 链接会解除关联，该任务已发布的迭代记录会被作废（作废快照与历史版本保留）；删除动作会记入审计日志与项目动态。"
+            description="删除后不可恢复；关联的 GitHub 链接会解除，已发布的迭代记录将作废（快照与历史版本保留）。"
           />
           {error ? (
             <Alert showIcon type="error" title={deletionError(error)} />

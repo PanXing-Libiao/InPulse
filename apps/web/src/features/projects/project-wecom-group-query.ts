@@ -10,6 +10,7 @@ import {
   type ProjectWecomGroupStatus,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
  * ADR-077 项目企微群绑定数据层：GET 读取三态（UNBOUND / PENDING / BOUND）；
@@ -26,7 +27,7 @@ const PENDING_POLL_INTERVAL_MS = 5000;
 
 export function projectWecomGroupErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403)
       return "只有项目组长或系统管理员可以管理企业微信项目群。";
     if (error.status === 404) {

@@ -9,6 +9,7 @@ import {
   type ModuleTaskItem,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export type TaskViewItem = TaskItem | ModuleTaskItem;
 export type TaskDraft = TaskEditRequest & { impactFeatureIds?: number[] };
@@ -58,7 +59,7 @@ export function mergeTask(
 }
 export function taskError(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401) return "登录状态已失效，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 404) return "任务或功能不存在，或你已无权访问。";
     if (error.status === 403) return "权限或安全校验未通过，请重新登录后重试。";
     if (error.status === 409)

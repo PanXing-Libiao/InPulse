@@ -87,6 +87,20 @@ describe("项目卡", () => {
     expect(screen.getByText(/4 位成员/)).toBeInTheDocument();
   });
 
+  it("项目卡的右下柔光沿用项目图标色系", () => {
+    mount({});
+    const card = screen
+      .getByRole("heading", { name: "InPulse 研发交付平台" })
+      .closest(".project-card")!;
+    const logo = card.querySelector(".project-logo")!;
+    const tone = ["cyan", "blue", "amber"].find((value) =>
+      logo.classList.contains(value),
+    );
+
+    expect(tone).toBeDefined();
+    expect(card.classList.contains(`project-blush-${tone}`)).toBe(true);
+  });
+
   it("opens the module list when the card body itself is clicked", () => {
     const { onOpenModules } = mount({});
     fireEvent.click(

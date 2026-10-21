@@ -7,6 +7,7 @@ import {
   type ActivityItem,
   type InpulseApiClient,
 } from "@generated/api";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 export const ACTIVITY_PAGE_LIMIT = 20;
 
@@ -47,7 +48,7 @@ export interface ActivityFeedOptions {
 export function describeActivityError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
-      return "登录状态已失效，请重新登录后再查看项目动态。";
+      return SESSION_EXPIRED_MESSAGE;
     }
     if (error.status === 404) {
       return "项目不存在或你无权访问该项目的动态。";

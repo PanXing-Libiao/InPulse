@@ -8,6 +8,10 @@ import {
   type InpulseApiClient,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
+import {
+  SESSION_EXPIRED_MESSAGE,
+  SERVICE_NOT_CONFIGURED_MESSAGE,
+} from "@shared/api/request-messages";
 
 /**
  * ADR-068 管理员 AI 辅助转换配置数据层：GET 读取当前生效状态；PUT 先签发
@@ -18,12 +22,11 @@ export const AI_ASSIST_SETTINGS_QUERY_KEY = ["ai-assist-settings"] as const;
 
 export function aiAssistSettingsErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 401)
-      return "登录状态已失效，或缺少完整管理员会话，请重新登录。";
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 403)
       return "只有系统管理员可以查看或修改 AI 辅助转换配置。";
     if (error.code === "AI_ASSIST_SETTINGS_KEY_UNAVAILABLE")
-      return "服务器未配置密钥加密主密钥（AI_ASSIST_ENCRYPTION_KEY_FILE），暂时无法保存 API 密钥。";
+      return SERVICE_NOT_CONFIGURED_MESSAGE;
     if (error.status === 409)
       return "该保存请求与先前提交冲突，请刷新页面后按最新状态重试。";
     if (error.status === 422) return "请检查端点、模型、超时与最大输出字段。";

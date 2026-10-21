@@ -792,7 +792,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                   id="member-org-rename"
                   value={orgRenameDraft}
                   maxLength={80}
-                  placeholder="填写组织名称"
                   onChange={(event) => setOrgRenameDraft(event.target.value)}
                 />
                 <Button

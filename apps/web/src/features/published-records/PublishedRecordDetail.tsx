@@ -25,6 +25,7 @@ import { useProjectDetail } from "@features/projects/project-query";
 import { useProjectFeatureNames } from "@features/records/feature-name-map";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /** 正式记录正文的四段字段与中文标签：详情卡展开区与版本差异共用。 */
 export const recordContentFields = [
@@ -51,7 +52,7 @@ export function compareRecordVersions(
 
 export function publishedRecordErrorMessage(error: unknown) {
   return error instanceof ApiError && error.status === 401
-    ? "登录已失效，请重新登录。"
+    ? SESSION_EXPIRED_MESSAGE
     : error instanceof ApiError && error.status === 404
       ? "记录不存在或当前无法访问。"
       : "暂时无法加载记录，请重试。";
