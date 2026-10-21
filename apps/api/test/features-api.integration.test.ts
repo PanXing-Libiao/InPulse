@@ -1,4 +1,3 @@
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";

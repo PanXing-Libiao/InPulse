@@ -28,6 +28,7 @@ import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-featu
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
@@ -71,8 +72,9 @@ beforeAll(async () => {
     new PostgresUserSessionRepository(),
     tokens,
   );
+  const access = new PostgresProjectAccessQueryPort(client);
   const service = new TaskGroupsService(
-    new PostgresProjectAccessQueryPort(client),
+    access,
     new PostgresProjectCodePort(),
     new PostgresModuleQueryPort(),
     new PostgresFeatureQueryPort(),
@@ -80,7 +82,10 @@ beforeAll(async () => {
     new TaskGroupRepository(),
     new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key }),
     new PostgresActivityWritePort(),
-    new PostgresNotificationWritePort(),
+    new ProjectNotificationDispatcher(
+      access,
+      new PostgresNotificationWritePort(),
+    ),
     new PostgresSearchProjectionWritePort(),
   );
   const mutation = new AuthenticatedMutationService(

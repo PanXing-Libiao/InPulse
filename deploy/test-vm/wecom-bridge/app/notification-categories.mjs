@@ -1,6 +1,6 @@
-// ADR-090：项目群通知类别映射。桥接只做确定性分类，不把用户输入当 SQL 或命令。
-// 未识别的未来通知 / 动态默认放行，保持「全部 MEMBER 可见动态」的旧口径，
-// 避免新增事件因为忘记登记映射而静默丢失。
+// ADR-090 / ADR-093：项目群通知类别映射。
+// ADR-093 起群消息只消费 MEMBER 可见的项目动态，不再从 app.notifications 复制；
+// 未知动态仍默认放行，但不按来源实体猜测类别，避免未知任务事件被误归为任务派发。
 export const GROUP_NOTIFICATION_CATEGORIES = [
   "task.assign",
   "task.status",
@@ -16,28 +16,6 @@ const FLAG_BY_CATEGORY = {
   "project.member": "projectMemberEnabled",
   "scope.delete": "scopeDeleteEnabled",
 };
-
-const NOTIFICATION_TYPE_CATEGORY = new Map([
-  ["task.assigned", "task.assign"],
-  ["task_assigned", "task.assign"],
-  ["leftover.convert", "record"],
-  ["task.complete", "task.status"],
-  ["task.reopen", "task.status"],
-  ["task.cancel", "task.status"],
-  ["task.restore", "task.status"],
-  ["task.merge", "task.status"],
-  ["task.unmerge", "task.status"],
-  ["record.publish", "record"],
-  ["record.version.create", "record"],
-  ["record.leftover.add", "record"],
-  ["change_record_voided", "record"],
-  ["change_record_restored", "record"],
-  ["project_created", "project.member"],
-  ["project_joined", "project.member"],
-  ["project.status.change", "project.member"],
-  ["project_status_changed", "project.member"],
-  ["project.wrapped", "project.member"],
-]);
 
 const ACTIVITY_TYPE_CATEGORY = new Map([
   ["task.create", "task.assign"],
@@ -75,33 +53,35 @@ const ACTIVITY_TYPE_CATEGORY = new Map([
   ["feature_deleted", "scope.delete"],
 ]);
 
-const ENTITY_CATEGORY = new Map([
-  ["TASK", "task.assign"],
-  ["TASK_GROUP", "task.status"],
-  ["CHANGE_RECORD", "record"],
-  ["LEFTOVER_ITEM", "record"],
-  ["PROJECT", "project.member"],
-  ["MODULE", "project.member"],
-  ["FEATURE", "project.member"],
-  ["EXTERNAL_LINK", "project.member"],
-]);
-
 function normalize(value) {
   return String(value === null || value === undefined ? "" : value)
     .trim()
     .toLowerCase();
 }
 
-/** 通知表类型 -> 项目群类别；未知类型返回 null（默认放行）。 */
-export function groupCategoryForNotification(notificationType) {
-  return NOTIFICATION_TYPE_CATEGORY.get(normalize(notificationType)) ?? null;
-}
-
-/** 动态类型优先精确匹配，再按来源实体兜底；未知动态返回 null（默认放行）。 */
-export function groupCategoryForActivity(activityType, sourceEntityType) {
-  const byType = ACTIVITY_TYPE_CATEGORY.get(normalize(activityType));
-  if (byType !== undefined) return byType;
-  return ENTITY_CATEGORY.get(String(sourceEntityType ?? "").trim()) ?? null;
+/**
+ * 项目动态 -> 群投递处置。
+ * - task.update 只有 metadata.assignmentChanged === true 才属于任务派发；
+ *   普通标题、描述、优先级等编辑返回 skip，不进入群发送队列；
+ * - 已知动态按五类映射；未识别动态返回 category = null 且不跳过，保持默认放行；
+ * - 不再按 sourceEntityType 兜底，避免未来 TASK 动态被错误归入 task.assign。
+ */
+export function groupActivityDisposition(activityType, metadata) {
+  const type = normalize(activityType);
+  if (
+    type === "task.update" &&
+    !(
+      metadata !== null &&
+      typeof metadata === "object" &&
+      metadata.assignmentChanged === true
+    )
+  ) {
+    return { category: null, skip: true };
+  }
+  return {
+    category: ACTIVITY_TYPE_CATEGORY.get(type) ?? null,
+    skip: false,
+  };
 }
 
 /** 数据库缺行 -> undefined，调用方按五类全开处理。 */

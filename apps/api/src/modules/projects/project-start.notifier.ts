@@ -1,11 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import type { TransactionContext } from "../../database/transaction-context.js";
-import { NotificationWritePort } from "../notifications/index.js";
+import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
+import { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 import { ProjectMembersQueryPort } from "./project-members-query.port.js";
 
 /** 项目开工通知类型；与前端通知中心的 `notificationType` 同名。 */
-export const PROJECT_STARTED_NOTIFICATION = "project.status.change";
+export const PROJECT_STARTED_NOTIFICATION =
+  PROJECT_NOTIFICATION_TYPES.projectStatusChange;
 
 /**
  * ADR-035 项目开工通知：项目由「未开始」进入「进行中」时通知全体活跃成员。
@@ -19,8 +21,8 @@ export class ProjectStartNotifier {
   constructor(
     @Inject(ProjectMembersQueryPort)
     private readonly members: ProjectMembersQueryPort,
-    @Inject(NotificationWritePort)
-    private readonly notifications: NotificationWritePort,
+    @Inject(ProjectNotificationDispatcher)
+    private readonly notifications: ProjectNotificationDispatcher,
   ) {}
 
   async notify(
@@ -37,9 +39,9 @@ export class ProjectStartNotifier {
     const recipients = await this.members.listActiveMemberIds(tx, {
       projectId: input.projectId,
     });
-    for (const recipientId of recipients) {
-      await this.notifications.write(tx, {
-        recipientId,
+    await this.notifications.dispatch(
+      tx,
+      {
         projectId: input.projectId,
         sourceChainId: input.chainId,
         sourceSequence: input.sequenceNo,
@@ -48,7 +50,8 @@ export class ProjectStartNotifier {
         body: `项目 ${input.code} 由未开始进入进行中。`,
         targetPath: `/projects/${input.projectId}`,
         createdAt: input.occurredAt,
-      });
-    }
+      },
+      recipients,
+    );
   }
 }

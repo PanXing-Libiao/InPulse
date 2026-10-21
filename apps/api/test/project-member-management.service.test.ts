@@ -97,7 +97,7 @@ function setup() {
     }),
   };
   const activity = { append: vi.fn().mockResolvedValue(undefined) };
-  const notifications = { write: vi.fn().mockResolvedValue(undefined) };
+  const notifications = { dispatch: vi.fn().mockResolvedValue(1) };
   const service = new ProjectMemberManagementService(
     projects as unknown as ProjectsWritePort,
     activeUsers as unknown as ActiveUsersQueryPort,
@@ -184,12 +184,12 @@ describe("ProjectMemberManagementService", () => {
       tx,
       expect.objectContaining({ activityType: "PROJECT_MEMBER_ADDED" }),
     );
-    expect(s.notifications.write).toHaveBeenCalledWith(
+    expect(s.notifications.dispatch).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({
-        recipientId: 5,
         notificationType: "PROJECT_JOINED",
       }),
+      [5],
     );
   });
 
@@ -284,7 +284,7 @@ describe("ProjectMemberManagementService", () => {
       tx,
       expect.objectContaining({ targetUserId: 5 }),
     );
-    expect(s.notifications.write).not.toHaveBeenCalled();
+    expect(s.notifications.dispatch).not.toHaveBeenCalled();
     expect(s.audit.append).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({ action: "project.member.remove" }),

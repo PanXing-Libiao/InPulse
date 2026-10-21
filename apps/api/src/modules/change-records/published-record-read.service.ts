@@ -1,7 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   RECORD_PAGE_LIMIT_DEFAULT,
-  type ReadableRecord,
   type ReadableRecordPage,
 } from "@inpulse/api-contract";
 import {
@@ -13,7 +12,6 @@ import {
   PROJECT_ACCESS_QUERY_PORT,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
-import type { TransactionContext } from "../../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../../database/unit-of-work.js";
 import { PublishedRecordRepository } from "./published-record.repository.js";
 import { RecordDraftError } from "./record-drafts.service.js";

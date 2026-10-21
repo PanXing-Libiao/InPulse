@@ -1,4 +1,3 @@
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { TaskGroupsService } from "../src/modules/task-groups/task-groups.service.js";
 import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
@@ -73,6 +72,7 @@ import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.j
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { LeftoverSearchProjectionSync } from "../src/modules/change-records/leftover-search-projection.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { SessionAuthService } from "../src/auth/session-auth.service.js";
 import { SessionTokenService } from "../src/auth/session-token.service.js";
@@ -143,8 +143,10 @@ beforeAll(async () => {
       activity,
       search,
       new LeftoverSearchProjectionSync(search),
-      notifications,
-      access,
+      new ProjectNotificationDispatcher(
+        new PostgresProjectAccessQueryPort(db),
+        notifications,
+      ),
     ),
   );
   const auth = new SessionAuthService(
@@ -1474,7 +1476,10 @@ describe("F22 typed external links", () => {
       new TaskGroupRepository(),
       audit,
       activity,
-      notifications,
+      new ProjectNotificationDispatcher(
+        new PostgresProjectAccessQueryPort(db),
+        notifications,
+      ),
       search,
     );
     await uow.run((tx) =>

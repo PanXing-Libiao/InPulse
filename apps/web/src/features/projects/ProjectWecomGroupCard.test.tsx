@@ -93,7 +93,9 @@ describe("ProjectWecomGroupCard（ADR-077）", () => {
     mount({ statuses: [unbound], canManage: false });
     await screen.findByText(/绑定后群聊即可收到项目消息/);
     expect(
-      screen.getByText(/默认推送任务派发与全部成员可见的项目动态/),
+      screen.getByText(
+        /默认推送任务派发、任务状态、记录、项目成员与删除类动态/,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/只有项目组长或系统管理员可以生成绑定码或解绑/),

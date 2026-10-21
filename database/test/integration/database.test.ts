@@ -4,6 +4,7 @@ import type { Sql } from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import { migrate } from "../../src/migrate.js";
+import { discoverMigrations } from "../../src/migrations.js";
 import {
   connect,
   createProject,
@@ -45,64 +46,10 @@ describe("PostgreSQL schema, invariants, and roles", () => {
   test("migrations are immutable and idempotent", async () => {
     const result = await migrate(urls.migrator);
     expect(result.applied).toEqual([]);
-    expect(result.alreadyApplied).toEqual([
-      "0000_initial.sql",
-      "0001_invariants_and_permissions.sql",
-      "0002_security_hardening.sql",
-      "0003_search_pgroonga.sql",
-      "0004_search_projection_contract_pg_trgm_index.sql",
-      "0005_search_projection_contract_pg_trgm_extension.sql",
-      "0006_leftover_search_entity.sql",
-      "0007_backup_role_pg_dump_grants.sql",
-      "0008_records_cross_project_indexes.sql",
-      "0009_tasks_creator_index.sql",
-      "0010_project_module_codes.sql",
-      "0011_feature_acceptance.sql",
-      "0012_project_root_repository.sql",
-      "0013_sso_login.sql",
-      "0014_sso_backup_grants.sql",
-      "0015_project_member_roles.sql",
-      "0016_project_archive_requests.sql",
-      "0017_project_status_lifecycle.sql",
-      "0018_project_archive_backup_grants.sql",
-      "0019_drop_project_admin_role.sql",
-      "0020_task_assignees.sql",
-      "0021_contract_task_assignees.sql",
-      "0022_drop_low_priority.sql",
-      "0023_project_three_state.sql",
-      "0024_module_archive_removal.sql",
-      "0025_feature_archive_removal.sql",
-      "0026_record_draft_delete.sql",
-      "0029_project_leader_invariant.sql",
-      "0030_project_soft_delete.sql",
-      "0031_project_purge.sql",
-      "0032_task_archive_removal.sql",
-      "0033_search_navigation_parents.sql",
-      "0034_task_soft_delete.sql",
-      "0035_search_projection_delete_grant.sql",
-      "0036_module_feature_soft_delete.sql",
-      "0037_audit_logs_cross_chain_idx.sql",
-      "0038_project_delete_contract_soft_delete_removal.sql",
-      "0039_document_import_runs.sql",
-      "0040_ai_assist_settings.sql",
-      "0041_wecom_binding.sql",
-      "0042_wecom_robot_config.sql",
-      "0043_wecom_robot_profile_url.sql",
-      "0044_project_wecom_groups.sql",
-      "0045_revoke_bindings_on_robot_change.sql",
-      "0046_organizations.sql",
-      "0047_user_deletion_tombstone.sql",
-      "0048_organizations_backup_sequence_grant.sql",
-      "0049_project_delete_audit_retention.sql",
-      "0050_audit_actor_snapshot.sql",
-      "0051_activity_actor_snapshot.sql",
-      "0052_actor_identity_snapshots.sql",
-      "0053_physical_user_delete.sql",
-      "0054_user_notification_suppressions.sql",
-      "0055_project_wecom_group_notification_options.sql",
-      "0056_project_wraps.sql",
-      "0057_project_status_version_semantics.sql",
-    ]);
+    const expectedMigrations = await discoverMigrations();
+    expect(result.alreadyApplied).toEqual(
+      expectedMigrations.map((migration) => migration.name),
+    );
   });
 
   test("project status-only updates keep row_version while content updates require a bump", async () => {
@@ -1081,7 +1028,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
     });
 
     const fixture = await createProject(runtime);
-    const entityId = fixture.projectId * 1_000_000 + 1;
+    const entityId = 1_000_000_000 + (Date.now() % 1_000_000_000);
     await runtime`
       INSERT INTO app.search_projection (
         project_id,

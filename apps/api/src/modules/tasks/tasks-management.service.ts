@@ -15,13 +15,14 @@ import {
   type ProjectAccessQueryPort,
   ProjectCodePort,
   ProjectMembersQueryPort,
+  ProjectNotificationDispatcher,
   ProjectsWritePort,
 } from "../projects/index.js";
 import { ModuleQueryPort, ModuleReadPort } from "../modules/index.js";
 import { FeatureQueryPort, FeatureReadPort } from "../features/index.js";
 import { ActivityWritePort } from "../activity/index.js";
 import { SearchProjectionWritePort } from "../search/index.js";
-import { NotificationWritePort } from "../notifications/index.js";
+import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
 import {
   TaskManagementRepository,
   type TaskScope,
@@ -69,8 +70,8 @@ export class TasksManagementService {
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
     @Inject(SearchProjectionWritePort)
     private readonly search: SearchProjectionWritePort,
-    @Inject(NotificationWritePort)
-    private readonly notifications: NotificationWritePort,
+    @Inject(ProjectNotificationDispatcher)
+    private readonly notifications: ProjectNotificationDispatcher,
     @Inject(ModuleReadPort) private readonly moduleRead: ModuleReadPort,
     @Inject(ProjectsWritePort) private readonly projects: ProjectsWritePort,
   ) {}
@@ -271,6 +272,7 @@ export class TasksManagementService {
         );
     }
     const assigneeIds = input.edit.assigneeIds;
+    const previousAssigneeIds = before?.assigneeIds ?? [];
     const assigned =
       !before ||
       before.assigneeIds.length !== assigneeIds.length ||
@@ -346,11 +348,18 @@ export class TasksManagementService {
       sourceEntityId: result.id,
       activityType: `task.${action}`,
       actorId: input.actorId,
-      summary: `任务${before ? "更新" : "创建"}：${result.title}`,
+      summary: before
+        ? assigned
+          ? `任务改派：${result.title}`
+          : `任务更新：${result.title}`
+        : `任务创建：${result.title}`,
       metadata: {
         taskId: result.id,
         moduleId: result.moduleId,
         featureId: result.featureId,
+        assignmentChanged: assigned,
+        assigneeIds: [...result.assigneeIds],
+        previousAssigneeIds: [...previousAssigneeIds],
       },
       visibilityScope: "MEMBER",
       sourceStatus: result.workStatus,
@@ -373,16 +382,16 @@ export class TasksManagementService {
     });
     if (assigned) {
       // 只通知本次新增的负责人：留任者已持有任务，重复提醒会造成噪声（ADR-040）。
-      const previousAssignees = new Set(before?.assigneeIds ?? []);
-      for (const recipientId of assigneeIds.filter(
-        (userId) => !previousAssignees.has(userId),
-      ))
-        await this.notifications.write(tx, {
+      const previousAssignees = new Set(previousAssigneeIds);
+      await this.notifications.dispatch(
+        tx,
+        {
           projectId: result.projectId,
-          recipientId,
           sourceChainId: event.chainId,
           sourceSequence: event.sequenceNo,
-          notificationType: input.assignmentNotificationType ?? "task.assigned",
+          notificationType:
+            input.assignmentNotificationType ??
+            PROJECT_NOTIFICATION_TYPES.taskAssigned,
           title: `任务指派：${result.title}`.slice(0, 500),
           body: result.code,
           targetPath:
@@ -390,7 +399,9 @@ export class TasksManagementService {
               ? `/projects/${result.projectId}/modules/${result.moduleId}/tasks?taskId=${result.id}`
               : `/projects/${result.projectId}/modules/${result.moduleId}/features/${result.featureId}?taskId=${result.id}`,
           createdAt: new Date(result.updatedAt),
-        });
+        },
+        assigneeIds.filter((userId) => !previousAssignees.has(userId)),
+      );
     }
     if (!before)
       await this.reopenMaintenanceProject(tx, input, result, "TASK_CREATED");
@@ -579,16 +590,16 @@ export class TasksManagementService {
       sourceRowVersion: result.rowVersion,
     });
     if (command.action === "COMPLETE" || command.action === "REOPEN") {
-      const recipients = [
-        ...new Set([result.creatorId, ...result.assigneeIds]),
-      ].sort((a, b) => a - b);
-      for (const recipientId of recipients)
-        await this.notifications.write(tx, {
+      await this.notifications.dispatch(
+        tx,
+        {
           projectId: result.projectId,
-          recipientId,
           sourceChainId: event.chainId,
           sourceSequence: event.sequenceNo,
-          notificationType: action,
+          notificationType:
+            command.action === "COMPLETE"
+              ? PROJECT_NOTIFICATION_TYPES.taskComplete
+              : PROJECT_NOTIFICATION_TYPES.taskReopen,
           title: `任务${labels[command.action]}：${result.title}`.slice(0, 500),
           body: result.code,
           targetPath:
@@ -596,7 +607,9 @@ export class TasksManagementService {
               ? `/projects/${result.projectId}/modules/${result.moduleId}/tasks?taskId=${result.id}`
               : `/projects/${result.projectId}/modules/${result.moduleId}/features/${result.featureId}?taskId=${result.id}`,
           createdAt: new Date(result.updatedAt),
-        });
+        },
+        [result.creatorId, ...result.assigneeIds],
+      );
     }
     // ADR-057：任务重新变为未收尾（重新打开 / 恢复）时维护中项目同样回到进行中；
     // 完成与取消不触发——它们不会让项目重新产生未收尾任务。

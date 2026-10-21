@@ -6,12 +6,9 @@ import type {
 } from "@inpulse/api-contract";
 import { AuditWritePort } from "../../audit/index.js";
 import type { TransactionContext } from "../../database/transaction-context.js";
-import {
-  PROJECT_ACCESS_QUERY_PORT,
-  type ProjectAccessQueryPort,
-} from "../projects/index.js";
+import { ProjectNotificationDispatcher } from "../projects/index.js";
 import { ActivityWritePort } from "../activity/index.js";
-import { NotificationWritePort } from "../notifications/index.js";
+import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
 import {
   SearchProjectionWritePort,
   validateSearchProjectionWriteInput,
@@ -73,10 +70,8 @@ export class RecordPublicationEffects {
     private readonly search: SearchProjectionWritePort,
     @Inject(LeftoverSearchProjectionSync)
     private readonly leftovers: LeftoverSearchProjectionSync,
-    @Inject(NotificationWritePort)
-    private readonly notifications: NotificationWritePort,
-    @Inject(PROJECT_ACCESS_QUERY_PORT)
-    private readonly access: ProjectAccessQueryPort,
+    @Inject(ProjectNotificationDispatcher)
+    private readonly notifications: ProjectNotificationDispatcher,
   ) {}
   async append(
     tx: TransactionContext,
@@ -90,10 +85,10 @@ export class RecordPublicationEffects {
     const input = validatePublishedRecordSearch(after),
       action =
         kind === "PUBLISH"
-          ? "record.publish"
+          ? PROJECT_NOTIFICATION_TYPES.recordPublish
           : kind === "UPDATE"
-            ? "record.version.create"
-            : "record.leftover.add",
+            ? PROJECT_NOTIFICATION_TYPES.recordVersionCreate
+            : PROJECT_NOTIFICATION_TYPES.recordLeftoverAdd,
       label =
         kind === "PUBLISH"
           ? "发布"
@@ -133,15 +128,10 @@ export class RecordPublicationEffects {
     await this.search.upsert(tx, input);
     await this.leftovers.syncRecord(tx, after);
     // Candidates come only from the application service's server-side source context.
-    for (const recipientId of [...new Set(recipients)].sort((a, b) => a - b)) {
-      const scope = await this.access.checkProjectForWrite(tx, {
-        actorUserId: recipientId,
+    await this.notifications.dispatch(
+      tx,
+      {
         projectId: after.projectId,
-      });
-      if (scope.kind !== "allowed") continue;
-      await this.notifications.write(tx, {
-        projectId: after.projectId,
-        recipientId,
         sourceChainId: event.chainId,
         sourceSequence: event.sequenceNo,
         notificationType: action,
@@ -149,7 +139,8 @@ export class RecordPublicationEffects {
         body: `${after.code} · v${after.currentVersion}`,
         targetPath: `/records?view=published&projectId=${after.projectId}&publishedId=${after.id}`,
         createdAt: new Date(after.updatedAt),
-      });
-    }
+      },
+      recipients,
+    );
   }
 }

@@ -176,7 +176,7 @@ export function normalizeWrapSnapshot(raw) {
 function textUnits(value) {
   let units = 0;
   for (const char of Array.from(String(value))) {
-    units += /[\u0000-\u00ff]/.test(char) ? 0.56 : 1;
+    units += char.codePointAt(0) <= 0x00ff ? 0.56 : 1;
   }
   return units;
 }

@@ -1,4 +1,3 @@
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import "reflect-metadata";
 import { Module, type INestApplication } from "@nestjs/common";
@@ -40,6 +39,7 @@ import { TasksManagementService } from "../src/modules/tasks/tasks-management.se
 import { SqlTaskDeletionCommandPort } from "../src/modules/tasks/task-deletion.command-port.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { ExternalLinksRepository } from "../src/modules/external-links/external-links.repository.js";
@@ -118,7 +118,10 @@ beforeAll(async () => {
       audit,
       activity,
       search,
-      new PostgresNotificationWritePort(),
+      new ProjectNotificationDispatcher(
+        access,
+        new PostgresNotificationWritePort(),
+      ),
       new PostgresModuleReadPort(),
       new PostgresProjectsWritePort(),
     ),

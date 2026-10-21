@@ -6,7 +6,7 @@ import {
   type RecordFeedPage,
 } from "@inpulse/api-contract";
 
-import { UserReadPort, type UserRefItem } from "../../auth/user-read.port.js";
+import { UserReadPort } from "../../auth/user-read.port.js";
 import {
   TimeCursorError,
   TimeCursorService,
@@ -69,14 +69,6 @@ function inconsistentError(detail: string): AggregateReadError {
     "AGGREGATE_READ_INCONSISTENT",
     "聚合读数据不完整，无法完成查询：" + detail,
   );
-}
-
-function toUserRef(user: UserRefItem): {
-  readonly userId: number;
-  readonly name: string;
-  readonly avatarUrl: string | null;
-} {
-  return { userId: user.userId, name: user.name, avatarUrl: user.avatarUrl };
 }
 
 /** 非管理员请求 VOID / ALL 收敛为 PUBLISHED；管理员 ALL 返回两种状态。 */

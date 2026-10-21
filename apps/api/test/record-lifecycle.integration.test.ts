@@ -1,4 +1,3 @@
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { SearchQueryService } from "../src/modules/search/search-query.service.js";
 import { PostgresSearchProjectionReader } from "../src/modules/search/search-projection.reader.js";
 import { SearchCursorService } from "../src/modules/search/search-cursor.js";
@@ -51,6 +50,7 @@ import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.j
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { LeftoverSearchProjectionSync } from "../src/modules/change-records/leftover-search-projection.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { SessionAuthService } from "../src/auth/session-auth.service.js";
 import { SessionTokenService } from "../src/auth/session-token.service.js";
@@ -104,6 +104,7 @@ beforeAll(async () => {
   activity = new PostgresActivityWritePort();
   search = new PostgresSearchProjectionWritePort();
   notifications = new PostgresNotificationWritePort();
+  const dispatcher = new ProjectNotificationDispatcher(access, notifications);
   service = new RecordPublicationService(
     gate,
     repository,
@@ -116,8 +117,7 @@ beforeAll(async () => {
       activity,
       search,
       new LeftoverSearchProjectionSync(search),
-      notifications,
-      access,
+      dispatcher,
     ),
   );
   const auth = new SessionAuthService(

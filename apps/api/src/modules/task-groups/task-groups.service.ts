@@ -12,11 +12,12 @@ import {
 import { AuditWritePort } from "../../audit/index.js";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import { ActivityWritePort } from "../activity/index.js";
-import { NotificationWritePort } from "../notifications/index.js";
+import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
 import { SearchProjectionWritePort } from "../search/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
   ProjectCodePort,
+  ProjectNotificationDispatcher,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { ModuleQueryPort } from "../modules/index.js";
@@ -31,9 +32,9 @@ import {
 /** 合并/解除合并事务内最大尝试次数；超过即终止，避免长事务内忙等（技术设计 6.4 / 6.5）。 */
 const TASK_GROUP_LOCK_ATTEMPTS = 3;
 const MERGE_ACTIVITY_TYPE = "task.merge";
-const MERGE_NOTIFICATION_TYPE = "task.merge";
+const MERGE_NOTIFICATION_TYPE = PROJECT_NOTIFICATION_TYPES.taskMerge;
 const UNMERGE_ACTIVITY_TYPE = "task.unmerge";
-const UNMERGE_NOTIFICATION_TYPE = "task.unmerge";
+const UNMERGE_NOTIFICATION_TYPE = PROJECT_NOTIFICATION_TYPES.taskUnmerge;
 /** 功能设计 18.14 把解除原因定义为「建议填写」；未填写时用固定文案满足数据库非空约束。 */
 const DEFAULT_UNMERGE_REASON = "未填写解除原因";
 const MAIN_UNMERGE_MESSAGE =
@@ -122,8 +123,8 @@ export class TaskGroupsService {
     @Inject(TaskGroupRepository) private readonly groups: TaskGroupRepository,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
-    @Inject(NotificationWritePort)
-    private readonly notifications: NotificationWritePort,
+    @Inject(ProjectNotificationDispatcher)
+    private readonly notifications: ProjectNotificationDispatcher,
     @Inject(SearchProjectionWritePort)
     private readonly search: SearchProjectionWritePort,
   ) {}
@@ -458,20 +459,18 @@ export class TaskGroupsService {
         ? `/projects/${projectId}/modules/${main.moduleId}/tasks?taskId=${main.taskId}`
         : `/projects/${projectId}/modules/${main.moduleId}/features/${main.featureId}?taskId=${main.taskId}`;
     const recipients = [
-      ...new Set([
-        main.assigneeId,
-        source.assigneeId,
-        main.creatorId,
-        source.creatorId,
-      ]),
-    ].sort((a, b) => a - b);
+      main.assigneeId,
+      source.assigneeId,
+      main.creatorId,
+      source.creatorId,
+    ];
     const notificationBody =
       input.mergeNote === null
         ? `${source.code} -> ${main.code}`
         : input.mergeNote.slice(0, 5000);
-    for (const recipientId of recipients)
-      await this.notifications.write(tx, {
-        recipientId,
+    await this.notifications.dispatch(
+      tx,
+      {
         projectId,
         sourceChainId: event.chainId,
         sourceSequence: event.sequenceNo,
@@ -480,7 +479,9 @@ export class TaskGroupsService {
         body: notificationBody,
         targetPath,
         createdAt: occurredAt,
-      });
+      },
+      recipients,
+    );
     await this.search.upsert(tx, {
       projectId,
       entityType: "TASK_GROUP",
@@ -790,21 +791,20 @@ export class TaskGroupsService {
         ? `/projects/${projectId}/modules/${source.moduleId}/tasks?taskId=${source.taskId}`
         : `/projects/${projectId}/modules/${source.moduleId}/features/${source.featureId}?taskId=${source.taskId}`;
     const recipients = [
-      ...new Set([
-        source.assigneeId,
-        main.assigneeId,
-        source.creatorId,
-        main.creatorId,
-      ]),
-    ].sort((a, b) => a - b);
+      source.assigneeId,
+      main.assigneeId,
+      source.creatorId,
+      main.creatorId,
+    ];
+    // 收件人由统一分发器去重、排序并过滤当前项目访问权。
     // 未填写或纯空白原因时通知正文回落到来源编号，避免出现空正文。
     const notificationBody =
       input.unmergeReason === null || input.unmergeReason.trim().length === 0
         ? `${source.code} 已恢复独立`
         : input.unmergeReason.slice(0, 5000);
-    for (const recipientId of recipients)
-      await this.notifications.write(tx, {
-        recipientId,
+    await this.notifications.dispatch(
+      tx,
+      {
         projectId,
         sourceChainId: event.chainId,
         sourceSequence: event.sequenceNo,
@@ -813,7 +813,9 @@ export class TaskGroupsService {
         body: notificationBody,
         targetPath,
         createdAt: occurredAt,
-      });
+      },
+      recipients,
+    );
     await this.search.upsert(tx, {
       projectId,
       entityType: "TASK_GROUP",
