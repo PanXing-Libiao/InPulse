@@ -438,11 +438,142 @@ function describeDraftLines(lines: readonly string[]): string {
   return lines.length > 3 ? head + " 等" : head;
 }
 
+interface DraftLineRewrite {
+  readonly before: string;
+  readonly after: string;
+}
+
+const DRAFT_FIELD_LABELS: Readonly<Record<string, string>> = {
+  当前说明: "功能说明",
+  说明: "模块说明",
+  描述: "任务描述",
+  截止: "截止时间",
+};
+
+function strippedDraftLine(line: string): string {
+  return line.replace(/^[-#>\s]+/, "").replace(/\s+/g, " ");
+}
+
+function draftLineFieldLabel(line: string): string | null {
+  const match = strippedDraftLine(line).match(/^([^：:]{1,12})[：:]/u);
+  return match?.[1]?.trim() ?? null;
+}
+
+function draftLineBigrams(line: string): Set<string> {
+  const text = strippedDraftLine(line).replace(/\s+/g, "");
+  if (text.length <= 2) {
+    return new Set(text.length === 0 ? [] : [text]);
+  }
+  const grams = new Set<string>();
+  for (let index = 0; index < text.length - 1; index += 1) {
+    grams.add(text.slice(index, index + 2));
+  }
+  return grams;
+}
+
+function diceSimilarity(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string>,
+): number {
+  if (left.size === 0 || right.size === 0) return 0;
+  let overlap = 0;
+  for (const gram of left) {
+    if (right.has(gram)) overlap += 1;
+  }
+  return (2 * overlap) / (left.size + right.size);
+}
+
+/**
+ * 同一字段内的删除行 / 新增行先按相似度配对，再判改写。
+ * 模型返回的是整份草稿，重写一条说明会同时产生一条「删除」和一条「新增」；
+ * 不配对就会出现「同一句话既新增又删除」的假象。
+ */
+function pairDraftRewrites(
+  removed: readonly string[],
+  added: readonly string[],
+): {
+  readonly rewrites: readonly DraftLineRewrite[];
+  readonly addedRest: readonly string[];
+  readonly removedRest: readonly string[];
+} {
+  const usedAdded = new Set<number>();
+  const usedRemoved = new Set<number>();
+  const removedGrams = removed.map(draftLineBigrams);
+  const addedGrams = added.map(draftLineBigrams);
+  const rewrites: DraftLineRewrite[] = [];
+
+  removed.forEach((before, removedIndex) => {
+    const beforeField = draftLineFieldLabel(before);
+    let bestIndex = -1;
+    let bestScore = 0;
+    added.forEach((after, addedIndex) => {
+      if (usedAdded.has(addedIndex)) return;
+      const afterField = draftLineFieldLabel(after);
+      if (
+        beforeField !== null &&
+        afterField !== null &&
+        beforeField !== afterField
+      ) {
+        return;
+      }
+      const score = diceSimilarity(
+        removedGrams[removedIndex]!,
+        addedGrams[addedIndex]!,
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = addedIndex;
+      }
+    });
+    if (bestIndex >= 0 && bestScore >= 0.45) {
+      usedRemoved.add(removedIndex);
+      usedAdded.add(bestIndex);
+      rewrites.push({ before, after: added[bestIndex]! });
+    }
+  });
+
+  return {
+    rewrites,
+    addedRest: added.filter((_line, index) => !usedAdded.has(index)),
+    removedRest: removed.filter((_line, index) => !usedRemoved.has(index)),
+  };
+}
+
+function describeRewriteFields(rewrites: readonly DraftLineRewrite[]): string {
+  const counts = new Map<string, number>();
+  for (const rewrite of rewrites) {
+    const rawLabel = draftLineFieldLabel(rewrite.before) ?? "内容";
+    const label = DRAFT_FIELD_LABELS[rawLabel] ?? rawLabel;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 2)
+    .map(([label, count]) => "「" + label + "」" + String(count) + " 处")
+    .join("、");
+}
+
+function quoteRewritePair(rewrite: DraftLineRewrite): string {
+  const before = strippedDraftLine(rewrite.before);
+  const after = strippedDraftLine(rewrite.after);
+  const limit = Math.min(before.length, after.length);
+  let prefix = 0;
+  while (prefix < limit && before[prefix] === after[prefix]) prefix += 1;
+  const start = Math.max(0, prefix - 10);
+  const clip = (text: string): string => {
+    const part = text.slice(start, start + 48);
+    return (
+      (start > 0 ? "…" : "") + part + (text.length > start + 48 ? "…" : "")
+    );
+  };
+  return "「" + clip(before) + "」→「" + clip(after) + "」";
+}
+
 /**
  * 用户每发一句之后，左栏草稿到底变了什么：模型跑十几秒，用户盯的是左栏，
  * 而左栏可能只多出一行——不说清就等于「点了发送、什么都没发生」（2026-10-14
  * 用户反馈：「为什么我让ai补上但是左边并没有反应」，当时这轮其实已经写入成员）。
- * 用行级集合差算，够用且不依赖结构；最多各点三条原文，避免长报告。
+ * 先配对相似行判为「改写」，剩下才是真正的新增 / 去掉；最多各点三条原文，避免长报告。
  */
 function describeDraftChange(base: string, next: string): string {
   if (base === next) {
@@ -456,15 +587,36 @@ function describeDraftChange(base: string, next: string): string {
   if (added.length === 0 && removed.length === 0) {
     return head + "内容有改动。";
   }
+  const { rewrites, addedRest, removedRest } = pairDraftRewrites(
+    removed,
+    added,
+  );
   const parts: string[] = [];
-  if (added.length > 0) {
+  if (rewrites.length > 0) {
+    const fields = describeRewriteFields(rewrites);
     parts.push(
-      "新增 " + String(added.length) + " 行：" + describeDraftLines(added),
+      "改写 " +
+        String(rewrites.length) +
+        " 处" +
+        (fields.length > 0 ? "（" + fields + "）" : "") +
+        "：" +
+        quoteRewritePair(rewrites[0]!),
     );
   }
-  if (removed.length > 0) {
+  if (addedRest.length > 0) {
     parts.push(
-      "去掉 " + String(removed.length) + " 行：" + describeDraftLines(removed),
+      "新增 " +
+        String(addedRest.length) +
+        " 行：" +
+        describeDraftLines(addedRest),
+    );
+  }
+  if (removedRest.length > 0) {
+    parts.push(
+      "去掉 " +
+        String(removedRest.length) +
+        " 行：" +
+        describeDraftLines(removedRest),
     );
   }
   return head + parts.join("；") + "。";

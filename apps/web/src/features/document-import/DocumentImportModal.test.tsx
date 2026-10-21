@@ -1278,6 +1278,29 @@ describe("ADR-067 AI 辅助转换区块", () => {
     expect(assistDocumentImport).toHaveBeenCalledTimes(1);
   });
 
+  it("把整段说明重写说成改写，而不是同时新增和去掉同一句", async () => {
+    const rewritten = WORKBENCH_DOCUMENT.replace(
+      "- 当前说明：支持直接改数量",
+      "- 当前说明：支持直接改数量，并在数量变化时即时刷新金额与小计。",
+    );
+    const { assistDocumentImport } = mount({
+      directory: DIRECTORY,
+      assist: { markdown: rewritten, model: "stub-model", issues: [] },
+    });
+    pasteDocument(WORKBENCH_DOCUMENT);
+
+    sendSupplement("功能说明帮我写详细一点");
+
+    await waitFor(() => {
+      const messages = screen.getByTestId("document-import-assist-messages");
+      expect(messages.textContent ?? "").toContain("改写 1 处");
+      expect(messages.textContent ?? "").toContain("功能说明");
+      expect(messages.textContent ?? "").not.toContain("新增 1 行");
+      expect(messages.textContent ?? "").not.toContain("去掉 1 行");
+    });
+    expect(assistDocumentImport).toHaveBeenCalledTimes(1);
+  });
+
   it("模型这一轮没改动草稿时明说「没有变化」，不再一片安静", async () => {
     const { assistDocumentImport } = mount({
       directory: DIRECTORY,

@@ -359,6 +359,11 @@ describe("record-summaries assist（已启用，stub 上游 + 真实 PostgreSQL�
     const user = upstreamBody.messages[1];
     expect(system?.role).toBe("system");
     expect(system?.content).toContain("唯一的事实来源");
+    expect(system?.content).toContain("默认结论先行");
+    expect(system?.content).toContain("即使受众是领导");
+    expect(system?.content).toContain(
+      "只把正文已有的未完成事项或遗留风险转写成行动项",
+    );
     expect(user?.role).toBe("user");
     expect(user?.content).toContain(REQUIREMENT);
     expect(user?.content).toContain("支付修正");
