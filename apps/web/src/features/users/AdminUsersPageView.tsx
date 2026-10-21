@@ -16,6 +16,7 @@ import {
 } from "@features/common/components/Calm";
 import { CalmSelect } from "@features/common/components/CalmSelect";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
+import { SuccessToast } from "@features/common/components/SuccessToast";
 import { AiAssistSettingsPanel } from "@features/settings/AiAssistSettingsPanel";
 import { WecomRobotSettingsPanel } from "@features/settings/WecomRobotSettingsPanel";
 import { NotificationPolicyPanel } from "@features/settings/NotificationPolicyPanel";
@@ -47,6 +48,10 @@ type OrgView = "all" | "admins" | number;
 
 type OrgMode = "browse" | "join" | "manage";
 
+type FeedbackNotice =
+  | { readonly tone: "success"; readonly message: string }
+  | { readonly tone: "warning"; readonly message: string };
+
 const lifecycleCopy: Readonly<
   Record<LifecycleAction, { title: string; description: string }>
 > = {
@@ -77,7 +82,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   const [disableTarget, setDisableTarget] = useState<AdminUserItem | null>(
     null,
   );
-  const [success, setSuccess] = useState<string | null>(null);
+  const [notice, setNotice] = useState<FeedbackNotice | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
@@ -105,11 +110,17 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     defaultValues: { name: "", email: "", isAdmin: false },
   });
 
+  const clearNotice = () => setNotice(null);
+  const showSuccess = (message: string) =>
+    setNotice({ tone: "success", message });
+  const showWarning = (message: string) =>
+    setNotice({ tone: "warning", message });
+
   const openUpdate = (user: AdminUserItem) => {
     setEditor(user);
     setLifecycle(null);
     setDisableTarget(null);
-    setSuccess(null);
+    clearNotice();
     setFormError(null);
     setReloadError(null);
     mutation.reset();
@@ -124,7 +135,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     setEditor(null);
     setDisableTarget(null);
     setLifecycle({ action, user });
-    setSuccess(null);
+    clearNotice();
     setFormError(null);
     setReloadError(null);
     mutation.reset();
@@ -134,7 +145,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     setEditor(null);
     setLifecycle(null);
     setDisableTarget(user);
-    setSuccess(null);
+    clearNotice();
     setFormError(null);
     setReloadError(null);
     mutation.reset();
@@ -167,7 +178,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       user: disableTarget,
       body,
     });
-    setSuccess("用户已停用");
+    showSuccess("用户已停用");
     setDisableTarget(null);
   };
 
@@ -192,7 +203,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         return;
       }
       await mutation.mutateAsync({ action: "update", user: editor, body });
-      setSuccess("用户资料已更新");
+      showSuccess("用户资料已更新");
       setEditor(null);
       reset();
     } catch {
@@ -238,7 +249,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         action: lifecycle.action,
         user: lifecycle.user,
       });
-      setSuccess(
+      showSuccess(
         lifecycle.action === "enable"
           ? "用户已启用"
           : "账号已删除，审计与项目动态保留事件当时姓名",
@@ -348,6 +359,23 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     );
   };
 
+  const handleMemberRowClick = (
+    event: React.MouseEvent<HTMLDivElement>,
+    user: AdminUserItem,
+  ) => {
+    if (!canSelectMember(user)) return;
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest(
+        '.member-actions, button, a, input, label, select, textarea, [role="button"], [contenteditable="true"]',
+      )
+    ) {
+      return;
+    }
+    toggleUserSelection(user.id, !selectedUserIds.includes(user.id));
+  };
+
   const organizationName = (organizationId: number | null | undefined) => {
     if (organizationId === null || organizationId === undefined) {
       return "未分配";
@@ -382,7 +410,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     setMemberScope(next);
     setOrgView("all");
     resetOrgMode();
-    setSuccess(null);
+    clearNotice();
   };
 
   const openOrganizationBatch = () => {
@@ -392,7 +420,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     setNewOrganizationName("");
     setOrgView("all");
     setSelectedUserIds([]);
-    setSuccess(null);
+    clearNotice();
   };
 
   const handleOrgAction = () => {
@@ -433,7 +461,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         ?.name ?? "",
     );
     setSelectedUserIds([]);
-    setSuccess(null);
+    clearNotice();
   };
 
   const refreshMemberData = async () => {
@@ -443,7 +471,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 
   const joinSelected = async () => {
     if (selectedUserIds.length === 0) {
-      setSuccess("请先勾选未分配的成员。");
+      showWarning("请先勾选未分配的成员。");
       return;
     }
     try {
@@ -452,7 +480,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       if (joinTarget === "new") {
         const name = newOrganizationName.trim();
         if (name === "") {
-          setSuccess("请先填写新组织名称。");
+          showWarning("请先填写新组织名称。");
           return;
         }
         const created = (await organizationMutation.mutateAsync({
@@ -460,14 +488,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           name,
         })) as { readonly id?: number } | undefined;
         if (created === undefined || typeof created.id !== "number") {
-          setSuccess("组织已创建，但未能加入成员，请刷新后重试。");
+          showWarning("组织已创建，但未能加入成员，请刷新后重试。");
           return;
         }
         organizationId = created.id;
         targetName = name;
       }
       if (organizationId === null) {
-        setSuccess("请先选择目标组织。");
+        showWarning("请先选择目标组织。");
         return;
       }
       await organizationMutation.mutateAsync({
@@ -475,7 +503,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         userIds: selectedUserIds,
         organizationId,
       });
-      setSuccess(
+      showSuccess(
         "已把 " +
           selectedUserIds.length +
           " 名成员加入「" +
@@ -485,13 +513,13 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       resetOrgMode();
       await refreshMemberData();
     } catch (error) {
-      setSuccess(organizationErrorMessage(error));
+      showWarning(organizationErrorMessage(error));
     }
   };
 
   const leaveSelected = async () => {
     if (selectedUserIds.length === 0) {
-      setSuccess("请先勾选成员。");
+      showWarning("请先勾选成员。");
       return;
     }
     try {
@@ -500,13 +528,13 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         userIds: selectedUserIds,
         organizationId: null,
       });
-      setSuccess(
+      showSuccess(
         "已把 " + selectedUserIds.length + " 名成员移出，变为未分配。",
       );
       resetOrgMode();
       await refreshMemberData();
     } catch (error) {
-      setSuccess(organizationErrorMessage(error));
+      showWarning(organizationErrorMessage(error));
     }
   };
 
@@ -516,19 +544,19 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       (item) => item.id === orgTarget,
     );
     if (!organization) {
-      setSuccess("组织不存在，或已被删除。");
+      showWarning("组织不存在，或已被删除。");
       return;
     }
     const name = orgRenameDraft.trim();
     if (name === "") {
-      setSuccess("请填写组织名称。");
+      showWarning("请填写组织名称。");
       return;
     }
     if (name === organization.name) {
-      setSuccess("组织名称没有变化。");
+      showWarning("组织名称没有变化。");
       return;
     }
-    setSuccess(null);
+    clearNotice();
     try {
       await organizationMutation.mutateAsync({
         action: "rename",
@@ -538,7 +566,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       setOrgRenameDraft(name);
       await refreshMemberData();
     } catch (error) {
-      setSuccess(organizationErrorMessage(error));
+      showWarning(organizationErrorMessage(error));
     }
   };
 
@@ -548,6 +576,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 
   return (
     <>
+      {notice?.tone === "success" ? (
+        <SuccessToast
+          key={notice.message}
+          testId="admin-user-success"
+          title={notice.message}
+          onDismiss={clearNotice}
+        />
+      ) : null}
       <div className="page-header">
         <div>
           <h1>成员与设置</h1>
@@ -758,10 +794,10 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               </div>
             ) : null}
 
-            {success ? (
-              <div className="permission-note note-success" role="status">
-                <InpulseIcon name="check" size={16} />
-                <span>{success}</span>
+            {notice?.tone === "warning" ? (
+              <div className="permission-note note-warning" role="alert">
+                <InpulseIcon name="alert" size={16} />
+                <span>{notice.message}</span>
               </div>
             ) : null}
 
@@ -888,6 +924,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       (user.status === "ACTIVE" ? "" : " is-disabled")
                     }
                     key={user.id}
+                    onClick={(event) => handleMemberRowClick(event, user)}
                   >
                     {orgMode !== "browse" ? (
                       canSelectMember(user) ? (
@@ -1073,8 +1110,36 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 {editor?.status === "ACTIVE" ? "启用" : "停用"}
               </CalmBadge>
             </div>
+            {editor !== null && selfAdmin(editor) ? (
+              <p>当前登录账号不能停用自己。</p>
+            ) : null}
+          </div>
+          {formError && <Alert type="error" title={formError} />}
+          {mutation.isError && (
+            <Alert type="error" title={adminUserErrorMessage(mutation.error)} />
+          )}
+          {reloadError && <Alert type="error" title={reloadError} />}
+          {versionConflict && (
+            <Button loading={reloading} onClick={() => void reloadLatest()}>
+              加载最新版本后继续编辑
+            </Button>
+          )}
+          <div className="admin-user-footer">
+            <div className="admin-user-footer-main">
+              <Button onClick={closeEditor} disabled={mutation.isPending}>
+                取消
+              </Button>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={mutation.isPending}
+                disabled={reloading || !!versionConflict}
+              >
+                保存
+              </Button>
+            </div>
             {editor !== null && !selfAdmin(editor) ? (
-              <Space wrap>
+              <div className="admin-user-lifecycle-actions">
                 {editor.status === "ACTIVE" ? (
                   <Button
                     htmlType="button"
@@ -1100,34 +1165,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                     </Button>
                   </>
                 )}
-              </Space>
-            ) : editor !== null ? (
-              <p>当前登录账号不能停用自己。</p>
+              </div>
             ) : null}
           </div>
-          {formError && <Alert type="error" title={formError} />}
-          {mutation.isError && (
-            <Alert type="error" title={adminUserErrorMessage(mutation.error)} />
-          )}
-          {reloadError && <Alert type="error" title={reloadError} />}
-          {versionConflict && (
-            <Button loading={reloading} onClick={() => void reloadLatest()}>
-              加载最新版本后继续编辑
-            </Button>
-          )}
-          <Space style={{ marginTop: 16 }}>
-            <Button onClick={closeEditor} disabled={mutation.isPending}>
-              取消
-            </Button>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={mutation.isPending}
-              disabled={reloading || !!versionConflict}
-            >
-              保存
-            </Button>
-          </Space>
         </form>
       </Modal>
 

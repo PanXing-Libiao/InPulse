@@ -2469,6 +2469,28 @@
   gap: 8px;
 }
 
+.admin-user-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.admin-user-footer-main,
+.admin-user-lifecycle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-user-lifecycle-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
 .identity-chip {
   align-self: center;
 }
@@ -3275,6 +3297,11 @@
 
 .member-row.is-selectable {
   gap: 10px;
+  cursor: pointer;
+}
+
+.member-row.is-selectable .member-actions {
+  cursor: default;
 }
 
 /* ADR-081 组织管理弹窗（2026-10-16 改机制）：① 选成员 ② 加入组织 ③ 组织维护 三段。 */

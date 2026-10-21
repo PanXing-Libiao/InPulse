@@ -828,8 +828,133 @@ describe("ADR-081 organizations", () => {
         }),
       }),
     );
-    await screen.findByText(/已把 1 名成员加入「研发一组」/);
+    const successToast = await screen.findByTestId("admin-user-success");
+    expect(successToast).toHaveTextContent("已把 1 名成员加入「研发一组」");
+    expect(successToast).toHaveClass("success-toast");
+    expect(successToast.closest(".permission-note")).toBeNull();
     expect(screen.queryByLabelText("选择 Bob")).not.toBeInTheDocument();
+  });
+
+  it("selects a member from the row while keeping row actions usable", async () => {
+    const getAdminUserOffboarding = vi
+      .fn()
+      .mockResolvedValue({ user: member, projects: [] });
+    const client = {
+      listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, member] }),
+      getAdminUserOffboarding,
+    } as unknown as InpulseApiClient;
+    mount(client);
+    await screen.findByText("Bob");
+    fireEvent.click(screen.getByRole("button", { name: "加入组织" }));
+    const bobCheckbox = screen.getByLabelText("选择 Bob");
+    expect(bobCheckbox).not.toBeChecked();
+
+    fireEvent.click(screen.getByText("Bob"));
+    expect(bobCheckbox).toBeChecked();
+    expect(screen.getByText("已选 1 人")).toBeInTheDocument();
+
+    fireEvent.click(bobCheckbox);
+    expect(bobCheckbox).not.toBeChecked();
+    expect(screen.getByText("已选 0 人")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Bob"));
+    expect(bobCheckbox).toBeChecked();
+
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+    );
+    const editorDialog = screen.getByRole("dialog", { name: "编辑用户" });
+    expect(editorDialog).toBeInTheDocument();
+    expect(bobCheckbox).toBeChecked();
+    fireEvent.click(
+      within(editorDialog).getByRole("button", { name: /取\s*消/ }),
+    );
+
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /停\s*用/ }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "停用账号 · 任务交接" }),
+    ).toBeInTheDocument();
+    expect(bobCheckbox).toBeChecked();
+  });
+
+  it("keeps account lifecycle actions in the save row on the right", async () => {
+    const disabled: AdminUserItem = {
+      ...member,
+      id: 3,
+      loginName: "carol",
+      name: "Carol",
+      status: "DISABLED",
+      disabledAt: "2026-10-19T00:00:00.000Z",
+      rowVersion: 2,
+    };
+    mount({
+      listAdminUsers: vi
+        .fn()
+        .mockResolvedValue({ items: [admin, member, disabled] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Bob");
+
+    fireEvent.click(
+      within(userCard("Bob")).getByRole("button", { name: /编\s*辑/ }),
+    );
+    let dialog = screen.getByRole("dialog", { name: "编辑用户" });
+    let footer = dialog.querySelector<HTMLElement>(".admin-user-footer");
+    expect(footer).not.toBeNull();
+    const activeFooter = footer as HTMLElement;
+    const save = within(activeFooter).getByRole("button", { name: /保\s*存/ });
+    const disable = within(activeFooter).getByRole("button", {
+      name: "停用账号",
+    });
+    expect(
+      within(activeFooter).getByRole("button", { name: /取\s*消/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(activeFooter).queryByRole("button", { name: "启用账号" }),
+    ).not.toBeInTheDocument();
+    expect(
+      save.compareDocumentPosition(disable) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(dialog.querySelector(".admin-user-status")?.contains(disable)).toBe(
+      false,
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: /取\s*消/ }));
+
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "成员状态筛选" })).getByRole(
+        "button",
+        { name: "已停用" },
+      ),
+    );
+    await screen.findByText("Carol");
+    fireEvent.click(
+      within(userCard("Carol")).getByRole("button", { name: /编\s*辑/ }),
+    );
+    dialog = screen.getByRole("dialog", { name: "编辑用户" });
+    footer = dialog.querySelector<HTMLElement>(".admin-user-footer");
+    expect(footer).not.toBeNull();
+    const disabledFooter = footer as HTMLElement;
+    const disabledSave = within(disabledFooter).getByRole("button", {
+      name: /保\s*存/,
+    });
+    const enable = within(disabledFooter).getByRole("button", {
+      name: "启用账号",
+    });
+    const forceDelete = within(disabledFooter).getByRole("button", {
+      name: "强制删除",
+    });
+    expect(
+      disabledSave.compareDocumentPosition(enable) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      enable.compareDocumentPosition(forceDelete) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(dialog.querySelector(".admin-user-status")?.contains(enable)).toBe(
+      false,
+    );
   });
 
   it("hides disabled members while managing organizations", async () => {

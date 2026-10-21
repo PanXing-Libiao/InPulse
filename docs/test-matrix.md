@@ -290,6 +290,7 @@ API 集成 48 文件 444 例、database 单测 15/15 + 集成 26/26 通过。本
 | F03-API-002 | HTTP + PostgreSQL | 完整生命周期 | 管理员创建用户后同 Key 重放不重复；编辑、停用、启用分别递增版本；停用同事务递增 `auth_version` 并撤销 Session；停用后旧 Session 请求 401；审计事件齐全；审计失败时创建整体回滚；强制退出步骤已由 ADR-083 移除 | 本地通过（历史口径；2026-10-19 按移除后代码重跑） |
 | F03-API-003 | 权限与边界 | 拒绝与保护 | 缺管理员身份 403、缺幂等键 400、非法字段 422、旧版本/状态冲突与自停用/最后一名可用管理员 409（`LAST_ACTIVE_ADMIN_REQUIRED`）；错误响应不泄露 SQL 或约束名；普通成员访问管理页 403 | 本地通过（HTTP 单元、真实 PostgreSQL 与权限矩阵） |
 | F03-UI-001 | 前端单元 | 管理页关键交互 | 列表展示、当前登录账号置顶、隐藏当前管理员停用入口；编辑携带 CSRF、幂等键和 `If-Match`；写失败后保留同一幂等键；错误文案统一映射 | 本地通过（`admin-user-query.test.tsx`、`AdminUsersPageView.test.tsx`；2026-10-19 重跑） |
+| F03-EDIT-FOOTER-001 | Web 单元 | 编辑用户页脚生命周期操作 | 编辑用户弹层的「账号状态」区仅显示状态徽标；启用账号的「停用账号」、停用账号的「启用账号 / 强制删除」均移到「取消 / 保存」同一行右侧，DOM 顺序位于保存按钮之后且不再留在状态区 | 本地通过（2026-10-21，`AdminUsersPageView.test.tsx` 34/34） |
 | F03-E2E-001 | Playwright | 领域 E2E | 普通成员访问 `/settings` 显示 403；管理员完成编辑 → 停用 → 启用真实 UI 链路；强制退出链路已由 ADR-083 移除（2026-09-24 起目标账号由夹具预置，管理页不再有新增入口） | 本地通过（历史口径；2026-10-19 移除强退后重跑 `admin-users.spec.ts`） |
 | F03-REMOVE-FORCELOGOUT-001 | 契约 + API + Web + E2E | 强制退出整体移除 | Route Registry 与权限矩阵无 `forceLogoutUser`；Controller 扫描无 `POST /api/v1/admin/users/{userId}/force-logout`；OpenAPI、指纹与生成客户端无该方法；旧路径真实 HTTP 请求返回 404；成员页无入口；历史审计动作码仅保留中文展示标签 | 本地通过（2026-10-19：`contract:validate` 125 条、`permissions:check` 125/125、`contract:drift` 6 产物、契约单测 102 例、API 全量单测 512 例、真实 PostgreSQL 集成 6 例、Web 全量单测 958 例、`admin-users.spec.ts` 2/2） |
 
@@ -6735,10 +6736,14 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ORGANIZATION-UI-006 | Web 路由集成 | 普通成员可进入设置页 | 普通成员访问 `/settings` 不再出现「无权访问」管理员门，渲染只读「成员与角色」与同组织成员（mock `getMyOrganizationMembers`） | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-007 | Web 单元 | 列表下方区块加入已有组织与移出组织二次确认 | 在成员列表勾选成员 + 在区块里选已有组织 → 「加入所选 N 人」提交 `{ userIds, organizationId }`；点「移出组织」先出确认块，确认后提交 `organizationId: null` | 本地通过（2026-10-16） |
 | ORGANIZATION-UI-008 | Web 单元 | 批量操作条位于成员列表上方 | 进入加入 / 编辑组织调整态后，`role=region`「批量操作」渲染在 `.admin-member-list` 之前；批量条取消 sticky 吸底并作为普通流式区块展示，加入与移出提交流程保持原行为 | 本地通过（2026-10-21，`AdminUsersPageView.test.tsx` 32/32） |
+| ORGANIZATION-UI-009 | Web 单元 | 调整态整行选择与操作隔离 | 进入加入 / 编辑组织调整态后，点击成员行非操作区域切换选择；直接点击复选框只切换一次；点击编辑与停用仍打开各自弹层且不改变已选集合 | 本地通过（2026-10-21，`AdminUsersPageView.test.tsx` 33/33） |
+| ORGANIZATION-UI-010 | Web 单元 | 组织操作成功气泡 | 加入 / 移出组织及管理员账号操作成功后使用共享 `SuccessToast` 固定气泡，6 秒自动关闭且可手动关闭，不占成员列表文档流；校验与失败继续使用页内警告而不伪装成成功 | 本地通过（2026-10-21，`AdminUsersPageView.test.tsx` 33/33） |
 | ORGANIZATION-E2E-001 | Playwright 浏览器 | 普通成员只读入口 | 普通成员打开 `/settings` 可见「成员与设置」与只读「成员与角色」，无 `admin-forbidden`、无「调整组织」「批量管理」 | 未运行（用例已改写，本地全量 E2E 待跑） |
 | ORGANIZATION-GATE-001 | 静态门禁 | 契约 / 权限 / 迁移 / 类型 | `contract:validate` 125 条；`permissions:check` 125 条操作 / 125 条路由；`contract:drift` 5 产物无漂移；全 workspace typecheck / lint / format:check 通过；迁移 `0046` 已在 `app_ci` 应用通过 | 本地通过（2026-10-16） |
 
 2026-10-21 布局修订：用户要求把「加入组织 / 移出到未分配」批量操作条放到成员列表上方；上文的「列表下方」保留为 2026-10-16 当时记录，当前布局以 `ORGANIZATION-UI-008` 为准。
+
+2026-10-21 交互修订：组织调整态的成员行可整行点击选择，操作按钮与复选框单独响应；成功提示改为共享浮层气泡，校验与失败保留页内警告（见 `ORGANIZATION-UI-009` / `ORGANIZATION-UI-010`）。
 
 未运行 / 已知偏差（本批）：① 组织管理区块里的改名与删除组织确认流程只有实现路径，无专门自动化用例（勾选加入、新建组织并入人、移出组织二次确认已覆盖，见 ORGANIZATION-UI-001 / 004 / 007）；② 指派选择器的组织视图：新建项目表单已落地（ORGANIZATION-UI-005），任务创建 / 改派选择器仍待落地；③ Playwright 未新增组织管理场景；普通成员只读入口用例已改写（ORGANIZATION-E2E-001）但未运行，全量 E2E 未在本批复跑；④ `pnpm check` 整链未运行、GitHub Actions 未执行；⑤ `/settings` 普通成员入口修正由 Web 路由集成用例覆盖，未做手工浏览器复核（截至本地提交）；⑥ 管理员组织管理已在演示环境手工复核（列表无勾选框、工具条只剩「组织管理」、点开在页内展开且无弹窗遮罩、勾选框直接出现在成员列表行上、区块位于列表下方分「加入组织 / 组织维护」两段、勾选后按钮转可用、选「新建组织」出现名称输入；未提交真实建组 / 归属 / 改名 / 删除），Playwright 仍未覆盖组织管理场景。
 
