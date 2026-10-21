@@ -338,7 +338,7 @@ sudo docker exec -i inpulse-deploy-db-1 pg_restore --list < backups/<文件名>.
   `welcomeBoundThrottleMs` 调整（毫秒，0 = 该类用户不再自动发）。
 - 项目群消息投递（2026-10-16 本地实现并同步到 VM）：`bridge.mjs` 把新的 `task.assigned`
   通知与 `MEMBER` 可见项目动态物化为 `app.wecom_group_deliveries` 的 `PENDING` 行，
-  `long-conn.mjs` 按 id 升序经 `chat_type:2` 投递到该项目绑定的群，并以响应 errcode
+  `long-conn.mjs` 按 id 升序经 `chat_type:2` 将项目动态作为 `text_notice` 模板卡片投递到该项目绑定的群，并以响应 errcode
   回写 `SENT` / `FAILED` 与绑定行 `last_delivery_error`；限速 30 条/分钟、1000 条/小时，
   重启后从 PENDING 断点续传；`ADMIN_ONLY` 动态不进群；个人单聊与群推送并存。
   本地联调（真实群）已验证成功投递 / 失败回写 / 停机续传三条路径，合成数据已清理。

@@ -4,5 +4,6 @@
   "configPollMs": 5000,
   "pushOnCallback": true,
   "commandFile": "/state/commands.txt",
-  "groupDeliveries": true
+  "groupDeliveries": true,
+  "cardActionUrl": "https://test-inpulse.libiaorobot.com/"
 }

@@ -1284,10 +1284,10 @@ export function TasksPanel({
                 </button>
               </div>
               {publishedRecord !== null && (
-                <Alert
-                  type="success"
+                <SuccessToast
+                  testId="task-record-published-success"
                   title={"迭代记录已发布：" + publishedRecord.code}
-                  action={
+                  actions={
                     <Button
                       className="secondary-button"
                       onClick={() => setOpenRecordId(publishedRecord.id)}
@@ -1295,6 +1295,7 @@ export function TasksPanel({
                       查看正式记录
                     </Button>
                   }
+                  onDismiss={() => setPublishedRecord(null)}
                 />
               )}
               <div className="calm-task-actions">

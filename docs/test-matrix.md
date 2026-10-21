@@ -6998,6 +6998,7 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR092-UNIT-001 | API 单元 | 封箱记录与版本载荷 | 状态切换返回同版本；封箱审计 / 活动 / 搜索投影的 `sourceRowVersion` 使用当前内容版本；`changeProjectStatus` 幂等契约版本为 `1.3.0` | 本地通过（2026-10-21，`project-management.service.test.ts` 7/7） |
 | ADR092-WEB-UNIT-001 | Web 单元 | 状态保存与版本回写 | 只改状态调用状态接口并回写同版本；字段与状态同改按字段响应的新版本串行保存；无改动不请求 | 本地通过（2026-10-21，`project-management-modals.test.tsx` 12/12） |
 | SUCCESS-TOAST-UI-001 | Web 单元 | 成功气泡替换整行横幅 | `SuccessToast` 6 秒自动请求关闭、支持手动关闭；任务保存、功能 / 模块操作、项目创建 / 编辑 / 删除均渲染 `.success-toast` 浮层且不落在 `.ant-alert` 文档流中 | 本地通过（2026-10-21，5 个相关 Web 测试文件 84/84） |
+| SUCCESS-TOAST-UI-002 | Web 单元 | 任务详情迭代记录发布成功提示 | 发布迭代记录后以 `SuccessToast` 浮层显示「迭代记录已发布：编码」，不再使用整行 `Alert`；保留「查看正式记录」按钮，支持手动关闭，浮层由共享组件在 6 秒后自动关闭 | 本地通过（2026-10-21，`TasksPanel.test.tsx` 30/30） |
 | ADR092-GATE-001 | 静态 / 全量门禁 | 类型、契约、迁移与回归 | API / Web typecheck；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由；`permissions:check` 129 / 129；`db:migrations:check` 56 个 SQL；`check:docs` 142 个 Markdown；`check:secrets` 1406 个文件；Prettier check；API / Web 生产构建；`check:frontend:boundaries` 383 模块 / 1914 依赖；`check:deps` 905 源文件；API 单测 80 文件 521 例、Web 单测 119 文件 1004 例、契约单测 16 文件 102 例、数据库集成 2 文件 29 例全绿 | 本地通过（2026-10-21） |
 
 已知偏差：ADR-092 记录的既有未使用变量 / 控制字符正则告警已在本轮修复；原 ADR-040 成员改派期望已按现行多负责人语义收敛，并由本轮 NOTIFY-DISPATCH-REG-001 回归覆盖。
@@ -7019,6 +7020,7 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
 | WECOM-GROUP-CONSOLIDATE-BRIDGE-001 | Bridge 单元 | 任务创建、真实改派与普通编辑 | task.create -> task.assign；task.update 且 assignmentChanged=true -> task.assign；false / 缺失 -> skip；完成、记录、项目成员、删除、未知动态与五类开关映射正确；未知 TASK 动态不再被实体兜底误归任务派发 | 本地通过（2026-10-21，`notification-categories.test.mjs` 6/6） |
+| WECOM-GROUP-CONSOLIDATE-BRIDGE-002 | Bridge 单元 + 真实群投递 | 项目群模板卡片 | 输出与个人通知一致的 `text_notice` 卡片：来源、主标题、编号、项目副标题、最多 6 行字段和安全的 `cardActionUrl`；任务展示负责人、进度、截止、功能或模块；模块 / 功能、项目状态、未知事件均正确降级；真实群 `aibot_send_msg` + `chat_type:2` 返回 `errcode=0` 并回写 `SENT` | 本地通过（2026-10-21，`group-message.test.mjs` 9/9；投递行 14 `SENT`） |
 | WECOM-GROUP-CONSOLIDATE-API-001 | API 集成（真实 PostgreSQL + HTTP） | 任务动态改派元数据 | 创建任务写入 assignmentChanged=true、当前负责人、空原负责人；仅改标题写入 false 且原/现负责人相同；真实改派写入 true 且保留原负责人；动态摘要分别为任务创建、任务更新、任务改派 | 本地通过（2026-10-21，`tasks-api.integration.test.ts` 41/41） |
 | WECOM-GROUP-CONSOLIDATE-API-002 | API 集成（真实 PostgreSQL） | 活动读取与维护态回归 | 活动/通知读取、任务创建触发维护态重开及动态写入保持通过 | 本地通过（2026-10-21，`activity-notifications-api.integration.test.ts`、`task-create-maintenance-reopen.integration.test.ts` 2 文件 16 例） |
 | WECOM-GROUP-CONSOLIDATE-WEB-001 | Web 单元 | 绑定卡片文案与新口径一致 | 已绑定与未绑定提示均说明普通任务编辑不推送；默认说明覆盖任务派发、任务状态、记录、项目成员与删除类动态；卡片 7 例通过 | 本地通过（2026-10-21，`ProjectWecomGroupCard.test.tsx` 7/7） |

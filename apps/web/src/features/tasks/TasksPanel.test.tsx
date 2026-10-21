@@ -1003,6 +1003,8 @@ describe("C-3 任务详情弹窗标签页", () => {
     fireEvent.click(publish);
     await waitFor(() => expect(publishChangeRecord).toHaveBeenCalledOnce());
     // 发布后不强制跳转：停在任务详情，但给出一条直达正式记录的入口。
+    const toast = within(dialog).getByTestId("task-record-published-success");
+    expect(toast).toHaveClass("success-toast");
     const notice = await within(dialog).findByText(/迭代记录已发布/);
     expect(notice.textContent).toContain("PR-CR-9");
     fireEvent.click(

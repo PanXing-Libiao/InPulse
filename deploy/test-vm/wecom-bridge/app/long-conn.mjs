@@ -33,6 +33,7 @@ import {
   redeemBindingCode,
   redeemProjectGroupCode,
 } from "./binding-code.mjs";
+import { buildGroupActivityCard } from "./group-message.mjs";
 import {
   buildGroupWrapText,
   imageMessageFromPoster,
@@ -124,6 +125,8 @@ const configPollMs =
   Number(config.configPollMs) > 0
     ? Number(config.configPollMs)
     : DEFAULT_CONFIG_POLL_MS;
+const cardActionUrl =
+  typeof config.cardActionUrl === "string" ? config.cardActionUrl.trim() : "";
 
 // 进入会话欢迎语配置：未绑定用户按短窗口重复提醒绑定，已绑定用户按长窗口只问好。
 const welcomeUnboundThrottleMs = readThrottleWindow(
@@ -487,13 +490,40 @@ const GROUP_ACTIVITY_SQL = [
   "  a.metadata,",
   "  a.summary,",
   "  a.occurred_at,",
-  "  a.activity_type,",
   "  a.project_id,",
   "  p.name as project_name,",
-  "  u.name as actor_name",
+  "  p.code as project_code,",
+  "  u.name as actor_name,",
+  "  m.code as module_code,",
+  "  m.name as module_name,",
+  "  f.code as feature_code,",
+  "  f.name as feature_name,",
+  "  fm.code as feature_module_code,",
+  "  fm.name as feature_module_name,",
+  "  t.code as task_code,",
+  "  t.title as task_title,",
+  "  t.priority,",
+  "  t.work_status,",
+  "  t.due_at,",
+  "  (",
+  "    select string_agg(u2.name, '、' order by ta.created_at asc, ta.user_id asc)",
+  "    from app.task_assignees ta",
+  "    join app.users u2 on u2.id = ta.user_id",
+  "    where ta.task_id = t.id and ta.project_id = t.project_id",
+  "  ) as task_assignees",
   "from app.activity_projection a",
   "left join app.projects p on p.id = a.project_id",
   "left join app.users u on u.id = a.actor_id",
+  "left join app.modules m",
+  "  on m.id = case when a.metadata->>'moduleId' ~ '^[0-9]+$' then (a.metadata->>'moduleId')::integer end",
+  " and m.project_id = a.project_id",
+  "left join app.features f",
+  "  on f.id = case when a.metadata->>'featureId' ~ '^[0-9]+$' then (a.metadata->>'featureId')::integer end",
+  " and f.project_id = a.project_id",
+  "left join app.modules fm on fm.id = f.module_id and fm.project_id = f.project_id",
+  "left join app.tasks t",
+  "  on t.id = case when a.metadata->>'taskId' ~ '^[0-9]+$' then (a.metadata->>'taskId')::integer end",
+  " and t.project_id = a.project_id",
   "where a.id = $1",
 ].join(" ");
 const GROUP_WRAP_SNAPSHOT_SQL = [
@@ -727,39 +757,7 @@ async function buildGroupActivityMessages(sourceId) {
     }
     return messages;
   }
-  const projectName = clampGroupText(item.project_name, 40);
-  const activityType = String(item.activity_type ?? "")
-    .trim()
-    .toLowerCase();
-  const assignmentChanged =
-    item.metadata !== null &&
-    typeof item.metadata === "object" &&
-    item.metadata.assignmentChanged === true;
-  const heading =
-    activityType === "task.create"
-      ? "任务派发"
-      : activityType === "task.update" && assignmentChanged
-        ? "任务改派"
-        : "项目动态";
-  const lines = [
-    projectName.length > 0
-      ? "**【" + projectName + "】" + heading + "**"
-      : "**【" + heading + "】**",
-  ];
-  const summary = clampGroupText(item.summary, 120);
-  if (summary.length > 0) lines.push("**" + summary + "**");
-  const meta = [];
-  const actorName = clampGroupText(item.actor_name, 30);
-  if (actorName.length > 0) meta.push("操作人 " + actorName);
-  const occurred = formatGroupTime(item.occurred_at);
-  if (occurred.length > 0) meta.push(occurred);
-  if (meta.length > 0) lines.push(meta.join(" ｜ "));
-  return [
-    {
-      msgtype: "markdown",
-      markdown: { content: lines.join(GROUP_NEWLINE) },
-    },
-  ];
+  return [buildGroupActivityCard(item, { cardActionUrl: cardActionUrl })];
 }
 
 async function buildGroupNotificationMessages(sourceId) {
@@ -838,6 +836,20 @@ function summarizeGroupMessage(message) {
       String(message.image && message.image.md5) +
       " bytes=" +
       base64.length
+    );
+  }
+  if (message && message.msgtype === "template_card") {
+    return (
+      "template_card(" +
+      clampGroupText(
+        String(
+          message.template_card &&
+            message.template_card.main_title &&
+            message.template_card.main_title.title,
+        ),
+        80,
+      ) +
+      ")"
     );
   }
   if (message && message.msgtype === "markdown") {

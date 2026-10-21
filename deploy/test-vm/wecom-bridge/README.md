@@ -47,9 +47,10 @@
 - 两级分工：`bridge.mjs` 按独立动态游标物化——在「该项目当前 ACTIVE 群绑定」下插入
   `app.wecom_group_deliveries` 的 `PENDING` 行（按「绑定行 + 来源类型 + 来源 id」去重；
   只物化绑定时间之后发生的来源）；`long-conn.mjs` 消费 PENDING 队列，按 id 升序用
-  `aibot_send_msg` + `chat_type:2` 发送 markdown，发送结果以响应帧 `errcode` 为准回写：
+  `aibot_send_msg` + `chat_type:2` 发送模板卡片（封箱文案仍为 Markdown，图片分段仍为 image），发送结果以响应帧 `errcode` 为准回写：
   成功 -> `SENT` + `sent_at`（并清空绑定行 `last_delivery_error`），失败 -> `FAILED` +
   `attempts` + `last_error`（同时截断回写绑定行 `last_delivery_error`，≤500 字符）。
+- 群动态展示（2026-10-21）：`group-message.mjs` 生成与个人通知一致的 `text_notice` 模板卡片，包含来源、主标题、编号、项目副标题、最多 6 行关键字段和 `cardActionUrl` 跳转；任务展示负责人、进度、截止、功能或模块，项目状态使用“进入维护 / 重新开工”等事件语义。真实群投递已验证 `chat_type:2` 接受卡片并返回 `errcode=0`。展示层不改变五类开关、来源收敛或发送限速。
 - 兼容：升级前已排队且未发送的 `NOTIFICATION` 行仍由 `long-conn.mjs` 兼容消费，
   避免升级丢失旧 PENDING 消息；新物化不再生成该来源类型。
 - 限速与重试：投递侧 30 条/分钟、1000 条/小时（内存窗口，超限自动退避并限频打日志）；
