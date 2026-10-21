@@ -22,6 +22,7 @@ import {
 } from "@features/common/beijing-time";
 import { useProjects } from "@features/projects/project-query";
 import { useAdminUserDirectoryQuery } from "@features/users/admin-user-query";
+import { useOrganizations } from "@features/users/organization-query";
 import {
   auditActionLabel,
   auditActionWithCode,
@@ -226,6 +227,7 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
 
   const projectsQuery = useProjects(client ? { client } : {});
   const directoryQuery = useAdminUserDirectoryQuery(client);
+  const organizationsQuery = useOrganizations(client);
   const auditQuery = useAuditLogsInfiniteQuery({
     chain,
     filters,
@@ -271,6 +273,16 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
     [directoryQuery.data],
   );
 
+  const organizationNames = useMemo(
+    () =>
+      new Map(
+        (organizationsQuery.data?.items ?? []).map((entry) => [
+          entry.id,
+          entry.name,
+        ]),
+      ),
+    [organizationsQuery.data],
+  );
   const dayGroups = useMemo(() => groupAuditItemsByDay(items), [items]);
   const [collapsedDays, setCollapsedDays] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -361,9 +373,15 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
       if (identity.code !== null || identity.name !== null) {
         return entityLabel(typeLabel, identity);
       }
+      if (item.targetType === "ORGANIZATION") {
+        const name = organizationNames.get(numeric);
+        if (name !== undefined) {
+          return entityLabel(typeLabel, { code: null, name });
+        }
+      }
       return typeLabel + " #" + item.targetId;
     },
-    [directoryNames, projectNameOf],
+    [directoryNames, organizationNames, projectNameOf],
   );
 
   const scopeLabelOf = useCallback(

@@ -205,10 +205,11 @@ function queryClient() {
 }
 
 /**
- * 渲染前统一补管理员用户目录 mock（含已停用账号），断言里就能看到人名。
+ * 渲染前统一补管理员用户与组织目录 mock，断言里就能看到人名和组织名称。
  */
 function withAdminUserDirectory(client: InpulseApiClient): InpulseApiClient {
   const defaults = {
+    listOrganizations: vi.fn().mockResolvedValue({ items: [] }),
     listAdminUsers: vi.fn().mockResolvedValue({
       items: [
         {
@@ -293,6 +294,102 @@ describe("F-08 audit page", () => {
     expect(screen.getByText("对象：用户 Bob")).toBeInTheDocument();
     expect(screen.getByText("第 12 条 · 系统链")).toBeInTheDocument();
     expect(screen.queryByText("加载更多")).not.toBeInTheDocument();
+  });
+
+  it("组织与企业微信群审计显示中文动作与组织名称", async () => {
+    const organizationItems: AuditLogItem[] = [
+      {
+        ...systemItem,
+        sequenceNo: 30,
+        action: "admin.organization.create",
+        targetType: "ORGANIZATION",
+        targetId: "2",
+        eventPayload: { organizationId: 2, name: "测试" },
+      },
+      {
+        ...systemItem,
+        sequenceNo: 29,
+        action: "admin.organization.update",
+        targetType: "ORGANIZATION",
+        targetId: "2",
+        eventPayload: {
+          before: { name: "测试", rowVersion: 1 },
+          after: { name: "测试组", rowVersion: 2 },
+        },
+      },
+      {
+        ...systemItem,
+        sequenceNo: 28,
+        action: "admin.organization.delete",
+        targetType: "ORGANIZATION",
+        targetId: "2",
+        eventPayload: { organizationId: 2, name: "测试组", memberCount: 0 },
+      },
+      {
+        ...systemItem,
+        sequenceNo: 27,
+        action: "admin.user.organizations.assign",
+        targetType: "ORGANIZATION",
+        targetId: "2",
+        eventPayload: { organizationId: 2, userIds: [1], updatedCount: 1 },
+      },
+      {
+        ...systemItem,
+        sequenceNo: 26,
+        action: "project.wecomGroup.notificationOptions.update",
+        targetType: "PROJECT",
+        targetId: "7",
+      },
+      {
+        ...systemItem,
+        sequenceNo: 25,
+        action: "project.wecomGroup.unbind",
+        targetType: "PROJECT",
+        targetId: "7",
+      },
+    ];
+    const getAuditLogs = vi.fn().mockResolvedValue(page(organizationItems));
+    const listProjects = vi.fn().mockResolvedValue({ items: [project] });
+    const listOrganizations = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 2,
+          name: "测试",
+          rowVersion: 1,
+          createdAt: "2026-10-21T00:00:00.000Z",
+          updatedAt: "2026-10-21T00:00:00.000Z",
+        },
+      ],
+    });
+    mount({
+      getAuditLogs,
+      listProjects,
+      listOrganizations,
+    } as unknown as InpulseApiClient);
+
+    expect(await screen.findByText("创建组织")).toBeInTheDocument();
+    for (const label of [
+      "创建组织",
+      "更新组织",
+      "删除组织",
+      "调整成员组织",
+      "更新企业微信群通知选项",
+      "解绑企业微信群",
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
+    for (const raw of [
+      "admin.organization.create",
+      "admin.organization.update",
+      "admin.organization.delete",
+      "admin.user.organizations.assign",
+      "project.wecomGroup.notificationOptions.update",
+      "project.wecomGroup.unbind",
+    ]) {
+      expect(screen.queryByText(raw)).toBeNull();
+    }
+    expect(screen.queryByText(/^ORGANIZATION/)).toBeNull();
+    expect(await screen.findAllByText("对象：组织「测试」")).toHaveLength(2);
   });
 
   it("可切回单链读取：SYSTEM 链不再携带 chain 参数", async () => {

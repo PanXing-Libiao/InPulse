@@ -18,6 +18,8 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "project.member.remove": "移除项目成员",
   "project.member.role.set": "调整成员角色",
   "project.documentImport": "导入文档",
+  "project.wecomGroup.notificationOptions.update": "更新企业微信群通知选项",
+  "project.wecomGroup.unbind": "解绑企业微信群",
   "module.create": "创建模块",
   "module.update": "更新模块",
   // ADR-059：删除模块与删除功能（软删除，无还原入口）。
@@ -55,6 +57,10 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "admin.user.enable": "启用用户",
   "admin.user.force_logout": "强制退出登录",
   "admin.user.delete": "强制删除用户",
+  "admin.organization.create": "创建组织",
+  "admin.organization.update": "更新组织",
+  "admin.organization.delete": "删除组织",
+  "admin.user.organizations.assign": "调整成员组织",
   "admin.wecomRobot.update": "更新机器人配置",
   "admin.aiAssistSettings.update": "更新 AI 辅助设置",
   "auth.sso_login": "统一身份认证登录",
@@ -92,6 +98,7 @@ export function auditActionWithCode(action: string): string {
 
 const TARGET_TYPE_LABELS: Readonly<Record<string, string>> = {
   USER: "用户",
+  ORGANIZATION: "组织",
   SYSTEM: "系统",
   AUDIT_CHAIN: "审计链",
   PROJECT: "项目",
