@@ -2092,7 +2092,51 @@
   }
 }
 
-.project-card-actions .text-button.ant-btn,
+/* 项目卡操作（2026-10-21 用户选定「图标轻按钮」）：默认不画边框和底色，
+   用铅笔/成员图标与 13px 文字补足识别度；只有悬停、聚焦时才出现浅色底。
+   「管理成员」比「编辑」更醒目，但仍不抢走标题与描述的层级。 */
+.project-card-actions .project-card-action-button.ant-btn {
+  display: inline-flex !important;
+  align-items: center;
+  height: 31px !important;
+  padding: 0 9px !important;
+  border: 0 !important;
+  border-radius: 8px;
+  background: transparent !important;
+  color: #60778d !important;
+  font-size: 13px;
+  box-shadow: none !important;
+  transition:
+    color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.project-card-action-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.project-card-actions .project-card-action-button.ant-btn:not(:disabled):hover {
+  background: #f1f6fa !important;
+  color: #365e81 !important;
+}
+
+.project-card-actions .project-card-action-button.is-strong.ant-btn {
+  font-weight: 620;
+}
+
+.project-card-actions .project-card-action-button.ant-btn:focus-visible {
+  outline: 2px solid rgb(71 142 220 / 0.45);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-card-actions .project-card-action-button.ant-btn {
+    transition: none;
+  }
+}
+
 .project-card-actions .danger-button.ant-btn {
   height: 28px !important;
   padding: 0 10px !important;
@@ -4587,5 +4631,211 @@
 
   .project-member-task {
     display: none;
+  }
+}
+
+/* ===================== 审计日志：紧凑时间线（2026-10-21 用户选定） =====================
+ * 只作用于审计页；项目动态仍沿用原来的三行时间线。组头已经显示完整日期，行内只保留
+ * 时刻；操作人、动作、对象仍在第一行，链/序号与操作类型收进第二行，快照降为轻量文字按钮。
+ * 这样不删任何审计信息，但单行高度由约 160px 降到 66px。 */
+.audit-log-page .audit-log-list {
+  border-radius: 10px;
+}
+
+.audit-log-page .activity-day-head {
+  --audit-line-gap-top: 10px;
+  --audit-line-gap-bottom: 10px;
+  grid-template-columns: 64px 16px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 10px 18px;
+}
+
+.audit-log-page .activity-day-date {
+  visibility: hidden;
+}
+
+.audit-log-page .activity-day-toggle strong {
+  font-size: 12.5px;
+}
+
+.audit-log-page .activity-day-toggle small {
+  font-size: 10.5px;
+}
+
+.audit-log-page .audit-log-row {
+  --audit-line-gap-top: 12px;
+  --audit-line-gap-bottom: 12px;
+  grid-template-columns: 64px 16px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 66px;
+  padding: 12px 18px;
+  transition: background-color 0.15s ease;
+}
+
+.audit-log-page .audit-log-row:hover {
+  background: #fafdff;
+}
+
+.audit-log-page .audit-log-time {
+  align-self: center;
+  color: #617a92;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.audit-log-page .audit-log-content {
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.audit-log-page .audit-log-content > .activity-avatar {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: #edf4fb;
+  color: #4f7aa2;
+  font-size: 11px;
+}
+
+.audit-log-copy {
+  min-width: 0;
+}
+
+.audit-log-main {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.audit-log-main strong {
+  flex: 0 0 auto;
+  color: #304b65;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.audit-log-page .audit-log-main strong span {
+  margin-left: 7px;
+  color: #536b82;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.audit-log-main p {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #8b9bad;
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-log-main p::before {
+  margin-right: 7px;
+  color: #c1ccd7;
+  content: "·";
+}
+
+.audit-log-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  margin-left: 46px;
+  color: #96a4b2;
+  font-size: 10px;
+}
+
+.audit-log-meta small {
+  display: block;
+  color: #96a4b2;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.audit-log-meta .audit-entity-badge {
+  min-height: auto;
+  padding: 1px 5px;
+  border: 0;
+  border-radius: 4px;
+  background: #f2f6fa;
+  color: #8296a9;
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.audit-log-actions {
+  align-self: center;
+  justify-content: flex-end;
+}
+
+.audit-snapshot-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 29px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #617990;
+  font-size: 11.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.audit-snapshot-button:hover {
+  background: #f0f5f9;
+  color: #3b5f7f;
+}
+
+.audit-snapshot-button:focus-visible {
+  outline: 2px solid rgb(71 142 220 / 0.45);
+  outline-offset: 2px;
+}
+
+.audit-snapshot-button svg {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 700px) {
+  .audit-log-page .audit-log-row {
+    grid-template-columns: 56px 10px minmax(0, 1fr);
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .audit-log-page .activity-day-head {
+    grid-template-columns: 56px 10px minmax(0, 1fr) auto;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .audit-log-main p,
+  .audit-log-meta .audit-entity-badge {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-log-page .audit-log-row,
+  .audit-snapshot-button {
+    transition: none;
   }
 }

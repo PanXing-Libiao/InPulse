@@ -439,24 +439,30 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
                     </span>
                     <span className="project-card-actions">
                       <Button
-                        className="text-button"
+                        className="project-card-action-button"
                         data-testid={`edit-project-${project.id}`}
                         onClick={() => {
                           setEditingRole(project.currentUserRole);
                           setEditing(project);
                         }}
                       >
-                        编辑
+                        <span className="project-card-action-label">
+                          <InpulseIcon name="pencil" size={13} />
+                          编辑
+                        </span>
                       </Button>
                       {isAdmin && onOpenMembers ? (
                         <Button
-                          className="text-button"
+                          className="project-card-action-button is-strong"
                           {...routePreloadHandlers(
                             `/projects/${project.id}/members`,
                           )}
                           onClick={() => onOpenMembers(project.id)}
                         >
-                          管理成员
+                          <span className="project-card-action-label">
+                            <InpulseIcon name="users" size={13} />
+                            管理成员
+                          </span>
                         </Button>
                       ) : null}
                     </span>

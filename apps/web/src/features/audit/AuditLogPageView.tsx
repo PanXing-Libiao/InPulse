@@ -31,7 +31,6 @@ import {
 } from "./audit-labels";
 import { AuditActionFilter } from "./AuditActionFilter";
 import {
-  AUDIT_PAGE_LIMIT,
   EMPTY_AUDIT_FILTERS,
   describeAuditError,
   useAuditLogsInfiniteQuery,
@@ -497,7 +496,7 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
   } else {
     content = (
       <>
-        <div className="audit-list">
+        <div className="audit-list audit-log-list">
           {dayGroups.map((group) => {
             const collapsed = collapsedDays.has(group.key);
             return (
@@ -532,51 +531,54 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
                       const rowKey = item.chainId + "-" + item.sequenceNo;
                       return (
                         <div
-                          className="audit-row"
+                          className="audit-row audit-log-row"
                           key={rowKey}
                           data-testid={"audit-item-" + rowKey}
                         >
-                          <div className="audit-time">
-                            {time.date}
-                            <small>{time.time}</small>
+                          <div className="audit-time audit-log-time">
+                            {time.time}
                           </div>
                           <div className="audit-line">
                             <span />
                           </div>
-                          <div className="audit-content">
+                          <div className="audit-content audit-log-content">
                             <div className="activity-avatar">
                               {actorAvatarOf(item)}
                             </div>
-                            <div>
-                              <strong>
-                                {actorNameOf(item)}
-                                <span>{auditActionLabel(item.action)}</span>
-                              </strong>
-                              <p>对象：{targetLabelOf(item)}</p>
-                              <small>
-                                {"第 " +
-                                  item.sequenceNo +
-                                  " 条 · " +
-                                  scopeLabelOf(item)}
-                              </small>
+                            <div className="audit-log-copy">
+                              <div className="audit-log-main">
+                                <strong>
+                                  {actorNameOf(item)}
+                                  <span>{auditActionLabel(item.action)}</span>
+                                </strong>
+                                <p>对象：{targetLabelOf(item)}</p>
+                              </div>
+                              <div className="audit-log-meta">
+                                <small>
+                                  {"第 " +
+                                    item.sequenceNo +
+                                    " 条 · " +
+                                    scopeLabelOf(item)}
+                                </small>
+                                <span className="audit-entity-badge">
+                                  {item.actorType === "SYSTEM"
+                                    ? "系统操作"
+                                    : "用户操作"}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                          <div className="audit-actions">
-                            <span className="audit-entity-badge">
-                              {item.actorType === "SYSTEM"
-                                ? "系统操作"
-                                : "用户操作"}
-                            </span>
+                          <div className="audit-actions audit-log-actions">
                             <button
                               type="button"
-                              className="secondary-button"
+                              className="audit-snapshot-button"
                               aria-label={
                                 "查看原始快照 第 " + item.sequenceNo + " 条"
                               }
                               onClick={() => setSnapshot(item)}
                             >
                               <InpulseIcon name="shield" size={13} />
-                              原始快照
+                              快照
                             </button>
                           </div>
                         </div>
@@ -601,7 +603,7 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
   }
 
   return (
-    <div className="activity-page" ref={pageRef}>
+    <div className="activity-page audit-log-page" ref={pageRef}>
       {/* 2026-10-08 用户要求：页面滚动只滚动红线以下的区域——标题与筛选条吸顶，
           列表与审计规则在其下方滚动（样式见 inpulse-design.css 的 .sticky-page-band）。 */}
       <div className="sticky-page-band" ref={bandRef}>
@@ -705,14 +707,6 @@ export const AuditLogPageView: React.FC<AuditLogPageViewProps> = ({
           </button>
         </div>
       </div>
-
-      <p className="permission-hint">
-        <InpulseIcon name="shield" size={14} />
-        每页 {AUDIT_PAGE_LIMIT} 条（契约默认值）；
-        操作人不选即全体，可勾选多人； from / to 为半开区间 [from,
-        to)，按浏览器本地时区换算为带时区时间；
-        游标由服务端签名，不能跨查询复用。
-      </p>
 
       {filterError ? (
         <div className="permission-note note-warning" role="alert">
