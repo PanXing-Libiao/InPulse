@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { readStarredProjectIds, toggleStarredProjectId } from "./project-star";
+import {
+  orderProjectsStarredFirst,
+  readStarredProjectIds,
+  toggleStarredProjectId,
+} from "./project-star";
 
 const ACCOUNT_KEY = "inpulse.projects.starred.7";
 const OTHER_ACCOUNT_KEY = "inpulse.projects.starred.9";
@@ -49,5 +53,22 @@ describe("项目星标本地存储（按账号各一份）", () => {
   it("切换不改变其它 ID 的相对顺序", () => {
     expect(toggleStarredProjectId([7, 2, 9], 2)).toEqual([7, 9]);
     expect(toggleStarredProjectId([7, 9], 2)).toEqual([7, 9, 2]);
+  });
+
+  it("星标项目置顶，星标组与未标组内保持原顺序", () => {
+    const projects = [
+      { id: 1, name: "甲" },
+      { id: 2, name: "乙" },
+      { id: 3, name: "丙" },
+      { id: 4, name: "丁" },
+    ];
+    const starred = new Set([3, 4]);
+
+    expect(
+      orderProjectsStarredFirst(projects, (id) => starred.has(id)).map(
+        (project) => project.id,
+      ),
+    ).toEqual([3, 4, 1, 2]);
+    expect(projects.map((project) => project.id)).toEqual([1, 2, 3, 4]);
   });
 });

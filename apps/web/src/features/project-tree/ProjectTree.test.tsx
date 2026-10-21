@@ -2,7 +2,13 @@ import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import type { FeatureItem, InpulseApiClient, ModuleItem } from "@generated/api";
+import type {
+  CurrentUserResponse,
+  FeatureItem,
+  InpulseApiClient,
+  ModuleItem,
+} from "@generated/api";
+import { AuthStateProvider } from "@features/auth/auth-context";
 import type { ProjectTier } from "@features/common/resource-lifecycle";
 import {
   ProjectTierProvider,
@@ -37,6 +43,24 @@ const featureItem = {
   status: "ACTIVE",
 } as unknown as FeatureItem;
 
+const signedInUser: CurrentUserResponse = {
+  id: 7,
+  loginName: "viewer",
+  name: "查看者",
+  email: null,
+  avatarUrl: null,
+  isAdmin: false,
+  status: "ACTIVE",
+};
+
+const TestAuthProvider: React.FC<{ readonly children: React.ReactNode }> = ({
+  children,
+}) => (
+  <AuthStateProvider value={{ status: "authenticated", user: signedInUser }}>
+    {children}
+  </AuthStateProvider>
+);
+
 function createClient() {
   return {
     listProjects: vi
@@ -59,18 +83,20 @@ function mount(
   activePageSegment: string | null = null,
 ) {
   return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      <ProjectTree
-        activeScope={activeScope}
-        activePageSegment={activePageSegment}
-        onNavigate={onNavigate}
-        client={client}
-      />
-    </QueryClientProvider>,
+    <TestAuthProvider>
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ProjectTree
+          activeScope={activeScope}
+          activePageSegment={activePageSegment}
+          onNavigate={onNavigate}
+          client={client}
+        />
+      </QueryClientProvider>
+    </TestAuthProvider>,
   );
 }
 
@@ -111,13 +137,15 @@ function mountRouted(
   onNavigate: (path: string) => void = vi.fn(),
 ) {
   return render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      <RoutedTree client={client} onNavigate={onNavigate} />
-    </QueryClientProvider>,
+    <TestAuthProvider>
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <RoutedTree client={client} onNavigate={onNavigate} />
+      </QueryClientProvider>
+    </TestAuthProvider>,
   );
 }
 
@@ -229,14 +257,16 @@ describe("ProjectTree", () => {
       defaultOptions: { queries: { retry: false } },
     });
     const tree = (activeScope: TreeScope | null) => (
-      <QueryClientProvider client={queryClient}>
-        <ProjectTree
-          activeScope={activeScope}
-          activePageSegment={activeScope === null ? null : "modules"}
-          onNavigate={vi.fn()}
-          client={client}
-        />
-      </QueryClientProvider>
+      <TestAuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <ProjectTree
+            activeScope={activeScope}
+            activePageSegment={activeScope === null ? null : "modules"}
+            onNavigate={vi.fn()}
+            client={client}
+          />
+        </QueryClientProvider>
+      </TestAuthProvider>
     );
     const view = render(tree(scopeOf({ kind: "project" })));
     const projectRow = () =>
@@ -293,14 +323,16 @@ describe("ProjectTree", () => {
       defaultOptions: { queries: { retry: false } },
     });
     const tree = (activeScope: TreeScope, activePageSegment: string) => (
-      <QueryClientProvider client={queryClient}>
-        <ProjectTree
-          activeScope={activeScope}
-          activePageSegment={activePageSegment}
-          onNavigate={vi.fn()}
-          client={client}
-        />
-      </QueryClientProvider>
+      <TestAuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <ProjectTree
+            activeScope={activeScope}
+            activePageSegment={activePageSegment}
+            onNavigate={vi.fn()}
+            client={client}
+          />
+        </QueryClientProvider>
+      </TestAuthProvider>
     );
     const view = render(
       tree(scopeOf({ kind: "feature", moduleId: 3, featureId: 5 }), "modules"),
@@ -402,20 +434,22 @@ describe("ProjectTree 分档过滤", () => {
     client: InpulseApiClient = tierClient(),
   ) {
     return render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <ProjectTierProvider>
-          <TierSetter tier={tier} />
-          <ProjectTree
-            activeScope={activeScope}
-            onNavigate={vi.fn()}
-            client={client}
-          />
-        </ProjectTierProvider>
-      </QueryClientProvider>,
+      <TestAuthProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <ProjectTierProvider>
+            <TierSetter tier={tier} />
+            <ProjectTree
+              activeScope={activeScope}
+              onNavigate={vi.fn()}
+              client={client}
+            />
+          </ProjectTierProvider>
+        </QueryClientProvider>
+      </TestAuthProvider>,
     );
   }
 

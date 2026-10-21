@@ -2,7 +2,13 @@ import React, { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import type { FeatureItem, InpulseApiClient, ModuleItem } from "@generated/api";
+import type {
+  CurrentUserResponse,
+  FeatureItem,
+  InpulseApiClient,
+  ModuleItem,
+} from "@generated/api";
+import { AuthStateProvider } from "@features/auth/auth-context";
 import { ProjectTree } from "./ProjectTree";
 import type { TreeScope } from "./tree-selection";
 
@@ -28,6 +34,24 @@ const featureItem = {
   name: "车辆调度",
   status: "ACTIVE",
 } as unknown as FeatureItem;
+
+const signedInUser: CurrentUserResponse = {
+  id: 7,
+  loginName: "viewer",
+  name: "查看者",
+  email: null,
+  avatarUrl: null,
+  isAdmin: false,
+  status: "ACTIVE",
+};
+
+const TestAuthProvider: React.FC<{ readonly children: React.ReactNode }> = ({
+  children,
+}) => (
+  <AuthStateProvider value={{ status: "authenticated", user: signedInUser }}>
+    {children}
+  </AuthStateProvider>
+);
 
 function createClient() {
   return {
@@ -55,13 +79,15 @@ const RoutedTree: React.FC<{ readonly client: InpulseApiClient }> = ({
 
 const mount = (client: InpulseApiClient) =>
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      <RoutedTree client={client} />
-    </QueryClientProvider>,
+    <TestAuthProvider>
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <RoutedTree client={client} />
+      </QueryClientProvider>
+    </TestAuthProvider>,
   );
 
 describe("ProjectTree 手风琴", () => {

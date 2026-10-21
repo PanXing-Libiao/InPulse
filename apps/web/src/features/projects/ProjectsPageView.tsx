@@ -10,7 +10,7 @@ import type {
 import { CreateProjectModal } from "./CreateProjectModal";
 import { EditProjectModal } from "./ProjectManagementModals";
 import { SuccessToast } from "@features/common/components/SuccessToast";
-import { useProjectStars } from "./project-star";
+import { orderProjectsStarredFirst, useProjectStars } from "./project-star";
 import {
   CalmBadge,
   CalmEmptyState,
@@ -43,7 +43,7 @@ const hierarchyNotes = [
 
 /**
  * 卡片右上角的星标按钮（2026-10-15 用户指示）：位置在状态徽章左侧，只切换「我的关注」，
- * 点亮的项目在列表里排到前面；不改侧栏、不加筛选；点击不冒泡到卡片，不会顺带跳进项目。
+ * 点亮的项目在项目列表与侧栏项目树里都排到前面；不加筛选；点击不冒泡到卡片，不会顺带跳进项目。
  * 星标是**账号级**偏好（2026-10-16 用户指示）：一个人点亮只改自己那份本地记录与自己的列表，
  * 同一台浏览器上的其他账号看不到，也不会被排到前面。
  */
@@ -185,11 +185,9 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
         );
 
   // 标星项目排到前面（2026-10-15 用户指示）：星标的意义就是「我要先看到它」，所以只调
-  // 展示顺序——先把点亮的挑到前面，星标之间、未标之间各自保持上面那条既有次序
-  // （Array#sort 稳定，同 key 不换位）。档位、两档数量与搜索过滤都不受影响。
-  const orderedProjects = [...visibleProjects].sort(
-    (left, right) => Number(isStarred(right.id)) - Number(isStarred(left.id)),
-  );
+  // 展示顺序——先把点亮的挑到前面，星标之间、未标之间各自保持上面那条既有次序。
+  // 2026-10-21 起该规则与侧栏项目树共用，档位、两档数量与搜索过滤都不受影响。
+  const orderedProjects = orderProjectsStarredFirst(visibleProjects, isStarred);
 
   return (
     <>

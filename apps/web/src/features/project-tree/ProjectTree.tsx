@@ -15,6 +15,10 @@ import { useProjectTier } from "@features/common/project-tier-context";
 import { useFeatures } from "@features/features/feature-query";
 import { useModules } from "@features/modules/module-query";
 import { useProjects } from "@features/projects/project-query";
+import {
+  orderProjectsStarredFirst,
+  useProjectStars,
+} from "@features/projects/project-star";
 import { treePath, type TreeScope, type TreeSelection } from "./tree-selection";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
@@ -472,6 +476,7 @@ export const ProjectTree: React.FC<ProjectTreeProps> = ({
 }) => {
   const projects = useProjects({ client });
   const { tier } = useProjectTier();
+  const { isStarred } = useProjectStars();
   const [extraExpanded, setExtraExpanded] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -602,8 +607,13 @@ export const ProjectTree: React.FC<ProjectTreeProps> = ({
   // 未完成档只列进行中 / 未开始，维护中档只列维护中项目。
   // 当前所在项目始终保留：分档是浏览过滤器，不该把正在看的项目从树上摘掉，
   // 否则从「维护中」档点进项目后侧栏立刻找不到它。
-  const items = allProjects.filter(
-    (item) => projectTier(item.status) === tier || item.id === activeProjectId,
+  // 星标项目置顶与项目列表页共用同一条规则（2026-10-21 用户指示）。
+  const items = orderProjectsStarredFirst(
+    allProjects.filter(
+      (item) =>
+        projectTier(item.status) === tier || item.id === activeProjectId,
+    ),
+    isStarred,
   );
   // 空态要分清「一个项目都没有」和「这一档没有项目」，后者是筛选结果
   // 而不是系统里真的没有项目。

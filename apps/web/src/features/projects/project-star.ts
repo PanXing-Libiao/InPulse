@@ -11,6 +11,14 @@ const STARRED_PROJECTS_STORAGE_KEY_PREFIX = "inpulse.projects.starred";
 /** 首版（2026-10-15）把星标存在不带用户 id 的全局 key 上，已被「按账号分仓」取代。 */
 const LEGACY_STARRED_PROJECTS_STORAGE_KEY = STARRED_PROJECTS_STORAGE_KEY_PREFIX;
 
+/** 同页多个星标 Hook 的刷新信号；跨标签页仍由原生 `storage` 事件补齐。 */
+const STARRED_PROJECTS_CHANGED_EVENT = "inpulse:starred-projects-changed";
+
+interface StarredProjectsChangedDetail {
+  readonly userId: number;
+  readonly projectIds: readonly number[];
+}
+
 function starredProjectsStorageKey(userId: number): string {
   return `${STARRED_PROJECTS_STORAGE_KEY_PREFIX}.${String(userId)}`;
 }
@@ -66,6 +74,19 @@ function writeStarredProjectIds(userId: number, ids: readonly number[]): void {
   }
 }
 
+function notifyStarredProjectsChanged(
+  userId: number,
+  projectIds: readonly number[],
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<StarredProjectsChangedDetail>(
+      STARRED_PROJECTS_CHANGED_EVENT,
+      { detail: { userId, projectIds } },
+    ),
+  );
+}
+
 /** 取反：已星标就移除，未星标就追加；不改变其它 ID 的相对顺序。 */
 export function toggleStarredProjectId(
   ids: readonly number[],
@@ -74,6 +95,20 @@ export function toggleStarredProjectId(
   return ids.includes(projectId)
     ? ids.filter((id) => id !== projectId)
     : [...ids, projectId];
+}
+
+/**
+ * 星标项目置顶，星标组与未标组内都保持传入顺序（2026-10-21 用户指示）。
+ * 项目列表和侧栏项目树必须共用这一条展示规则，避免两处顺序分叉；
+ * 这里只调整展示顺序，不改变分档、搜索过滤或数据。
+ */
+export function orderProjectsStarredFirst<T extends { readonly id: number }>(
+  projects: readonly T[],
+  isStarred: (projectId: number) => boolean,
+): T[] {
+  return [...projects].sort(
+    (left, right) => Number(isStarred(right.id)) - Number(isStarred(left.id)),
+  );
 }
 
 export interface ProjectStars {
@@ -95,19 +130,48 @@ export function useProjectStars(): ProjectStars {
 
   // 身份变化（登录完成 / 换账号）时改读新账号自己那一份，不复用上一份。
   React.useEffect(() => {
-    setStarredIds(userId === undefined ? [] : readStarredProjectIds(userId));
+    const sync = () => {
+      setStarredIds(userId === undefined ? [] : readStarredProjectIds(userId));
+    };
+    sync();
+    if (userId === undefined) return undefined;
+    const storageKey = starredProjectsStorageKey(userId);
+    const handleStarsChanged = (event: Event) => {
+      const detail = (event as CustomEvent<StarredProjectsChangedDetail>)
+        .detail;
+      if (detail?.userId === userId) {
+        setStarredIds(detail.projectIds);
+      }
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (
+        event.key === null ||
+        event.key === storageKey ||
+        event.key === LEGACY_STARRED_PROJECTS_STORAGE_KEY
+      ) {
+        sync();
+      }
+    };
+    window.addEventListener(STARRED_PROJECTS_CHANGED_EVENT, handleStarsChanged);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(
+        STARRED_PROJECTS_CHANGED_EVENT,
+        handleStarsChanged,
+      );
+      window.removeEventListener("storage", handleStorage);
+    };
   }, [userId]);
 
   const toggleStar = React.useCallback(
     (projectId: number) => {
       if (userId === undefined) return;
-      setStarredIds((current) => {
-        const next = toggleStarredProjectId(current, projectId);
-        writeStarredProjectIds(userId, next);
-        return next;
-      });
+      const next = toggleStarredProjectId(starredIds, projectId);
+      writeStarredProjectIds(userId, next);
+      setStarredIds(next);
+      notifyStarredProjectsChanged(userId, next);
     },
-    [userId],
+    [starredIds, userId],
   );
 
   const isStarred = React.useCallback(

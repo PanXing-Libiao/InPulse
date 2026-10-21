@@ -6697,13 +6697,25 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 
 | ID | 层级 | 场景 | 通过标准 | 状态 |
 | --- | --- | --- | --- | --- |
-| PROJECT-STAR-ACCOUNT-001 | Web 单元 | 按账号读写本地记录 | `project-star.test.ts` **6 例**：无记录 → `[]`；`...starred.7` 为 `[2,5]` 时 7 号账号读回 `[2,5]`；`...starred.9=[3]` 不影响 7 号账号读回 `[]`、9 号账号读回 `[3]`；损坏 / 非数组 / 含非法项分别回落 `[]`、`[]`、`[2]`；切换 `[7,2,9]` 去 2 → `[7,9]`、加回 → `[7,9,2]` | 本地通过（2026-10-16） |
+| PROJECT-STAR-ACCOUNT-001 | Web 单元 | 按账号读写本地记录 | `project-star.test.ts`（本项覆盖其中 6 例，新增排序用例见 PROJECT-STAR-TREE-001）：无记录 → `[]`；`...starred.7` 为 `[2,5]` 时 7 号账号读回 `[2,5]`；`...starred.9=[3]` 不影响 7 号账号读回 `[]`、9 号账号读回 `[3]`；损坏 / 非数组 / 含非法项分别回落 `[]`、`[]`、`[2]`；切换 `[7,2,9]` 去 2 → `[7,9]`、加回 → `[7,9,2]` | 本地通过（2026-10-16） |
 | PROJECT-STAR-ACCOUNT-002 | Web 单元 | 首版全局记录的一次性接管 | legacy `inpulse.projects.starred=[2]` 时 7 号账号读回 `[2]`、写入 `...starred.7`、legacy key 被删除；随后 9 号账号读回 `[]`（不继承上一个人点亮的星） | 本地通过（2026-10-16） |
 | PROJECT-STAR-ACCOUNT-003 | Web 单元 | 换账号不串，点星只落自己那份 | `ProjectsPageView.test.tsx`：7 号账号已点亮 2 号项目时，以 9 号账号渲染卡片 `aria-pressed=false`；9 号账号点星后 `...starred.9=[2]` 而 `...starred.7` 仍为 `[2]`；既有 4 例星标排序用例改用 `...starred.7` 后继续通过（整文件 `pnpm --filter @inpulse/web test` **112 文件 910 例通过**） | 本地通过（2026-10-16） |
 | PROJECT-STAR-ACCOUNT-GATE-001 | 静态门禁 | 类型 / 依赖边界 / Lint | `pnpm --filter @inpulse/web typecheck` 通过；`check:boundaries` 363 模块 / 1808 依赖 0 违规（`features/projects` 新增对 `features/auth` 的依赖与仓库既有 20 处同构，未触发越界规则）；定向 `eslint` 4 个改动文件 exit 0 | 本地通过（2026-10-16） |
 | PROJECT-STAR-ACCOUNT-E2E-001 | 浏览器 E2E（生产构建 + `app_ci`） | 整站回归 | `pnpm test:e2e:local` **85 通过 / 1 失败（6.7 分钟）**：失败项为 `project-members.spec.ts:12` 的 `.settings-panel` 严格模式冲突，根因是本批合并进来的 `ProjectWecomGroupCard` 在成员页多渲染了一个 `.panel.settings-panel`，与本批星标改动无关（本批未改成员页任何文件）；其余 85 例（含项目创建、项目删除、可视化迁移）无回归 | 本地通过（本批范围）／1 例上游回归待修（2026-10-16） |
 
 未运行 / 已知偏差（本批）：① 星标仍只存浏览器本地，跨设备 / 跨浏览器不同步，清 localStorage 即丢失；跨设备需要新表 + `listProjects` 契约 + 权限矩阵 + 迁移 + 集成测试，按仓库规则要另立 ADR，本批不做。② 首版全局 key 的接管是一次性过渡，接管后原 key 已删除、不可回滚。③ `project-members.spec.ts:12` 的 `.settings-panel` 选择器需要收窄到成员面板（上游企业微信卡片批次带进来的 E2E 回归，其条目只记了单测与集成、未跑全量 E2E），本批**未修**，留给该批次或后续单独一条。④ 生产镜像构建与 Trivy 扫描未执行；⑤ GitHub Actions 未执行（`test` 分支不触发工作流）。
+
+## 项目星标排序同步到侧栏（2026-10-21 本地落库，第二百七十条）
+
+项目卡片早已按「星标优先」展示，但侧栏项目树仍沿用服务端顺序。本批把排序抽成共享函数，并让同页和跨标签页的星标变更都能刷新侧栏；不改星标存储、接口、权限或迁移。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| PROJECT-STAR-TREE-001 | Web 单元 | 共享星标置顶规则 | `project-star.test.ts`：输入 `[1,2,3,4]`、星标 `{3,4}` → `[3,4,1,2]`；星标组与未标组内保持原顺序，且原数组不被修改 | 本地通过（2026-10-21） |
+| PROJECT-STAR-TREE-002 | Web 单元 | 项目卡片与侧栏同步 | `project-tier-sync.test.tsx`：以 7 号账号预置星标 `[23]` 同时挂载项目卡片与侧栏 → 两处均为「丙、甲、乙」；点 `star-project-22` 后两处立即变为「乙、丙、甲」（星标组按原列表次序）；再取消 23 号星标 → 两处变为「乙、甲、丙」 | 本地通过（2026-10-21） |
+| PROJECT-STAR-TREE-GATE-001 | 静态门禁 | 类型 / 格式 / Lint / 依赖边界 | 定向 Vitest 5 文件 46 例；完整 Web 单测 119 文件 1004 例；`@inpulse/web typecheck`；7 个改动文件 Prettier check；定向 ESLint exit 0；`check:boundaries` 383 模块 / 1917 依赖 0 违规 | 本地通过（2026-10-21） |
+
+未运行（本批）：Playwright E2E、完整 `pnpm check`、生产构建与 GitHub Actions。星标仍为账号级浏览器本地偏好；侧栏维护档的未星标项目仍按服务端顺序，未与项目卡片依据 `updatedAt` 的近似排序做全量对齐。
 
 ## 组织（部门）成员分组、批量归属与同组织可见（ADR-081，2026-10-16 本地落库）
 

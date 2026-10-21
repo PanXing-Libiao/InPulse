@@ -3,7 +3,7 @@ import { ConfigProvider } from "antd";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InpulseApiClient, ProjectListItem } from "@generated/api";
 import { AuthStateProvider } from "@features/auth/auth-context";
 import { ProjectTierProvider } from "@features/common/project-tier-context";
@@ -47,6 +47,20 @@ const maintenanceProject: ProjectListItem = {
   name: "老平台维护",
   status: "MAINTENANCE",
   ...baseProject,
+};
+
+const secondOpenProject: ProjectListItem = {
+  ...openProject,
+  id: 22,
+  code: "SECOND",
+  name: "乙项目",
+};
+
+const thirdOpenProject: ProjectListItem = {
+  ...openProject,
+  id: 23,
+  code: "THIRD",
+  name: "丙项目",
 };
 
 describe("项目分档与侧栏项目树", () => {
@@ -109,5 +123,83 @@ describe("项目分档与侧栏项目树", () => {
     expect(
       within(tree).queryByRole("button", { name: /进行中平台/ }),
     ).toBeNull();
+  });
+});
+
+describe("项目星标与侧栏项目树同步", () => {
+  beforeEach(() => {
+    globalThis.localStorage.clear();
+  });
+
+  it("星标置顶规则同时作用于项目卡片与侧栏，并在点星后立即同步", async () => {
+    const projects = [openProject, secondOpenProject, thirdOpenProject];
+    const client = {
+      listProjects: vi.fn().mockResolvedValue({ items: projects }),
+      listModules: vi.fn().mockResolvedValue({ items: [] }),
+      listFeatures: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as InpulseApiClient;
+    globalThis.localStorage.setItem("inpulse.projects.starred.7", "[23]");
+
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <MemoryRouter>
+            <AuthStateProvider
+              value={{
+                status: "authenticated",
+                user: {
+                  id: 7,
+                  loginName: "viewer",
+                  name: "查看者",
+                  email: null,
+                  avatarUrl: null,
+                  isAdmin: false,
+                  status: "ACTIVE",
+                },
+              }}
+            >
+              <ProjectTierProvider>
+                <ProjectsPageView
+                  creatorName="特哥"
+                  projects={projects}
+                  client={client}
+                />
+                <ProjectTree
+                  activeScope={null}
+                  onNavigate={vi.fn()}
+                  client={client}
+                />
+              </ProjectTierProvider>
+            </AuthStateProvider>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </ConfigProvider>,
+    );
+
+    const tree = document.querySelector(".project-tree") as HTMLElement;
+    await within(tree).findByRole("button", { name: /丙项目/ });
+    const treeOrder = () =>
+      Array.from(
+        tree.querySelectorAll<HTMLButtonElement>("button.project-node"),
+      ).map((button) => button.getAttribute("title"));
+    const cardOrder = () =>
+      screen
+        .getAllByRole("heading", { level: 2 })
+        .map((heading) => heading.textContent);
+
+    expect(treeOrder()).toEqual(["丙项目", "进行中平台", "乙项目"]);
+    expect(cardOrder()).toEqual(["丙项目", "进行中平台", "乙项目"]);
+
+    fireEvent.click(screen.getByTestId("star-project-22"));
+    expect(treeOrder()).toEqual(["乙项目", "丙项目", "进行中平台"]);
+    expect(cardOrder()).toEqual(["乙项目", "丙项目", "进行中平台"]);
+
+    fireEvent.click(screen.getByTestId("star-project-23"));
+    expect(treeOrder()).toEqual(["乙项目", "进行中平台", "丙项目"]);
+    expect(cardOrder()).toEqual(["乙项目", "进行中平台", "丙项目"]);
   });
 });
