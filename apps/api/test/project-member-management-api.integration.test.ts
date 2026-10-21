@@ -1,5 +1,4 @@
 import "reflect-metadata";
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 
 import { Module, type INestApplication } from "@nestjs/common";
@@ -38,6 +37,7 @@ import { PostgresFeatureReadPort } from "../src/modules/features/postgres-featur
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
@@ -279,9 +279,10 @@ beforeAll(async () => {
     keyFor: () => key,
   });
   const activity = new PostgresActivityWritePort();
-  const notifications = new PostgresNotificationWritePort();
-  const search = new PostgresSearchProjectionWritePort();
   const access = new PostgresProjectAccessQueryPort(client);
+  const notifications = new PostgresNotificationWritePort();
+  const dispatcher = new ProjectNotificationDispatcher(access, notifications);
+  const search = new PostgresSearchProjectionWritePort();
 
   management = new TasksManagementService(
     access,
@@ -295,7 +296,7 @@ beforeAll(async () => {
     audit,
     activity,
     search,
-    notifications,
+    dispatcher,
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
   );
@@ -310,7 +311,7 @@ beforeAll(async () => {
     new ProjectRoleGateService(access, new PostgresProjectMembersQueryPort()),
     audit,
     activity,
-    notifications,
+    dispatcher,
   );
   const http = new ProjectMemberManagementHttpService(
     auth,
@@ -657,8 +658,10 @@ describe("F-05 project member management API", () => {
 
     const expected = [first.userId, second.userId].sort((a, b) => a - b);
     expect(await taskAssigneeIds(soloTask.id)).toEqual(expected);
-    // ADR-040：同一任务的其他负责人不变，所选接手人不顶掉在任负责人。
-    expect(await taskAssigneeIds(sharedTask.id)).toEqual([first.userId]);
+    // ADR-040：同一任务的其他负责人保留，同时把所选接手人加入任务。
+    expect(await taskAssigneeIds(sharedTask.id)).toEqual(
+      [first.userId, second.userId].sort((a, b) => a - b),
+    );
   });
 
   it("keeps un-reassigned tasks on the removed owner and reports unfinished count", async () => {

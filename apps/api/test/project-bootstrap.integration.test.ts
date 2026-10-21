@@ -9,6 +9,8 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
+import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import {
   PostgresActiveUsersQueryPort,
@@ -46,7 +48,10 @@ beforeAll(async () => {
     }),
     new PostgresSearchProjectionWritePort(),
     new PostgresActivityWritePort(),
-    new PostgresNotificationWritePort(),
+    new ProjectNotificationDispatcher(
+      new PostgresProjectAccessQueryPort(client!),
+      new PostgresNotificationWritePort(),
+    ),
   );
 });
 

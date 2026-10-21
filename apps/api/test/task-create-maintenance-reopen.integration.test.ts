@@ -1,5 +1,4 @@
 import "reflect-metadata";
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { TaskStatusRequest } from "@inpulse/api-contract";
 import {
@@ -14,6 +13,7 @@ import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-featu
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
@@ -41,8 +41,9 @@ beforeAll(() => {
   });
   auditDb = createDatabaseClient(testUrls().auditReader);
   uow = new PostgresUnitOfWork(db);
+  const access = new PostgresProjectAccessQueryPort(db);
   management = new TasksManagementService(
-    new PostgresProjectAccessQueryPort(db),
+    access,
     new PostgresModuleQueryPort(),
     new PostgresFeatureQueryPort(),
     new PostgresFeatureReadPort(),
@@ -53,7 +54,10 @@ beforeAll(() => {
     new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key }),
     new PostgresActivityWritePort(),
     new PostgresSearchProjectionWritePort(),
-    new PostgresNotificationWritePort(),
+    new ProjectNotificationDispatcher(
+      access,
+      new PostgresNotificationWritePort(),
+    ),
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
   );

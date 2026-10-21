@@ -12,12 +12,13 @@ import { AuditWritePort } from "../../audit/audit.port.js";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import type { IdempotencyExecutionResult } from "../../idempotency/runner.js";
 import { ActivityWritePort } from "../activity/index.js";
-import { NotificationWritePort } from "../notifications/index.js";
+import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
 import { ProjectMemberTaskCommandPort } from "../tasks/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
   type ProjectAccessQueryPort,
 } from "./project-access.port.js";
+import { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 import { ProjectRoleGateService } from "./project-role-gate.service.js";
 import { PROJECT_MEMBER_ROLE_CHANGE_ACTIVITY } from "./project-member-events.js";
 import {
@@ -34,7 +35,8 @@ import type {
 
 const PROJECT_MEMBER_ADD_ACTIVITY = "PROJECT_MEMBER_ADDED";
 const PROJECT_MEMBER_REMOVE_ACTIVITY = "PROJECT_MEMBER_REMOVED";
-const PROJECT_MEMBER_JOIN_NOTIFICATION = "PROJECT_JOINED";
+const PROJECT_MEMBER_JOIN_NOTIFICATION =
+  PROJECT_NOTIFICATION_TYPES.projectJoined;
 
 export class ProjectMemberManagementError extends Error {
   constructor(
@@ -72,8 +74,8 @@ export class ProjectMemberManagementService {
     private readonly roleGate: ProjectRoleGateService,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
-    @Inject(NotificationWritePort)
-    private readonly notifications: NotificationWritePort,
+    @Inject(ProjectNotificationDispatcher)
+    private readonly notifications: ProjectNotificationDispatcher,
   ) {}
 
   async listMembers(
@@ -201,17 +203,20 @@ export class ProjectMemberManagementService {
       sourceRowVersion: project.rowVersion,
       occurredAt,
     });
-    await this.notifications.write(tx, {
-      recipientId: member.userId,
-      projectId: project.projectId,
-      sourceChainId: event.chainId,
-      sourceSequence: event.sequenceNo,
-      notificationType: PROJECT_MEMBER_JOIN_NOTIFICATION,
-      title: `已加入项目 ${project.name}`,
-      body: "你已被系统管理员添加为项目成员",
-      targetPath: `/projects/${project.projectId}/activity`,
-      createdAt: occurredAt,
-    });
+    await this.notifications.dispatch(
+      tx,
+      {
+        projectId: project.projectId,
+        sourceChainId: event.chainId,
+        sourceSequence: event.sequenceNo,
+        notificationType: PROJECT_MEMBER_JOIN_NOTIFICATION,
+        title: `已加入项目 ${project.name}`,
+        body: "你已被系统管理员添加为项目成员",
+        targetPath: `/projects/${project.projectId}/activity`,
+        createdAt: occurredAt,
+      },
+      [member.userId],
+    );
 
     const body: AddProjectMemberResponse = {
       member: this.toContractMember(member),

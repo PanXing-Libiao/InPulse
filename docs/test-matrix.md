@@ -6946,7 +6946,7 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | LEFTOVER-STATUS-API-003 | 真实 PostgreSQL 集成 | 概览与总结口径 | 项目概览的未处理计数排除 VOID 记录；记录总结 `closedTotal` 计入 VOIDED；任务中心遗留项计数不再包含作废记录 | 本地通过（2026-10-20，`aggregate-read-api.integration.test.ts`、`aggregate-read-ports.integration.test.ts`、`record-summary.integration.test.ts`） |
 | LEFTOVER-STATUS-BROWSER-001 | 浏览器复核 | 真实作废记录 | T1-CR-1 记录为 VOID 且底层遗留项为 RESOLVED，重启 API 后遗留问题页折叠区显示「已作废」而非「已处理」 | 本地通过（2026-10-20，Edge 本地开发页） |
 
-验证结果（2026-10-20）：定向 Web 单测 6 文件 58 例、全量 Web 单测 116 文件 982 例、API 单测 80 文件 517 例、相关真实 PostgreSQL 集成 3 文件 44 例及项目概览 1 文件 22 例均通过；工作区 typecheck、契约 drift（6 个产物）与 validate（126 条路由）、前端依赖边界、全量 build、Prettier、`check:docs`（137 个 Markdown 文件）与 `git diff --check` 通过；本地 API 已重建并重启，健康检查返回 ok，`dist` 中确认包含 VOIDED 派生 SQL；Edge 本地开发页复核 T1-CR-1 已显示「已作废」。全量 API 集成 64 文件 629 例中 628 例通过，唯一失败为未改动的 `project-member-management-api.integration.test.ts` ADR-040 用例（期望接手人只保留 `first`，实际第二接手人仍在），与本轮改动无关，未修改。未运行 Playwright E2E 与 GitHub Actions。
+验证结果（2026-10-20）：定向 Web 单测 6 文件 58 例、全量 Web 单测 116 文件 982 例、API 单测 80 文件 517 例、相关真实 PostgreSQL 集成 3 文件 44 例及项目概览 1 文件 22 例均通过；工作区 typecheck、契约 drift（6 个产物）与 validate（126 条路由）、前端依赖边界、全量 build、Prettier、`check:docs`（137 个 Markdown 文件）与 `git diff --check` 通过；本地 API 已重建并重启，健康检查返回 ok，`dist` 中确认包含 VOIDED 派生 SQL；Edge 本地开发页复核 T1-CR-1 已显示「已作废」。全量 API 集成 64 文件 629 例中 628 例通过，唯一失败为 `project-member-management-api.integration.test.ts` ADR-040 用例（期望接手人只保留 `first`，实际第二接手人仍在）；该过期断言已于 2026-10-21 按“保留原负责人并追加接手人”的现行语义修正。未运行 Playwright E2E 与 GitHub Actions。
 
 
 ## 2026-10-20 企业微信项目群通知策略与机器人对齐（ADR-090）
@@ -6956,11 +6956,11 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | WECOM-GROUP-POLICY-API-001 | API 集成（真实 PostgreSQL + HTTP） | 项目群开关默认值与权限 | 未保存时 `notificationOptions.disabledCategories` 为空；普通成员写 403、非成员写 404、缺 CSRF 422、非法类别 422 | 本地通过（2026-10-20，`project-wecom-group.integration.test.ts` 11/11） |
 | WECOM-GROUP-POLICY-API-002 | API 集成（真实 PostgreSQL） | 保存、规范化、审计与幂等 | 组长与系统管理员均可保存；重复类别去重并排序；数据库五列与 `row_version` 正确；审计记录 before / after；同 Key 重放 200 且不重复递增；不同 body 409 | 本地通过（2026-10-20，同上） |
 | WECOM-GROUP-POLICY-API-003 | API 集成（真实 PostgreSQL） | 解绑和重放门禁 | 未绑定 ACTIVE 群时保存返回 409 `PROJECT_WECOM_GROUP_NOT_BOUND`；解绑后同 Key 重放原保存请求同样 409 | 本地通过（2026-10-20，同上） |
-| WECOM-GROUP-POLICY-BRIDGE-001 | Bridge 单元 | 五类映射与默认放行 | task.assigned / task.create / task.update 映射到 task.assign；状态、记录、项目成员、删除事件映射正确；未知事件与缺行默认放行；显式 FALSE 才关闭 | 本地通过（2026-10-20，`notification-categories.test.mjs` 4/4） |
+| WECOM-GROUP-POLICY-BRIDGE-001 | Bridge 单元 | 五类映射与默认放行 | task.assigned / task.create / task.update 映射到 task.assign；状态、记录、项目成员、删除事件映射正确；未知事件与缺行默认放行；显式 FALSE 才关闭 | 历史通过（2026-10-20，旧版双来源，`notification-categories.test.mjs` 4/4）；来源与 task.update 分类由 WECOM-GROUP-CONSOLIDATE-BRIDGE-001 修订 |
 | WECOM-GROUP-POLICY-WEB-001 | Web 单元 | 切换即保存与失败回滚 | 开关切换提交完整 `disabledCategories`，保存期间禁用，成功提示保留，失败回滚并显示服务端错误；成功后当前浏览器站内筛选同步 | 本地通过（2026-10-20，`ProjectNotificationOptionsModal.test.tsx`、`ProjectWecomGroupCard.test.tsx`、`ProjectMembersPageView.test.tsx` 3 文件 24 例） |
 | WECOM-GROUP-POLICY-GATE-001 | 静态门禁 | 契约、权限与类型 | API / Web typecheck；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由；`permissions:check` 129 条操作 / 129 条路由 | 本地通过（2026-10-20） |
 
-已知边界：桥接过滤在物化 `app.wecom_group_deliveries` 前执行，关闭或重新开启都不回溯历史、已排队或已发送消息；未识别的未来事件默认放行。个人单聊和企业微信个人通知偏好不受本 ADR 影响。未运行全量 API / Web 单测、Playwright、生产构建、Trivy 与 GitHub Actions。
+已知边界：本轮已运行全量 API / Web 单测、真实 PostgreSQL API / 数据库集成、生产构建、完整 Playwright 89/89，以及契约、权限、依赖边界、部署预检、Secret 与文档门禁；`deps:audit` 仍被既有 `vite 8.2.2` 高危项阻断（修复版 8.2.4，按仓库规则需独立依赖 PR 并由人工确认）。未执行 Trivy 与 GitHub Actions。
 
 ## 2026-10-20 项目封箱彩蛋（ADR-091）
 
@@ -6992,6 +6992,32 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR092-UNIT-001 | API 单元 | 封箱记录与版本载荷 | 状态切换返回同版本；封箱审计 / 活动 / 搜索投影的 `sourceRowVersion` 使用当前内容版本；`changeProjectStatus` 幂等契约版本为 `1.3.0` | 本地通过（2026-10-21，`project-management.service.test.ts` 7/7） |
 | ADR092-WEB-UNIT-001 | Web 单元 | 状态保存与版本回写 | 只改状态调用状态接口并回写同版本；字段与状态同改按字段响应的新版本串行保存；无改动不请求 | 本地通过（2026-10-21，`project-management-modals.test.tsx` 12/12） |
 | SUCCESS-TOAST-UI-001 | Web 单元 | 成功气泡替换整行横幅 | `SuccessToast` 6 秒自动请求关闭、支持手动关闭；任务保存、功能 / 模块操作、项目创建 / 编辑 / 删除均渲染 `.success-toast` 浮层且不落在 `.ant-alert` 文档流中 | 本地通过（2026-10-21，5 个相关 Web 测试文件 84/84） |
-| ADR092-GATE-001 | 静态 / 全量门禁 | 类型、契约、迁移与回归 | API / Web typecheck；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由；`permissions:check` 129 / 129；`db:migrations:check` 56 个 SQL；`check:docs` 142 个 Markdown；`check:secrets` 1406 个文件；Prettier check；API / Web 生产构建；`check:frontend:boundaries` 383 模块 / 1914 依赖；`check:deps` 905 源文件；API 单测 80 文件 521 例、Web 单测 119 文件 1002 例、契约单测 16 文件 102 例、数据库集成 2 文件 29 例全绿 | 本地通过（2026-10-21） |
+| ADR092-GATE-001 | 静态 / 全量门禁 | 类型、契约、迁移与回归 | API / Web typecheck；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由；`permissions:check` 129 / 129；`db:migrations:check` 56 个 SQL；`check:docs` 142 个 Markdown；`check:secrets` 1406 个文件；Prettier check；API / Web 生产构建；`check:frontend:boundaries` 383 模块 / 1914 依赖；`check:deps` 905 源文件；API 单测 80 文件 521 例、Web 单测 119 文件 1004 例、契约单测 16 文件 102 例、数据库集成 2 文件 29 例全绿 | 本地通过（2026-10-21） |
 
-已知偏差：完整 API 集成 65 文件 637 例中，64 文件 636 例通过；唯一失败为 `project-member-management-api.integration.test.ts` 的 ADR-040 用例（同一任务改派时现有实现把新增接手人与在任负责人合并，期望只保留在任负责人），单文件复跑同样失败，与本批状态版本及气泡改动无关。全仓 `pnpm lint` 仍被 18 个既有未使用变量 / 控制字符正则告警阻断；本批新增与主要改动文件的定向 ESLint 通过。
+已知偏差：ADR-092 记录的既有未使用变量 / 控制字符正则告警已在本轮修复；原 ADR-040 成员改派期望已按现行多负责人语义收敛，并由本轮 NOTIFY-DISPATCH-REG-001 回归覆盖。
+
+## 2026-10-21 站内通知统一分发
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| NOTIFY-DISPATCH-UNIT-001 | API 单元 | 收件人规范化 | 非法 ID 被丢弃，重复 ID 去重，结果按用户 ID 升序；分发器逐个查询项目写权限，只向 allowed 收件人写入，并返回真实插入条数 | 本地通过（2026-10-21，`project-notification.dispatcher.test.ts` 3/3） |
+| NOTIFY-DISPATCH-INT-001 | API 集成（真实 PostgreSQL） | 受影响的业务写入链路 | 项目创建/删除/管理、成员管理、任务创建/完成/删除/合并/解除、记录发布/生命周期、遗留问题、管理员用户与外部链接链路全部通过；通知权限过滤与个人偏好过滤未破坏现有事件 | 本地通过（2026-10-21，17 文件 260 例，测试库 `app_ci`） |
+| NOTIFY-DISPATCH-GATE-001 | 静态门禁 | 类型与格式 | 全工作区 `pnpm typecheck`、`pnpm format:check`、`git diff --check` 通过；API 单测 81 文件 524 例、Web 单测 119 文件 1004 例、契约单测 16 文件 102 例通过 | 本地通过（2026-10-21） |
+| NOTIFY-DISPATCH-REG-001 | 回归修正 | 多负责人任务交接断言 | 同一任务保留其他负责人并追加所选接手人，与 ADR-040/ADR-084 现行实现一致 | 本地通过（2026-10-21，`project-member-management-api.integration.test.ts` 16/16） |
+
+已知边界：本轮已运行全量 API / Web 单测、真实 PostgreSQL API / 数据库集成、生产构建、完整 Playwright 89/89，以及契约、权限、依赖边界、部署预检、Secret 与文档门禁；`deps:audit` 仍被既有 `vite 8.2.2` 高危项阻断（修复版 8.2.4，按仓库规则需独立依赖 PR 并由人工确认）。未执行 Trivy 与 GitHub Actions。
+
+
+## 2026-10-21 企业微信群通知收敛为项目动态单一来源（ADR-093）
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| WECOM-GROUP-CONSOLIDATE-BRIDGE-001 | Bridge 单元 | 任务创建、真实改派与普通编辑 | task.create -> task.assign；task.update 且 assignmentChanged=true -> task.assign；false / 缺失 -> skip；完成、记录、项目成员、删除、未知动态与五类开关映射正确；未知 TASK 动态不再被实体兜底误归任务派发 | 本地通过（2026-10-21，`notification-categories.test.mjs` 6/6） |
+| WECOM-GROUP-CONSOLIDATE-API-001 | API 集成（真实 PostgreSQL + HTTP） | 任务动态改派元数据 | 创建任务写入 assignmentChanged=true、当前负责人、空原负责人；仅改标题写入 false 且原/现负责人相同；真实改派写入 true 且保留原负责人；动态摘要分别为任务创建、任务更新、任务改派 | 本地通过（2026-10-21，`tasks-api.integration.test.ts` 41/41） |
+| WECOM-GROUP-CONSOLIDATE-API-002 | API 集成（真实 PostgreSQL） | 活动读取与维护态回归 | 活动/通知读取、任务创建触发维护态重开及动态写入保持通过 | 本地通过（2026-10-21，`activity-notifications-api.integration.test.ts`、`task-create-maintenance-reopen.integration.test.ts` 2 文件 16 例） |
+| WECOM-GROUP-CONSOLIDATE-WEB-001 | Web 单元 | 绑定卡片文案与新口径一致 | 已绑定与未绑定提示均说明普通任务编辑不推送；默认说明覆盖任务派发、任务状态、记录、项目成员与删除类动态；卡片 7 例通过 | 本地通过（2026-10-21，`ProjectWecomGroupCard.test.tsx` 7/7） |
+| WECOM-GROUP-CONSOLIDATE-SOURCE-001 | 静态检查 | 单一来源与兼容边界 | `bridge.mjs` 群物化只查询 MEMBER 动态，不再查询 `app.notifications` 生成新投递；`long-conn.mjs` 保留旧 NOTIFICATION PENDING 兼容消费；状态只保留 `lastActivityId`，旧通知游标被忽略 | 本地通过（2026-10-21，代码审查 + `node --check`） |
+| WECOM-GROUP-CONSOLIDATE-GATE-001 | 静态门禁 | 类型、格式、文档与单测 | 全工作区 `pnpm typecheck`、`pnpm format:check`、`pnpm check:docs`、`git diff --check` 通过；API 单测 81 文件 524 例、API 集成 65 文件 638 例、数据库集成 2 文件 29 例通过 | 本地通过（2026-10-21） |
+| WECOM-GROUP-CONSOLIDATE-E2E-001 | Playwright 浏览器 | 完整产品回归 | 89 例全部通过；通知偏好关闭不回溯、通知页已读 / 未读、任务派发、记录发布、项目成员变更与通知入口等关键路径均未回归 | 本地通过（2026-10-21，89/89） |
+
+已知边界：本轮未同步测试 VM，未执行真实企业微信群发送、Trivy 与 GitHub Actions；升级前已排队的 NOTIFICATION 行仍可能各发一条旧消息。未识别动态仍默认放行，但不再按来源实体猜测类别。

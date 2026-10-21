@@ -9,6 +9,7 @@ export {
   ProjectMembersQueryPort,
   type AssignableProjectMember,
 } from "./project-members-query.port.js";
+export { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 export { ProjectStartNotifier } from "./project-start.notifier.js";
 export { ProjectWrapNotifier } from "./project-wrap.notifier.js";
 export {

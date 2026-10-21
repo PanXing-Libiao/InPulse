@@ -7,13 +7,12 @@ import type {
 import type { TransactionContext } from "../../database/transaction-context.js";
 import { AuditWritePort } from "../../audit/index.js";
 import { ActivityWritePort } from "../activity/index.js";
-import { NotificationWritePort } from "../notifications/index.js";
+import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
 import { SearchProjectionWritePort } from "../search/index.js";
 import {
-  PROJECT_ACCESS_QUERY_PORT,
+  ProjectNotificationDispatcher,
   ProjectStartNotifier,
   ProjectsWritePort,
-  type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { TaskManagementRepository } from "./task-management.repository.js";
 import { TaskManagementError } from "./tasks-management.service.js";
@@ -41,10 +40,8 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
     @Inject(SearchProjectionWritePort)
     private readonly search: SearchProjectionWritePort,
-    @Inject(NotificationWritePort)
-    private readonly notifications: NotificationWritePort,
-    @Inject(PROJECT_ACCESS_QUERY_PORT)
-    private readonly access: ProjectAccessQueryPort,
+    @Inject(ProjectNotificationDispatcher)
+    private readonly notifications: ProjectNotificationDispatcher,
     @Inject(ProjectsWritePort) private readonly projects: ProjectsWritePort,
     @Inject(ProjectStartNotifier)
     private readonly projectStarted: ProjectStartNotifier,
@@ -144,26 +141,20 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
       sourceStatus: "DONE",
       sourceRowVersion: result.rowVersion,
     });
-    for (const recipientId of [
-      ...new Set([result.creatorId, ...recordAuthors, ...result.assigneeIds]),
-    ].sort((a, b) => a - b)) {
-      const check = await this.access.checkProjectForWrite(tx, {
-        actorUserId: recipientId,
+    await this.notifications.dispatch(
+      tx,
+      {
         projectId: source.projectId,
-      });
-      if (check.kind !== "allowed") continue;
-      await this.notifications.write(tx, {
-        projectId: source.projectId,
-        recipientId,
         sourceChainId: event.chainId,
         sourceSequence: event.sequenceNo,
-        notificationType: "task.complete",
+        notificationType: PROJECT_NOTIFICATION_TYPES.taskComplete,
         title: `任务完成：${result.title}`.slice(0, 500),
         body: result.code,
         targetPath: `/projects/${source.projectId}/modules/${source.moduleId}${source.featureId === null ? "/tasks" : `/features/${source.featureId}`}?taskId=${source.taskId}`,
         createdAt: new Date(result.updatedAt),
-      });
-    }
+      },
+      [result.creatorId, ...recordAuthors, ...result.assigneeIds],
+    );
     await this.recordProjectOutput(tx, actorId, source, result, requestId);
     return result;
   }

@@ -318,7 +318,7 @@ describe("GET /api/v1/search with HTTP and real PostgreSQL", () => {
       entityId: leftoverEntityId,
       title: `${SEED_QUERY_PREFIX} leftover issue`,
       summary: "待处理 · CR-2048 登录页偶发闪白",
-      normalizedSearchText: `${SEED_QUERY_PREFIX} leftover issue`,
+      normalizedSearchText: `${SEED_QUERY_PREFIX} leftover issue 待处理`,
       visibilityScope: "MEMBER",
       sourceStatus: "ACTIVE",
     });
@@ -622,13 +622,14 @@ describe("GET /api/v1/search with HTTP and real PostgreSQL", () => {
     const page = await expectSearchPage(
       await requestSearch(baseUrl, {
         cookie: fixture.memberSessionCookie,
-        query: { q: SEED_QUERY_PREFIX.slice(0, 1), limit: 50 },
+        query: { q: "待", limit: 50 },
       }),
     );
     const entityIds = page.items.map((item) => item.entityId);
 
-    // 单字比唯一前缀命中面更宽，这里只断言接受查询且不泄露本轮 fixture 的不可见投影。
+    // 用本轮可见数据中的中文单字命中，避免依赖测试库里的其他历史投影。
     expect(page.items.length).toBeGreaterThan(0);
+    expect(entityIds).toContain(fixture.leftoverEntityId);
     expect(entityIds).not.toContain(fixture.adminOnlyEntityId);
     expect(entityIds).not.toContain(fixture.hiddenEntityId);
     expect(entityIds).not.toContain(fixture.otherProjectEntityId);

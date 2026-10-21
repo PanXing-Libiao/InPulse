@@ -7,7 +7,7 @@ import {
   type LeftoverListItem,
 } from "@inpulse/api-contract";
 
-import { UserReadPort, type UserRefItem } from "../../auth/user-read.port.js";
+import { UserReadPort } from "../../auth/user-read.port.js";
 import {
   PostgresUnitOfWork,
   type UnitOfWork,
@@ -54,14 +54,6 @@ function inconsistentError(detail: string): AggregateReadError {
     "AGGREGATE_READ_INCONSISTENT",
     "聚合读数据不完整，无法完成查询：" + detail,
   );
-}
-
-function toUserRef(user: UserRefItem): {
-  readonly userId: number;
-  readonly name: string;
-  readonly avatarUrl: string | null;
-} {
-  return { userId: user.userId, name: user.name, avatarUrl: user.avatarUrl };
 }
 
 @Injectable()

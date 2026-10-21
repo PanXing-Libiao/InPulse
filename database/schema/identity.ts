@@ -111,7 +111,7 @@ export const deletedUserIdentities = appSchema.table(
     loginName: text("login_name").notNull(),
     deletedAt: timestamptz("deleted_at").notNull().defaultNow(),
   },
-  (table) => [
+  () => [
     check(
       "deleted_user_identities_name_check",
       sql.raw("length(btrim(name)) BETWEEN 1 AND 200"),

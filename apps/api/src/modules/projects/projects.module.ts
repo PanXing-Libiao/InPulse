@@ -15,6 +15,7 @@ import { PostgresProjectQueryPort } from "./postgres-project-query-port.js";
 import { ProjectQueryPort } from "./project-query.port.js";
 import { ProjectRoleGateService } from "./project-role-gate.service.js";
 import { ProjectStartNotifier } from "./project-start.notifier.js";
+import { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 import { ProjectWrapNotifier } from "./project-wrap.notifier.js";
 import { Module } from "@nestjs/common";
 
@@ -70,6 +71,7 @@ import {
       useClass: PostgresActiveUsersQueryPort,
     },
     ProjectRoleGateService,
+    ProjectNotificationDispatcher,
     ProjectStartNotifier,
     ProjectWrapNotifier,
     {
@@ -88,6 +90,7 @@ import {
     ProjectsWritePort,
     ActiveUsersQueryPort,
     ProjectRoleGateService,
+    ProjectNotificationDispatcher,
     ProjectStartNotifier,
     ProjectWrapNotifier,
     ProjectLeaderTransferPort,

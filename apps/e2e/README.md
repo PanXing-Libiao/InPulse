@@ -12,12 +12,12 @@ F-13 功能档案、F-14 功能级任务创建/分配/编辑、F-08 `/audit` 审
 
 1. 已执行 `pnpm install --frozen-lockfile`。
 2. 已准备 PostgreSQL 18 + PGroonga 实例，并完成 `000_roles.sql`、
-   `020_pgroonga.sql` 与 `0000-0008` 迁移。
+   `020_pgroonga.sql`，并执行 `pnpm db:migrate` 到当前 HEAD。
 3. 已执行 `pnpm build`，使 `apps/api/dist/main.js` 可用。
 4. 设置可写测试数据的 bootstrap URL，例如：
 
 ```powershell
-$env:E2E_DATABASE_URL = "postgresql://cluster_bootstrap@127.0.0.1:55432/app"
+$env:E2E_DATABASE_URL = "postgresql://cluster_bootstrap@127.0.0.1:55432/app_ci"
 ```
 
 5. 首次运行或机器未安装 Chromium 时，执行：
@@ -68,12 +68,12 @@ SYSTEM 链中夹具账号产生的记录会一并删除并把链头回退到剩�
 GitHub Actions 的 `CI / workspace` job 在 `pnpm build` 之后、`pnpm check:deps`
 之前安装 Chromium 并执行 `pnpm test:e2e`，此时 PostgreSQL 探针实例仍在运行。
 无论成功或失败都会上传 Playwright HTML 报告、截图、trace 与 video 作为 CI
-artifact。当前为 54 个用例、27 个 spec 文件，已覆盖
+artifact。当前为 89 个用例、35 个 spec 文件，已覆盖
 F-03 用户管理、F-05 项目成员管理（普通成员 403、管理员添加/移除与不存在项目读取
 边界）、项目创建关键路径、F-13 功能档案、F-14 功能级任务、F-16 任务状态闭环、
 F-08 `/audit` 审计页（普通成员 403、管理员读取与筛选）、F-17 独立草稿、
 F-18 记录发布、搜索边界、F-27 项目动态专属路径与 F-28 通知状态联动；本地全量
-`pnpm test:e2e` 53/53 通过（9.3m），CI 见 [PR #133](https://github.com/256-code/InPulse/pull/133) 检查记录。
+`pnpm test:e2e` 本地全量 89/89 通过（8.1m）；CI 检查记录见 [PR #133](https://github.com/256-code/InPulse/pull/133)。
 
 `pnpm test:e2e` 以 `node dist/main.js` 启动 API，本地复跑前必须先执行
 `pnpm build`：本次曾用陈旧 `apps/api/dist` 跑出两条既有 F-18 用例失败（旧产物

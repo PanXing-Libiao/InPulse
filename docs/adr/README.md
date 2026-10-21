@@ -103,9 +103,10 @@
 | [ADR-087](ADR-087.md) | Accepted | 项目动态固化操作人身份快照：`activity_projection.actor_snapshot` 保存 id/姓名/登录名，读取优先使用快照；移除用户外键并停止删除时改写动态摘要；历史行不回填；无新路由、无依赖变化 |
 | [ADR-088](ADR-088.md) | Accepted | 离职账号物理删除：删除已停用且无 ACTIVE 项目成员关系的账号，7 类私有运行态数据级联删除；26 类业务署名写入事件时身份快照，保留审计、项目动态、项目/任务/记录等历史；`deleteUser` 幂等契约升至 2.0.0；替代 ADR-082 的墓碑化机制 |
 | [ADR-089](ADR-089.md) | Accepted | 停用账号前的项目组长移交：组长项目即使无未完成任务也进入交接清单；`disableUser` 新增 `leaderTransfers`，只能移交给该项目 ACTIVE 成员，幂等契约升至 3.0.0；任务、组长移交、审计、动态、Session 撤销与停用同事务；无新路由、无迁移 |
-| [ADR-090](ADR-090.md) | Accepted | 企业微信项目群通知策略服务端化：五类项目级开关落库（迁移 `0055_project_wecom_group_notification_options.sql`），`getProjectWecomGroup` 返回 `notificationOptions`，新增 `updateProjectWecomGroupNotificationOptions`（128 → 129，组长 / 系统管理员、CSRF、数据库幂等与审计）；桥接在物化 `wecom_group_deliveries` 前按 `task.assign` / `task.status` / `record` / `project.member` / `scope.delete` 过滤，未识别事件默认放行，关闭只影响之后物化的新消息 |
+| [ADR-090](ADR-090.md) | Accepted | 企业微信项目群通知策略服务端化：五类项目级开关落库（迁移 `0055_project_wecom_group_notification_options.sql`），`getProjectWecomGroup` 返回 `notificationOptions`，新增 `updateProjectWecomGroupNotificationOptions`（128 → 129，组长 / 系统管理员、CSRF、数据库幂等与审计）；桥接在物化 `wecom_group_deliveries` 前按 `task.assign` / `task.status` / `record` / `project.member` / `scope.delete` 过滤，未识别事件默认放行，关闭只影响之后物化的新消息；群消息来源与 `task.update` 分类由 ADR-093 修订 |
 | [ADR-091](ADR-091.md) | Accepted | 项目封箱彩蛋：项目首次进入维护中且已有完成任务时，以迁移 `0056_project_wraps.sql` 冻结一次性项目快照；审计复用 `project.status.change` 并标记 `wrapped`，写 `PROJECT_WRAPPED` 动态和全体活跃成员的 `project.wrapped` 通知；个人单聊与项目群都发送文字和 1080 × 1350 纪念海报，群投递按 `delivered_step_count` 分段续传，群开关与个人偏好继续分别生效 |
 | [ADR-092](ADR-092.md) | Accepted | 项目状态变更与内容版本解耦：`app.projects.row_version` 只表示内容版本；纯状态变更保持版本，任何内容列变化仍必须恰好 +1；首次任务完成因写粘性标记仍推进版本；`If-Match` 与行锁继续保护内容并发；迁移 `0057_project_status_version_semantics.sql` 替换项目触发器，`changeProjectStatus` 幂等契约升至 1.3.0 |
+| [ADR-093](ADR-093.md) | Accepted | 企业微信项目群通知收敛为 MEMBER 可见项目动态单一来源：不再从 `app.notifications` 物化群消息，解除个人通知偏好耦合并消除跨来源重复；`task.create` 归任务派发，`task.update` 仅在 `metadata.assignmentChanged === true` 时归任务派发，普通编辑跳过；任务动态新增 `assignmentChanged` / `assigneeIds` / `previousAssigneeIds`；未知动态默认放行但不再按实体兜底分类；无新路由、无迁移 |
 
 
 ## 关联基线

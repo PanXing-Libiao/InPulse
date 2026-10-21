@@ -7,7 +7,7 @@
 ## 目录
 
 - `app/`：桥接脚本。`runner.mjs` 拉起两个子进程——`long-conn.mjs`（企业微信长连接：绑定码兑换、
-  主动推送、项目群投递消费）与 `bridge.mjs`（轮询 `app.notifications` 推送个人通知并物化项目群投递）。
+  主动推送、项目群投递消费）与 `bridge.mjs`（轮询 `app.notifications` 推送个人通知，并按 MEMBER 可见项目动态物化项目群投递）。
 - `Dockerfile`：`FROM` 本地 registry 的 api 镜像（复用其 node 24）；`COPY app /opt/wecom-bridge`。
 - `bridge.env`、`app/bridge-config.json`、`app/config.json`、`test-bridge-config.json`：运行配置
   （不含任何 Secret；密钥与密码由 VM 上只读挂载）。
@@ -25,41 +25,51 @@
 - `config.json` 可选键：`welcomeUnboundThrottleMs`、`welcomeBoundThrottleMs`（毫秒，0 = 该类用户
   不再自动发）、`welcomeStateFile`。
 
-## 项目群消息投递（2026-10-16 本地实现，2026-10-20 已同步到 VM）
+## 项目群消息投递（2026-10-16 本地实现，2026-10-20 已同步到 VM；ADR-093 于 2026-10-21 收敛来源）
 
-- 范围（ADR-077 第二批）：`app.notifications` 的 `task.assigned`（同一次指派事件的多个
-  收件人只占一行，正文聚合「指派给」姓名）与 `app.activity_projection` 中
-  `visibility_scope = 'MEMBER'` 的项目动态；`ADMIN_ONLY` 动态不进群；个人单聊推送
-  不受影响，两条通道并存。
-- 项目级开关（ADR-090，2026-10-20）：项目成员页「通知选项」保存到
+- 范围：只消费 `app.activity_projection` 中 `visibility_scope = 'MEMBER'` 的项目动态；
+  `ADMIN_ONLY` 动态不进群。ADR-093 起不再从 `app.notifications` 生成新的群投递行，
+  因此同一次任务创建/改派不会因“个人通知 + 项目动态”双来源重复发两条，也不会被
+  负责人的个人通知偏好间接关掉。个人单聊和站内通知链路不受影响。
+- 项目级开关（ADR-090）：项目成员页「通知选项」保存到
   `app.project_wecom_group_notification_options`，五个开关分别对应 `task.assign` /
   `task.status` / `record` / `project.member` / `scope.delete`。`bridge.mjs` 每轮
-  物化前读取开关并按 `notification-categories.mjs` 的固定映射过滤通知与 MEMBER
-  动态；缺行（从未保存）与未识别的新事件默认放行，显式 FALSE 才阻断。
+  物化前读取开关并按 `notification-categories.mjs` 的固定映射过滤；缺行（从未保存）
+  按全开处理，显式 FALSE 才阻断。
+- 任务派发口径：`task.create` 进入 `task.assign`；`task.update` 只有
+  `metadata.assignmentChanged === true` 才进入 `task.assign`。普通标题、描述、
+  优先级、截止时间编辑跳过，不进入群发送队列。任务动态同时写入
+  `assignmentChanged` / `assigneeIds` / `previousAssigneeIds` 供桥接判断。
+- 未知动态：未在映射表中登记的新动态仍默认放行，但不再按来源实体兜底猜测类别，
+  避免未来的 `TASK` 动态被误归到任务派发。新增业务事件时应同步补映射和测试。
 - 生效边界：开关只影响此后新写入的 PENDING 行；关闭期间游标照常前进，重新开启
   不补发，历史、已排队和已发送消息都不回溯。个人单聊与个人通知偏好不受影响。
-- 两级分工：`bridge.mjs` 按独立游标物化——在「该项目当前 ACTIVE 群绑定」下插入
+- 两级分工：`bridge.mjs` 按独立动态游标物化——在「该项目当前 ACTIVE 群绑定」下插入
   `app.wecom_group_deliveries` 的 `PENDING` 行（按「绑定行 + 来源类型 + 来源 id」去重；
   只物化绑定时间之后发生的来源）；`long-conn.mjs` 消费 PENDING 队列，按 id 升序用
   `aibot_send_msg` + `chat_type:2` 发送 markdown，发送结果以响应帧 `errcode` 为准回写：
   成功 -> `SENT` + `sent_at`（并清空绑定行 `last_delivery_error`），失败 -> `FAILED` +
   `attempts` + `last_error`（同时截断回写绑定行 `last_delivery_error`，≤500 字符）。
+- 兼容：升级前已排队且未发送的 `NOTIFICATION` 行仍由 `long-conn.mjs` 兼容消费，
+  避免升级丢失旧 PENDING 消息；新物化不再生成该来源类型。
 - 限速与重试：投递侧 30 条/分钟、1000 条/小时（内存窗口，超限自动退避并限频打日志）；
   识别为限速/临时错误的响应保持 `PENDING` 并退避 60 秒重试；15 秒无响应按超时保持
   `PENDING` 稍后重试（响应迟到时可能重复，PoC 取舍）；其余错误直接 `FAILED` 不自动重试；
   解绑后残留的 `PENDING` 行按「群绑定已解绑」置 FAILED；重启后从 PENDING 断点续传。
-- 游标与配置：`bridge-config.json` 的状态文件新增 `lastGroupNotificationId` /
-  `lastActivityId`，首次运行从当前最大 id 之后开始（不回补历史）；可选键
-  `groupDeliveries=false` 关闭物化、`groupNotificationTypes` 覆盖通知类型清单、
-  `startFromGroupNotificationId` / `startFromActivityId` 指定游标初值。`config.json`
-  可选键 `groupDeliveries=false`、`groupDeliveryPollMs`、`groupDeliveriesPerMinute`、
-  `groupDeliveriesPerHour`。
+- 游标与配置：状态文件保留 `lastActivityId` 作为群动态游标，首次运行从当前最大动态
+  id 之后开始（不回补历史）；可选键 `groupDeliveries=false` 关闭物化、
+  `startFromActivityId` 指定游标初值。旧状态文件中的 `lastGroupNotificationId` 会被忽略，
+  `groupNotificationTypes` / `startFromGroupNotificationId` 不再参与群投递。
+  `config.json` 可选键 `groupDeliveries=false`、`groupDeliveryPollMs`、
+  `groupDeliveriesPerMinute`、`groupDeliveriesPerHour`。
 - 分类单元测试：`node --test deploy/test-vm/wecom-bridge/app/notification-categories.test.mjs`
-  覆盖五类映射、未识别事件默认放行、缺行全开与显式 FALSE 关闭。
-- 本地实测（2026-10-16，真实群绑定：项目 1）：任务指派与 MEMBER 动态各 1 条真实送达
+  覆盖任务创建、真实改派、普通编辑跳过、五类映射、未知动态默认放行、缺行全开与
+  显式 FALSE 关闭。
+- 历史实测（2026-10-16，旧版双来源）：任务指派与 MEMBER 动态各 1 条真实送达
   （errcode=0，投递行 `SENT`）；同批 ADMIN_ONLY 动态未产生投递行；假 chatid 绑定验证
   失败回写（`errcode 93006 invalid chatid` -> `FAILED` + 绑定行 `last_delivery_error`）；
   long-conn 停机期间 PENDING 行保留、重启后续传送达。联调合成数据已清理。
+  ADR-093 收敛来源后的改动需重新同步 VM 后再做真实群投递验证。
 
 ## 项目封箱彩蛋（ADR-091，2026-10-20）
 

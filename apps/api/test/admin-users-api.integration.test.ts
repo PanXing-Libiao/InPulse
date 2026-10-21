@@ -40,6 +40,7 @@ import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { TasksManagementService } from "../src/modules/tasks/tasks-management.service.js";
@@ -438,7 +439,10 @@ beforeAll(async () => {
     audit,
     activity,
     search,
-    new PostgresNotificationWritePort(),
+    new ProjectNotificationDispatcher(
+      access,
+      new PostgresNotificationWritePort(),
+    ),
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
   );

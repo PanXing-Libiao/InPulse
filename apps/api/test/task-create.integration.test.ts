@@ -14,7 +14,6 @@ import {
 import { taskCreateRequestSchema } from "@inpulse/api-contract";
 import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import type { AuthenticatedMutationService } from "../src/auth/authenticated-mutation.service.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { ProjectCreationLockPort } from "../src/modules/projects/project-creation-lock.port.js";
@@ -34,6 +33,7 @@ import { FeatureCreateCommandPort } from "../src/modules/features/create.command
 import { FeatureCandidatesQueryPort } from "../src/modules/search/index.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { TasksManagementService } from "../src/modules/tasks/tasks-management.service.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
@@ -104,7 +104,10 @@ beforeAll(() => {
     audit,
     activity,
     search,
-    new PostgresNotificationWritePort(),
+    new ProjectNotificationDispatcher(
+      access,
+      new PostgresNotificationWritePort(),
+    ),
     moduleRead,
     new PostgresProjectsWritePort(),
   );

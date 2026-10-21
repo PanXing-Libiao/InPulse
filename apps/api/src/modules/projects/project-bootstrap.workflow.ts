@@ -9,16 +9,18 @@ import { AuditWritePort } from "../../audit/audit.port.js";
 import type { IdempotencyExecutionResult } from "../../idempotency/runner.js";
 import { SearchProjectionWritePort } from "../search/index.js";
 import { ActivityWritePort } from "../activity/index.js";
-import { NotificationWritePort } from "../notifications/index.js";
+import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
 import {
   ActiveUsersQueryPort,
   ProjectsWritePort,
   type ProjectCreatedRecord,
 } from "./projects-write.port.js";
+import { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 import { resolveProjectCode } from "./project-code.js";
 
 const PROJECT_CREATE_ACTIVITY_TYPE = "PROJECT_CREATED";
-const PROJECT_CREATE_NOTIFICATION_TYPE = "PROJECT_JOINED";
+const PROJECT_CREATE_NOTIFICATION_TYPE =
+  PROJECT_NOTIFICATION_TYPES.projectJoined;
 
 export class ProjectBootstrapValidationError extends Error {
   readonly code = "PROJECT_BOOTSTRAP_VALIDATION_ERROR" as const;
@@ -71,7 +73,7 @@ export interface ProjectBootstrapDeps {
   readonly audit: AuditWritePort;
   readonly search: SearchProjectionWritePort;
   readonly activity: ActivityWritePort;
-  readonly notifications: NotificationWritePort;
+  readonly notifications: ProjectNotificationDispatcher;
 }
 
 /**
@@ -89,8 +91,8 @@ export class ProjectBootstrapWorkflow {
     @Inject(SearchProjectionWritePort)
     private readonly search: SearchProjectionWritePort,
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
-    @Inject(NotificationWritePort)
-    private readonly notifications: NotificationWritePort,
+    @Inject(ProjectNotificationDispatcher)
+    private readonly notifications: ProjectNotificationDispatcher,
   ) {}
 
   async execute(
@@ -213,9 +215,9 @@ export class ProjectBootstrapWorkflow {
       occurredAt,
     });
 
-    for (const memberId of allMemberIds) {
-      await this.notifications.write(tx, {
-        recipientId: memberId,
+    await this.notifications.dispatch(
+      tx,
+      {
         projectId: project.projectId,
         sourceChainId: chainId,
         sourceSequence: sequenceNo,
@@ -224,8 +226,9 @@ export class ProjectBootstrapWorkflow {
         body: "你已加入该项目，成为项目成员",
         targetPath: `/projects/${project.projectId}/activity`,
         createdAt: occurredAt,
-      });
-    }
+      },
+      allMemberIds,
+    );
 
     const body: CreateProjectResponse = {
       project: {

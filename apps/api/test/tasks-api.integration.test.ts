@@ -3,6 +3,7 @@ import { PostgresFeatureReadPort } from "../src/modules/features/postgres-featur
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
 import { PostgresProjectsWritePort } from "../src/modules/projects/postgres-projects-write-port.js";
 import { ProjectStartNotifier } from "../src/modules/projects/project-start.notifier.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
@@ -112,6 +113,10 @@ beforeAll(async () => {
   search = new PostgresSearchProjectionWritePort();
   activity = new PostgresActivityWritePort();
   notifications = new PostgresNotificationWritePort();
+  const dispatcher = new ProjectNotificationDispatcher(
+    new PostgresProjectAccessQueryPort(client),
+    notifications,
+  );
   management = new TasksManagementService(
     new PostgresProjectAccessQueryPort(client),
     new PostgresModuleQueryPort(),
@@ -124,7 +129,7 @@ beforeAll(async () => {
     audit,
     activity,
     search,
-    notifications,
+    dispatcher,
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
   );
@@ -165,8 +170,7 @@ beforeAll(async () => {
       activity,
       search,
       new LeftoverSearchProjectionSync(search),
-      notifications,
-      access,
+      dispatcher,
     ),
   );
   const completion = new TaskCompletionWorkflow(
@@ -183,12 +187,11 @@ beforeAll(async () => {
       audit,
       activity,
       search,
-      notifications,
-      access,
+      dispatcher,
       new PostgresProjectsWritePort(),
       new ProjectStartNotifier(
         new PostgresProjectMembersQueryPort(),
-        notifications,
+        dispatcher,
       ),
     ),
   );
@@ -1149,6 +1152,95 @@ describe("F-14 real HTTP / PostgreSQL", () => {
       { title: string }[]
     >`SELECT title FROM app.notifications WHERE project_id=${project.projectId}`;
     expect(notification!.title.length).toBe(500);
+  });
+  it("records task creation and real assignee changes in activity metadata", async () => {
+    const { project, member } = await fixture();
+    const successor = await actor();
+    await addMember(project.projectId, successor.userId);
+
+    const createdResponse = await request(
+      project,
+      "POST",
+      member,
+      edit(member.userId),
+    );
+    expect(createdResponse.status, await createdResponse.clone().text()).toBe(
+      200,
+    );
+    const created = taskItemSchema.parse(await createdResponse.json());
+
+    const titleOnlyResponse = await request(
+      project,
+      "PATCH",
+      member,
+      edit(member.userId, "只改标题"),
+      `/${created.id}`,
+      created.rowVersion,
+    );
+    expect(
+      titleOnlyResponse.status,
+      await titleOnlyResponse.clone().text(),
+    ).toBe(200);
+    const titleOnly = taskItemSchema.parse(await titleOnlyResponse.json());
+
+    const reassignedResponse = await request(
+      project,
+      "PATCH",
+      member,
+      edit(successor.userId, "改派任务"),
+      `/${created.id}`,
+      titleOnly.rowVersion,
+    );
+    expect(
+      reassignedResponse.status,
+      await reassignedResponse.clone().text(),
+    ).toBe(200);
+
+    const activities = await client.sql<
+      {
+        activityType: string;
+        metadata: {
+          readonly assignmentChanged: boolean;
+          readonly assigneeIds: readonly number[];
+          readonly previousAssigneeIds: readonly number[];
+        };
+      }[]
+    >`
+      SELECT activity_type AS "activityType", metadata
+        FROM app.activity_projection
+       WHERE project_id = ${project.projectId}
+         AND source_entity_type = 'TASK'
+         AND source_entity_id = ${created.id}
+         AND activity_type IN ('task.create', 'task.update')
+       ORDER BY id ASC
+    `;
+    expect(
+      activities.map((row) => ({
+        activityType: row.activityType,
+        assignmentChanged: row.metadata.assignmentChanged,
+        assigneeIds: row.metadata.assigneeIds,
+        previousAssigneeIds: row.metadata.previousAssigneeIds,
+      })),
+    ).toEqual([
+      {
+        activityType: "task.create",
+        assignmentChanged: true,
+        assigneeIds: [member.userId],
+        previousAssigneeIds: [],
+      },
+      {
+        activityType: "task.update",
+        assignmentChanged: false,
+        assigneeIds: [member.userId],
+        previousAssigneeIds: [member.userId],
+      },
+      {
+        activityType: "task.update",
+        assignmentChanged: true,
+        assigneeIds: [successor.userId],
+        previousAssigneeIds: [member.userId],
+      },
+    ]);
   });
   it("maps an imported number collision to a safe 409 and rolls back the sequence", async () => {
     const { project, member } = await fixture();

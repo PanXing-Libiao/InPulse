@@ -12,7 +12,7 @@ export const projectNotificationOptions: readonly ProjectNotificationOption[] =
     {
       key: "task.assign",
       event: "任务派发",
-      description: "新任务、负责人变更（含新增负责人）",
+      description: "新任务、负责人变更（含新增负责人）；普通编辑不推送",
     },
     {
       key: "task.status",

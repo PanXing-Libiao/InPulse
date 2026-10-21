@@ -1,15 +1,16 @@
-// InPulse -> 企业微信智能机器人 临时通知桥 v5（演示用，不进入 InPulse 仓库）
+// InPulse -> 企业微信智能机器人 临时通知桥 v8（演示用，不进入 InPulse 仓库）
 // v4 变化：消息改为 template_card 卡片（主标题 + 编号 + 字段行），通过 PoC raw 通道发送。
-// v5 变化（ADR-077 第二批，2026-10-16）：新增项目群投递物化——把新的 task.assigned
-// 通知与 MEMBER 可见项目动态写成 app.wecom_group_deliveries 的 PENDING 行，
-// 由 long-conn 消费并回写 SENT / FAILED；个人单聊推送逻辑不变。
-// v7 变化（ADR-091，2026-10-20）：项目封箱个人通知发送「文字 + 冻结快照海报」，
-// 海报渲染失败时降级为纯文本；群动态由 long-conn 按同样两段投递。
+// v5 变化（ADR-077 第二批，2026-10-16）：新增项目群投递物化——把 MEMBER 可见项目动态写成
+// app.wecom_group_deliveries 的 PENDING 行，由 long-conn 消费并回写 SENT / FAILED；个人单聊推送逻辑不变。
 // v6 变化（ADR-090，2026-10-20）：物化前读取项目群通知开关，按五个类别过滤；
 // 缺行或未识别的新事件默认放行，关闭只影响此后物化，不回溯历史或已排队消息。
-// 可选键：groupDeliveries=false 关闭物化、groupNotificationTypes 覆盖类型清单
-// （默认 ["task.assigned"]）、startFromGroupNotificationId / startFromActivityId
-// 指定游标初值（缺省从当前最大 id 开始，不回补历史）。
+// v7 变化（ADR-091，2026-10-20）：项目封箱个人通知发送「文字 + 冻结快照海报」，
+// 海报渲染失败时降级为纯文本；群动态由 long-conn 按同样两段投递。
+// v8 变化（ADR-093，2026-10-21）：群投递只物化 MEMBER 可见项目动态，不再从 app.notifications 复制；
+// task.update 仅负责人实际变化时进入任务派发，普通标题 / 描述 / 优先级编辑跳过，避免重复和噪声。
+// 可选键：groupDeliveries=false 关闭物化、startFromActivityId 指定动态游标初值
+// （缺省从当前最大动态 id 开始，不回补历史）。旧状态文件里的
+// lastGroupNotificationId 会被忽略，已排队的 NOTIFICATION 行仍由 long-conn 兼容消费。
 // 数据：直连本地开发库只读查询（演示用 cluster_bootstrap；正式实现不得照搬此方式）。
 import {
   appendFileSync,
@@ -22,8 +23,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
   flagsFromRow,
-  groupCategoryForActivity,
-  groupCategoryForNotification,
+  groupActivityDisposition,
   groupCategoryIsEnabled,
 } from "./notification-categories.mjs";
 import {
@@ -94,15 +94,6 @@ const maxIterations =
     : null;
 const cardActionUrl = String(config.cardActionUrl || "https://example.com");
 const groupDeliveriesEnabled = config.groupDeliveries !== false;
-const groupNotificationTypes = new Set(
-  Array.isArray(config.groupNotificationTypes) &&
-    config.groupNotificationTypes.length > 0
-    ? config.groupNotificationTypes.filter(
-        (value) => typeof value === "string" && value.length > 0,
-      )
-    : ["task.assigned"],
-);
-
 const PRIORITY_LABELS = {
   LOW: "低",
   NORMAL: "普通",
@@ -267,9 +258,6 @@ function loadState() {
       const state = JSON.parse(readFileSync(stateFile, "utf8"));
       return {
         lastId: Number.isInteger(state.lastId) ? state.lastId : null,
-        lastGroupNotificationId: Number.isInteger(state.lastGroupNotificationId)
-          ? state.lastGroupNotificationId
-          : null,
         lastActivityId: Number.isInteger(state.lastActivityId)
           ? state.lastActivityId
           : null,
@@ -278,7 +266,7 @@ function loadState() {
       // 状态文件损坏时忽略，走正常初始化
     }
   }
-  return { lastId: null, lastGroupNotificationId: null, lastActivityId: null };
+  return { lastId: null, lastActivityId: null };
 }
 
 async function reloadRecipients() {
@@ -324,7 +312,6 @@ async function reloadRecipients() {
 }
 
 let lastId = null;
-let lastGroupNotificationId = null;
 let lastActivityId = null;
 let iterations = 0;
 const pool = new Pool({ connectionString: databaseUrl, max: 2 });
@@ -385,58 +372,11 @@ async function insertGroupDelivery(kind, sourceId, projectId, sourceAt) {
 async function materializeGroupDeliveries() {
   if (!groupDeliveriesEnabled || dryRun) return 0;
   let created = 0;
-  const notificationOptions = await loadGroupNotificationOptions();
-
-  const notifications = await pool.query(
-    [
-      "select n.id, n.project_id, n.notification_type, n.created_at, n.source_chain_id, n.source_sequence",
-      "from app.notifications n",
-      "where n.id > $1",
-      "order by n.id asc",
-      "limit 200",
-    ].join(" "),
-    [lastGroupNotificationId],
-  );
-  const representatives = new Map();
-  let maxNotificationId = lastGroupNotificationId;
-  for (const row of notifications.rows) {
-    const id = Number(row.id);
-    if (id > maxNotificationId) maxNotificationId = id;
-    if (!groupNotificationTypes.has(row.notification_type)) continue;
-    if (row.project_id === null || row.project_id === undefined) continue;
-    const projectId = Number(row.project_id);
-    const category = groupCategoryForNotification(row.notification_type);
-    if (!groupCategoryIsEnabled(category, notificationOptions.get(projectId))) {
-      continue;
-    }
-    const key =
-      row.source_chain_id +
-      "|" +
-      row.source_sequence +
-      "|" +
-      row.notification_type;
-    const current = representatives.get(key);
-    if (current === undefined || id < current.sourceId) {
-      representatives.set(key, {
-        sourceId: id,
-        projectId,
-        sourceAt: row.created_at,
-      });
-    }
-  }
-  for (const item of representatives.values()) {
-    created += await insertGroupDelivery(
-      "NOTIFICATION",
-      item.sourceId,
-      item.projectId,
-      item.sourceAt,
-    );
-  }
-  lastGroupNotificationId = maxNotificationId;
+  const groupOptions = await loadGroupNotificationOptions();
 
   const activities = await pool.query(
     [
-      "select a.id, a.project_id, a.visibility_scope, a.occurred_at, a.activity_type, a.source_entity_type",
+      "select a.id, a.project_id, a.visibility_scope, a.occurred_at, a.activity_type, a.metadata",
       "from app.activity_projection a",
       "where a.id > $1",
       "order by a.id asc",
@@ -450,11 +390,14 @@ async function materializeGroupDeliveries() {
     if (id > maxActivityId) maxActivityId = id;
     if (row.visibility_scope !== "MEMBER") continue;
     const projectId = Number(row.project_id);
-    const category = groupCategoryForActivity(
+    const disposition = groupActivityDisposition(
       row.activity_type,
-      row.source_entity_type,
+      row.metadata,
     );
-    if (!groupCategoryIsEnabled(category, notificationOptions.get(projectId))) {
+    if (disposition.skip) continue;
+    if (
+      !groupCategoryIsEnabled(disposition.category, groupOptions.get(projectId))
+    ) {
       continue;
     }
     created += await insertGroupDelivery(
@@ -600,7 +543,6 @@ function persistState() {
     stateFile,
     JSON.stringify({
       lastId: lastId,
-      lastGroupNotificationId: lastGroupNotificationId,
       lastActivityId: lastActivityId,
       updatedAt: new Date().toISOString(),
     }),
@@ -632,22 +574,6 @@ async function main() {
   } else {
     log("从 id >", lastId, "开始轮询");
   }
-  lastGroupNotificationId = state.lastGroupNotificationId;
-  if (
-    lastGroupNotificationId === null &&
-    Number.isInteger(config.startFromGroupNotificationId) &&
-    config.startFromGroupNotificationId >= 0
-  ) {
-    lastGroupNotificationId = config.startFromGroupNotificationId;
-  }
-  if (lastGroupNotificationId === null) {
-    lastGroupNotificationId = await currentMaxId();
-    log(
-      "群投递：通知游标从当前最大通知 id 之后开始",
-      lastGroupNotificationId,
-      "（不回补历史）",
-    );
-  }
   lastActivityId = state.lastActivityId;
   if (
     lastActivityId === null &&
@@ -667,8 +593,6 @@ async function main() {
   log(
     "群投递物化:",
     groupDeliveriesEnabled && !dryRun ? "已启用" : "未启用",
-    "| 通知游标",
-    lastGroupNotificationId,
     "| 动态游标",
     lastActivityId,
   );

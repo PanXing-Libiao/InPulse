@@ -26,6 +26,7 @@ import { IdempotencyRunner } from "../src/idempotency/runner.js";
 import { resolveRegisteredRoute } from "../src/idempotency/route.js";
 import { PostgresIdempotencyStore } from "../src/idempotency/store.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
@@ -493,7 +494,13 @@ beforeAll(async () => {
     new PostgresSearchProjectionWritePort(),
     members,
     new ProjectRoleGateService(access, members),
-    new ProjectStartNotifier(members, new PostgresNotificationWritePort()),
+    new ProjectStartNotifier(
+      members,
+      new ProjectNotificationDispatcher(
+        access,
+        new PostgresNotificationWritePort(),
+      ),
+    ),
     new ProjectWrapNotifier(members, new PostgresNotificationWritePort()),
   );
   const http = new ProjectManagementHttpService(

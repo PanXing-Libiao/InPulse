@@ -421,8 +421,8 @@ function sendCard(userId, title, desc, url) {
 }
 
 // ---- 项目群投递消费（ADR-077 第二批，2026-10-16）----
-// 队列行由 bridge.mjs 物化（task.assigned 通知 + MEMBER 可见项目动态）；
-// 同一审计事件的多个收件人只占一行，这里按事件聚合收件人姓名后再发。
+// ADR-093 起队列行只由 MEMBER 可见项目动态物化，不再从 app.notifications 复制；
+// 升级前已排队的 NOTIFICATION 行仍保留兼容消费，避免丢失旧 PENDING 消息。
 // 发送结果以 aibot_send_msg 响应帧为准回写状态；重启后从 PENDING 断点续传。
 
 const GROUP_NEWLINE = String.fromCharCode(10);
@@ -483,6 +483,8 @@ const GROUP_NOTIFICATION_RECIPIENTS_SQL = [
 const GROUP_ACTIVITY_SQL = [
   "select",
   "  a.id,",
+  "  a.activity_type,",
+  "  a.metadata,",
   "  a.summary,",
   "  a.occurred_at,",
   "  a.activity_type,",
@@ -726,10 +728,23 @@ async function buildGroupActivityMessages(sourceId) {
     return messages;
   }
   const projectName = clampGroupText(item.project_name, 40);
+  const activityType = String(item.activity_type ?? "")
+    .trim()
+    .toLowerCase();
+  const assignmentChanged =
+    item.metadata !== null &&
+    typeof item.metadata === "object" &&
+    item.metadata.assignmentChanged === true;
+  const heading =
+    activityType === "task.create"
+      ? "任务派发"
+      : activityType === "task.update" && assignmentChanged
+        ? "任务改派"
+        : "项目动态";
   const lines = [
     projectName.length > 0
-      ? "**【" + projectName + "】项目动态**"
-      : "**【项目动态】**",
+      ? "**【" + projectName + "】" + heading + "**"
+      : "**【" + heading + "】**",
   ];
   const summary = clampGroupText(item.summary, 120);
   if (summary.length > 0) lines.push("**" + summary + "**");

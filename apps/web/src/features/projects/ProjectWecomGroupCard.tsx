@@ -241,7 +241,7 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
             <InpulseIcon name="check" size={17} />
             <span>
               <strong>已绑定企业微信群</strong>
-              群消息按「通知选项」中的开关推送；默认任务派发与全部成员可见动态。
+              群消息按「通知选项」中的开关推送；普通任务编辑不会推送到群。
               个人单聊提醒不受这些群开关影响，两者并存。
             </span>
           </div>
@@ -290,7 +290,7 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
                 <InpulseIcon name="bell" size={17} />
                 <span>
                   <strong>绑定后群聊即可收到项目消息</strong>
-                  默认推送任务派发与全部成员可见的项目动态；绑定后可在「通知选项」调整。个人单聊提醒继续并存。
+                  默认推送任务派发、任务状态、记录、项目成员与删除类动态；普通任务编辑不推送。绑定后可在「通知选项」调整，个人单聊提醒继续并存。
                 </span>
               </div>
               <ol className="wecom-binding-steps">

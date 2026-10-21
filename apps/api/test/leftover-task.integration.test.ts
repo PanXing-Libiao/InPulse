@@ -1,4 +1,3 @@
-import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { LeftoverTaskWorkflow } from "../src/workflows/leftover-task.workflow.js";
 import { LeftoverTaskHttpService } from "../src/workflows/leftover-task-http.service.js";
 import { LeftoverTaskController } from "../src/workflows/leftover-task.controller.js";
@@ -65,6 +64,7 @@ import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.j
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { LeftoverSearchProjectionSync } from "../src/modules/change-records/leftover-search-projection.js";
+import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { TaskCompletionWorkflow } from "../src/workflows/task-completion.workflow.js";
 import {
@@ -109,6 +109,7 @@ beforeAll(async () => {
   activity = new PostgresActivityWritePort();
   search = new PostgresSearchProjectionWritePort();
   notifications = new PostgresNotificationWritePort();
+  const dispatcher = new ProjectNotificationDispatcher(access, notifications);
   const drafts = new RecordDraftsService(
     access,
     modules,
@@ -132,8 +133,7 @@ beforeAll(async () => {
       activity,
       search,
       new LeftoverSearchProjectionSync(search),
-      notifications,
-      access,
+      dispatcher,
     ),
   );
   workflow = new TaskCompletionWorkflow(
@@ -150,12 +150,11 @@ beforeAll(async () => {
       audit,
       activity,
       search,
-      notifications,
-      access,
+      dispatcher,
       new PostgresProjectsWritePort(),
       new ProjectStartNotifier(
         new PostgresProjectMembersQueryPort(),
-        notifications,
+        dispatcher,
       ),
     ),
   );
@@ -193,7 +192,7 @@ beforeAll(async () => {
         audit,
         activity,
         search,
-        notifications,
+        dispatcher,
         new PostgresModuleReadPort(),
         new PostgresProjectsWritePort(),
       ),
@@ -243,7 +242,7 @@ beforeAll(async () => {
               audit,
               activity,
               search,
-              notifications,
+              dispatcher,
               new PostgresModuleReadPort(),
               new PostgresProjectsWritePort(),
             ),
