@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -273,19 +273,10 @@ export function ProjectMemberOverviewPanel({
   const projects = useProjects({ client });
   const [projectQuery, setProjectQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>("all");
-  const [openProjectId, setOpenProjectId] = useState<number | null | undefined>(
-    undefined,
-  );
+  const [openProjectId, setOpenProjectId] = useState<number | null>(null);
   const adapter = useMemo(() => createTaskBoardServerAdapter(client), [client]);
 
   const projectItems = projects.data?.items ?? [];
-  const firstProjectId = projectItems[0]?.id;
-
-  useEffect(() => {
-    if (openProjectId === undefined && firstProjectId !== undefined) {
-      setOpenProjectId(firstProjectId);
-    }
-  }, [firstProjectId, openProjectId]);
 
   const filteredProjects = useMemo(() => {
     const keyword = projectQuery.trim().toLocaleLowerCase();

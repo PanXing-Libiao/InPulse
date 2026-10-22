@@ -16,6 +16,7 @@ import {
   type InpulseApiClient,
   type CurrentUserResponse,
   type FeatureItem,
+  type ModuleItem,
 } from "@generated/api";
 import { FeaturesPageView } from "./FeaturesPageView";
 import { AuthStateProvider } from "@features/auth/auth-context";
@@ -101,6 +102,43 @@ const badgeTones = (selector: string): string[] =>
       Array.from(node.classList).find((name) => name.startsWith("badge-")) ??
       "",
   );
+
+describe("模块说明", () => {
+  const moduleItem: ModuleItem = {
+    code: "PR-M-4",
+    id: 4,
+    projectId: 2,
+    name: "退款模块",
+    description: "处理退款申请、审核和回调的模块说明。",
+    kind: "NORMAL",
+    sortOrder: 1,
+    rowVersion: 1,
+    createdAt: "2026-09-09T00:00:00.000Z",
+    updatedAt: "2026-09-09T00:00:00.000Z",
+    stats: {
+      activeFeatureCount: 0,
+      openTaskCount: 0,
+      completedTaskCount: 0,
+    },
+  };
+
+  it("固定展示模块说明，不再使用折叠框", async () => {
+    const client = {
+      listModules: vi.fn().mockResolvedValue({ items: [moduleItem] }),
+      listFeatures: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as InpulseApiClient;
+
+    mount(client);
+
+    await waitFor(() =>
+      expect(document.querySelector(".module-description")).toHaveTextContent(
+        moduleItem.description,
+      ),
+    );
+    expect(screen.queryByRole("heading", { name: "模块说明" })).toBeNull();
+    expect(document.querySelector("details.module-information")).toBeNull();
+  });
+});
 
 describe("F-13 forms", () => {
   it("reuses the key for an uncertain retry and changes it when semantics change", async () => {

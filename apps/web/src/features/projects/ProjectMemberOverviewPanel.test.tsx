@@ -215,10 +215,23 @@ function projectSummary(name: string): HTMLElement {
 }
 
 describe("ProjectMemberOverviewPanel", () => {
-  it("默认展开第一个项目，点击项目行不会离开设置页", async () => {
+  it("默认全部折叠，点击项目行原地展开且不离开设置页", async () => {
     mount(createClient());
+    await screen.findByText(projectA.name);
 
+    expect(projectSummary(projectA.name)).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(projectSummary(projectB.name)).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByText("开发者 C")).not.toBeInTheDocument();
+
+    fireEvent.click(projectSummary(projectA.name));
     await waitForMember("开发者 C");
+
     expect(projectSummary(projectA.name)).toHaveAttribute(
       "aria-expanded",
       "true",
@@ -228,6 +241,8 @@ describe("ProjectMemberOverviewPanel", () => {
 
   it("再次点击项目行会原地收起成员", async () => {
     mount(createClient());
+    await screen.findByText(projectA.name);
+    fireEvent.click(projectSummary(projectA.name));
     await waitForMember("开发者 C");
 
     fireEvent.click(projectSummary(projectA.name));
@@ -242,6 +257,8 @@ describe("ProjectMemberOverviewPanel", () => {
 
   it("同时只展开一个项目", async () => {
     mount(createClient());
+    await screen.findByText(projectA.name);
+    fireEvent.click(projectSummary(projectA.name));
     await waitForMember("开发者 C");
 
     fireEvent.click(projectSummary(projectB.name));
@@ -260,7 +277,7 @@ describe("ProjectMemberOverviewPanel", () => {
 
   it("管理成员进入项目页，且不会触发项目展开或收起", async () => {
     mount(createClient());
-    await waitForMember("开发者 C");
+    await screen.findByText(projectB.name);
 
     const wms = projectSummary(projectB.name);
     fireEvent.click(
@@ -278,6 +295,8 @@ describe("ProjectMemberOverviewPanel", () => {
 
   it("成员区是只读的：没有成员搜索、添加或行内管理", async () => {
     mount(createClient());
+    await screen.findByText(projectA.name);
+    fireEvent.click(projectSummary(projectA.name));
     await waitForMember("开发者 C");
     const region = screen.getByRole("region", {
       name: "InPulse 研发交付平台 项目成员",
@@ -293,8 +312,7 @@ describe("ProjectMemberOverviewPanel", () => {
 
   it("键盘 Enter 可以展开项目", async () => {
     mount(createClient());
-    await waitForMember("开发者 C");
-    fireEvent.click(projectSummary(projectA.name));
+    await screen.findByText(projectA.name);
 
     fireEvent.keyDown(projectSummary(projectA.name), { key: "Enter" });
 
@@ -307,7 +325,7 @@ describe("ProjectMemberOverviewPanel", () => {
 
   it("支持按项目名称或代码搜索，并按状态筛选", async () => {
     mount(createClient());
-    await waitForMember("开发者 C");
+    await screen.findByText(projectA.name);
 
     fireEvent.change(screen.getByLabelText("搜索项目"), {
       target: { value: "WMS" },
@@ -367,6 +385,9 @@ describe("ProjectMemberOverviewPanel", () => {
         ),
       }),
     );
+
+    await screen.findByText(projectA.name);
+    fireEvent.click(projectSummary(projectA.name));
 
     expect(await screen.findByText("项目成员加载失败")).toBeInTheDocument();
     expect(projectSummary(projectA.name)).toHaveAttribute(
