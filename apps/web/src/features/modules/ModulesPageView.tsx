@@ -47,6 +47,8 @@ import {
   useProjectDetail,
 } from "@features/projects/project-query";
 import { moduleErrorMessage, useModules } from "./module-query";
+import { prefetchFeatureRoute } from "@features/features/feature-query";
+import { preloadRoutePath } from "@shared/routing/route-preload";
 import {
   ModuleEditorModal,
   type ModuleEditorRequest,
@@ -96,6 +98,12 @@ export function ModulesPageView({
   }, [location.pathname, navigate]);
   const onOpenModule = (moduleId: number) =>
     navigate("/projects/" + projectId + "/modules/" + moduleId + "/features");
+  const prefetchModule = (moduleId: number) => {
+    void preloadRoutePath(
+      "/projects/" + projectId + "/modules/" + moduleId + "/features",
+    );
+    prefetchFeatureRoute(queryClient, { projectId, moduleId }, client);
+  };
   const projectQuery = useProjectDetail({
     client,
     projectId,
@@ -268,6 +276,9 @@ export function ModulesPageView({
                   <article className="catalog-module-wrap" key={item.id}>
                     <div
                       className="calm-feature-card module-card"
+                      onPointerEnter={() => prefetchModule(item.id)}
+                      onPointerDown={() => prefetchModule(item.id)}
+                      onFocus={() => prefetchModule(item.id)}
                       onClick={(event) => {
                         if (!isCardClick(event)) return;
                         onOpenModule(item.id);

@@ -17,6 +17,12 @@ import { projectSelectOption } from "@features/common/project-select-option";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { useStickyBandOffset } from "@features/common/use-sticky-band-offset";
 import { useProjects } from "@features/projects/project-query";
+import { prefetchTaskCenterRoute } from "@features/my-tasks/my-tasks-query";
+import { prefetchRecordsRoute } from "@features/records/records-route-prefetch";
+import { prefetchModulesRoute } from "@features/modules/module-query";
+import { prefetchProjectMembersRoute } from "@features/projects/project-member-query";
+import { preloadRoutePath } from "@shared/routing/route-preload";
+import { useQueryClient } from "@tanstack/react-query";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
 import { ActivitySnapshotModal } from "./ActivitySnapshotModal";
 import { activityTimeLabel, groupActivitiesByDay } from "./activity-day-groups";
@@ -62,6 +68,7 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
   lockedProjectId,
 }) => {
   const navigate = useNavigate();
+  const cache = useQueryClient();
   const { user } = useAuth();
   const isAdmin = Boolean(user?.isAdmin);
   const [query, setQuery] = useState("");
@@ -115,6 +122,42 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
       navigate(`/projects/${picked}/activity`);
     },
     [lockedProjectId, navigate],
+  );
+
+  /**
+   * 「查看对象」按落点预取目标页首屏：任务中心要带上 project 参数，记录页要
+   * 先取列表与草稿，项目内页面先取项目目录与成员。点击后等数据就绪再切页，
+   * 旧页面保留到新内容可渲染，避免中间冒出一帧骨架。
+   */
+  const prepareTarget = useCallback(
+    (path: string): Promise<void> => {
+      const url = new URL(path, "http://inpulse.local");
+      let data: Promise<void> = Promise.resolve();
+      if (url.pathname === "/tasks") {
+        data = prefetchTaskCenterRoute(cache, {
+          viewerId: user?.id ?? null,
+          isAdmin,
+          params: url.searchParams,
+          ...(client === undefined ? {} : { client }),
+        });
+      } else if (url.pathname === "/records") {
+        data = prefetchRecordsRoute(cache, client);
+      } else {
+        const match = /^\/projects\/(\d+)\/(modules|members)\/?$/.exec(
+          url.pathname,
+        );
+        if (match !== null) {
+          const projectId = Number(match[1]);
+          if (match[2] === "modules") {
+            prefetchModulesRoute(cache, projectId, client);
+          } else {
+            prefetchProjectMembersRoute(cache, projectId, client);
+          }
+        }
+      }
+      return Promise.all([preloadRoutePath(path), data]).then(() => undefined);
+    },
+    [cache, client, isAdmin, user?.id],
   );
 
   /** 全局态：项目筛选写回 URL（replace，避免每次点选都压一条历史）。 */
@@ -445,9 +488,24 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
                               className="icon-button"
                               aria-label="查看对象"
                               title={activityTargetLabel(item)}
-                              onClick={() =>
-                                navigate(activityTargetPath(item, { isAdmin }))
-                              }
+                              onPointerEnter={() => {
+                                void prepareTarget(
+                                  activityTargetPath(item, { isAdmin }),
+                                );
+                              }}
+                              onPointerDown={() => {
+                                void prepareTarget(
+                                  activityTargetPath(item, { isAdmin }),
+                                );
+                              }}
+                              onClick={() => {
+                                const path = activityTargetPath(item, {
+                                  isAdmin,
+                                });
+                                void prepareTarget(path).finally(() =>
+                                  navigate(path),
+                                );
+                              }}
                             >
                               <InpulseIcon name="chevronRight" size={16} />
                             </button>

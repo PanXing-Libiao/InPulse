@@ -32,6 +32,9 @@ import { orderMembersLeaderFirst } from "./project-member-order";
 import { ProjectWecomGroupCard } from "./ProjectWecomGroupCard";
 import { useProjects } from "./project-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+import { prefetchModulesRoute } from "@features/modules/module-query";
+import { routePreloadHandlers } from "@shared/routing/route-preload";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface ReassignmentChoice {
   readonly enabled: boolean;
@@ -71,6 +74,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
   embedded = false,
 }) => {
   const navigate = useNavigate();
+  const cache = useQueryClient();
   const { query, addMutation, removeMutation, roleMutation } =
     useProjectMembers(projectId, client);
   const directory = useUserDirectoryQuery({ client });
@@ -283,6 +287,8 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
     }));
   };
 
+  const modulesPath = "/projects/" + projectId + "/modules";
+  const modulesPreload = routePreloadHandlers(modulesPath);
   return (
     <>
       {embedded ? null : (
@@ -294,7 +300,20 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
                 className="title-back-button"
                 aria-label="返回项目主页"
                 title="返回项目主页"
-                onClick={() => navigate("/projects/" + projectId + "/modules")}
+                {...modulesPreload}
+                onPointerEnter={() => {
+                  modulesPreload.onPointerEnter();
+                  prefetchModulesRoute(cache, projectId);
+                }}
+                onPointerDown={() => {
+                  modulesPreload.onPointerDown();
+                  prefetchModulesRoute(cache, projectId);
+                }}
+                onFocus={() => {
+                  modulesPreload.onFocus();
+                  prefetchModulesRoute(cache, projectId);
+                }}
+                onClick={() => navigate(modulesPath)}
               >
                 <InpulseIcon name="chevronLeft" size={20} />
               </button>

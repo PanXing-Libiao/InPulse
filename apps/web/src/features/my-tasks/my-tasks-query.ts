@@ -1,8 +1,23 @@
-import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
-import { ApiError } from "@generated/api";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  type QueryClient,
+} from "@tanstack/react-query";
+import {
+  ApiError,
+  createApiClient,
+  type InpulseApiClient,
+} from "@generated/api";
 import { MY_TASKS_MOCK_ADAPTER } from "./my-tasks-mock";
-import type { MyTaskFilters, MyTasksAdapter } from "./my-tasks-types";
+import type {
+  MyTaskFilters,
+  MyTaskGroupsResult,
+  MyTaskListResult,
+  MyTasksAdapter,
+} from "./my-tasks-types";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
+import { createMyTasksServerAdapter } from "./my-tasks-server";
+import { readMyTaskFilters } from "./my-tasks-url";
 
 /**
  * F-32 数据访问层。骨架阶段默认使用 mock adapter；接口冻结后新增
@@ -29,6 +44,49 @@ export interface UseMyTaskGroupsQueryOptions {
   /** 工具栏「项目」下拉选定的项目；null 表示「全部项目」（服务端授权范围内跨项目）。 */
   readonly projectId: number | null;
   readonly adapter?: MyTasksAdapter;
+}
+
+/** 侧栏进入任务中心前预取默认筛选的首屏与聚合组，避免切换后先露列表骨架。 */
+export function prefetchTaskCenterRoute(
+  cache: QueryClient,
+  options: {
+    readonly viewerId: number | null;
+    readonly isAdmin: boolean;
+    readonly params?: URLSearchParams | undefined;
+    readonly client?: InpulseApiClient | undefined;
+  },
+): Promise<void> {
+  const { viewerId, isAdmin, client, params } = options;
+  const adapter = createMyTasksServerAdapter(client);
+  const filters = readMyTaskFilters(params ?? new URLSearchParams(), {
+    isAdmin,
+  });
+  const api = client ?? createApiClient();
+  return Promise.all([
+    cache.prefetchQuery({
+      queryKey: ["projects"],
+      queryFn: ({ signal }) => api.listProjects({ signal }),
+    }),
+    cache.prefetchInfiniteQuery({
+      queryKey: ["my-tasks", adapter.source, viewerId, filters],
+      queryFn: ({ pageParam }) =>
+        adapter.fetchMyTasks({ filters, viewerId, cursor: pageParam }),
+      initialPageParam: null as string | null,
+      getNextPageParam: (last: MyTaskListResult) =>
+        last.hasMore ? last.nextCursor : undefined,
+    }),
+    cache.prefetchInfiniteQuery({
+      queryKey: ["my-task-groups", adapter.source, filters.projectId],
+      queryFn: ({ pageParam }) =>
+        adapter.fetchTaskGroups({
+          projectId: filters.projectId,
+          cursor: pageParam,
+        }),
+      initialPageParam: null as string | null,
+      getNextPageParam: (last: MyTaskGroupsResult) =>
+        last.hasMore ? last.nextCursor : undefined,
+    }),
+  ]).then(() => undefined);
 }
 
 /**

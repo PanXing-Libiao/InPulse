@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -128,6 +129,7 @@ export function useNotificationsInfiniteQuery({
         },
         signal ? { signal } : undefined,
       ),
+    placeholderData: keepPreviousData,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.nextCursor : undefined,

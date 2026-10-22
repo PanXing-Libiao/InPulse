@@ -1,5 +1,9 @@
 import { useMemo } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   ApiError,
   createApiClient,
@@ -23,6 +27,44 @@ export interface LeftoverItemsQueryOptions {
   readonly projectId?: number | undefined;
   readonly enabled?: boolean;
   readonly limit?: number;
+}
+
+/** 侧栏进入遗留问题前预取未处理与已处理两桶首屏，避免页面先露列表骨架。 */
+export function prefetchIssuesRoute(
+  cache: QueryClient,
+  client?: InpulseApiClient,
+): Promise<void> {
+  const api = client ?? createApiClient();
+  const limit = LEFTOVER_ITEMS_PAGE_LIMIT;
+  const jobs: Promise<unknown>[] = [
+    cache.prefetchQuery({
+      queryKey: ["projects"],
+      queryFn: ({ signal }) => api.listProjects({ signal }),
+    }),
+  ];
+  for (const bucket of ["OPEN", "CLOSED"] as const) {
+    jobs.push(
+      cache.prefetchInfiniteQuery({
+        queryKey: ["leftover-items", bucket, 0, limit],
+        queryFn: ({ pageParam, signal }) =>
+          api.listLeftoverItems(
+            {
+              bucket,
+              limit,
+              ...(typeof pageParam === "string" ? { cursor: pageParam } : {}),
+            },
+            signal ? { signal } : undefined,
+          ),
+        initialPageParam: undefined as string | undefined,
+        getNextPageParam: (lastPage: {
+          readonly hasMore: boolean;
+          readonly nextCursor: string | null;
+        }) =>
+          lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined,
+      }),
+    );
+  }
+  return Promise.all(jobs).then(() => undefined);
 }
 
 export function describeIssuesError(error: unknown): string {

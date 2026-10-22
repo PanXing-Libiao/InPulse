@@ -72,6 +72,7 @@ export interface NotificationsPageViewProps {
   readonly filter?: NotificationFilter;
   readonly onFilterChange?: (filter: NotificationFilter) => void;
   readonly onOpenTarget?: (targetPath: string) => void;
+  readonly onPrefetchTarget?: (targetPath: string) => void;
 }
 
 export const NotificationsPageView: React.FC<NotificationsPageViewProps> = ({
@@ -80,6 +81,7 @@ export const NotificationsPageView: React.FC<NotificationsPageViewProps> = ({
   filter = "all",
   onFilterChange,
   onOpenTarget,
+  onPrefetchTarget,
 }) => {
   const unreadQuery = useNotificationUnreadCount({ client, userId });
   const listQuery = useNotificationsInfiniteQuery({ client, filter, userId });
@@ -150,6 +152,18 @@ export const NotificationsPageView: React.FC<NotificationsPageViewProps> = ({
                 {...(item.targetPath === null
                   ? {}
                   : routePreloadHandlers(item.targetPath))}
+                onPointerEnter={() => {
+                  if (item.targetPath !== null)
+                    onPrefetchTarget?.(item.targetPath);
+                }}
+                onPointerDown={() => {
+                  if (item.targetPath !== null)
+                    onPrefetchTarget?.(item.targetPath);
+                }}
+                onFocus={() => {
+                  if (item.targetPath !== null)
+                    onPrefetchTarget?.(item.targetPath);
+                }}
                 onClick={() => handleOpen(item)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {

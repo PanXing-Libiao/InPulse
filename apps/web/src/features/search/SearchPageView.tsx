@@ -16,7 +16,11 @@ import {
   useSearchInfiniteQuery,
 } from "./search-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
-import { searchResultPath } from "./search-destination";
+import {
+  prefetchSearchDestination,
+  searchResultPath,
+} from "./search-destination";
+import { useQueryClient } from "@tanstack/react-query";
 import { routePreloadHandlers } from "@shared/routing/route-preload";
 import "./search-results.css";
 
@@ -52,6 +56,7 @@ export const SearchPageView: React.FC<SearchPageViewProps> = ({
   onOpenResult,
   client,
 }) => {
+  const cache = useQueryClient();
   const [draft, setDraft] = useState(initialQuery);
 
   useEffect(() => {
@@ -115,6 +120,7 @@ export const SearchPageView: React.FC<SearchPageViewProps> = ({
         <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {results.map((item, index) => {
             const path = searchResultPath(item);
+            const preload = path === null ? null : routePreloadHandlers(path);
             const body = (
               <Space orientation="vertical" size={4} style={{ width: "100%" }}>
                 <Space align="center" wrap>
@@ -146,10 +152,26 @@ export const SearchPageView: React.FC<SearchPageViewProps> = ({
                   <a
                     className="search-result-link"
                     href={path}
-                    {...routePreloadHandlers(path)}
+                    {...preload}
+                    onPointerEnter={() => {
+                      preload?.onPointerEnter();
+                      prefetchSearchDestination(item, cache, client);
+                    }}
+                    onPointerDown={() => {
+                      preload?.onPointerDown();
+                      prefetchSearchDestination(item, cache, client);
+                    }}
+                    onFocus={() => {
+                      preload?.onFocus();
+                      prefetchSearchDestination(item, cache, client);
+                    }}
                     onClick={(event) => {
                       event.preventDefault();
-                      onOpenResult(path);
+                      void prefetchSearchDestination(
+                        item,
+                        cache,
+                        client,
+                      ).finally(() => onOpenResult(path));
                     }}
                   >
                     {body}

@@ -10,8 +10,12 @@ import {
   SEARCH_MAX_LENGTH,
   useSearchInfiniteQuery,
 } from "@features/search/search-query";
-import { searchResultPath } from "@features/search/search-destination";
+import {
+  prefetchSearchDestination,
+  searchResultPath,
+} from "@features/search/search-destination";
 import { preloadRoutePath } from "@shared/routing/route-preload";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface QuickAction {
   readonly key: string;
@@ -32,6 +36,8 @@ interface SearchResult {
   readonly hint: string;
   readonly path: string;
   readonly run: () => void;
+  /** 搜索结果对应的原始实体；用于在选中时预热目标页面数据。 */
+  readonly item?: SearchItem;
 }
 
 export interface CommandPaletteProps {
@@ -86,6 +92,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onNavigate,
   onOpenSearch,
 }) => {
+  const cache = useQueryClient();
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
   // 用户是否显式选过某一行（↑↓ 或悬停）。没选过时面板不默认选中任何一行，
@@ -174,11 +181,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           title: item.title,
           hint: `${meta.label} · ${item.summary || "可访问对象"}`,
           path,
-          run: () => onNavigate(path),
+          item,
+          run: () => {
+            const ready = Promise.all([
+              preloadRoutePath(path),
+              prefetchSearchDestination(item, cache, client),
+            ]);
+            if (
+              item.entityType === "CHANGE_RECORD" ||
+              item.entityType === "LEFTOVER"
+            ) {
+              void ready.finally(() => onNavigate(path));
+              return;
+            }
+            void ready;
+            onNavigate(path);
+          },
         },
       ];
     });
-  }, [canSearch, onNavigate, search.data]);
+  }, [cache, canSearch, client, onNavigate, search.data]);
 
   const searchQuickAction: SearchResult[] = canSearch
     ? [
@@ -194,7 +216,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       ]
     : [];
 
-  const flatResults = useMemo(
+  const flatResults = useMemo<SearchResult[]>(
     () =>
       [...quickActions, ...searchQuickAction, ...searchResults].sort(
         (a, b) => paletteGroupRank(a.group) - paletteGroupRank(b.group),
@@ -224,9 +246,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     flatResults[canSearch && !cursorTouched ? -1 : cursor];
   useEffect(() => {
     if (selectedResultForPreload !== undefined) {
-      preloadRoutePath(selectedResultForPreload.path);
+      void preloadRoutePath(selectedResultForPreload.path);
+      if (selectedResultForPreload.item !== undefined) {
+        void prefetchSearchDestination(
+          selectedResultForPreload.item,
+          cache,
+          client,
+        );
+      }
     }
-  }, [selectedResultForPreload]);
+  }, [cache, client, selectedResultForPreload]);
 
   useEffect(() => {
     if (!open) {

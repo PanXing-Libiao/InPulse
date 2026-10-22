@@ -75,6 +75,7 @@ export function useAiAssistSettings(client?: InpulseApiClient) {
     queryKey: AI_ASSIST_SETTINGS_QUERY_KEY,
     queryFn: ({ signal }) => api.getAiAssistSettings({ signal }),
     retry: false,
+    staleTime: 30_000,
   });
 
   const save = useMutation({

@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { useInfiniteQuery, type InfiniteData } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  type InfiniteData,
+  type QueryClient,
+} from "@tanstack/react-query";
 import {
   ApiError,
   createApiClient,
@@ -83,6 +88,84 @@ export function activityDayTotals(pages: readonly ActivityFeedPage[]): {
   return { totals, truncated: pages[0]?.dayTotalsTruncated ?? false };
 }
 
+/** 侧栏或通知跳转到项目动态前预取首屏，避免切换后先露出时间线骨架。 */
+export interface ActivityPrefetchOptions {
+  readonly projectId?: number | undefined;
+  readonly includeAdminOnly?: boolean | undefined;
+  readonly client?: InpulseApiClient | undefined;
+}
+
+export function prefetchActivityRoute(
+  cache: QueryClient,
+  { projectId, includeAdminOnly = false, client }: ActivityPrefetchOptions = {},
+): Promise<void> {
+  if (
+    projectId !== undefined &&
+    (!Number.isInteger(projectId) || projectId <= 0)
+  ) {
+    return Promise.resolve();
+  }
+  const api = client ?? createApiClient();
+  const limit = ACTIVITY_PAGE_LIMIT;
+  const shared = {
+    ...(includeAdminOnly ? { includeAdminOnly: true } : {}),
+    limit,
+  };
+  return Promise.all([
+    cache.prefetchQuery({
+      queryKey: ["projects"],
+      queryFn: ({ signal }) => api.listProjects({ signal }),
+    }),
+    // 执行人名称来自用户目录；与动态首屏并行预取，避免时间线先显示“用户 #id”。
+    cache.prefetchQuery({
+      queryKey: ["users", "directory"],
+      queryFn: async () => (await api.getUserDirectory()).items,
+    }),
+    cache.prefetchInfiniteQuery({
+      queryKey:
+        projectId === undefined
+          ? ["activity", "all", "all", "all", includeAdminOnly, limit]
+          : [
+              "activity",
+              "project:" + projectId,
+              "all",
+              "all",
+              includeAdminOnly,
+              limit,
+            ],
+      queryFn: async ({ pageParam, signal }) => {
+        const page =
+          projectId === undefined
+            ? await api.listActivity(
+                {
+                  ...(pageParam === undefined ? {} : { cursor: pageParam }),
+                  ...shared,
+                },
+                signal ? { signal } : undefined,
+              )
+            : await api.getProjectActivity(
+                projectId,
+                {
+                  ...(pageParam === undefined ? {} : { cursor: pageParam }),
+                  ...shared,
+                },
+                signal ? { signal } : undefined,
+              );
+        return {
+          items: [...page.items],
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+          dayTotals: [...page.dayTotals],
+          dayTotalsTruncated: page.dayTotalsTruncated,
+        };
+      },
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (lastPage: { readonly nextCursor: string | null }) =>
+        lastPage.nextCursor ?? undefined,
+    }),
+  ]).then(() => undefined);
+}
+
 export function useActivityFeedQuery({
   lockedProjectId,
   projectIds,
@@ -145,6 +228,7 @@ export function useActivityFeedQuery({
         dayTotalsTruncated: page.dayTotalsTruncated,
       };
     },
+    placeholderData: keepPreviousData,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: enabled && hasScope,

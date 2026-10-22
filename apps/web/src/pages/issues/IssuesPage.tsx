@@ -3,6 +3,9 @@ import { useNavigate } from "react-router-dom";
 import type { InpulseApiClient } from "@generated/api";
 import { IssuesPageView } from "@features/issues/IssuesPageView";
 import type { TaskLocation } from "@features/tasks/task-links";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchRecordsRoute } from "@features/records/records-route-prefetch";
+import { preloadRoutePath } from "@shared/routing/route-preload";
 
 /**
  * 任务详情弹窗按需加载：与任务中心 / 项目主页共用同一就地宿主，
@@ -24,11 +27,15 @@ export interface IssuesPageProps {
 
 export const IssuesPage: React.FC<IssuesPageProps> = ({ client }) => {
   const navigate = useNavigate();
+  const cache = useQueryClient();
   const [detailTarget, setDetailTarget] = useState<TaskLocation | null>(null);
 
   const handleBackToRecords = useCallback(() => {
-    navigate("/records");
-  }, [navigate]);
+    void Promise.all([
+      preloadRoutePath("/records"),
+      prefetchRecordsRoute(cache, client),
+    ]).finally(() => navigate("/records"));
+  }, [cache, client, navigate]);
 
   const handleOpenTask = useCallback((task: TaskLocation) => {
     setDetailTarget(task);

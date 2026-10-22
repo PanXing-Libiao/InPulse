@@ -1,4 +1,8 @@
-import type { SearchItem } from "@generated/api";
+import type { InpulseApiClient, SearchItem } from "@generated/api";
+import type { QueryClient } from "@tanstack/react-query";
+import { prefetchFeatureRoute } from "@features/features/feature-query";
+import { prefetchModulesRoute } from "@features/modules/module-query";
+import { prefetchRecordPath } from "@features/records/records-route-prefetch";
 import { taskDetailPath } from "@features/tasks/task-links";
 
 /**
@@ -48,4 +52,46 @@ export function searchResultPath(item: SearchItem): string | null {
 /** 已发布记录的深链口径与 RecordsWorkspace 读取 `publishedId` 一致。 */
 function recordPath(projectId: number, recordId: number): string {
   return `/records?view=published&projectId=${String(projectId)}&publishedId=${String(recordId)}`;
+}
+
+/**
+ * 悬停搜索结果时的数据预取：功能/任务先取项目、模块与功能目录，模块/项目结果
+ * 先取项目详情与模块目录。只预取首屏必需数据，不触发任何写操作；失败由
+ * prefetchQuery 自行吞掉，真正导航时仍按原逻辑重试。
+ */
+export function prefetchSearchDestination(
+  item: SearchItem,
+  cache: QueryClient,
+  client?: InpulseApiClient,
+): Promise<void> {
+  if (item.entityType === "FEATURE" || item.entityType === "TASK") {
+    if (item.moduleId === null) return Promise.resolve();
+    // FEATURE 结果自身就是功能，功能 ID 在 entityId；TASK 才用 featureId。
+    const featureId =
+      item.entityType === "FEATURE" ? item.entityId : item.featureId;
+    if (featureId === null) {
+      prefetchModulesRoute(cache, item.projectId, client);
+      return Promise.resolve();
+    }
+    prefetchFeatureRoute(
+      cache,
+      {
+        projectId: item.projectId,
+        moduleId: item.moduleId,
+        featureId,
+      },
+      client,
+    );
+    return Promise.resolve();
+  }
+  if (item.entityType === "PROJECT" || item.entityType === "MODULE") {
+    prefetchModulesRoute(cache, item.projectId, client);
+    return Promise.resolve();
+  }
+  if (item.entityType === "CHANGE_RECORD" || item.entityType === "LEFTOVER") {
+    const path = searchResultPath(item);
+    if (path === null) return Promise.resolve();
+    return prefetchRecordPath(cache, path, client) ?? Promise.resolve();
+  }
+  return Promise.resolve();
 }

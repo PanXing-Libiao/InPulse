@@ -6,6 +6,7 @@ import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { formatBeijingShortDateTime } from "@features/common/beijing-time";
 import { PublishRecordButton } from "@features/published-records/PublishRecordButton";
 import {
+  RECORD_DRAFTS_PAGE_LIMIT,
   useMyRecordDraftsQuery,
   useRecordDraftsQuery,
 } from "./record-drafts-query";
@@ -20,7 +21,7 @@ import {
 import "./record-drafts.css";
 import { Alert, Button } from "antd";
 import { AppModal as Modal } from "@features/common/components/AppModal";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   createApiClient,
@@ -80,6 +81,7 @@ export function RecordDraftsView({
   onCanCreateChange?: ((canCreate: boolean) => void) | undefined;
 }) {
   const api = useMemo(() => client ?? createApiClient(), [client]);
+  const cache = useQueryClient();
   const [params, setParams] = useScopedSearchParams();
   const projectId = Number(params.get("projectId")) || 0;
   const recordId = Number(params.get("recordId")) || 0;
@@ -248,6 +250,40 @@ export function RecordDraftsView({
    * 打开某条草稿：URL 带上 recordId，交给既有的草稿详情弹层加载；taskId 语境
    * 下同时带上 moduleId / taskId，写入路径才会落在来源任务上。
    */
+  const prefetchDraft = (item: DraftCardItem) => {
+    const targetProjectId = item.draft.projectId;
+    void cache.prefetchQuery({
+      queryKey: ["record-draft", targetProjectId, item.draft.id],
+      queryFn: ({ signal }) =>
+        api.getRecordDraft(targetProjectId, item.draft.id, { signal }),
+    });
+    // 这里必须用 prefetchInfiniteQuery：列表钩子同 key 读取的是 { pages, pageParams }。
+    // 若用 prefetchQuery 写入单页响应，切换到项目草稿时 getNextPageParam 会拿到
+    // undefined 并触发错误边界，表现为整页瞬间消失。
+    void cache.prefetchInfiniteQuery({
+      queryKey: [
+        "record-drafts",
+        targetProjectId,
+        RECORD_DRAFTS_PAGE_LIMIT,
+        currentUserId ?? 0,
+      ],
+      queryFn: ({ pageParam, signal }) =>
+        api.listRecordDrafts(
+          targetProjectId,
+          {
+            limit: RECORD_DRAFTS_PAGE_LIMIT,
+            ...(currentUserId === undefined ? {} : { authorId: currentUserId }),
+            ...(typeof pageParam === "string" ? { cursor: pageParam } : {}),
+          },
+          signal ? { signal } : undefined,
+        ),
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (lastPage: {
+        readonly hasMore: boolean;
+        readonly nextCursor: string | null;
+      }) => (lastPage.hasMore ? (lastPage.nextCursor ?? undefined) : undefined),
+    });
+  };
   const openDraft = (item: DraftCardItem) => {
     // 全部项目视图下草稿可能不属于 URL 里的项目：先切到它自己的项目再打开详情。
     setParams({
@@ -355,6 +391,9 @@ export function RecordDraftsView({
                   className="draft-card"
                   key={item.draft.id}
                   aria-label={`继续编辑草稿：${item.draft.title}`}
+                  onPointerEnter={() => prefetchDraft(item)}
+                  onPointerDown={() => prefetchDraft(item)}
+                  onFocus={() => prefetchDraft(item)}
                   onClick={() => openDraft(item)}
                 >
                   <span className="draft-card-top">

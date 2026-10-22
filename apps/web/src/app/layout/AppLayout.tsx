@@ -1,7 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { InpulseApiClient } from "@generated/api";
 import { useAuth } from "@features/auth/auth-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchActivityRoute } from "@features/activity/activity-query";
+import { prefetchTaskCenterRoute } from "@features/my-tasks/my-tasks-query";
+import {
+  prefetchRecordPath,
+  prefetchRecordsRoute,
+} from "@features/records/records-route-prefetch";
+import { prefetchIssuesRoute } from "@features/issues/issues-query";
+import { prefetchSettingsRoute } from "@features/users/settings-route-prefetch";
 import { CommandPalette } from "@features/command-palette/CommandPalette";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import {
@@ -14,10 +23,7 @@ import { createNotificationTaskOpenState } from "@features/notifications/notific
 import { WecomBindingModal } from "@features/settings/WecomBindingModal";
 import { WecomBindingPromptModal } from "@features/settings/WecomBindingPromptModal";
 import { ProjectTree } from "@features/project-tree/ProjectTree";
-import {
-  preloadRoutePath,
-  routePreloadHandlers,
-} from "../router/route-preload";
+import { preloadRoutePath } from "../router/route-preload";
 import { treeScopeOf } from "@features/project-tree/tree-selection";
 import { useShellCounters } from "./shell-data";
 
@@ -166,6 +172,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const navigationPreparationRef = useRef<Map<string, Promise<void>>>(
+    new Map(),
+  );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [wecomOpen, setWecomOpen] = useState(false);
@@ -301,8 +311,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       navigate("/notifications", { state: taskState });
       return;
     }
-    // 目标页 chunk 就绪后再切换，避免铃铛弹层关闭后先露出骨架。
-    void preloadRoutePath(targetPath).finally(() => navigate(targetPath));
+    // 目标页 chunk 与记录详情都就绪后再切换，避免铃铛弹层关闭后先露出骨架。
+    const records = prefetchRecordPath(queryClient, targetPath, projectClient);
+    void Promise.all([
+      preloadRoutePath(targetPath),
+      records ?? Promise.resolve(),
+    ]).finally(() => navigate(targetPath));
   };
 
   const handleOpenSearch = (query: string) => {
@@ -334,14 +348,57 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   const renderNavigationItem = (item: NavigationItem) => {
     const count = shellCounts[item.key] ?? 0;
+    // chunk 预取之外，项目动态还要预取首屏数据：只预取 chunk 时页面已切过去，
+    // 但动态查询仍会先渲染一帧时间线骨架，观感就是“闪一下”。
+    const preloadNavigation = (): Promise<void> => {
+      const chunk = preloadRoutePath(item.path);
+      let data = Promise.resolve();
+      if (item.key === "activity") {
+        data = prefetchActivityRoute(queryClient, {
+          ...(projectScopeId === null ? {} : { projectId: projectScopeId }),
+          includeAdminOnly: user?.isAdmin === true,
+          ...(projectClient === undefined ? {} : { client: projectClient }),
+        });
+      } else if (item.key === "tasks") {
+        data = prefetchTaskCenterRoute(queryClient, {
+          viewerId: user?.id ?? null,
+          isAdmin: user?.isAdmin === true,
+          ...(projectClient === undefined ? {} : { client: projectClient }),
+        });
+      } else if (item.key === "records") {
+        data = prefetchRecordsRoute(queryClient, projectClient);
+      } else if (item.key === "issues") {
+        data = prefetchIssuesRoute(queryClient, projectClient);
+      } else if (item.key === "settings") {
+        data = prefetchSettingsRoute(queryClient, {
+          isAdmin: user?.isAdmin === true,
+          ...(projectClient === undefined ? {} : { client: projectClient }),
+        });
+      }
+      return Promise.all([chunk, data]).then(() => undefined);
+    };
+    const prepareNavigation = (): Promise<void> => {
+      const existing = navigationPreparationRef.current.get(item.key);
+      if (existing !== undefined) return existing;
+      const prepared = preloadNavigation();
+      navigationPreparationRef.current.set(item.key, prepared);
+      return prepared;
+    };
     return (
       <React.Fragment key={item.key}>
         <button
           type="button"
           className={"nav-item" + (selectedKey === item.key ? " active" : "")}
           aria-current={selectedKey === item.key ? "page" : undefined}
-          {...routePreloadHandlers(item.path)}
-          onClick={() => handleNavigation(item.path)}
+          onPointerEnter={() => void prepareNavigation()}
+          onPointerDown={() => void prepareNavigation()}
+          onFocus={() => void prepareNavigation()}
+          onClick={() => {
+            void prepareNavigation().finally(() => {
+              navigationPreparationRef.current.delete(item.key);
+              handleNavigation(item.path);
+            });
+          }}
         >
           {item.icon ? <InpulseIcon name={item.icon} size={17} /> : null}
           <span>{item.label}</span>
@@ -356,8 +413,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   };
 
   if (location.pathname === "/login") {
-    // 登录页使用独立的全屏视觉，不渲染工作台外壳。
-    return <Outlet />;
+    // 登录页使用独立的全屏视觉，不渲染工作台外壳。它同样是 React.lazy 路由，
+    // 直接访问 /login 时需要自己的 Suspense；工作台外壳那层边界在这里不参与渲染。
+    return (
+      <Suspense
+        fallback={
+          <div
+            style={{
+              minHeight: "100vh",
+              display: "grid",
+              placeItems: "center",
+              background: "#f4f6fa",
+              color: "#6f7787",
+              fontSize: 14,
+            }}
+          >
+            正在载入登录页...
+          </div>
+        }
+      >
+        <Outlet />
+      </Suspense>
+    );
   }
 
   return (
@@ -553,7 +630,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 />
               </div>
             ) : (
-              <Outlet />
+              <Suspense
+                fallback={
+                  <div style={{ padding: 48 }}>
+                    <CalmSkeleton
+                      variant="lines"
+                      rows={4}
+                      label="正在加载页面..."
+                    />
+                  </div>
+                }
+              >
+                <Outlet />
+              </Suspense>
             )}
           </div>
         </main>

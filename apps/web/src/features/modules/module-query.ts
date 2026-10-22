@@ -4,6 +4,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   ApiError,
@@ -35,6 +36,32 @@ export function moduleErrorMessage(error: unknown): string {
     if (error.status === 422) return "请检查模块名称或描述。";
   }
   return "模块服务暂时不可用，请重试。";
+}
+
+/** 项目主页（模块与功能）首屏数据预取：项目详情 + 模块目录。 */
+export function prefetchModulesRoute(
+  cache: QueryClient,
+  projectId: number,
+  client?: InpulseApiClient,
+): void {
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return;
+  }
+  const api = client ?? createApiClient();
+  // 侧栏项目树与页面主体共用项目目录；项目级详情不能替代这层列表缓存。
+  void cache.prefetchQuery({
+    queryKey: ["projects"],
+    queryFn: ({ signal }) => api.listProjects({ signal }),
+  });
+  void cache.prefetchQuery({
+    queryKey: ["projects", "detail", projectId],
+    queryFn: () => api.getProject(projectId),
+    staleTime: 60_000,
+  });
+  void cache.prefetchQuery({
+    queryKey: ["modules", projectId],
+    queryFn: ({ signal }) => api.listModules(projectId, { signal }),
+  });
 }
 
 export function useModules(projectId: number, client?: InpulseApiClient) {

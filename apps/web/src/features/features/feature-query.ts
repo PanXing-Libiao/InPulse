@@ -4,6 +4,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   ApiError,
@@ -36,6 +37,80 @@ export function featureErrorMessage(error: unknown): string {
     if (error.status === 422) return "请检查功能名称与描述。";
   }
   return "功能服务暂时不可用，请重试。";
+}
+
+/**
+ * 功能页首屏需要项目详情、模块目录与功能目录三份数据；悬停搜索结果或任务卡片时
+ * 提前取好，点击后在旧页仍可见的同一帧内直接渲染完整页面，避免「页面已切换、
+ * 数据未到」的空白骨架闪一下。
+ */
+export function prefetchFeatureRoute(
+  cache: QueryClient,
+  params: {
+    readonly projectId: number;
+    readonly moduleId: number;
+    readonly featureId?: number | null;
+  },
+  client?: InpulseApiClient,
+): void {
+  const { projectId, moduleId, featureId } = params;
+  if (
+    !Number.isInteger(projectId) ||
+    projectId <= 0 ||
+    !Number.isInteger(moduleId) ||
+    moduleId <= 0
+  ) {
+    return;
+  }
+  const api = client ?? createApiClient();
+  // 侧栏项目树与页面主体共用项目目录；项目级详情不能替代这层列表缓存。
+  void cache.prefetchQuery({
+    queryKey: ["projects"],
+    queryFn: ({ signal }) => api.listProjects({ signal }),
+  });
+  void cache.prefetchQuery({
+    queryKey: ["projects", "detail", projectId],
+    queryFn: () => api.getProject(projectId),
+    staleTime: 60_000,
+  });
+  void cache.prefetchQuery({
+    queryKey: ["modules", projectId],
+    queryFn: ({ signal }) => api.listModules(projectId, { signal }),
+  });
+  void cache.prefetchQuery({
+    queryKey: ["features", projectId, moduleId, featureId ?? undefined],
+    queryFn: async ({ signal }) => {
+      const page = await api.listFeatures(projectId, moduleId, { signal });
+      // 侧栏功能树与功能详情页使用不同的 queryKey，但读取的是同一份目录。
+      if (featureId !== undefined && featureId !== null) {
+        cache.setQueryData(["features", projectId, moduleId, undefined], page);
+      }
+      return page;
+    },
+  });
+  const prefetchTasks = (targetFeatureId: number | null) => {
+    const args = [projectId, moduleId, targetFeatureId] as const;
+    void cache.prefetchQuery({
+      queryKey: ["tasks", ...args],
+      queryFn: ({ signal }) =>
+        targetFeatureId === null
+          ? api.listModuleTasks(projectId, moduleId, { signal })
+          : api.listTasks(projectId, moduleId, targetFeatureId, { signal }),
+    });
+    void cache.prefetchQuery({
+      queryKey: ["task-assignees", ...args],
+      queryFn: ({ signal }) =>
+        targetFeatureId === null
+          ? api.listModuleTaskAssignees(projectId, moduleId, { signal })
+          : api.listTaskAssignees(projectId, moduleId, targetFeatureId, {
+              signal,
+            }),
+    });
+  };
+  prefetchTasks(null);
+  if (featureId !== undefined && featureId !== null) {
+    prefetchTasks(featureId);
+  }
 }
 
 export function useFeatures(

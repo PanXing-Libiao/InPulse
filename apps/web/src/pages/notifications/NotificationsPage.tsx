@@ -11,6 +11,8 @@ import {
   type TaskLocation,
 } from "@features/tasks/task-links";
 import { useAuth } from "@features/auth/auth-context";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchRecordPath } from "@features/records/records-route-prefetch";
 
 /**
  * 任务类通知在当前通知页就地打开与功能档案一致的任务详情弹窗；
@@ -26,6 +28,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
   client,
 }) => {
   const navigate = useNavigate();
+  const cache = useQueryClient();
   const { user } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -53,6 +56,24 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
     [setSearchParams],
   );
 
+  const prepareTarget = useCallback(
+    (targetPath: string): Promise<void> => {
+      const records = prefetchRecordPath(cache, targetPath, client);
+      return Promise.all([
+        preloadRoutePath(targetPath),
+        records ?? Promise.resolve(),
+      ]).then(() => undefined);
+    },
+    [cache, client],
+  );
+
+  const handlePrefetchTarget = useCallback(
+    (targetPath: string) => {
+      void prepareTarget(targetPath);
+    },
+    [prepareTarget],
+  );
+
   const handleOpenTarget = useCallback(
     (targetPath: string) => {
       const task = parseTaskDetailPath(targetPath);
@@ -60,10 +81,10 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
         setDetailTarget(task);
         return;
       }
-      // 非任务通知同样先等页面 chunk 就绪，避免通知列表先闪一帧再进骨架。
-      void preloadRoutePath(targetPath).finally(() => navigate(targetPath));
+      // 非任务通知等页面 chunk 与目标数据都就绪后再切页，避免列表先闪骨架。
+      void prepareTarget(targetPath).finally(() => navigate(targetPath));
     },
-    [navigate],
+    [navigate, prepareTarget],
   );
 
   return (
@@ -73,6 +94,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
         filter={filter}
         onFilterChange={handleFilterChange}
         onOpenTarget={handleOpenTarget}
+        onPrefetchTarget={handlePrefetchTarget}
         {...(client ? { client } : {})}
       />
       <Suspense fallback={null}>

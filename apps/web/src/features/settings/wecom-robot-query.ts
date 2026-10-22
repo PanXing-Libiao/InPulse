@@ -55,6 +55,7 @@ export function useWecomRobotConfig(client?: InpulseApiClient) {
     queryKey: WECOM_ROBOT_QUERY_KEY,
     queryFn: ({ signal }) => api.getWecomRobotConfig({ signal }),
     retry: false,
+    staleTime: 30_000,
   });
 
   const save = useMutation({

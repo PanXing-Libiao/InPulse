@@ -4,6 +4,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   ApiError,
@@ -61,6 +62,26 @@ export interface ProjectMemberAddFailure {
 export interface ProjectMemberAddResult {
   readonly added: readonly number[];
   readonly failures: readonly ProjectMemberAddFailure[];
+}
+
+/** 成员与设置页首屏数据预取：项目目录 + 当前项目成员。 */
+export function prefetchProjectMembersRoute(
+  cache: QueryClient,
+  projectId: number,
+  client?: InpulseApiClient,
+): void {
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return;
+  }
+  const api = client ?? createApiClient();
+  void cache.prefetchQuery({
+    queryKey: ["projects"],
+    queryFn: ({ signal }) => api.listProjects({ signal }),
+  });
+  void cache.prefetchQuery({
+    queryKey: ["project-members", projectId],
+    queryFn: ({ signal }) => api.listProjectMembers(projectId, { signal }),
+  });
 }
 
 export function useProjectMembers(

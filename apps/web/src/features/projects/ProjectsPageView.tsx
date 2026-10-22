@@ -34,6 +34,9 @@ import {
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import { useProjectTier } from "@features/common/project-tier-context";
 import { routePreloadHandlers } from "@shared/routing/route-preload";
+import { prefetchModulesRoute } from "@features/modules/module-query";
+import { prefetchProjectMembersRoute } from "./project-member-query";
+import { useQueryClient } from "@tanstack/react-query";
 
 const hierarchyNotes = [
   { label: "项目", text: "顶层业务容器，承载范围与成员。" },
@@ -117,6 +120,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
   projectsError,
   onRetryProjects,
 }) => {
+  const cache = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectItem | null>(null);
@@ -377,98 +381,130 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
             )
           ) : (
             <div className="cards-grid calm-projects">
-              {orderedProjects.map((project) => (
-                <article
-                  key={project.id}
-                  className={[
-                    "project-card",
-                    `project-blush-${projectLogoTone(project.code)}`,
-                    project.status === "MAINTENANCE" ? "is-maintenance" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  {...routePreloadHandlers(`/projects/${project.id}/modules`)}
-                  onClick={(event) => {
-                    if (!isCardClick(event)) return;
-                    onOpenModules?.(project.id);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    if (event.target !== event.currentTarget) return;
-                    event.preventDefault();
-                    onOpenModules?.(project.id);
-                  }}
-                  tabIndex={0}
-                >
-                  <span className="card-top">
-                    <ProjectLogo code={project.code} />
-                    <span className="card-top-right">
-                      <ProjectStarButton
-                        projectId={project.id}
-                        projectName={project.name}
-                        starred={isStarred(project.id)}
-                        onToggle={toggleStar}
-                      />
-                      <CalmBadge
-                        tone={projectLifecycleTone(project.status, "blue")}
-                      >
-                        {projectLifecycleLabel(project.status)}
-                      </CalmBadge>
+              {orderedProjects.map((project) => {
+                const modulesPath = `/projects/${project.id}/modules`;
+                const preloadModules = routePreloadHandlers(modulesPath);
+                const membersPath = `/projects/${project.id}/members`;
+                const preloadMembers = routePreloadHandlers(membersPath);
+                const prefetchModules = () =>
+                  prefetchModulesRoute(cache, project.id);
+                const prefetchMembers = () =>
+                  prefetchProjectMembersRoute(cache, project.id);
+                return (
+                  <article
+                    key={project.id}
+                    className={[
+                      "project-card",
+                      `project-blush-${projectLogoTone(project.code)}`,
+                      project.status === "MAINTENANCE" ? "is-maintenance" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    {...preloadModules}
+                    onPointerEnter={() => {
+                      preloadModules.onPointerEnter();
+                      prefetchModules();
+                    }}
+                    onPointerDown={() => {
+                      preloadModules.onPointerDown();
+                      prefetchModules();
+                    }}
+                    onFocus={() => {
+                      preloadModules.onFocus();
+                      prefetchModules();
+                    }}
+                    onClick={(event) => {
+                      if (!isCardClick(event)) return;
+                      onOpenModules?.(project.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      if (event.target !== event.currentTarget) return;
+                      event.preventDefault();
+                      onOpenModules?.(project.id);
+                    }}
+                    tabIndex={0}
+                  >
+                    <span className="card-top">
+                      <ProjectLogo code={project.code} />
+                      <span className="card-top-right">
+                        <ProjectStarButton
+                          projectId={project.id}
+                          projectName={project.name}
+                          starred={isStarred(project.id)}
+                          onToggle={toggleStar}
+                        />
+                        <CalmBadge
+                          tone={projectLifecycleTone(project.status, "blue")}
+                        >
+                          {projectLifecycleLabel(project.status)}
+                        </CalmBadge>
+                      </span>
                     </span>
-                  </span>
-                  <h2>{project.name}</h2>
-                  <p className="project-card-desc">{project.description}</p>
-                  <span className="card-footer">
-                    <span>
-                      <InpulseIcon name="boxes" size={14} />
-                      {project.stats.activeModuleCount} 个模块
+                    <h2>{project.name}</h2>
+                    <p className="project-card-desc">{project.description}</p>
+                    <span className="card-footer">
+                      <span>
+                        <InpulseIcon name="boxes" size={14} />
+                        {project.stats.activeModuleCount} 个模块
+                      </span>
+                      <span>
+                        <InpulseIcon name="code" size={14} />
+                        {project.stats.activeFeatureCount} 个功能
+                      </span>
+                      <span>
+                        <InpulseIcon name="clipboard" size={14} />
+                        {project.stats.openTaskCount} 项待办
+                      </span>
                     </span>
-                    <span>
-                      <InpulseIcon name="code" size={14} />
-                      {project.stats.activeFeatureCount} 个功能
-                    </span>
-                    <span>
-                      <InpulseIcon name="clipboard" size={14} />
-                      {project.stats.openTaskCount} 项待办
-                    </span>
-                  </span>
-                  <span className="card-footer project-card-members">
-                    <span>
-                      <InpulseIcon name="users" size={14} />
-                      {project.memberCount} 位成员
-                    </span>
-                    <span className="project-card-actions">
-                      <Button
-                        className="project-card-action-button"
-                        data-testid={`edit-project-${project.id}`}
-                        onClick={() => {
-                          setEditingRole(project.currentUserRole);
-                          setEditing(project);
-                        }}
-                      >
-                        <span className="project-card-action-label">
-                          <InpulseIcon name="pencil" size={13} />
-                          编辑
-                        </span>
-                      </Button>
-                      {isAdmin && onOpenMembers ? (
+                    <span className="card-footer project-card-members">
+                      <span>
+                        <InpulseIcon name="users" size={14} />
+                        {project.memberCount} 位成员
+                      </span>
+                      <span className="project-card-actions">
                         <Button
-                          className="project-card-action-button is-strong"
-                          {...routePreloadHandlers(
-                            `/projects/${project.id}/members`,
-                          )}
-                          onClick={() => onOpenMembers(project.id)}
+                          className="project-card-action-button"
+                          data-testid={`edit-project-${project.id}`}
+                          onClick={() => {
+                            setEditingRole(project.currentUserRole);
+                            setEditing(project);
+                          }}
                         >
                           <span className="project-card-action-label">
-                            <InpulseIcon name="users" size={13} />
-                            管理成员
+                            <InpulseIcon name="pencil" size={13} />
+                            编辑
                           </span>
                         </Button>
-                      ) : null}
+                        {isAdmin && onOpenMembers ? (
+                          <Button
+                            className="project-card-action-button is-strong"
+                            {...preloadMembers}
+                            onPointerEnter={() => {
+                              preloadMembers.onPointerEnter();
+                              prefetchMembers();
+                            }}
+                            onPointerDown={() => {
+                              preloadMembers.onPointerDown();
+                              prefetchMembers();
+                            }}
+                            onFocus={() => {
+                              preloadMembers.onFocus();
+                              prefetchMembers();
+                            }}
+                            onClick={() => onOpenMembers(project.id)}
+                          >
+                            <span className="project-card-action-label">
+                              <InpulseIcon name="users" size={13} />
+                              管理成员
+                            </span>
+                          </Button>
+                        ) : null}
+                      </span>
                     </span>
-                  </span>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           )}
           <CalmSectionTitle

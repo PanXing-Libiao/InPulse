@@ -21,9 +21,11 @@ import {
 } from "@features/record-drafts/RecordDraftEditorModal";
 import { useNavigate } from "react-router-dom";
 import { LeftoverTaskSource } from "./LeftoverTaskSource";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TaskStatusPanel } from "./TaskStatusPanel";
 import { useTaskMarks, type TaskMark } from "./task-marks";
+import { prefetchFeatureRoute } from "@features/features/feature-query";
+import { prefetchModulesRoute } from "@features/modules/module-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Input } from "antd";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
@@ -451,6 +453,27 @@ export function TasksPanel({
           featureId: current.featureId,
           taskId: current.id,
         });
+  /**
+   * 任务详情打开时预取「在项目中打开」的落地页数据：弹窗至少会停留几秒，
+   * 足够把项目详情、模块目录与功能目录取好，点击后在旧页仍可见的同一帧内
+   * 直接渲染完整页面，不再先空一帧再补骨架。
+   */
+  useEffect(() => {
+    if (current === undefined) return;
+    if (current.featureId === null) {
+      prefetchModulesRoute(queryClient, current.projectId, client);
+      return;
+    }
+    prefetchFeatureRoute(
+      queryClient,
+      {
+        projectId: current.projectId,
+        moduleId: current.moduleId,
+        featureId: current.featureId,
+      },
+      client,
+    );
+  }, [current, client, queryClient]);
   // 迭代记录标签页按设计师稿直接列出本任务的已发布记录与草稿：两者都是既有
   // 只读契约（listChangeRecords / getTaskRecordDrafts），客户端按 taskId 过滤，不新增路由。
   const detailTaskId = current?.id ?? 0;

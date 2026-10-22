@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Input, Space, Switch } from "antd";
+import { useQueryClient } from "@tanstack/react-query";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import { Controller, useForm } from "react-hook-form";
 import {
   ApiError,
+  createApiClient,
   type AdminUserDisableRequest,
   type AdminUserItem,
   type InpulseApiClient,
@@ -19,6 +21,8 @@ import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { SuccessToast } from "@features/common/components/SuccessToast";
 import { AiAssistSettingsPanel } from "@features/settings/AiAssistSettingsPanel";
 import { WecomRobotSettingsPanel } from "@features/settings/WecomRobotSettingsPanel";
+import { AI_ASSIST_SETTINGS_QUERY_KEY } from "@features/settings/ai-assist-query";
+import { WECOM_ROBOT_QUERY_KEY } from "@features/settings/wecom-robot-query";
 import { NotificationPolicyPanel } from "@features/settings/NotificationPolicyPanel";
 import { PermissionMatrixPanel } from "@features/settings/PermissionMatrixPanel";
 import { ProjectMemberOverviewPanel } from "@features/projects/ProjectMemberOverviewPanel";
@@ -79,6 +83,24 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   isAdmin = false,
 }) => {
   const { query, mutation } = useAdminUsers(client, { enabled: isAdmin });
+  const cache = useQueryClient();
+  const api = useMemo(() => client ?? createApiClient(), [client]);
+  useEffect(() => {
+    // 页签内容都是一次轻量读取：在设置页挂载后一并预热，点页签时不再先闪骨架。
+    void cache.prefetchQuery({
+      queryKey: ["projects"],
+      queryFn: ({ signal }) => api.listProjects({ signal }),
+    });
+    if (!isAdmin) return;
+    void cache.prefetchQuery({
+      queryKey: AI_ASSIST_SETTINGS_QUERY_KEY,
+      queryFn: ({ signal }) => api.getAiAssistSettings({ signal }),
+    });
+    void cache.prefetchQuery({
+      queryKey: WECOM_ROBOT_QUERY_KEY,
+      queryFn: ({ signal }) => api.getWecomRobotConfig({ signal }),
+    });
+  }, [api, cache, isAdmin]);
   const [editor, setEditor] = useState<AdminUserItem | null>(null);
   const [lifecycle, setLifecycle] = useState<{
     action: LifecycleAction;
@@ -391,6 +413,34 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     );
   };
 
+  const prefetchSettingsTab = (tab: SettingsTab) => {
+    if ((tab === "aiAssist" || tab === "wecomRobot") && !isAdmin) return;
+    if (tab === "projectMembers") {
+      void cache.prefetchQuery({
+        queryKey: ["projects"],
+        queryFn: ({ signal }) => api.listProjects({ signal }),
+      });
+      return;
+    }
+    if (tab === "aiAssist") {
+      void cache.prefetchQuery({
+        queryKey: AI_ASSIST_SETTINGS_QUERY_KEY,
+        queryFn: ({ signal }) => api.getAiAssistSettings({ signal }),
+      });
+      return;
+    }
+    if (tab === "wecomRobot") {
+      void cache.prefetchQuery({
+        queryKey: WECOM_ROBOT_QUERY_KEY,
+        queryFn: ({ signal }) => api.getWecomRobotConfig({ signal }),
+      });
+    }
+  };
+  const settingsTabPreload = (tab: SettingsTab) => ({
+    onPointerEnter: () => prefetchSettingsTab(tab),
+    onPointerDown: () => prefetchSettingsTab(tab),
+    onFocus: () => prefetchSettingsTab(tab),
+  });
   const switchOrgView = (view: OrgView) => {
     setOrgView(view);
     setOrgMode("browse");
@@ -617,6 +667,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
             aria-current={
               effectiveTab === "projectMembers" ? "page" : undefined
             }
+            {...settingsTabPreload("projectMembers")}
             onClick={() => setActiveTab("projectMembers")}
           >
             <InpulseIcon name="folder" size={15} />
@@ -647,6 +698,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               type="button"
               className={effectiveTab === "aiAssist" ? "selected" : undefined}
               aria-current={effectiveTab === "aiAssist" ? "page" : undefined}
+              {...settingsTabPreload("aiAssist")}
               onClick={() => setActiveTab("aiAssist")}
             >
               <InpulseIcon name="zap" size={15} />
@@ -658,6 +710,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               type="button"
               className={effectiveTab === "wecomRobot" ? "selected" : undefined}
               aria-current={effectiveTab === "wecomRobot" ? "page" : undefined}
+              {...settingsTabPreload("wecomRobot")}
               onClick={() => setActiveTab("wecomRobot")}
             >
               <InpulseIcon name="settings" size={15} />

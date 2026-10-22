@@ -13,7 +13,10 @@ import { ProjectLogo } from "@features/common/components/ProjectLogo";
 import { projectTier } from "@features/common/resource-lifecycle";
 import { useProjectTier } from "@features/common/project-tier-context";
 import { useFeatures } from "@features/features/feature-query";
-import { useModules } from "@features/modules/module-query";
+import {
+  prefetchModulesRoute,
+  useModules,
+} from "@features/modules/module-query";
 import { useProjects } from "@features/projects/project-query";
 import {
   orderProjectsStarredFirst,
@@ -21,6 +24,7 @@ import {
 } from "@features/projects/project-star";
 import { treePath, type TreeScope, type TreeSelection } from "./tree-selection";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+import { useQueryClient } from "@tanstack/react-query";
 
 /**
  * 导航预取：鼠标悬停 / 按下 / 键盘聚焦时提前把这行的目标页面 chunk 拉进模块缓存。
@@ -112,23 +116,42 @@ const ProjectPageRow: React.FC<ProjectPageRowProps> = ({
   active,
   expanded,
   onClick,
-}) => (
-  <button
-    type="button"
-    className={`tree-row page-node${active ? " selected" : ""}${
-      expanded ? " expanded" : ""
-    }`}
-    aria-expanded={segment === "modules" ? expanded : undefined}
-    aria-current={active ? "true" : undefined}
-    {...usePreloadHandlers(`/projects/${projectId}/${segment}`)}
-    onClick={() => onClick(segment, projectId)}
-  >
-    <InpulseIcon name={icon} size={16} className="tree-icon" />
-    <span className="tree-label">
-      <strong>{label}</strong>
-    </span>
-  </button>
-);
+}) => {
+  const cache = useQueryClient();
+  const preload = usePreloadHandlers(`/projects/${projectId}/${segment}`);
+  const prefetchPage = () => {
+    if (segment === "modules") prefetchModulesRoute(cache, projectId);
+  };
+  return (
+    <button
+      type="button"
+      className={`tree-row page-node${active ? " selected" : ""}${
+        expanded ? " expanded" : ""
+      }`}
+      aria-expanded={segment === "modules" ? expanded : undefined}
+      aria-current={active ? "true" : undefined}
+      {...preload}
+      onPointerEnter={() => {
+        preload.onPointerEnter();
+        prefetchPage();
+      }}
+      onPointerDown={() => {
+        preload.onPointerDown();
+        prefetchPage();
+      }}
+      onFocus={() => {
+        preload.onFocus();
+        prefetchPage();
+      }}
+      onClick={() => onClick(segment, projectId)}
+    >
+      <InpulseIcon name={icon} size={16} className="tree-icon" />
+      <span className="tree-label">
+        <strong>{label}</strong>
+      </span>
+    </button>
+  );
+};
 
 interface FeatureRowProps {
   readonly moduleId: number;
@@ -392,6 +415,8 @@ const ProjectBranch: React.FC<ProjectBranchProps> = ({
   onFeatureClick,
   client,
 }) => {
+  const cache = useQueryClient();
+  const projectPreload = usePreloadHandlers(`/projects/${item.id}/modules`);
   const branchRendered = useRetainedMount(expanded);
   const modulesRendered = useRetainedMount(modulesExpanded);
   const isActiveProject = activeScope?.projectId === item.id;
@@ -408,7 +433,19 @@ const ProjectBranch: React.FC<ProjectBranchProps> = ({
         aria-expanded={expanded}
         aria-current={isSelected ? "true" : undefined}
         title={item.name}
-        {...usePreloadHandlers(`/projects/${item.id}/modules`)}
+        {...projectPreload}
+        onPointerEnter={() => {
+          projectPreload.onPointerEnter();
+          prefetchModulesRoute(cache, item.id);
+        }}
+        onPointerDown={() => {
+          projectPreload.onPointerDown();
+          prefetchModulesRoute(cache, item.id);
+        }}
+        onFocus={() => {
+          projectPreload.onFocus();
+          prefetchModulesRoute(cache, item.id);
+        }}
         onClick={() => onProjectClick(item.id)}
       >
         <ProjectLogo code={item.code} className="tree-logo" />
