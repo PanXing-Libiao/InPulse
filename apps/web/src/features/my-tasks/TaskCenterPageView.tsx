@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button } from "antd";
 import {
   createApiClient,
@@ -65,6 +65,9 @@ import {
   type MyTaskWorkStatus,
 } from "./my-tasks-types";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+
+/** 任务中心搜索框的 URL 同步延迟：避开输入法组合期和逐键导航。 */
+const TASK_QUERY_SYNC_DELAY_MS = 250;
 
 const statusLabels: Record<MyTaskWorkStatus, string> = {
   TODO: "未完成",
@@ -398,6 +401,16 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
   client,
 }) => {
   const activeAdapter = adapter ?? MY_TASKS_MOCK_ADAPTER;
+  /**
+   * 搜索框保留一份本地草稿：URL 是筛选真相，但不能在每个按键（尤其是中文输入法
+   * 组合期）都导航重渲染，否则组合串会被打断成重复拼音。输入停止后再同步 URL。
+   */
+  const [queryDraft, setQueryDraft] = useState(filters.query);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const querySyncTimerRef = useRef<number | null>(null);
+  const composingRef = useRef(false);
+  const filtersRef = useRef(filters);
+  const lastSyncedQueryRef = useRef(filters.query);
   // 聚合组详情经 C 域 R-1 / R-4 读取，与任务中心自己的 MyTasks 适配器无关。
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const groupAdapter = useMemo(() => createTaskGroupServerAdapter(api), [api]);
@@ -520,14 +533,100 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
   const [createOpen, setCreateOpen] = useState(false);
 
   const update = (patch: Partial<MyTaskFilters>) => {
+    // 定时器触发时可能已经切换过项目 / 优先级：以最新 filters 为底，避免旧闭包覆盖新筛选。
     onFiltersChange({
-      ...filters,
+      ...filtersRef.current,
       ...(patch.status !== undefined
         ? { overdue: false, todayTodo: false }
         : {}),
       ...patch,
     });
   };
+
+  const clearQuerySync = () => {
+    if (querySyncTimerRef.current !== null) {
+      window.clearTimeout(querySyncTimerRef.current);
+      querySyncTimerRef.current = null;
+    }
+  };
+
+  const syncQueryNow = (next: string) => {
+    clearQuerySync();
+    const normalized = next.trim();
+    if (normalized === lastSyncedQueryRef.current) return;
+    lastSyncedQueryRef.current = normalized;
+    update({ query: normalized });
+  };
+
+  const scheduleQuerySync = (next: string) => {
+    clearQuerySync();
+    const normalized = next.trim();
+    if (normalized === lastSyncedQueryRef.current) return;
+    querySyncTimerRef.current = window.setTimeout(() => {
+      querySyncTimerRef.current = null;
+      if (composingRef.current) return;
+      lastSyncedQueryRef.current = normalized;
+      update({ query: normalized });
+    }, TASK_QUERY_SYNC_DELAY_MS);
+  };
+
+  const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const next = event.target.value;
+    setQueryDraft(next);
+    const native = event.nativeEvent as { isComposing?: boolean };
+    if (composingRef.current || native.isComposing === true) {
+      clearQuerySync();
+      return;
+    }
+    scheduleQuerySync(next);
+  };
+
+  const handleQueryCompositionStart = () => {
+    composingRef.current = true;
+    clearQuerySync();
+  };
+
+  const handleQueryCompositionEnd = (
+    event: React.CompositionEvent<HTMLInputElement>,
+  ) => {
+    composingRef.current = false;
+    const next = event.currentTarget.value;
+    setQueryDraft(next);
+    syncQueryNow(next);
+  };
+
+  const handleQueryBlur = () => {
+    if (composingRef.current) return;
+    const next = queryDraft.trim();
+    if (next !== queryDraft) setQueryDraft(next);
+    syncQueryNow(next);
+  };
+
+  const handleQueryKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      syncQueryNow(queryDraft);
+    }
+  };
+
+  useEffect(() => {
+    filtersRef.current = filters;
+    lastSyncedQueryRef.current = filters.query;
+    if (composingRef.current) return;
+    if (document.activeElement === searchInputRef.current) return;
+    setQueryDraft(filters.query);
+  }, [filters]);
+
+  useEffect(
+    () => () => {
+      if (querySyncTimerRef.current !== null) {
+        window.clearTimeout(querySyncTimerRef.current);
+        querySyncTimerRef.current = null;
+      }
+    },
+    [],
+  );
 
   /**
    * 任务中心只做跨项目查看与定位，不复制功能档案的写入口（状态推进 / 生成迭代记录 /
@@ -1204,11 +1303,16 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
         <div className="task-search">
           <InpulseIcon name="search" size={16} />
           <input
-            value={filters.query}
+            ref={searchInputRef}
+            value={queryDraft}
             placeholder="搜索任务编号、标题、描述、归属或负责人"
             aria-label="搜索任务"
             disabled={!enabled("filter:query")}
-            onChange={(event) => update({ query: event.target.value })}
+            onChange={handleQueryChange}
+            onCompositionStart={handleQueryCompositionStart}
+            onCompositionEnd={handleQueryCompositionEnd}
+            onBlur={handleQueryBlur}
+            onKeyDown={handleQueryKeyDown}
           />
         </div>
         {/* 下拉自身已显示「全部项目 / 项目名」，重复的文字标签已按产品要求删除；

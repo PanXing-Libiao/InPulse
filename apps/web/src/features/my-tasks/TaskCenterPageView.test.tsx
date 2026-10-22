@@ -659,6 +659,39 @@ describe("TaskCenterPageView", () => {
     expect(onToggleAdvanced).toHaveBeenCalledTimes(1);
   });
 
+  it("coalesces rapid query edits into one URL update", async () => {
+    const { onFiltersChange } = renderView();
+    const search = screen.getByLabelText("搜索任务");
+
+    fireEvent.change(search, { target: { value: "a" } });
+    fireEvent.change(search, { target: { value: "ab" } });
+    fireEvent.change(search, { target: { value: "abc" } });
+
+    await waitFor(() => expect(onFiltersChange).toHaveBeenCalledTimes(1));
+    expect(onFiltersChange).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "abc" }),
+    );
+  });
+
+  it("waits for IME composition to end before syncing the query", async () => {
+    const { onFiltersChange } = renderView();
+    const search = screen.getByLabelText("搜索任务");
+
+    fireEvent.compositionStart(search);
+    fireEvent.change(search, { target: { value: "cece'shi" } });
+    await new Promise((resolve) => setTimeout(resolve, 320));
+
+    expect(onFiltersChange).not.toHaveBeenCalled();
+    expect(search).toHaveValue("cece'shi");
+
+    fireEvent.compositionEnd(search, { target: { value: "cece'shi" } });
+    await waitFor(() =>
+      expect(onFiltersChange).toHaveBeenCalledWith(
+        expect.objectContaining({ query: "cece'shi" }),
+      ),
+    );
+  });
+
   it("routes the leftover entry through onOpenIssues", async () => {
     const { onOpenIssues } = renderView();
     const user = userEvent.setup();
