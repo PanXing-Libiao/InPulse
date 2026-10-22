@@ -1348,13 +1348,19 @@
   min-width: 0;
 }
 
-.module-description {
-  max-width: 980px;
-  margin: 0 0 18px;
-  padding: 0 2px;
-  color: #526b82;
-  font-size: 14px;
-  line-height: 1.75;
+.calm-disclosure.module-information {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid #e3eaf2;
+  border-radius: 9px;
+  background: #fbfdff;
+}
+
+.module-information summary {
+  color: #37566f;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 /* 页面标题行：返回箭头紧贴标题，取代原先的文字面包屑行。 */

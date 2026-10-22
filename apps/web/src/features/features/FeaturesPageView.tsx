@@ -21,6 +21,7 @@ import { formatBeijingMinute } from "@features/common/beijing-time";
 import {
   featureLifecycleLabel,
   featureLifecycleTone,
+  moduleLifecycleLabel,
 } from "@features/common/resource-lifecycle";
 import {
   CalmBadge,
@@ -417,11 +418,25 @@ export function FeaturesPageView({
                 )}
               </div>
             </div>
-            {currentModule ? (
-              <p className="module-description">
-                {currentModule.description || "暂无模块说明。"}
-              </p>
-            ) : null}
+            <details className="calm-disclosure module-information">
+              <summary>
+                {currentModule?.code ?? "模块资料"} ·{" "}
+                {currentModule ? currentModule.name : "加载中"} ·{" "}
+                {currentModule
+                  ? moduleLifecycleLabel(currentModule.stats.completedTaskCount)
+                  : "进行中"}
+              </summary>
+              {currentModule && currentModule.description ? (
+                <>
+                  <h4>模块说明</h4>
+                  <p>{currentModule.description}</p>
+                </>
+              ) : null}
+              <small>
+                功能 {query.data?.items.length ?? 0} 个 · 模块级任务{" "}
+                {moduleTasks.query.data?.items.length ?? 0} 项
+              </small>
+            </details>
             <div className="module-work-bar">
               <CalmTabs
                 className="calm-tabs module-work-tabs"
