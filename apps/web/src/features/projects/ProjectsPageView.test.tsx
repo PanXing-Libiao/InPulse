@@ -384,10 +384,45 @@ describe("创建成功后的下一步（2026-10-10）", () => {
   });
 });
 
-describe("ADR-064 整项目文档导入入口", () => {
-  it("项目列表页提供「从文档导入整项目」按钮并打开导入弹窗", () => {
+describe("ADR-064 / ADR-094 项目列表文档导入入口", () => {
+  it("顶部入口直接打开工作台，默认是新建整项目", () => {
     mount({});
     fireEvent.click(screen.getByTestId("import-project-document-button"));
+
+    expect(
+      screen.getByRole("dialog", { name: "从文档导入" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("document-import-mode")).toBeInTheDocument();
     expect(screen.getByLabelText("导入文档内容")).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "新建整项目" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("在同一个工作台内切换到已有项目，再选择模块 / 功能目标", async () => {
+    const listModules = vi.fn().mockResolvedValue({ items: [] });
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    mount({
+      client: {
+        listModules,
+        getUserDirectory,
+      } as unknown as InpulseApiClient,
+    });
+
+    fireEvent.click(screen.getByTestId("import-project-document-button"));
+    fireEvent.click(screen.getByRole("button", { name: "导入已有项目" }));
+
+    expect(
+      screen.getByRole("dialog", { name: "从文档导入" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("document-import-target"),
+    ).toBeInTheDocument();
+    expect(listModules).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ signal: expect.anything() }),
+    );
   });
 });

@@ -38,6 +38,8 @@ import {
   DocumentImportAiAssistClient,
   type AiAssistDraft,
 } from "../modules/document-import/ai-assist.client.js";
+import type { AiAssistTarget } from "../modules/document-import/ai-assist-target.js";
+import { validateAiAssistTarget } from "../modules/document-import/ai-assist-target.js";
 import { parseDocumentTemplate } from "../modules/document-import/document-template.parser.js";
 import { FeatureManagementError } from "../modules/features/features-management.service.js";
 import { ModuleManagementError } from "../modules/modules/modules-management.service.js";
@@ -136,6 +138,17 @@ export class DocumentImportHttpService {
         "登录状态已失效，请重新登录",
       );
     }
+    let target: AiAssistTarget | undefined;
+    const requestedTarget = input.target;
+    if (requestedTarget !== undefined) {
+      try {
+        target = await this.uow.run((tx) =>
+          this.workflow.resolveAssistTarget(tx, actor.userId, requestedTarget),
+        );
+      } catch (error) {
+        throw mapDocumentImportError(error);
+      }
+    }
     const resolution = await this.aiAssistRuntime.resolve();
     if (resolution.kind === "DISABLED") {
       throw new ApiHttpError(
@@ -155,6 +168,7 @@ export class DocumentImportHttpService {
         mode: input.mode,
         text: input.text,
         creatorName,
+        target,
       });
     } catch (error) {
       if (error instanceof AiAssistUpstreamError) {
@@ -168,7 +182,10 @@ export class DocumentImportHttpService {
       throw error;
     }
     const parsed = parseDocumentTemplate(draft.markdown);
-    const issues: DocumentImportIssue[] = [...parsed.issues];
+    const issues: DocumentImportIssue[] = [
+      ...parsed.issues,
+      ...(target === undefined ? [] : validateAiAssistTarget(parsed, target)),
+    ];
     if (draft.truncated) {
       issues.push({
         severity: "ERROR",

@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   createApiClient,
+  type DocumentImportAssistRequest,
   type DocumentImportAssistResponse,
   type InpulseApiClient,
   type ProjectDocumentImportPreviewResponse,
@@ -22,6 +23,11 @@ import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 export const DOCUMENT_IMPORT_MAX_TEXT_LENGTH = 200_000;
 
 export type DocumentImportMode = "NEW_PROJECT" | "PROJECT";
+
+/** ADR-094：AI 辅助转换的目标；只携带 ID，名称由服务端重新读取。 */
+export type DocumentImportAssistTarget = NonNullable<
+  DocumentImportAssistRequest["target"]
+>;
 
 export interface DocumentImportOptions {
   readonly mode: DocumentImportMode;
@@ -187,9 +193,14 @@ export function resolveDocumentImportAssistMode(
   return mode === "NEW_PROJECT" ? "WHOLE_PROJECT" : "IN_PROJECT";
 }
 
+export interface AssistDocumentImportInput {
+  readonly text: string;
+  readonly target?: DocumentImportAssistTarget | undefined;
+}
+
 /**
  * ADR-067 AI 辅助转换：纯校验接口（csrf / idempotency 均 none），
- * 请求只携带模式与抽取后的纯文本，不发送文件本身。
+ * 请求只携带模式、抽取后的纯文本与 ADR-094 的可选目标，不发送文件本身。
  */
 export function useAssistDocumentImport({
   mode,
@@ -198,8 +209,76 @@ export function useAssistDocumentImport({
   const apiClient = useMemo(() => client ?? createApiClient(), [client]);
   const assistMode = resolveDocumentImportAssistMode(mode);
   return useMutation({
-    mutationFn: (text: string): Promise<DocumentImportAssistResponse> =>
-      apiClient.assistDocumentImport({ mode: assistMode, text }),
+    mutationFn: (
+      input: AssistDocumentImportInput,
+    ): Promise<DocumentImportAssistResponse> =>
+      apiClient.assistDocumentImport({
+        mode: assistMode,
+        text: input.text,
+        ...(input.target === undefined ? {} : { target: input.target }),
+      }),
+  });
+}
+
+interface DocumentImportTargetQueryOptions {
+  readonly projectId?: number | undefined;
+  readonly client?: InpulseApiClient | undefined;
+  readonly enabled?: boolean | undefined;
+}
+
+/**
+ * ADR-094：文档导入目标选择器复用项目模块目录。查询键与模块 feature 相同，
+ * 因此从模块页打开导入弹窗时通常直接命中已有缓存；本模块不反向依赖其他
+ * feature 的 query 模块。
+ */
+export function useDocumentImportTargetModules({
+  projectId,
+  client,
+  enabled,
+}: DocumentImportTargetQueryOptions) {
+  const apiClient = useMemo(() => client ?? createApiClient(), [client]);
+  return useQuery({
+    queryKey: ["modules", projectId],
+    queryFn: ({ signal }) => {
+      if (projectId === undefined) {
+        throw new Error("projectId is required");
+      }
+      return apiClient.listModules(projectId, { signal });
+    },
+    enabled:
+      (enabled ?? true) &&
+      projectId !== undefined &&
+      Number.isInteger(projectId) &&
+      projectId > 0,
+    retry: false,
+  });
+}
+
+/** ADR-094：选中模块后再读取该模块的功能目录。 */
+export function useDocumentImportTargetFeatures(
+  options: DocumentImportTargetQueryOptions & {
+    readonly moduleId?: number | undefined;
+  },
+) {
+  const { projectId, moduleId, client, enabled } = options;
+  const apiClient = useMemo(() => client ?? createApiClient(), [client]);
+  return useQuery({
+    queryKey: ["features", projectId, moduleId, undefined],
+    queryFn: ({ signal }) => {
+      if (projectId === undefined || moduleId === undefined) {
+        throw new Error("projectId and moduleId are required");
+      }
+      return apiClient.listFeatures(projectId, moduleId, { signal });
+    },
+    enabled:
+      (enabled ?? true) &&
+      projectId !== undefined &&
+      moduleId !== undefined &&
+      Number.isInteger(projectId) &&
+      projectId > 0 &&
+      Number.isInteger(moduleId) &&
+      moduleId > 0,
+    retry: false,
   });
 }
 
@@ -219,6 +298,8 @@ export function describeDocumentImportAssistError(error: unknown): string {
     switch (error.code) {
       case "AI_ASSIST_DISABLED":
         return "AI 辅助转换未启用或配置无效，请管理员在「成员与设置 → AI 辅助转换」中配置后重试。";
+      case "DOCUMENT_IMPORT_TARGET_NOT_FOUND":
+        return "导入位置不存在，或你已没有该项目的写权限，请重新选择后再试。";
       case "AI_ASSIST_UPSTREAM_FAILED": {
         const reason = error.details["reason"];
         if (typeof reason === "string" && reason in AI_ASSIST_REASON_MESSAGES) {
@@ -236,9 +317,9 @@ export function describeDocumentImportAssistError(error: unknown): string {
       case 401:
         return SESSION_EXPIRED_MESSAGE;
       case 400:
-        return "请求内容为空或超出长度上限，请检查后重试。";
+        return "请求格式不正确，请检查后重试。";
       case 422:
-        return "文本超过 20 万字符上限，请精简后重试。";
+        return "AI 整理请求未通过校验，请检查导入位置和文档内容后重试；若持续失败，请联系管理员。";
       default:
         return "AI 分析暂时失败，请稍后重试，或先手动粘贴模板。";
     }

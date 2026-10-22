@@ -260,9 +260,11 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---|---|---|---|---|---|---|
-| `assistDocumentImport` | 401 | 允许（任何已登录用户） | — | — | 401 | 允许 | 只读校验（不写任何持久化状态）：会话认证、无 CSRF、无幂等；`mode` 取 `IN_PROJECT` / `WHOLE_PROJECT`，`text` 1～200000 字符；调用管理员配置的 OpenAI 兼容端点生成模板草稿，未启用或配置非法 503 `AI_ASSIST_DISABLED`，上游鉴权 / 限流 / 超时 / 网络 / 上下文超限 / 响应非法 503 `AI_ASSIST_UPSTREAM_FAILED`（`details.reason` 为固定枚举）；不开启数据库事务、无 SQL 写、无审计 |
+| `assistDocumentImport` | 401 | 允许（无 `target` 时任意已登录用户；携带 `target` 时须为该项目活跃成员或系统管理员） | 无 `target` 允许；携带 `target` 时 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND` | 无 `target` 允许；携带 `target` 时 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND` | 401 | 允许 | 只读校验（不写任何持久化状态）：会话认证、无 CSRF、无幂等；`mode` 取 `IN_PROJECT` / `WHOLE_PROJECT`，`text` 1～200000 字符；可选 `target` 由服务端校验项目写权限与模块 / 功能归属，整项目模式携带 `target` 由契约拒绝 422；调用管理员配置的 OpenAI 兼容端点生成模板草稿，未启用或配置非法 503 `AI_ASSIST_DISABLED`，上游鉴权 / 限流 / 超时 / 网络 / 上下文超限 / 响应非法 503 `AI_ASSIST_UPSTREAM_FAILED`（`details.reason` 为固定枚举）；不开启数据库事务执行上游请求、无 SQL 写、无审计 |
 
-本接口只服务「用户自己的文档 → 固定模板草稿」的转换，AI 永远只产出草稿文本：不写任何业务表、不写审计 / 活动 / 通知 / 搜索投影；草稿必须经用户确认后走既有 ADR-064 预览 → 执行链路，必填、负责人解析、防重复与默认值规则与手工粘贴完全一致。文件始终只在浏览器本地抽取（ADR-066 边界不变），发给上游的只有抽取后的文本；密钥只从 `/run/secrets/*` 读取并 fail closed，单路由双模式不接触项目数据。
+本接口只服务「用户自己的文档 → 固定模板草稿」的转换，AI 永远只产出草稿文本：不写任何业务表、不写审计 / 活动 / 通知 / 搜索投影；草稿必须经用户确认后走既有 ADR-064 预览 → 执行链路，必填、负责人解析、防重复与默认值规则与手工粘贴完全一致。文件始终只在浏览器本地抽取（ADR-066 边界不变），发给上游的只有抽取后的文本；密钥只从 `/run/secrets/*` 读取并 fail closed。
+
+[ADR-094](adr/ADR-094.md) 起，项目内导入可携带可选 `target`（项目根级 / 模块 / 功能）。携带 `target` 时，服务端先在一个只读短事务内校验目标项目写权限，再按项目 → 模块 → 功能顺序校验归属和名称；非成员、已移除成员、停用用户、跨项目模块 / 功能统一返回 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND`，不区分“不存在”和“无权访问”。该只读事务不写 SQL、不写审计、不生成幂等记录，上游 AI 请求仍在事务外执行；不传 `target` 时保持 ADR-067 的兼容行为。
 
 ## ADR-068 管理员 AI 配置接口（2026-10-13）
 

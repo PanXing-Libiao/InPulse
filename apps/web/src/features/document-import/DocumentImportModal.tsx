@@ -6,11 +6,16 @@ import {
   type InpulseApiClient,
   type ProjectDocumentImportPreviewResponse,
   type ProjectDocumentImportResult,
+  type ProjectListItem,
   type UserDirectoryItem,
 } from "@generated/api";
 import { useAuth } from "@features/auth/auth-context";
 import { AppModal as Modal } from "@features/common/components/AppModal";
-import { avatarColorOf } from "@features/common/components/CalmSelect";
+import { CalmSegmented } from "@features/common/components/Calm";
+import {
+  avatarColorOf,
+  CalmSelect,
+} from "@features/common/components/CalmSelect";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
 import {
@@ -47,6 +52,8 @@ import {
   DOCUMENT_IMPORT_MAX_TEXT_LENGTH,
   useApplyDocumentImport,
   useAssistDocumentImport,
+  useDocumentImportTargetFeatures,
+  useDocumentImportTargetModules,
   usePreviewDocumentImport,
   type DocumentImportIssueView,
   type DocumentImportMode,
@@ -690,8 +697,13 @@ const MemberPickerPanel: React.FC<{
 
 export interface DocumentImportModalProps {
   readonly open: boolean;
+  /** 固定上下文；allowModeSwitch 打开时作为工作台的初始导入方式。 */
   readonly mode: DocumentImportMode;
   readonly projectId?: number | undefined;
+  /** 项目列表入口允许在工作台内切换新建整项目 / 导入已有项目。 */
+  readonly allowModeSwitch?: boolean | undefined;
+  /** allowModeSwitch 时提供完整项目列表；模块页等固定上下文入口不需要。 */
+  readonly projects?: readonly ProjectListItem[] | undefined;
   readonly client?: InpulseApiClient | undefined;
   readonly onClose: () => void;
   readonly onImported: (result: ProjectDocumentImportResult) => void;
@@ -708,6 +720,8 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
   open,
   mode,
   projectId,
+  allowModeSwitch = false,
+  projects = [],
   client,
   onClose,
   onImported,
@@ -718,7 +732,14 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
   /** ADR-073：创建者（= 本次导入人）默认就是成员，草稿里挂一枚锁定标签给用户看。 */
   const creatorMemberName = user?.name?.trim() ?? "";
   const creatorMemberLogin = user?.loginName?.trim() ?? "";
+  const [activeMode, setActiveMode] = useState<DocumentImportMode>(mode);
+  const [activeProjectId, setActiveProjectId] = useState<number | undefined>(
+    projectId,
+  );
   const [stage, setStage] = useState<Stage>("INPUT");
+  /** ADR-094：AI 整理目标。未选模块 = 项目根级；未选功能 = 整个模块。 */
+  const [targetModuleId, setTargetModuleId] = useState<number | null>(null);
+  const [targetFeatureId, setTargetFeatureId] = useState<number | null>(null);
   const [documentText, setDocumentText] = useState("");
   const [preview, setPreview] =
     useState<ProjectDocumentImportPreviewResponse | null>(null);
@@ -748,9 +769,39 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
   const [dragging, setDragging] = useState(false);
   const [appliedDraftText, setAppliedDraftText] = useState<string | null>(null);
   const [memberPicker, setMemberPicker] = useState<string | null>(null);
-  const previewMutation = usePreviewDocumentImport({ mode, projectId, client });
-  const applyMutation = useApplyDocumentImport({ mode, projectId, client });
-  const assistMutation = useAssistDocumentImport({ mode, client });
+  const previewMutation = usePreviewDocumentImport({
+    mode: activeMode,
+    projectId: activeProjectId,
+    client,
+  });
+  const applyMutation = useApplyDocumentImport({
+    mode: activeMode,
+    projectId: activeProjectId,
+    client,
+  });
+  const assistMutation = useAssistDocumentImport({
+    mode: activeMode,
+    client,
+  });
+  const targetModulesQuery = useDocumentImportTargetModules({
+    projectId: activeProjectId,
+    client,
+    enabled: open && activeMode === "PROJECT",
+  });
+  const targetFeaturesQuery = useDocumentImportTargetFeatures({
+    projectId: activeProjectId,
+    moduleId: targetModuleId ?? undefined,
+    client,
+    enabled: open && activeMode === "PROJECT" && targetModuleId !== null,
+  });
+  const targetModules = targetModulesQuery.data?.items ?? [];
+  const targetFeatures = targetFeaturesQuery.data?.items ?? [];
+  const selectedTargetModule = targetModules.find(
+    (module) => module.id === targetModuleId,
+  );
+  const selectedTargetFeature = targetFeatures.find(
+    (feature) => feature.id === targetFeatureId,
+  );
   const draftLines = useMemo(
     () => parseDocumentDraft(documentText),
     [documentText],
@@ -797,8 +848,10 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
   // 空态还没有文档：不显示「缺项目段」这类由文档本身决定的项目。
   const missingItems = useMemo(
     () =>
-      hasContent ? computeMissingItems(draftView, mode, memberContext) : [],
-    [draftView, mode, hasContent, memberContext],
+      hasContent
+        ? computeMissingItems(draftView, activeMode, memberContext)
+        : [],
+    [draftView, activeMode, hasContent, memberContext],
   );
 
   // 助手主动开口的那句话：只要有内容就一直挂在这里，随草稿实时更新，
@@ -868,10 +921,14 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
 
   useEffect(() => {
     if (!open) return;
+    setActiveMode(mode);
+    setActiveProjectId(projectId);
     askedQuestionRef.current = null;
     announcedImportRef.current = null;
     announcedGapReplyRef.current = null;
     setStage("INPUT");
+    setTargetModuleId(null);
+    setTargetFeatureId(null);
     setDocumentText("");
     setPreview(null);
     setLocalError(null);
@@ -894,7 +951,32 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     previewMutation.reset();
     applyMutation.reset();
     assistMutation.reset();
-  }, [open]);
+  }, [open, mode, projectId]);
+
+  useEffect(() => {
+    if (targetModuleId === null || targetModulesQuery.data === undefined) {
+      return;
+    }
+    if (
+      targetModulesQuery.data.items.some((item) => item.id === targetModuleId)
+    ) {
+      return;
+    }
+    setTargetModuleId(null);
+    setTargetFeatureId(null);
+  }, [targetModuleId, targetModulesQuery.data]);
+
+  useEffect(() => {
+    if (targetFeatureId === null || targetFeaturesQuery.data === undefined) {
+      return;
+    }
+    if (
+      targetFeaturesQuery.data.items.some((item) => item.id === targetFeatureId)
+    ) {
+      return;
+    }
+    setTargetFeatureId(null);
+  }, [targetFeatureId, targetFeaturesQuery.data]);
 
   /**
    * 空态点「直接粘贴文本」后光标直接落在文本区，用户接着 Ctrl+V 就行，不用再点一下输入框。
@@ -967,7 +1049,17 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
       .concat(nextSupplements.map((item) => "补充说明：" + item))
       .join("\n\n");
     try {
-      const result = await assistMutation.mutateAsync(payload);
+      const target =
+        activeMode === "PROJECT" && activeProjectId !== undefined
+          ? {
+              projectId: activeProjectId,
+              moduleId: targetModuleId,
+              featureId: targetFeatureId,
+            }
+          : undefined;
+      const result = await assistMutation.mutateAsync(
+        target === undefined ? { text: payload } : { text: payload, target },
+      );
       setAssistIssues(result.issues);
       setAssistSourceName(sourceName);
       applyDraftText(result.markdown);
@@ -1003,7 +1095,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
   ): void => {
     const items = computeMissingItems(
       buildDocumentDraftView(parseDocumentDraft(markdown)),
-      mode,
+      activeMode,
       memberContext,
     );
     // 这一轮已经说清落地结果，落地汇总不必再重复一条。
@@ -1547,7 +1639,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     // ADR-073：创建者（= 本次导入人）默认就是成员。它挂在「项目成员」行上，用户看得见、
     // 也删不掉；不改文档原文（「预览文档」仍是一字不改的原版），落库时由服务端写入成员行。
     const creatorLock =
-      mode === "NEW_PROJECT" &&
+      activeMode === "NEW_PROJECT" &&
       creatorMemberName.length > 0 &&
       !memberValueHasCreator(
         field.value,
@@ -1656,7 +1748,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
               draftView.project.fields,
               PROJECT_FIELDS,
               // 项目编码只在整项目导入时必填；项目内导入出现项目段是用户自己写的。
-              mode === "NEW_PROJECT" ? PROJECT_REQUIRED_FIELDS : [],
+              activeMode === "NEW_PROJECT" ? PROJECT_REQUIRED_FIELDS : [],
               draftView.project.lineIndex,
             )}
           </div>
@@ -1665,7 +1757,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
           </span>
         </div>
       ) : null}
-      {mode === "NEW_PROJECT" && draftView.project === null ? (
+      {activeMode === "NEW_PROJECT" && draftView.project === null ? (
         <p className="import-draft-warn">
           这份文档里没有「# 项目：名称」段，整项目导入必须补上项目段。
         </p>
@@ -1796,6 +1888,210 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
       return <span className="import-pill">{total} 条建议</span>;
     }
     return null;
+  })();
+
+  const handleTargetModuleChange = (next: number | string): void => {
+    setTargetModuleId(next === "root" ? null : Number(next));
+    setTargetFeatureId(null);
+  };
+  const handleTargetFeatureChange = (next: number | string): void => {
+    setTargetFeatureId(next === "module" ? null : Number(next));
+  };
+
+  const resetImportContext = (): void => {
+    setStage("INPUT");
+    setPreview(null);
+    setTargetModuleId(null);
+    setTargetFeatureId(null);
+    setLocalError(null);
+    setAssistError(null);
+    setAssistIssues([]);
+    previewMutation.reset();
+    applyMutation.reset();
+    assistMutation.reset();
+  };
+
+  const switchImportMode = (next: DocumentImportMode): void => {
+    if (busy || assistBusy || next === activeMode) return;
+    setActiveMode(next);
+    if (
+      next === "PROJECT" &&
+      !projects.some((project) => project.id === activeProjectId)
+    ) {
+      setActiveProjectId(projects[0]?.id);
+    }
+    resetImportContext();
+  };
+
+  const switchImportProject = (next: number | string): void => {
+    const projectId = Number(next);
+    if (
+      !Number.isInteger(projectId) ||
+      projectId <= 0 ||
+      projectId === activeProjectId
+    ) {
+      return;
+    }
+    setActiveProjectId(projectId);
+    resetImportContext();
+  };
+
+  const modeBar = (() => {
+    if (!allowModeSwitch) return null;
+    const switchDisabled = busy || assistBusy;
+    const noProjects = projects.length === 0;
+    return (
+      <div className="import-target-bar" data-testid="document-import-mode">
+        <span className="import-target-label">导入方式</span>
+        <CalmSegmented
+          label="导入方式"
+          value={activeMode}
+          options={[
+            {
+              value: "NEW_PROJECT",
+              label: "新建整项目",
+              disabled: switchDisabled,
+            },
+            {
+              value: "PROJECT",
+              label: "导入已有项目",
+              disabled: switchDisabled || noProjects,
+              title: noProjects ? "当前还没有可导入的项目" : undefined,
+            },
+          ]}
+          onChange={switchImportMode}
+        />
+        {activeMode === "PROJECT" ? (
+          <CalmSelect
+            className="import-target-select"
+            ariaLabel="选择项目"
+            value={activeProjectId ?? null}
+            appearance="rich"
+            placeholder="选择要导入的项目"
+            width={260}
+            disabled={switchDisabled || noProjects}
+            onChange={switchImportProject}
+            options={projects.map((project) => ({
+              value: project.id,
+              label: project.name,
+              description: project.code,
+              iconText: project.name.slice(0, 1),
+            }))}
+          />
+        ) : null}
+        <span className="import-target-note">
+          {activeMode === "NEW_PROJECT"
+            ? "创建新项目；文档中的模块、功能与任务会一并导入。"
+            : noProjects
+              ? "当前没有可导入的项目，请先新建项目。"
+              : "切换项目后会保留文档草稿，但需要重新分析或预览。"}
+        </span>
+      </div>
+    );
+  })();
+
+  const targetBar = (() => {
+    if (activeMode !== "PROJECT" || activeProjectId === undefined) {
+      return null;
+    }
+    const moduleValue =
+      targetModuleId === null ? "root" : String(targetModuleId);
+    const moduleOptions = [
+      {
+        value: "root",
+        label: "项目根级",
+        description: "新建模块或模块级任务",
+      },
+      ...targetModules.map((module) => ({
+        value: String(module.id),
+        label: module.name,
+        description: module.kind === "UNCLASSIFIED" ? "未分类" : module.code,
+      })),
+    ];
+    const featureOptions = [
+      {
+        value: "module",
+        label: "整个模块",
+        description: "新增功能或模块级任务",
+      },
+      ...targetFeatures.map((feature) => ({
+        value: String(feature.id),
+        label: feature.name,
+        description: feature.code,
+      })),
+    ];
+    const summary =
+      selectedTargetModule !== undefined && selectedTargetFeature !== undefined
+        ? "AI 将在模块「" +
+          selectedTargetModule.name +
+          " / " +
+          selectedTargetFeature.name +
+          "」下整理任务"
+        : selectedTargetModule !== undefined
+          ? "AI 将在模块「" + selectedTargetModule.name + "」下整理功能与任务"
+          : "AI 将在项目根级整理模块与任务";
+    return (
+      <div className="import-target-bar" data-testid="document-import-target">
+        <span className="import-target-label">导入位置</span>
+        <CalmSelect
+          className="import-target-select"
+          ariaLabel="导入位置"
+          value={moduleValue}
+          appearance="notion"
+          width={210}
+          loading={targetModulesQuery.isPending}
+          disabled={busy || assistBusy}
+          onChange={handleTargetModuleChange}
+          options={moduleOptions}
+        />
+        {targetModuleId === null ? null : (
+          <CalmSelect
+            className="import-target-select"
+            ariaLabel="细化到"
+            value={
+              targetFeatureId === null ? "module" : String(targetFeatureId)
+            }
+            appearance="notion"
+            width={230}
+            loading={targetFeaturesQuery.isPending}
+            disabled={busy || assistBusy}
+            onChange={handleTargetFeatureChange}
+            options={featureOptions}
+          />
+        )}
+        <span
+          className="import-target-summary"
+          data-testid="document-import-target-summary"
+        >
+          {summary}
+        </span>
+        <span className="import-target-note">
+          只约束 AI 整理；最终以预览草稿为准
+        </span>
+        {targetModulesQuery.isError ? (
+          <span className="import-target-note is-error">
+            模块目录加载失败，暂时只能导入到项目根级。
+          </span>
+        ) : null}
+        {targetModulesQuery.isSuccess && targetModules.length === 0 ? (
+          <span className="import-target-note">
+            项目还没有模块，本次只能在项目根级创建。
+          </span>
+        ) : null}
+        {targetModuleId !== null && targetFeaturesQuery.isError ? (
+          <span className="import-target-note is-error">
+            功能目录加载失败，暂时只能整理到整个模块。
+          </span>
+        ) : null}
+        {targetModuleId !== null &&
+        targetFeaturesQuery.isSuccess &&
+        targetFeatures.length === 0 ? (
+          <span className="import-target-note">
+            该模块还没有功能，可以新建功能或模块级任务。
+          </span>
+        ) : null}
+      </div>
+    );
   })();
 
   const assistantPane = (
@@ -2177,7 +2473,11 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
         className="catalog-modal import-workbench"
         size="lg"
         title={
-          mode === "NEW_PROJECT" ? "从文档导入整项目" : "从文档导入模块与功能"
+          allowModeSwitch
+            ? "从文档导入"
+            : activeMode === "NEW_PROJECT"
+              ? "从文档导入整项目"
+              : "从文档导入模块与功能"
         }
         destroyOnHidden
         mask={{ closable: false }}
@@ -2225,7 +2525,9 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
       >
         {stage === "INPUT" ? (
           <div className="import-workbench-body">
+            {modeBar}
             {errorPanel}
+            {targetBar}
             <div className="import-panes">
               <section
                 className="import-pane"

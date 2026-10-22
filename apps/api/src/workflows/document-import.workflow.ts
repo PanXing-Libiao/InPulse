@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import {
   DOCUMENT_IMPORT_MAX_MEMBERS,
   DOCUMENT_IMPORT_TEMPLATE_VERSION,
+  type DocumentImportAssistTarget,
   type DocumentImportIssue,
   type DocumentImportMemberRef,
   type DocumentImportSummary,
@@ -42,6 +43,7 @@ import {
 } from "../modules/document-import/document-template.parser.js";
 import { ProjectBootstrapWorkflow } from "../modules/projects/project-bootstrap.workflow.js";
 import { UserReadPort } from "../auth/user-read.port.js";
+import type { AiAssistTarget } from "../modules/document-import/ai-assist-target.js";
 
 /** 文档导入的稳定业务错误；HTTP 映射由 document-import-http.service 负责。 */
 export class DocumentImportError extends Error {
@@ -62,6 +64,8 @@ export const DOCUMENT_IMPORT_INVALID_CODE = "DOCUMENT_IMPORT_INVALID";
 export const DOCUMENT_IMPORT_DUPLICATE_CODE = "DOCUMENT_IMPORT_DUPLICATE";
 export const DOCUMENT_IMPORT_STALE_CODE = "DOCUMENT_IMPORT_STALE";
 export const DOCUMENT_IMPORT_PROJECT_NOT_FOUND_CODE = "PROJECT_NOT_FOUND";
+export const DOCUMENT_IMPORT_TARGET_NOT_FOUND_CODE =
+  "DOCUMENT_IMPORT_TARGET_NOT_FOUND";
 
 interface PlannedModule {
   readonly line: number;
@@ -181,6 +185,61 @@ export class DocumentImportWorkflow {
     @Inject(ProjectBootstrapWorkflow)
     private readonly projectBootstrap: ProjectBootstrapWorkflow,
   ) {}
+
+  /**
+   * ADR-094：解析 AI 辅助转换目标。项目写权限与模块 / 功能的真实归属都在
+   * 同一个只读短事务内校验；不存在与无权访问统一按 404，避免泄露资源存在性。
+   * 调用方必须在事务外发起上游请求。
+   */
+  async resolveAssistTarget(
+    tx: TransactionContext,
+    actorId: number,
+    target: DocumentImportAssistTarget,
+  ): Promise<AiAssistTarget> {
+    const access = await this.access.checkProjectForWrite(tx, {
+      actorUserId: actorId,
+      projectId: target.projectId,
+    });
+    if (access.kind === "not-found") {
+      throw this.targetNotFound();
+    }
+    if (target.moduleId === null) {
+      return { kind: "PROJECT_ROOT", projectId: target.projectId };
+    }
+    const module = await this.moduleRead.find(
+      tx,
+      target.projectId,
+      target.moduleId,
+    );
+    if (module === undefined) {
+      throw this.targetNotFound();
+    }
+    if (target.featureId === null) {
+      return {
+        kind: "MODULE",
+        projectId: target.projectId,
+        moduleId: module.moduleId,
+        moduleName: module.name,
+      };
+    }
+    const feature = await this.featureRead.find(
+      tx,
+      target.projectId,
+      target.moduleId,
+      target.featureId,
+    );
+    if (feature === undefined) {
+      throw this.targetNotFound();
+    }
+    return {
+      kind: "FEATURE",
+      projectId: target.projectId,
+      moduleId: module.moduleId,
+      moduleName: module.name,
+      featureId: feature.featureId,
+      featureName: feature.name,
+    };
+  }
 
   private issuePush(
     issues: DocumentImportIssue[],
@@ -1000,6 +1059,14 @@ export class DocumentImportWorkflow {
       404,
       DOCUMENT_IMPORT_PROJECT_NOT_FOUND_CODE,
       "项目不存在或无法访问",
+    );
+  }
+
+  private targetNotFound(): DocumentImportError {
+    return new DocumentImportError(
+      404,
+      DOCUMENT_IMPORT_TARGET_NOT_FOUND_CODE,
+      "目标位置不存在或无法访问",
     );
   }
 

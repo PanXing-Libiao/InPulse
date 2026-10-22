@@ -231,8 +231,28 @@ export const projectDocumentImportReplayContextSchema = z
   .meta({ id: "ProjectDocumentImportReplayContext" });
 
 /**
+ * ADR-094 AI 辅助转换的 UI 目标：目标项目由当前页面上下文提供，模块 / 功能
+ * 只能在该项目内逐级收窄。服务端不信任这里的归属声明，会在提示词注入前
+ * 重新校验项目写权限与模块 / 功能真实归属。
+ */
+export const documentImportAssistTargetSchema = z
+  .object({
+    projectId: id,
+    moduleId: id.nullable(),
+    featureId: id.nullable(),
+  })
+  .strict()
+  .refine((value) => value.featureId === null || value.moduleId !== null, {
+    message: "featureId 需要同时提供 moduleId",
+    path: ["featureId"],
+  })
+  .meta({ id: "DocumentImportAssistTarget" });
+
+/**
  * ADR-067 AI 辅助转换：把用户自己的项目文档（任意结构）转成固定模板草稿。
- * 纯校验接口：不写任何持久化状态；草稿必须经用户确认后走既有预览/导入链路。
+ * ADR-094 增加可选的目标上下文；不传 target 时保持旧行为，传 WHOLE_PROJECT
+ * 时禁止携带 target。纯校验接口：不写任何持久化状态；草稿必须经用户确认后
+ * 走既有预览/导入链路。
  */
 export const documentImportAssistRequestSchema = z
   .object({
@@ -246,8 +266,20 @@ export const documentImportAssistRequestSchema = z
       .min(1)
       .max(DOCUMENT_IMPORT_MAX_TEXT_LENGTH)
       .describe("用户原始文档抽取后的纯文本（UTF-8），不要求符合固定模板"),
+    target: documentImportAssistTargetSchema
+      .optional()
+      .describe(
+        "项目内导入时可选的 UI 目标：只带 projectId 表示项目根级；带 moduleId 表示指定模块；再带 featureId 表示指定功能。整项目导入不得携带。",
+      ),
   })
   .strict()
+  .refine(
+    (value) => value.mode !== "WHOLE_PROJECT" || value.target === undefined,
+    {
+      message: "整项目导入不能携带 target",
+      path: ["target"],
+    },
+  )
   .meta({ id: "DocumentImportAssistRequest" });
 
 export const documentImportAssistResponseSchema = z
@@ -301,6 +333,9 @@ export type DocumentImportSummary = z.infer<typeof documentImportSummarySchema>;
 export type DocumentImportDuplicate = z.infer<
   typeof documentImportDuplicateSchema
 >;
+export type DocumentImportAssistTarget = z.infer<
+  typeof documentImportAssistTargetSchema
+>;
 export type DocumentImportAssistRequest = z.infer<
   typeof documentImportAssistRequestSchema
 >;
@@ -334,9 +369,14 @@ export const documentImportSchemas = {
     summary: "文档导入重放资源引用",
     sensitiveFieldPaths: [],
   },
+  DocumentImportAssistTarget: {
+    schema: documentImportAssistTargetSchema,
+    summary: "AI 辅助文档转换的 UI 目标：项目、可选模块与可选功能",
+    sensitiveFieldPaths: [],
+  },
   DocumentImportAssistRequest: {
     schema: documentImportAssistRequestSchema,
-    summary: "AI 辅助文档转换请求：模式与用户文档原文",
+    summary: "AI 辅助文档转换请求：模式、用户文档原文与可选 UI 目标",
     sensitiveFieldPaths: [],
   },
   DocumentImportAssistResponse: {

@@ -85,7 +85,7 @@ export interface ProjectsPageViewProps {
   readonly onStartCreate?: (() => void) | undefined;
   readonly onDismissCreatedProject?: (() => void) | undefined;
   readonly onCreated?: (response: CreateProjectResponse) => void;
-  /** 整项目导入成功（ADR-064）：结果含项目 ID 与计数，去向由调用方决定。 */
+  /** 文档导入成功（整项目或项目内追加）：结果含项目 ID 与计数，去向由调用方决定。 */
   readonly onImportedProject?:
     ((result: ProjectDocumentImportResult) => void) | undefined;
   readonly onOpenActivity?: ((projectId: number) => void) | undefined;
@@ -234,7 +234,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
             <InpulseIcon name="plus" size={15} />
             新建项目
           </Button>
-          {/* 从文档导入整项目（ADR-064）：文档含项目段时单事务创建项目与各下级。 */}
+          {/* 从文档导入（ADR-064 / ADR-094）：直接打开工作台，在内部切换导入方式。 */}
           <Button
             className="secondary-button"
             data-testid="import-project-document-button"
@@ -244,7 +244,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
             }}
           >
             <InpulseIcon name="fileText" size={15} />
-            从文档导入整项目
+            从文档导入
           </Button>
         </div>
       </div>
@@ -535,6 +535,8 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
       <DocumentImportModal
         open={importOpen}
         mode="NEW_PROJECT"
+        allowModeSwitch
+        projects={projects}
         client={client}
         onClose={() => setImportOpen(false)}
         onImported={(result) => {

@@ -107,6 +107,7 @@
 | [ADR-091](ADR-091.md) | Accepted | 项目封箱彩蛋：项目首次进入维护中且已有完成任务时，以迁移 `0056_project_wraps.sql` 冻结一次性项目快照；审计复用 `project.status.change` 并标记 `wrapped`，写 `PROJECT_WRAPPED` 动态和全体活跃成员的 `project.wrapped` 通知；个人单聊与项目群都发送文字和 1080 × 1350 纪念海报，群投递按 `delivered_step_count` 分段续传，群开关与个人偏好继续分别生效 |
 | [ADR-092](ADR-092.md) | Accepted | 项目状态变更与内容版本解耦：`app.projects.row_version` 只表示内容版本；纯状态变更保持版本，任何内容列变化仍必须恰好 +1；首次任务完成因写粘性标记仍推进版本；`If-Match` 与行锁继续保护内容并发；迁移 `0057_project_status_version_semantics.sql` 替换项目触发器，`changeProjectStatus` 幂等契约升至 1.3.0 |
 | [ADR-093](ADR-093.md) | Accepted | 企业微信项目群通知收敛为 MEMBER 可见项目动态单一来源：不再从 `app.notifications` 物化群消息，解除个人通知偏好耦合并消除跨来源重复；`task.create` 归任务派发，`task.update` 仅在 `metadata.assignmentChanged === true` 时归任务派发，普通编辑跳过；任务动态新增 `assignmentChanged` / `assigneeIds` / `previousAssigneeIds`；未知动态默认放行但不再按实体兜底分类；无新路由、无迁移 |
+| [ADR-094](ADR-094.md) | Accepted | 文档导入 AI 辅助转换增加可选 UI 目标上下文：项目内导入可指定项目根级、已有模块或已有功能；`target` 只带 ID，服务端在调用上游前只读校验项目写权限与模块 / 功能归属，不存在或无权访问统一 404；提示词硬约束目标范围，生成结果再用 `AI_ASSIST_TARGET_*` ERROR 校验；整项目导入不得携带 `target`；无新路由、无迁移 |
 
 
 ## 关联基线

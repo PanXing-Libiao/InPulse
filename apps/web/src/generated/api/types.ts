@@ -357,12 +357,19 @@ export type DeleteTaskRequest = {
 export type DocumentImportAssistRequest = {
   readonly mode: ("IN_PROJECT" | "WHOLE_PROJECT");
   readonly text: string;
+  readonly target?: DocumentImportAssistTarget;
 };
 
 export type DocumentImportAssistResponse = {
   readonly markdown: string;
   readonly model: string;
   readonly issues: readonly DocumentImportIssue[];
+};
+
+export type DocumentImportAssistTarget = {
+  readonly projectId: number;
+  readonly moduleId: (number | null);
+  readonly featureId: (number | null);
 };
 
 export type DocumentImportDuplicate = {

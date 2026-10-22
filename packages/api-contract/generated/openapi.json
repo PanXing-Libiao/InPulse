@@ -3095,7 +3095,7 @@
     "/document-imports/assist": {
       "post": {
         "operationId": "assistDocumentImport",
-        "summary": "把用户自己的项目文档（任意结构）交给服务端配置的 OpenAI 兼容端点转成固定模板草稿，返回解析器预检问题；不写任何持久化状态，无 CSRF 与幂等记录。",
+        "summary": "把用户自己的项目文档（任意结构）交给服务端配置的 OpenAI 兼容端点转成固定模板草稿，返回解析器预检问题；可选 target 在服务端校验项目写权限与模块 / 功能归属。不写任何持久化状态，无 CSRF 与幂等记录。",
         "responses": {
           "200": {
             "description": "成功",
@@ -3119,6 +3119,16 @@
           },
           "401": {
             "description": "未登录或 Session 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在或当前用户不可访问",
             "content": {
               "application/json": {
                 "schema": {
@@ -19926,6 +19936,10 @@
             "minLength": 1,
             "maxLength": 200000,
             "description": "用户原始文档抽取后的纯文本（UTF-8），不要求符合固定模板"
+          },
+          "target": {
+            "description": "项目内导入时可选的 UI 目标：只带 projectId 表示项目根级；带 moduleId 表示指定模块；再带 featureId 表示指定功能。整项目导入不得携带。",
+            "$ref": "#/components/schemas/DocumentImportAssistTarget"
           }
         },
         "required": [
@@ -19962,6 +19976,46 @@
           "markdown",
           "model",
           "issues"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentImportAssistTarget": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "moduleId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "featureId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 2147483647
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "projectId",
+          "moduleId",
+          "featureId"
         ],
         "additionalProperties": false
       },

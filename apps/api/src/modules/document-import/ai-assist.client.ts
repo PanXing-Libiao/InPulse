@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 
 import type { AiAssistConfig } from "./ai-assist.config.js";
+import type { AiAssistTarget } from "./ai-assist-target.js";
 import {
   buildAiAssistMessages,
   type DocumentImportAssistMode,
@@ -50,6 +51,11 @@ export interface AiAssistDraftRequest {
    * 只进 system 提示词，不写日志、不落库；取不到时不传，由提示词要求不要编造。
    */
   readonly creatorName?: string | undefined;
+  /**
+   * ADR-094：项目内导入的 UI 目标。名称由服务端读取并通过权限 / 归属校验；
+   * 只进 system 提示词，不写日志、不落库。
+   */
+  readonly target?: AiAssistTarget | undefined;
 }
 
 const LOGGER_CONTEXT = "DocumentImportAiAssist";

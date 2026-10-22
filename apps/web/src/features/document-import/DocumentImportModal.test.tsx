@@ -16,9 +16,12 @@ import {
   DOCUMENT_IMPORT_TEMPLATE,
   type CurrentUserResponse,
   type DocumentImportAssistResponse,
+  type FeatureItem,
   type InpulseApiClient,
+  type ModuleItem,
   type ProjectDocumentImportPreviewResponse,
   type ProjectDocumentImportResult,
+  type ProjectListItem,
   type UserDirectoryItem,
 } from "@generated/api";
 import { AuthStateProvider } from "@features/auth/auth-context";
@@ -130,6 +133,57 @@ const DIRECTORY: readonly UserDirectoryItem[] = [
   },
 ];
 
+const TARGET_MODULE: ModuleItem = {
+  id: 7,
+  projectId: 2,
+  code: "MALL-M-1",
+  name: "支付",
+  description: "支付与退款",
+  kind: "NORMAL",
+  sortOrder: 0,
+  rowVersion: 1,
+  createdAt: "2026-10-22T00:00:00.000Z",
+  updatedAt: "2026-10-22T00:00:00.000Z",
+  stats: { activeFeatureCount: 1, openTaskCount: 0, completedTaskCount: 0 },
+};
+
+const TARGET_FEATURE: FeatureItem = {
+  id: 8,
+  projectId: 2,
+  moduleId: 7,
+  code: "MALL-F-1",
+  createdBy: 1,
+  tags: [],
+  name: "退款回调",
+  currentBehavior: "处理退款回调",
+  acceptanceCriteria: "",
+  rowVersion: 1,
+  createdAt: "2026-10-22T00:00:00.000Z",
+  updatedAt: "2026-10-22T00:00:00.000Z",
+  stats: { openTaskCount: 0, completedTaskCount: 0, recordCount: 0 },
+};
+
+const TARGET_PROJECT: ProjectListItem = {
+  id: 2,
+  code: "MALL",
+  name: "商城结算系统",
+  description: "结算与对账",
+  status: "ACTIVE",
+  hasCompletedTask: false,
+  rowVersion: 1,
+  createdBy: 1,
+  createdAt: "2026-10-22T00:00:00.000Z",
+  updatedAt: "2026-10-22T00:00:00.000Z",
+  memberCount: 2,
+  stats: {
+    activeModuleCount: 1,
+    activeFeatureCount: 1,
+    openTaskCount: 0,
+    completedTaskCount: 0,
+  },
+  currentUserRole: "MEMBER",
+};
+
 const okAssist: DocumentImportAssistResponse = {
   markdown: ASSIST_MARKDOWN,
   model: "stub-model",
@@ -227,10 +281,14 @@ interface MountOptions {
   readonly assist?: DocumentImportAssistResponse | undefined;
   readonly assistError?: unknown;
   readonly mode?: DocumentImportMode | undefined;
+  readonly allowModeSwitch?: boolean | undefined;
+  readonly projects?: readonly ProjectListItem[] | undefined;
   readonly admin?: boolean | undefined;
   /** 登录用户；未指定时只有 admin: true 才注入管理员，其余保持未登录。 */
   readonly user?: CurrentUserResponse | null | undefined;
   readonly directory?: readonly UserDirectoryItem[] | undefined;
+  readonly modules?: readonly ModuleItem[] | undefined;
+  readonly features?: readonly FeatureItem[] | undefined;
 }
 
 function mount(options: MountOptions = {}) {
@@ -249,12 +307,20 @@ function mount(options: MountOptions = {}) {
   const getUserDirectory = vi
     .fn()
     .mockResolvedValue({ items: options.directory ?? [] });
+  const listModules = vi
+    .fn()
+    .mockResolvedValue({ items: options.modules ?? [] });
+  const listFeatures = vi
+    .fn()
+    .mockResolvedValue({ items: options.features ?? [] });
   const issueCsrfToken = vi
     .fn()
     .mockResolvedValue({ csrfToken: "a".repeat(43) });
   const client = {
     issueCsrfToken,
     getUserDirectory,
+    listModules,
+    listFeatures,
     previewProjectDocumentImport,
     importProjectDocument,
     assistDocumentImport,
@@ -283,7 +349,9 @@ function mount(options: MountOptions = {}) {
             <DocumentImportModal
               open
               mode={options.mode ?? "PROJECT"}
-              projectId={2}
+              projectId={options.mode === "NEW_PROJECT" ? undefined : 2}
+              allowModeSwitch={options.allowModeSwitch}
+              projects={options.projects}
               client={client}
               onClose={onClose}
               onImported={onImported}
@@ -302,6 +370,8 @@ function mount(options: MountOptions = {}) {
     previewProjectDocumentImport,
     assistDocumentImport,
     getUserDirectory,
+    listModules,
+    listFeatures,
     issueCsrfToken,
   };
 }
@@ -318,6 +388,18 @@ function pickFile(file: File): void {
   fireEvent.change(screen.getByLabelText("选择文档进行分析"), {
     target: { files: [file] },
   });
+}
+
+async function pickCalmSelectOption(
+  label: string,
+  optionTitle: string,
+): Promise<void> {
+  const trigger = screen.getByLabelText(label).closest(".ant-select");
+  if (trigger === null) {
+    throw new Error("select trigger not found for " + label);
+  }
+  fireEvent.mouseDown(trigger);
+  fireEvent.click(await screen.findByTitle(optionTitle));
 }
 
 function importTextarea(): HTMLTextAreaElement {
@@ -345,6 +427,43 @@ async function pasteAndPreview(document: string = DOCUMENT) {
 
 beforeEach(() => {
   extractDocumentTextMock.mockReset();
+});
+
+describe("ADR-094 项目列表入口的工作台内切换", () => {
+  it("直接打开导入工作台，并在同一页面切换新建整项目与已有项目", async () => {
+    const { listModules } = mount({
+      mode: "NEW_PROJECT",
+      allowModeSwitch: true,
+      projects: [TARGET_PROJECT],
+    });
+
+    expect(
+      screen.getByRole("dialog", { name: "从文档导入" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("document-import-mode")).toBeInTheDocument();
+    expect(screen.getByLabelText("导入文档内容")).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "新建整项目" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.queryByTestId("document-import-target")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "导入已有项目" }));
+
+    expect(
+      await screen.findByTestId("document-import-target"),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "导入已有项目" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(listModules).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ signal: expect.anything() }),
+    );
+  });
 });
 
 describe("ADR-064 文档导入弹窗（项目内导入）", () => {
@@ -865,6 +984,7 @@ describe("ADR-071 左右分栏工作台", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: null, featureId: null },
         text: "这周要把订单查询做完，负责人是林雨。",
       }),
     );
@@ -877,6 +997,45 @@ describe("ADR-071 左右分栏工作台", () => {
     );
     // 已经有结构了，入口随之消失。
     expect(screen.queryByTestId("document-import-assist-run-raw")).toBeNull();
+  });
+
+  it("项目内导入可选模块与功能，目标随补充说明保持一致", async () => {
+    const { assistDocumentImport, listFeatures } = mount({
+      directory: DIRECTORY,
+      modules: [TARGET_MODULE],
+      features: [TARGET_FEATURE],
+    });
+    expect(screen.getByTestId("document-import-target")).toBeTruthy();
+    expect(screen.queryByTestId("document-import-mode")).toBeNull();
+
+    await pickCalmSelectOption("导入位置", "支付");
+    await waitFor(() => expect(listFeatures).toHaveBeenCalled());
+    await pickCalmSelectOption("细化到", "退款回调");
+
+    expect(
+      screen.getByTestId("document-import-target-summary").textContent,
+    ).toContain("支付 / 退款回调");
+
+    pasteDocument("退款回调要补一条超时重试。");
+    fireEvent.click(screen.getByTestId("document-import-assist-run-raw"));
+
+    await waitFor(() =>
+      expect(assistDocumentImport).toHaveBeenNthCalledWith(1, {
+        mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: 7, featureId: 8 },
+        text: "退款回调要补一条超时重试。",
+      }),
+    );
+
+    sendSupplement("再加一条告警通知");
+    await waitFor(() => {
+      const calls = assistDocumentImport.mock.calls;
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      expect(calls[1]?.[0]).toMatchObject({
+        mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: 7, featureId: 8 },
+      });
+    });
   });
 
   it("还没有结构化内容时，助手说的是「还没整理成模板结构」", () => {
@@ -907,6 +1066,7 @@ describe("ADR-071 左右分栏工作台", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: null, featureId: null },
         text: WORKBENCH_DOCUMENT + "\n\n补充说明：「林语」改成「林雨」",
       }),
     );
@@ -965,6 +1125,7 @@ describe("ADR-071 左右分栏工作台", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: null, featureId: null },
         text: WORKBENCH_DOCUMENT + "\n\n补充说明：订单查询要在本周五前完成",
       }),
     );
@@ -1181,6 +1342,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: null, featureId: null },
         text: "支付模块需要退款回调能力，负责人张三。",
       }),
     );
@@ -1206,6 +1368,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
 
   it("整项目入口的分析请求使用 WHOLE_PROJECT 模式", async () => {
     const { assistDocumentImport } = mount({ mode: "NEW_PROJECT" });
+    expect(screen.queryByTestId("document-import-target")).toBeNull();
     extractDocumentTextMock.mockResolvedValue({
       fileName: "需求.md",
       text: "整项目需求文本",
@@ -1243,6 +1406,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: null, featureId: null },
         text: edited + "\n\n补充说明：补充一句",
       }),
     );
@@ -1344,6 +1508,47 @@ describe("ADR-067 AI 辅助转换区块", () => {
     expect(assistDocumentImport).toHaveBeenCalledTimes(1);
   });
 
+  it("目标项目、模块或功能失效时明确提示重新选择导入位置", async () => {
+    mount({
+      directory: DIRECTORY,
+      assistError: new ApiError(404, {
+        code: "DOCUMENT_IMPORT_TARGET_NOT_FOUND",
+        message: "target missing",
+        details: {},
+        requestId: "test",
+      }),
+    });
+    pasteDocument(WORKBENCH_DOCUMENT);
+    sendSupplement("需求文本");
+
+    expect(
+      await screen.findByText(
+        "导入位置不存在，或你已没有该项目的写权限，请重新选择后再试。",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("普通 422 校验失败不再误报为文本超过 20 万字符", async () => {
+    mount({
+      directory: DIRECTORY,
+      assistError: new ApiError(422, {
+        code: "VALIDATION_FAILED",
+        message: "请求字段校验失败",
+        details: { issues: "target: Unrecognized key" },
+        requestId: "test-422",
+      }),
+    });
+    pasteDocument(WORKBENCH_DOCUMENT);
+    sendSupplement("需求文本");
+
+    expect(
+      await screen.findByText(
+        "AI 整理请求未通过校验，请检查导入位置和文档内容后重试；若持续失败，请联系管理员。",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/文本超过 20 万字符上限/)).toBeNull();
+  });
+
   it("上游限流（503 + reason）时给出对应中文提示", async () => {
     mount({
       directory: DIRECTORY,
@@ -1411,6 +1616,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: null, featureId: null },
         text: "很长的需求文本",
       }),
     );
@@ -1486,6 +1692,7 @@ describe("文档导入：拖放与进行中反馈", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
+        target: { projectId: 2, moduleId: null, featureId: null },
         text: "需求补充：售后要支持退货流程，负责人林雨。",
       }),
     );

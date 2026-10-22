@@ -15,8 +15,10 @@ import { migrate } from "../../../database/src/migrate.ts";
 import { hashOpaqueToken } from "../src/auth/token.js";
 import {
   connect,
+  createProject,
   createUser,
   testUrls,
+  type ProjectFixture,
   type TestUrls,
 } from "./database.helpers.js";
 
@@ -190,6 +192,29 @@ async function countImportRunRows(sql: Sql): Promise<number> {
     SELECT count(*)::int AS count FROM app.document_import_runs
   `) as unknown as readonly { count: number }[];
   return rows[0]?.count ?? -1;
+}
+
+async function createFeatureFixture(
+  sql: Sql,
+  project: ProjectFixture,
+  userId: number,
+  name: string,
+): Promise<number> {
+  const [row] = await sql<Array<{ id: number }>>`
+    INSERT INTO app.features (project_id, module_id, code, name, created_by)
+    VALUES (
+      ${project.projectId},
+      ${project.moduleId},
+      ${project.code + "-F-1"},
+      ${name},
+      ${userId}
+    )
+    RETURNING id
+  `;
+  if (row === undefined) {
+    throw new Error("Feature fixture insert returned no row");
+  }
+  return row.id;
 }
 beforeAll(async () => {
   urls = testUrls();
@@ -382,6 +407,164 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
     expect(upstreamBody.messages[0]!.content).not.toContain(
       "草稿必须包含「# 项目：」段",
     );
+  });
+
+  test("ADR-094 指定模块：校验写权限与归属，提示词带目标且不写库", async () => {
+    const sql = runtime!;
+    const ownerId = await createUser(sql);
+    const project = await createProject(sql, ownerId);
+    const actor = await sessionActor(sql, ownerId);
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload("## 模块：未分类\n- 说明：新增功能与任务"),
+    });
+    const auditBefore = await countAuditRows(auditReader!);
+    const runsBefore = await countImportRunRows(sql);
+    const response = await postAssist(
+      {
+        mode: "IN_PROJECT",
+        text: "未分类模块要新增退款功能",
+        target: {
+          projectId: project.projectId,
+          moduleId: project.moduleId,
+          featureId: null,
+        },
+      },
+      actor,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      issues: readonly { severity: string }[];
+    };
+    expect(body.issues.filter((issue) => issue.severity === "ERROR")).toEqual(
+      [],
+    );
+    const upstreamBody = lastUpstreamRequest?.body as {
+      messages: readonly { role: string; content: string }[];
+    };
+    expect(upstreamBody.messages[0]!.content).toContain(
+      "本次导入目标由系统选定为已有模块：「未分类」",
+    );
+    expect(upstreamBody.messages[0]!.content).toContain("## 模块：未分类");
+    expect(upstreamBody.messages[1]).toEqual({
+      role: "user",
+      content: "未分类模块要新增退款功能",
+    });
+    expect(await countAuditRows(auditReader!)).toBe(auditBefore);
+    expect(await countImportRunRows(sql)).toBe(runsBefore);
+  });
+
+  test("ADR-094 指定功能：提示词注入模块与功能名，草稿只含目标功能", async () => {
+    const sql = runtime!;
+    const ownerId = await createUser(sql);
+    const project = await createProject(sql, ownerId);
+    const featureId = await createFeatureFixture(
+      sql,
+      project,
+      ownerId,
+      "退款回调",
+    );
+    const actor = await sessionActor(sql, ownerId);
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        "## 模块：未分类\n### 功能：退款回调\n#### 任务：补超时重试\n- 负责人：张三\n- 优先级：高",
+      ),
+    });
+    const response = await postAssist(
+      {
+        mode: "IN_PROJECT",
+        text: "退款回调补一条超时重试任务",
+        target: {
+          projectId: project.projectId,
+          moduleId: project.moduleId,
+          featureId,
+        },
+      },
+      actor,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      issues: readonly { severity: string }[];
+    };
+    expect(body.issues.filter((issue) => issue.severity === "ERROR")).toEqual(
+      [],
+    );
+    const upstreamBody = lastUpstreamRequest?.body as {
+      messages: readonly { role: string; content: string }[];
+    };
+    expect(upstreamBody.messages[0]!.content).toContain(
+      "下的已有功能「退款回调」",
+    );
+    expect(upstreamBody.messages[0]!.content).toContain(
+      "只能在目标功能下输出要新增的任务",
+    );
+  });
+
+  test("ADR-094 非项目成员指定目标：404 且不调用上游", async () => {
+    const sql = runtime!;
+    const ownerId = await createUser(sql);
+    const project = await createProject(sql, ownerId);
+    const outsiderId = await createUser(sql);
+    const actor = await sessionActor(sql, outsiderId);
+    const before = upstreamRequestCount;
+    const response = await postAssist(
+      {
+        mode: "IN_PROJECT",
+        text: "越权读取目标",
+        target: {
+          projectId: project.projectId,
+          moduleId: project.moduleId,
+          featureId: null,
+        },
+      },
+      actor,
+    );
+    expect(response.status).toBe(404);
+    const error = await readError(response);
+    expect(error.code).toBe("DOCUMENT_IMPORT_TARGET_NOT_FOUND");
+    expect(upstreamRequestCount).toBe(before);
+  });
+
+  test("ADR-094 模块不属于目标项目：404 且不调用上游", async () => {
+    const sql = runtime!;
+    const ownerId = await createUser(sql);
+    const first = await createProject(sql, ownerId);
+    const second = await createProject(sql, ownerId);
+    const actor = await sessionActor(sql, ownerId);
+    const before = upstreamRequestCount;
+    const response = await postAssist(
+      {
+        mode: "IN_PROJECT",
+        text: "跨项目模块",
+        target: {
+          projectId: first.projectId,
+          moduleId: second.moduleId,
+          featureId: null,
+        },
+      },
+      actor,
+    );
+    expect(response.status).toBe(404);
+    const error = await readError(response);
+    expect(error.code).toBe("DOCUMENT_IMPORT_TARGET_NOT_FOUND");
+    expect(upstreamRequestCount).toBe(before);
+  });
+
+  test("ADR-094 整项目模式携带目标：契约 422 且不调用上游", async () => {
+    const sql = runtime!;
+    const actor = await sessionActor(sql, await createUser(sql));
+    const before = upstreamRequestCount;
+    const response = await postAssist(
+      {
+        mode: "WHOLE_PROJECT",
+        text: "整项目需求",
+        target: { projectId: 1, moduleId: null, featureId: null },
+      },
+      actor,
+    );
+    expect(response.status).toBe(422);
+    expect(upstreamRequestCount).toBe(before);
   });
 
   test("finish_reason=length：草稿照返并追加 ERROR 级 AI_ASSIST_TRUNCATED", async () => {

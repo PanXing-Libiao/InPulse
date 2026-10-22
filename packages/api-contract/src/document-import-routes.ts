@@ -164,14 +164,15 @@ const applyRoute = (input: {
 /**
  * ADR-067 AI 辅助转换：`POST /document-imports/assist`。
  * 纯校验接口（无任何持久化副作用）：会话认证、无 CSRF、无幂等；调用管理员
- * 配置的 OpenAI 兼容端点把用户文档转成模板草稿，不开启数据库事务。
+ * 配置的 OpenAI 兼容端点把用户文档转成模板草稿。ADR-094 起，携带 target
+ * 时先用一个只读短事务校验项目写权限与模块 / 功能归属，上游调用仍在事务外。
  */
 const assistRoute: RouteDefinition = {
   method: "POST",
   path: "/document-imports/assist",
   operationId: "assistDocumentImport",
   summary:
-    "把用户自己的项目文档（任意结构）交给服务端配置的 OpenAI 兼容端点转成固定模板草稿，返回解析器预检问题；不写任何持久化状态，无 CSRF 与幂等记录。",
+    "把用户自己的项目文档（任意结构）交给服务端配置的 OpenAI 兼容端点转成固定模板草稿，返回解析器预检问题；可选 target 在服务端校验项目写权限与模块 / 功能归属。不写任何持久化状态，无 CSRF 与幂等记录。",
   request: {
     path: "none",
     query: "none",
@@ -189,6 +190,7 @@ const assistRoute: RouteDefinition = {
     "200": json("DocumentImportAssistResponse"),
     "400": json("ErrorResponse"),
     "401": json("ErrorResponse"),
+    "404": json("ErrorResponse"),
     "422": json("ErrorResponse"),
     "500": json("ErrorResponse"),
     "503": json("ErrorResponse"),
