@@ -7078,6 +7078,6 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | --- | --- | --- | --- | --- |
 | RELEASE-DEP-001 | 依赖安全 | 开发工具链补丁 | vite 8.2.2 -> 8.2.4；vitest、@vitest/mocker、@vitest/spy 5.0.0 -> 5.0.3；lockfile 由 pnpm 生成 | 本地通过（2026-10-23） |
 | RELEASE-GATE-001 | 静态门禁 | 全量检查 | pnpm check 全绿；pnpm audit 为 0 个已知漏洞 | 本地通过（2026-10-23） |
-| RELEASE-TEST-001 | 测试 | 发布回归 | 单元测试 1729/1729；真实 PostgreSQL 集成 674/674；Playwright 89/89；搜索专项 20/20 | 本地通过（2026-10-23） |
-| RELEASE-IMAGE-001 | 发布镜像 | 构建、扫描与运行 | 五个生产镜像完成构建与扫描；依赖补丁后重建 Web 镜像并复扫；Trivy CRITICAL/HIGH 为 0；Web CSP 冒烟通过；空库迁移 56/56；API 容器 live/ready 200、未登录搜索 401 | 本地通过（2026-10-23） |
-| RELEASE-GAP-001 | 外部联调 | 发布前置项 | 真实 SSO/Casdoor、企业微信机器人、外部 AI 上游与 GitHub Actions 尚未在本轮验证；迁移镜像的本地验收构建使用镜像源，正式镜像须由 CI 重建 | 待测试环境与 CI |
+| RELEASE-TEST-001 | 测试 | 发布回归 | 单元测试 1745/1745；真实 PostgreSQL 集成 679/679（含搜索专项 20）；Playwright 89/89 | 本地通过（2026-10-23） |
+| RELEASE-IMAGE-001 | 发布镜像 | 构建、扫描与运行 | 候选基线 284e77e：五个生产镜像完成构建与扫描；依赖补丁后重建 Web 镜像并复扫；Trivy CRITICAL/HIGH 为 0；Web CSP 冒烟通过；空库迁移 56/56；API 容器 live/ready 200、未登录搜索 401 | 本地通过（2026-10-23） |
+| RELEASE-GAP-001 | 外部联调 | 发布前置项 | 真实 SSO/Casdoor、企业微信机器人、外部 AI 上游与 GitHub Actions 尚未在本轮验证；镜像验收基于变基前候选基线 284e77e，ADR-094 合并后的正式镜像须由 CI 重建 | 待测试环境与 CI |
