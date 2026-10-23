@@ -43,7 +43,7 @@ RUN apt-get update \
 # 只升级已安装的包：未安装的包跳过、已是最新的包不动，不安装新包、不删除任何包。
 RUN apt-get update \
  && apt-get install -y --only-upgrade \
-      gzip libpcre2-8-0 libsqlite3-0 libssh2-1t64 \
+      gzip libexpat1 libpcre2-8-0 libsqlite3-0 libssh2-1t64 \
       perl perl-base libperl5.40 perl-modules-5.40 \
       libheif1 libheif-plugin-dav1d libheif-plugin-libde265 \
       libssl3t64 openssl openssl-provider-legacy \
