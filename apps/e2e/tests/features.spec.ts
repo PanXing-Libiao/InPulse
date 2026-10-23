@@ -90,7 +90,12 @@ test("功能档案：模块入口、创建详情、双页面三方合并、刷�
         .getByText("其他页面再次修改", { exact: true }),
     ).toBeVisible();
     await page.goto(listUrl);
-    await expect(page.getByText(`${name}-更新`, { exact: true })).toBeVisible();
+    await expect(
+      page
+        .locator(".calm-feature-card")
+        .filter({ hasText: name + "-更新" })
+        .getByRole("heading", { name: name + "-更新", exact: true }),
+    ).toBeVisible();
     await other.close();
   } finally {
     await context.close();

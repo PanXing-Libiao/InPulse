@@ -90,7 +90,10 @@ test("管理员完成成员添加与移除，并校验不存在项目的读取�
     await loginAdminViaUi(page, runtime, admin);
     await page.goto(`/projects/${runtime.projectId}/members`);
     await expect(
-      page.getByRole("heading", { name: runtime.projectName, exact: true }),
+      page.getByRole("heading", {
+        name: runtime.projectName + " 成员与设置",
+        exact: true,
+      }),
     ).toBeVisible();
 
     await expect(page.getByRole("heading", { name: "项目成员" })).toBeVisible();
