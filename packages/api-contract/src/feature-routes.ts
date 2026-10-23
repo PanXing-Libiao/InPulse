@@ -31,17 +31,15 @@ const fields = [
   "stats.completedTaskCount",
   "stats.recordCount",
 ];
-/** ADR-059：删除功能重放可安全回述的影响面计数。 */
+/** ADR-096：删除功能重放可安全回述的影响面计数。 */
 const featureDeletionFields = [
   "id",
   "projectId",
   "moduleId",
   "code",
   "name",
-  "deletedAt",
-  "deletedBy",
   "deletedTaskCount",
-  "voidedRecordCount",
+  "deletedRecordCount",
   "removedLinkCount",
 ];
 export const featureRoutes: readonly RouteDefinition[] = [
@@ -195,13 +193,12 @@ export const featureRoutes: readonly RouteDefinition[] = [
     },
   ),
   {
-    // ADR-059：删除功能为新增命令。功能软删除后退出全部读写范围，
-    // 级联删除其自身任务（任务按 ADR-058 单任务语义），历史与审计保留。
+    // ADR-096：删除功能改为物理删除，级联删除其下任务、记录与全部下级数据。
     method: "POST",
     path: "/projects/{projectId}/modules/{moduleId}/features/{featureId}/delete",
     operationId: "deleteFeature",
     summary:
-      "删除功能：同一事务删除其任务、作废相关迭代记录并保留审计与动态；受影响本功能的模块级任务保留（ADR-059）。",
+      "删除功能：同一事务物理删除功能、其下任务、全部迭代记录及下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
     request: {
       path: "FeatureResourcePath",
       query: "none",
@@ -220,11 +217,11 @@ export const featureRoutes: readonly RouteDefinition[] = [
     csrfPolicy: "required",
     idempotencyPolicy: "idempotencyRequired",
     idempotencyExceptionAdr: "none",
-    idempotencyContractVersion: "1.0.0",
+    idempotencyContractVersion: "2.0.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: {
-      version: "1.0.0",
+      version: "2.0.0",
       success: {
         "200": {
           body: {
@@ -252,7 +249,7 @@ export const featureRoutes: readonly RouteDefinition[] = [
       rowVersion: "required",
       lockOrder: ["project", "module", "feature", "task", "taskGroup"],
       retry:
-        "parents FOR SHARE, feature FOR UPDATE; cascaded own tasks FOR UPDATE in ascending id order and change records voided in ascending id order inside the same transaction",
+        "parents FOR SHARE, feature FOR UPDATE; hard-delete function locks features, tasks, task groups and records in ascending id order",
     },
     auditAction: "feature.delete",
   },

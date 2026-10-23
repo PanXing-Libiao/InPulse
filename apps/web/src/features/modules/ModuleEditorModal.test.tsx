@@ -92,11 +92,9 @@ function mount(options: {
         code: options.item.code,
         name: options.item.name,
         kind: options.item.kind,
-        deletedAt: "2026-10-09T00:00:00.000Z",
-        deletedBy: 7,
         deletedFeatureCount: 2,
         deletedTaskCount: 4,
-        voidedRecordCount: 1,
+        deletedRecordCount: 1,
         removedLinkCount: 3,
       }),
   } as unknown as InpulseApiClient;
@@ -128,7 +126,7 @@ function mount(options: {
   return { client, onClose, onDeleted };
 }
 
-describe("ADR-059 模块编辑弹窗的删除入口", () => {
+describe("ADR-096 模块编辑弹窗的删除入口", () => {
   it("组长编辑普通模块时显示删除入口，按影响面确认后带 If-Match 删除", async () => {
     const { client, onClose, onDeleted } = mount({
       item: normalModule,
@@ -144,6 +142,10 @@ describe("ADR-059 模块编辑弹窗的删除入口", () => {
     expect(
       screen.getByText(/该模块下有 2 个功能、3 项未完成任务与 1 项已完成任务/),
     ).toBeTruthy();
+    expect(
+      screen.getAllByText(/全部迭代记录、版本、遗留项与 GitHub 链接关联/)
+        .length,
+    ).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByTestId("confirm-delete-module"));
 

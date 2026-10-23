@@ -573,7 +573,7 @@ it("功能概览显示验收标准，编辑时保留并提交", async () => {
   );
 });
 
-describe("ADR-059 功能删除入口", () => {
+describe("ADR-096 功能删除入口", () => {
   const member = (isAdmin: boolean): CurrentUserResponse => ({
     id: 7,
     loginName: isAdmin ? "tege" : "shaochenyu",
@@ -662,6 +662,10 @@ describe("ADR-059 功能删除入口", () => {
     expect(
       screen.getByText(/该功能下有 7 项未完成任务与 7 项已完成任务/),
     ).toBeTruthy();
+    expect(screen.getAllByText(/会被永久删除/).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/所属模块与其他功能保留/).length,
+    ).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByTestId("confirm-delete-feature"));
 

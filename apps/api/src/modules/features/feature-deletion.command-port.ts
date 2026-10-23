@@ -4,12 +4,10 @@ import { ProjectRoleGateService } from "../projects/index.js";
 import {
   FeatureManagementRepository,
   type FeatureDeletionRow,
-  type FeatureSoftDeletedRow,
+  type FeatureHardDeletedRow,
 } from "./feature-management.repository.js";
 
-/**
- * ADR-059：删除功能的错误口径，与模块侧同构。
- */
+/** ADR-096：删除功能的错误口径，与模块侧同构。 */
 export class FeatureDeletionError extends Error {
   constructor(
     readonly status: 400 | 401 | 403 | 404 | 409 | 422,
@@ -38,20 +36,13 @@ export const featureDeletionVersionConflict = () =>
     "FEATURE_VERSION_CONFLICT",
     "功能版本已变化，请重新加载后删除",
   );
-/** ADR-059：范围内仍有活跃聚合组主任务，必须先解除合并再删功能。 */
-export const featureTaskGroupMainLocked = (taskIds: readonly number[]) =>
-  new FeatureDeletionError(
-    409,
-    "TASK_GROUP_MAIN_LOCKED",
-    `功能下仍有聚合组主任务（任务 ${taskIds.join("、")}），请先解除合并后再删除`,
-  );
 
 /**
- * ADR-059：删除功能在本域需要暴露的边界。删除模块时对功能的批量软删除也走
- * 这里——模块级联复用 `listAliveOfModule` + `softDelete`，不另开旁路。
+ * ADR-096：删除功能在本域需要暴露的边界。删除模块时对功能的级联物理删除由
+ * 模块专用函数一次完成，不再逐个调用本 Port。
  */
 export abstract class FeatureDeletionCommandPort {
-  /** 与模块侧同一角色门禁；不含资源存在性检查，理由见 `ModuleDeletionCommandPort`。 */
+  /** 与模块侧同一角色门禁；不含资源存在性检查。 */
   abstract authorize(
     tx: TransactionContext,
     actorId: number,
@@ -64,18 +55,13 @@ export abstract class FeatureDeletionCommandPort {
     featureId: number,
     lock?: boolean,
   ): Promise<FeatureDeletionRow | undefined>;
-  /** 删除模块时使用：按功能 ID 升序取模块下全部存活功能，`lock` 为真时取行锁。 */
-  abstract listAliveOfModule(
-    tx: TransactionContext,
-    projectId: number,
-    moduleId: number,
-    lock?: boolean,
-  ): Promise<readonly FeatureDeletionRow[]>;
-  abstract softDelete(
+  /** ADR-096：物理删除功能及其全部下级数据；版本不一致时返回 undefined。 */
+  abstract hardDelete(
     tx: TransactionContext,
     current: FeatureDeletionRow,
     actorId: number,
-  ): Promise<FeatureSoftDeletedRow | undefined>;
+    reason: string,
+  ): Promise<FeatureHardDeletedRow | undefined>;
 }
 
 @Injectable()
@@ -116,20 +102,12 @@ export class SqlFeatureDeletionCommandPort extends FeatureDeletionCommandPort {
     );
   }
 
-  listAliveOfModule(
-    tx: TransactionContext,
-    projectId: number,
-    moduleId: number,
-    lock = false,
-  ): Promise<readonly FeatureDeletionRow[]> {
-    return this.repository.listAliveOfModule(tx, projectId, moduleId, lock);
-  }
-
-  softDelete(
+  hardDelete(
     tx: TransactionContext,
     current: FeatureDeletionRow,
     actorId: number,
-  ): Promise<FeatureSoftDeletedRow | undefined> {
-    return this.repository.softDelete(tx, current, actorId);
+    reason: string,
+  ): Promise<FeatureHardDeletedRow | undefined> {
+    return this.repository.hardDelete(tx, current, actorId, reason);
   }
 }

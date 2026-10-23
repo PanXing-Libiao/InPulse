@@ -545,10 +545,8 @@ export type FeatureDeletionResponse = {
   readonly moduleId: number;
   readonly code: string;
   readonly name: string;
-  readonly deletedAt: string;
-  readonly deletedBy: number;
   readonly deletedTaskCount: number;
-  readonly voidedRecordCount: number;
+  readonly deletedRecordCount: number;
   readonly removedLinkCount: number;
 };
 
@@ -777,11 +775,9 @@ export type ModuleDeletionResponse = {
   readonly code: string;
   readonly name: string;
   readonly kind: ("NORMAL" | "UNCLASSIFIED");
-  readonly deletedAt: string;
-  readonly deletedBy: number;
   readonly deletedFeatureCount: number;
   readonly deletedTaskCount: number;
-  readonly voidedRecordCount: number;
+  readonly deletedRecordCount: number;
   readonly removedLinkCount: number;
 };
 
@@ -1908,9 +1904,7 @@ export type TaskDeletionResponse = {
   readonly code: string;
   readonly title: string;
   readonly workStatus: ("TODO" | "DONE" | "CANCELED");
-  readonly deletedAt: string;
-  readonly deletedBy: number;
-  readonly voidedRecordCount: number;
+  readonly deletedRecordCount: number;
   readonly removedLinkCount: number;
   readonly detachedGroupRole: (("MAIN" | "SOURCE") | null);
 };

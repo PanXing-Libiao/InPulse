@@ -28,18 +28,16 @@ const fields = [
   "stats.openTaskCount",
   "stats.completedTaskCount",
 ];
-/** ADR-059：删除模块重放可安全回述的影响面计数。 */
+/** ADR-096：删除模块重放可安全回述的影响面计数。 */
 const moduleDeletionFields = [
   "id",
   "projectId",
   "code",
   "name",
   "kind",
-  "deletedAt",
-  "deletedBy",
   "deletedFeatureCount",
   "deletedTaskCount",
-  "voidedRecordCount",
+  "deletedRecordCount",
   "removedLinkCount",
 ];
 export const moduleRoutes: readonly RouteDefinition[] = [
@@ -138,13 +136,12 @@ export const moduleRoutes: readonly RouteDefinition[] = [
     },
   ),
   {
-    // ADR-059：删除模块为新增命令。模块软删除后退出全部读写范围，
-    // 级联软删除其功能与任务（任务按 ADR-058 单任务语义），历史与审计保留。
+    // ADR-096：删除模块改为物理删除，级联删除其功能、任务、记录与全部下级数据。
     method: "POST",
     path: "/projects/{projectId}/modules/{moduleId}/delete",
     operationId: "deleteModule",
     summary:
-      "删除模块：同一事务级联删除其功能与任务、作废相关迭代记录并保留审计与动态（ADR-059）。",
+      "删除模块：同一事务物理删除模块、其下功能与任务、全部迭代记录及下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
     request: {
       path: "ModuleResourcePath",
       query: "none",
@@ -163,11 +160,11 @@ export const moduleRoutes: readonly RouteDefinition[] = [
     csrfPolicy: "required",
     idempotencyPolicy: "idempotencyRequired",
     idempotencyExceptionAdr: "none",
-    idempotencyContractVersion: "1.0.0",
+    idempotencyContractVersion: "2.0.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: {
-      version: "1.0.0",
+      version: "2.0.0",
       success: {
         "200": {
           body: {
@@ -195,7 +192,7 @@ export const moduleRoutes: readonly RouteDefinition[] = [
       rowVersion: "required",
       lockOrder: ["project", "module", "feature", "task", "taskGroup"],
       retry:
-        "parents FOR SHARE, module FOR UPDATE; cascaded tasks FOR UPDATE in ascending id order and change records voided in ascending id order inside the same transaction",
+        "parents FOR SHARE, module FOR UPDATE; hard-delete function locks features, tasks, task groups and records in ascending id order",
     },
     auditAction: "module.delete",
   },

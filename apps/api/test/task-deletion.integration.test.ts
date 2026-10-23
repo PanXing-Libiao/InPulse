@@ -37,17 +37,6 @@ import { PostgresActivityWritePort } from "../src/modules/activity/postgres-acti
 import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
-import { ExternalLinksRepository } from "../src/modules/external-links/external-links.repository.js";
-import { ExternalLinksCommandPort } from "../src/modules/external-links/external-links.port.js";
-import { RecordLifecycleService } from "../src/modules/change-records/record-lifecycle.service.js";
-import { RecordLifecycleRepository } from "../src/modules/change-records/record-lifecycle.repository.js";
-import { RecordPublicationRepository } from "../src/modules/change-records/record-publication.repository.js";
-import { PublishedRecordRepository } from "../src/modules/change-records/published-record.repository.js";
-import { LeftoverSearchProjectionSync } from "../src/modules/change-records/leftover-search-projection.js";
-import { RecordLifecycleTaskRecordVoidPort } from "../src/modules/change-records/task-record-void.port.js";
-import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
-import { PostgresTaskBranchQueryPort } from "../src/modules/task-groups/task-branch-query.port.js";
-import { SqlTaskGroupDeletionPort } from "../src/modules/task-groups/task-group-deletion.port.js";
 import { TaskDeletionWorkflow } from "../src/workflows/task-deletion.workflow.js";
 import { TaskDeletionHttpService } from "../src/workflows/task-deletion-http.service.js";
 import { TaskDeletionController } from "../src/workflows/task-deletion.controller.js";
@@ -106,33 +95,7 @@ beforeAll(async () => {
       management,
       new TaskManagementRepository(),
     ),
-    groups = new SqlTaskGroupDeletionPort(
-      new PostgresTaskBranchQueryPort(new TaskGroupRepository()),
-      new TaskGroupRepository(),
-    ),
-    deletion = new TaskDeletionWorkflow(
-      uow,
-      commands,
-      audit,
-      activity,
-      search,
-      new ExternalLinksCommandPort(new ExternalLinksRepository()),
-      new RecordLifecycleTaskRecordVoidPort(
-        new RecordLifecycleService(
-          access,
-          new PostgresModuleQueryPort(),
-          new PostgresFeatureQueryPort(),
-          new RecordPublicationRepository(),
-          new PublishedRecordRepository(),
-          new RecordLifecycleRepository(),
-          audit,
-          activity,
-          search,
-          new LeftoverSearchProjectionSync(search),
-        ),
-      ),
-      groups,
-    ),
+    deletion = new TaskDeletionWorkflow(uow, commands, audit, activity),
     auth = new SessionAuthService(
       uow,
       new PostgresUserSessionRepository(),
@@ -348,12 +311,8 @@ async function failure(response: Response, status: number) {
 const taskRow = async (taskId: number) =>
   (
     await client.sql<
-      {
-        deletedAt: Date | null;
-        deletedBy: number | null;
-        rowVersion: number;
-      }[]
-    >`SELECT deleted_at AS "deletedAt", deleted_by AS "deletedBy", row_version AS "rowVersion" FROM app.tasks WHERE id = ${taskId}`
+      { rowVersion: number }[]
+    >`SELECT row_version AS "rowVersion" FROM app.tasks WHERE id = ${taskId}`
   )[0];
 
 const auditRows = (projectId: number, action: string) =>
@@ -368,11 +327,12 @@ const activityRows = (projectId: number, entityId: number) =>
       sourceStatus: string;
       sourceRowVersion: number;
       summary: string;
+      metadata: Record<string, unknown>;
     }[]
-  >`SELECT activity_type AS "activityType", source_status AS "sourceStatus", source_row_version AS "sourceRowVersion", summary FROM app.activity_projection WHERE project_id = ${projectId} AND source_entity_id = ${entityId} ORDER BY id`;
+  >`SELECT activity_type AS "activityType", source_status AS "sourceStatus", source_row_version AS "sourceRowVersion", summary, metadata FROM app.activity_projection WHERE project_id = ${projectId} AND source_entity_id = ${entityId} ORDER BY id`;
 
-describe("ADR-058 删除任务", () => {
-  it("删除同一事务内软删除任务、解除链接、作废记录并保留审计与动态", async () => {
+describe("ADR-096 物理删除任务", () => {
+  it("删除同一事务内物理删除任务、链接关联与记录，并保留审计和动态", async () => {
     const project = await fixture(),
       task = await createTask(project, project.userId, "重复回调处理"),
       recordId = await publishRecord(
@@ -402,18 +362,20 @@ describe("ADR-058 删除任务", () => {
       moduleId: project.moduleId,
       featureId: null,
       workStatus: "TODO",
-      deletedBy: project.userId,
-      voidedRecordCount: 1,
+      deletedRecordCount: 1,
       removedLinkCount: 1,
       detachedGroupRole: null,
     });
 
-    // 软删除：行保留、两列同时落值、行版本恰好 +1（ADR-049 同范式）。
-    expect(await taskRow(task.id)).toMatchObject({
-      deletedBy: project.userId,
-      rowVersion: task.rowVersion + 1,
-    });
-    expect((await taskRow(task.id))?.deletedAt).not.toBeNull();
+    // ADR-096：任务行、状态历史、负责人与记录全部物理删除，不做快照。
+    expect(await taskRow(task.id)).toBeUndefined();
+    expect(
+      (
+        await client.sql<
+          { count: string }[]
+        >`SELECT count(*)::text AS count FROM app.task_status_history WHERE task_id = ${task.id}`
+      )[0]?.count,
+    ).toBe("0");
 
     // 链接关联行解除，链接本体仍在（项目面板聚合结果不受影响）。
     const [linkRow] = await client.sql<
@@ -428,21 +390,21 @@ describe("ADR-058 删除任务", () => {
       ).length,
     ).toBe(1);
 
-    // 记录作废但版本、快照与正文全部保留。
+    // 记录本体、版本与下级数据全部物理删除。
     expect(
       (
         await client.sql<
-          { status: string; voidReason: string | null; voidedAt: Date | null }[]
-        >`SELECT status, void_reason AS "voidReason", voided_at AS "voidedAt" FROM app.change_records WHERE id = ${recordId}`
-      )[0],
-    ).toMatchObject({ status: "VOID", voidReason: "与已完成任务重复" });
+          { count: string }[]
+        >`SELECT count(*)::text AS count FROM app.change_records WHERE id = ${recordId}`
+      )[0]?.count,
+    ).toBe("0");
     expect(
       (
         await client.sql<
-          { versionNo: number }[]
-        >`SELECT version_no AS "versionNo" FROM app.change_record_versions WHERE record_id = ${recordId}`
-      ).length,
-    ).toBe(1);
+          { count: string }[]
+        >`SELECT count(*)::text AS count FROM app.change_record_versions WHERE record_id = ${recordId}`
+      )[0]?.count,
+    ).toBe("0");
 
     // 审计与项目动态：删除这件事必须留痕，且动态对成员可见。
     const audits = await auditRows(project.projectId, "task.delete");
@@ -518,7 +480,7 @@ describe("ADR-058 删除任务", () => {
       }),
       422,
     );
-    expect(await taskRow(task.id)).toMatchObject({ deletedBy: null });
+    expect(await taskRow(task.id)).toBeDefined();
   });
 
   it("If-Match 版本过期返回 409 且不落任何删除副作用", async () => {
@@ -540,7 +502,6 @@ describe("ADR-058 删除任务", () => {
     );
     expect(body.code).toBe("TASK_STATE_CONFLICT");
     expect(await taskRow(task.id)).toMatchObject({
-      deletedBy: null,
       rowVersion: task.rowVersion + 1,
     });
     expect(
@@ -563,7 +524,7 @@ describe("ADR-058 删除任务", () => {
     const outsider = await createUser(client.sql),
       outsiderActor = await session(outsider);
     await failure(await remove(outsiderActor, project, task.id), 404);
-    expect(await taskRow(task.id)).toMatchObject({ deletedBy: null });
+    expect(await taskRow(task.id)).toBeDefined();
   });
 
   it("同一幂等键与同一摘要重放原响应，摘要不同返回 409", async () => {
@@ -594,11 +555,11 @@ describe("ADR-058 删除任务", () => {
     });
     await failure(conflict, 409);
 
-    // 重放不会二次作废或重复计数。
+    // 重放不会二次删除或重复计数。
     expect((await auditRows(project.projectId, "task.delete")).length).toBe(1);
   });
 
-  it("非管理员的项目成员（组长与普通成员）都能删除任务并作废其记录", async () => {
+  it("非管理员的项目成员（组长与普通成员）都能删除任务并物理删除其记录", async () => {
     const project = await fixture(),
       memberId = await createUser(client.sql);
     await client.sql`INSERT INTO app.project_members(project_id,user_id) VALUES (${project.projectId},${memberId})`;
@@ -618,13 +579,13 @@ describe("ADR-058 删除任务", () => {
     expect(
       (
         await client.sql<
-          { status: string }[]
-        >`SELECT status FROM app.change_records WHERE id = ${recordId}`
-      )[0]?.status,
-    ).toBe("VOID");
+          { count: string }[]
+        >`SELECT count(*)::text AS count FROM app.change_records WHERE id = ${recordId}`
+      )[0]?.count,
+    ).toBe("0");
   });
 
-  it("聚合组来源任务被删除时解除关系；最后一个来源离开时关闭聚合组", async () => {
+  it("聚合组来源任务被删除时立即关闭组并解除其余成员", async () => {
     const project = await fixture(),
       main = await createTask(project, project.userId, "聚合主任务"),
       sourceA = await createTask(project, project.userId, "聚合来源一", "DONE"),
@@ -641,20 +602,35 @@ describe("ADR-058 删除任务", () => {
     expect(
       schemaRegistry.TaskDeletionResponse.schema.parse(await first.json()),
     ).toMatchObject({ detachedGroupRole: "SOURCE" });
+    const firstActivity = await activityRows(project.projectId, sourceA.id);
+    expect(firstActivity[0]?.metadata).toMatchObject({
+      detachedGroupId: groupId,
+      detachedGroupRole: "SOURCE",
+    });
     expect(
       (
         await client.sql<
-          { status: string; detachReason: string | null }[]
-        >`SELECT status, detach_reason AS "detachReason" FROM app.task_group_members WHERE group_id = ${groupId} AND task_id = ${sourceA.id}`
-      )[0],
-    ).toMatchObject({ status: "DETACHED" });
+          { count: string }[]
+        >`SELECT count(*)::text AS count FROM app.task_group_members WHERE group_id = ${groupId} AND task_id = ${sourceA.id}`
+      )[0]?.count,
+    ).toBe("0");
     expect(
       (
         await client.sql<
           { status: string }[]
         >`SELECT status FROM app.task_groups WHERE id = ${groupId}`
       )[0]?.status,
-    ).toBe("ACTIVE");
+    ).toBe("CLOSED");
+    expect(
+      (
+        await client.sql<
+          { status: string; taskId: number }[]
+        >`SELECT status, task_id AS "taskId" FROM app.task_group_members WHERE group_id = ${groupId} ORDER BY task_id`
+      ).map((row) => [row.taskId, row.status]),
+    ).toEqual([
+      [main.id, "DETACHED"],
+      [sourceB.id, "DETACHED"],
+    ]);
 
     const second = await remove(project.actor, project, sourceB.id, {
       version: sourceB.rowVersion,
@@ -662,8 +638,8 @@ describe("ADR-058 删除任务", () => {
     expect(second.status, await second.clone().text()).toBe(200);
     expect(
       schemaRegistry.TaskDeletionResponse.schema.parse(await second.json()),
-    ).toMatchObject({ detachedGroupRole: "SOURCE" });
-    // 最后一个来源离开：聚合组关闭，主任务关系一并解除，主任务本身不受影响。
+    ).toMatchObject({ detachedGroupRole: null });
+    // 组已关闭：删除剩余来源只清成员行，不再产生新的角色解除。
     expect(
       (
         await client.sql<
@@ -678,10 +654,10 @@ describe("ADR-058 删除任务", () => {
         >`SELECT status FROM app.task_group_members WHERE group_id = ${groupId} AND task_id = ${main.id}`
       )[0]?.status,
     ).toBe("DETACHED");
-    expect(await taskRow(main.id)).toMatchObject({ deletedBy: null });
+    expect(await taskRow(main.id)).toBeDefined();
   });
 
-  it("聚合组主任务必须先解除合并才能删除，冲突时任务与链接均保持原状", async () => {
+  it("聚合组主任务可以直接删除；聚合组关闭且链接关联一并清理", async () => {
     const project = await fixture(),
       main = await createTask(project, project.userId, "主任务不可删"),
       source = await createTask(project, project.userId, "主任务来源", "DONE"),
@@ -695,30 +671,26 @@ describe("ADR-058 删除任务", () => {
         "https://github.com/256-code/InPulse/commit/mainlocked",
       );
 
-    const body = await failure(
-      await remove(project.actor, project, main.id, {
-        version: main.rowVersion,
-      }),
-      409,
-    );
-    expect(body.code).toBe("TASK_GROUP_MAIN_LOCKED");
-    expect(body.message).toContain(String(groupId));
-    expect(await taskRow(main.id)).toMatchObject({ deletedBy: null });
+    const response = await remove(project.actor, project, main.id, {
+      version: main.rowVersion,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await taskRow(main.id)).toBeUndefined();
     expect(
       (
         await client.sql<
-          { status: string }[]
-        >`SELECT status FROM app.task_groups WHERE id = ${groupId}`
-      )[0]?.status,
-    ).toBe("ACTIVE");
+          { status: string; closedAt: Date | null }[]
+        >`SELECT status, closed_at AS "closedAt" FROM app.task_groups WHERE id = ${groupId}`
+      )[0],
+    ).toMatchObject({ status: "CLOSED" });
     expect(
       (
         await client.sql<
           { count: string }[]
         >`SELECT count(*)::text AS count FROM app.task_external_links WHERE task_id = ${main.id} AND link_id = ${linkId}`
       )[0]?.count,
-    ).toBe("1");
-    expect((await auditRows(project.projectId, "task.delete")).length).toBe(0);
+    ).toBe("0");
+    expect((await auditRows(project.projectId, "task.delete")).length).toBe(1);
   });
 
   it("删除后再次删除（新幂等键）返回 404，审计与动态不重复写入", async () => {

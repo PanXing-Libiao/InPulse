@@ -4,13 +4,12 @@ const id = z.number().int().positive().max(2147483647);
 const reason = z.string().trim().min(1).max(10000).nullable();
 
 /**
- * ADR-059：功能删除。删除是软删除（`deleted_at` / `deleted_by`），功能从列表、详情、
- * 统计、搜索与全部功能级读写中消失，但功能行、任务、迭代记录与审计链全部保留。
- * 同一事务内级联：按其**自身**任务（`scope_type = 'FEATURE' AND feature_id = ?`）逐条执行
- * ADR-058 的单任务删除语义、作废本功能的已发布迭代记录，并移除搜索投影。
+ * ADR-096：功能删除。功能本体、其下全部任务、这些任务的全部迭代记录，以及归属于
+ * 该功能的全部记录、版本、遗留项与链接关联会被永久删除；所属模块保留。只保留审计
+ * 日志、项目动态与 `feature.delete` 删除事件。
  *
  * 仅「受影响」本功能的模块级任务（`scope_type = 'MODULE'` 且出现在
- * `task_feature_impacts`）**不**随之删除，影响关系行本身也保留为业务历史。
+ * `task_feature_impacts`）**不**随之删除，但指向本功能的影响关系会被清理。
  */
 export const deleteFeatureRequestSchema = z
   .object({ reason })
@@ -25,13 +24,11 @@ export const featureDeletionResponseSchema = z
     moduleId: id,
     code: z.string().min(1).max(64),
     name: z.string().min(1).max(500),
-    deletedAt: z.iso.datetime(),
-    deletedBy: id,
-    /** 同事务级联删除的功能自身任务数。 */
+    /** 同事务物理删除的功能自身任务数。 */
     deletedTaskCount: z.number().int().min(0),
-    /** 同事务作废的已发布迭代记录数（功能级与任务级之和）。 */
-    voidedRecordCount: z.number().int().min(0),
-    /** 同事务解除的外部链接关联数（含级联任务自身解除的关联）。 */
+    /** 同事务物理删除的迭代记录数（功能级与任务级之和）。 */
+    deletedRecordCount: z.number().int().min(0),
+    /** 同事务删除的外部链接关联数（含级联任务自身关联）。 */
     removedLinkCount: z.number().int().min(0),
   })
   .strict()
@@ -62,7 +59,7 @@ export const featureDeletionSchemas = {
   },
   FeatureDeletionResponse: {
     schema: featureDeletionResponseSchema,
-    summary: "删除功能结果与同事务级联的影响面计数",
+    summary: "删除功能结果与同事务物理级联的影响面计数",
     sensitiveFieldPaths: [],
   },
   FeatureDeletionReplayContext: {

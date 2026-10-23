@@ -29,7 +29,7 @@ export type TaskBoardView = "board" | "list";
 
 /**
  * 状态筛选；对应工具栏的 3 个状态 chip。2026-10-09 按用户要求移除 `canceled`：
- * ADR-058 之后取消任务入口已下线，该筛选恒无命中。
+ * ADR-096 之后取消任务入口已下线，该筛选恒无命中。
  */
 export type TaskBoardStatusFilter = "all" | "open" | "done";
 

@@ -39,10 +39,10 @@ type ScopeDeletionResource =
     };
 
 /**
- * ADR-059：删除模块与删除功能的 HTTP 接入。请求/响应校验、同源、CSRF、`If-Match`
+ * ADR-096：删除模块与删除功能的 HTTP 接入。请求/响应校验、同源、CSRF、`If-Match`
  * 版本门禁与数据库级幂等与其它写命令同口径；资源存在性检查与版本解析只在首次
  * 执行的 `execute` 中完成，重放前只复核当前认证与「当前仍是系统管理员或本项目
- * 组长」的实时角色（资源已被软删除，按可读性复核会把合法重放变成 404）。
+ * 组长」的实时角色（资源已被物理删除，按可读性复核会把合法重放变成 404）。
  */
 @Injectable()
 export class ScopeDeletionHttpService {
@@ -146,7 +146,7 @@ export class ScopeDeletionHttpService {
       const version = Number(
         getHeader(request.headers, "if-match")!.slice(1, -1),
       );
-      // 这里只做认证：重放路径同样会执行该回调，而模块/功能行此时已被软删除，
+      // 这里只做认证：重放路径同样会执行该回调，而模块/功能行此时已被物理删除，
       // 带资源归属的授权复核只允许出现在首次执行的 execute 中。
       const actor = async (tx: TransactionContext) => {
         const actor = await this.mutation.verify(tx, request.headers);
@@ -242,7 +242,7 @@ export class ScopeDeletionHttpService {
             saved.featureId !== scope.featureId
           )
             throw missing();
-          // 资源已从可见范围消失，因此只复核实时角色：组长被转移、降级为
+          // 资源已被物理删除，因此只复核实时角色：组长被转移、降级为
           // 普通成员或系统管理员被停用后重放一律拒绝，不得回放已存响应。
           const role = await this.roles.scopeDeleterReplayRole(
             tx,

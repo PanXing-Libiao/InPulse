@@ -13,10 +13,7 @@ import type {
 } from "../src/idempotency/runner.js";
 import { resolveRegisteredRoute } from "../src/idempotency/route.js";
 import type { IdempotencyRecord } from "../src/idempotency/store.js";
-import {
-  featureDeletionForbidden,
-  featureTaskGroupMainLocked,
-} from "../src/modules/features/feature-deletion.command-port.js";
+import { featureDeletionForbidden } from "../src/modules/features/feature-deletion.command-port.js";
 import { moduleUnclassifiedProtected } from "../src/modules/modules/module-deletion.command-port.js";
 import type { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
 import { ScopeDeletionHttpService } from "../src/workflows/scope-deletion-http.service.js";
@@ -30,11 +27,9 @@ const moduleBody = {
   code: "PAY-M-2",
   name: "结算模块",
   kind: "NORMAL" as const,
-  deletedAt: "2026-10-09T00:00:00.000Z",
-  deletedBy: 7,
   deletedFeatureCount: 2,
   deletedTaskCount: 3,
-  voidedRecordCount: 2,
+  deletedRecordCount: 2,
   removedLinkCount: 2,
 };
 const featureBody = {
@@ -43,10 +38,8 @@ const featureBody = {
   moduleId: 9,
   code: "PAY-F-4",
   name: "对账功能",
-  deletedAt: "2026-10-09T00:00:00.000Z",
-  deletedBy: 7,
   deletedTaskCount: 1,
-  voidedRecordCount: 1,
+  deletedRecordCount: 1,
   removedLinkCount: 1,
 };
 
@@ -159,7 +152,7 @@ function setup(
   };
 }
 
-describe("ADR-059 模块/功能删除 HTTP 边界", () => {
+describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
   it("合法请求返回 200 并校验契约 DTO，业务命令收到认证用户", async () => {
     const { service, deleteModule } = setup({ actorId: 7 });
     const result = await service.handle("deleteModule", request());
@@ -425,21 +418,5 @@ describe("ADR-059 模块/功能删除 HTTP 边界", () => {
       code: "FEATURE_DELETE_FORBIDDEN",
       message: "只有系统管理员或本项目组长可以删除功能",
     });
-
-    const locked = setup({
-      actorId: 7,
-      failWith: featureTaskGroupMainLocked([42, 43]),
-    });
-    const lockedResult = await locked.service.handle(
-      "deleteFeature",
-      request({
-        params: { projectId: "3", moduleId: "9", featureId: "11" },
-      }),
-    );
-    expect(lockedResult).toMatchObject({ status: 409 });
-    expect(JSON.stringify(lockedResult.body)).toContain(
-      "TASK_GROUP_MAIN_LOCKED",
-    );
-    expect(JSON.stringify(lockedResult.body)).toContain("42、43");
   });
 });

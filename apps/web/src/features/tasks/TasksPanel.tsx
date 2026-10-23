@@ -224,9 +224,9 @@ function TaskDueBadge({ item }: { readonly item: TaskViewItem }) {
 }
 
 /**
- * ADR-058：删除任务专用错误文案。`taskError` 是编辑场景的通用映射（「输入已保留，
+ * ADR-096：删除任务专用错误文案。`taskError` 是编辑场景的通用映射（「输入已保留，
  * 请加载最新版本后继续编辑」），删除弹窗没有输入也没有重载按钮，因此 409 直接
- * 透出服务端原因（如聚合组主任务 `TASK_GROUP_MAIN_LOCKED`），不追加编辑话术。
+ * 透出服务端原因（如版本冲突或幂等摘要冲突），不追加编辑话术。
  */
 function deletionError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -241,10 +241,10 @@ function deletionError(error: unknown): string {
 }
 
 /**
- * ADR-058：删除任务二次确认。删除即软删除——任务从项目、任务中心、看板、
- * 搜索与动态的可见范围消失且没有恢复入口；服务端同一事务解除外部链接关联、
- * 作废该任务的已发布记录（作废快照与版本保留）、解除聚合组，并写审计与项目
- * 动态留痕，因此确认文案要把这三件事说清。
+ * ADR-096：删除任务二次确认。服务端永久删除任务本体、状态历史、负责人、
+ * 影响关系、聚合组关系、外部链接关联，以及该任务的全部迭代记录、版本与
+ * 遗留项；只保留审计日志、项目动态与 `task.delete` 事件。删除没有恢复入口，
+ * 确认文案必须说明这一不可逆范围。
  */
 function TaskDeletionConfirm({
   item,
@@ -293,7 +293,7 @@ function TaskDeletionConfirm({
             showIcon
             type="warning"
             title={`确认删除任务「${item?.title ?? ""}」？`}
-            description="删除后不可恢复；关联的 GitHub 链接会解除，已发布的迭代记录将作废（快照与历史版本保留）。"
+            description="删除后不可恢复；任务及其全部迭代记录、版本、遗留项和 GitHub 链接关联会被永久删除，仅保留审计日志与项目动态。"
           />
           {error ? (
             <Alert showIcon type="error" title={deletionError(error)} />
@@ -386,7 +386,7 @@ export function TasksPanel({
   const [statusAction, setStatusAction] = useState<
     TaskStatusRequest["action"] | null
   >(null);
-  /** ADR-058：删除任务的二次确认。删除即软删除，没有恢复入口。 */
+  /** ADR-096：删除任务的二次确认。删除即物理删除，没有恢复入口。 */
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [statusToken, setStatusToken] = useState(0);
   const [selection, setSelection] = useState<{ item?: TaskViewItem } | null>(
@@ -690,9 +690,9 @@ export function TasksPanel({
     if (returnId !== null) openDetail(returnId);
   };
   /**
-   * ADR-058：删除任务。服务端在同一事务内软删除任务行（`deleted_at`）、解除
-   * 外部链接关联、作废该任务的已发布记录、解除聚合组并写审计与项目动态；
-   * 前端只负责二次确认与失效缓存，不提供恢复入口。
+   * ADR-096：删除任务。服务端在同一事务内永久删除任务及其全部迭代记录、版本、
+   * 遗留项与链接关联，解除聚合组并写审计与项目动态；前端只负责二次确认与
+   * 失效缓存，不提供恢复入口。
    */
   const deletion = useMutation({
     mutationFn: async (item: TaskViewItem) => {
@@ -746,14 +746,19 @@ export function TasksPanel({
           ["search"],
           ["notifications"],
           ["record-feed"],
+          ["record-drafts"],
+          ["task-record-drafts"],
+          ["my-record-drafts"],
+          ["record-summary"],
+          ["leftover-items"],
           ["task-external-links"],
-          // 被作废的记录可能已在记录页 / 项目主页弹窗里被打开过，按当前项目前缀
+          // 被永久删除的记录可能已在记录页 / 项目主页弹窗里被打开过，按当前项目前缀
           // 一起失效（记录 ID 在删除前未知，取不到逐条 key）。
           ["published-record", projectId],
           ["record-versions", projectId],
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       );
-      // 删除会改变侧栏计数（任务中心未完成 / 遗留问题），与作废记录同一处理。
+      // 删除会改变侧栏计数（任务中心未完成 / 遗留问题），与记录被永久删除同一处理。
       void invalidateShellCounters(queryClient);
     },
   });
@@ -762,7 +767,7 @@ export function TasksPanel({
    * 「编辑任务」弹窗页脚。编辑弹窗打开时详情弹窗已经卸载（`open` 会清掉 selectedId），
    * 所以点这两枚按钮要先回到详情弹窗，再触发各自原有的确认流程，不会出现弹窗套弹窗。
    * 开放条件与详情动作行同一口径：只对未完成任务、且通过同一条写入门禁。
-   * ADR-058：页脚第一枚已由「取消任务」改为「删除任务」（二次确认后删除），
+   * ADR-096：页脚第一枚已由「取消任务」改为「删除任务」（二次确认后物理删除），
    * 条件由 `deletion.isPending` 承担。
    */
   const editorTaskOpsEnabled =
@@ -1384,7 +1389,7 @@ export function TasksPanel({
                     重新打开
                   </Button>
                 )}
-                {/* ADR-058：取消任务改为「删除任务」（编辑弹窗页脚），取消即删除、
+                {/* ADR-096：取消任务改为「删除任务」（编辑弹窗页脚），删除即永久清除、
                     不提供恢复入口，因此这里不再渲染「恢复任务」。 */}
               </div>
               <CalmTabs
@@ -2042,7 +2047,7 @@ export function TasksPanel({
           </div>
         </form>
       </Modal>
-      {/* ADR-058：删除确认弹窗必须渲染在编辑弹窗**之外**（与编辑弹窗平级）。
+      {/* ADR-096：删除确认弹窗必须渲染在编辑弹窗**之外**（与编辑弹窗平级）。
           曾把它挂在编辑弹窗子树内，而 rc-dialog 会 memo 化编辑弹窗的 children，
           `open=false` / `pending=false` 的 prop 更新永远传不进去：删除成功后确认弹窗
           会卡在打开态一直转圈、遮罩不撤、body 滚动锁死（已用两个变体实测对照确认）。 */}

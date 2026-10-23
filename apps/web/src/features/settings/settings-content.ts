@@ -66,7 +66,7 @@ export const permissionMatrixRows: readonly PermissionMatrixRow[] = [
     feature: "删除模块/功能",
     admin: true,
     member: "leader",
-    note: "软删除并级联收尾下级任务与记录，不物理删除历史",
+    note: "物理删除并级联清除下级任务与记录，不保留历史；仅保留审计与项目动态",
   },
   {
     feature: "创建/编辑/指派任务",

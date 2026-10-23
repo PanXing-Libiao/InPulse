@@ -189,17 +189,17 @@ export function useFeatures(
   return { query, mutation };
 }
 
-/** ADR-059：删除功能只认功能 ID 与当前行版本（`If-Match`）。 */
+/** ADR-096：删除功能只认功能 ID 与当前行版本（`If-Match`）。 */
 export type FeatureDeletionTarget = {
   readonly id: number;
   readonly rowVersion: number;
 };
 
 /**
- * ADR-059：删除功能。服务端在同一事务内软删除功能、其下全部任务，并级联解除
- * 这些任务的 GitHub 链接关联、作废其已发布记录、写审计与项目动态；
- * 模块级影响任务（`scope_type = MODULE`）不被删除，影响关系行作为历史保留。
- * 删除没有恢复入口；功能行只随所属项目的物理删除（ADR-062）一并清除。
+ * ADR-096：删除功能。服务端在同一事务内物理删除功能、其下全部任务，以及
+ * 归属于该功能的全部迭代记录、版本、遗留项与链接关联；只保留审计与项目动态。
+ * 模块级影响任务（`scope_type = MODULE`）不被删除，其指向本功能的影响关系会被清理。
+ * 删除没有恢复入口，功能及其全部下级不会留下可读快照。
  *
  * 失效清单比编辑宽：级联删除了任务，因此任务、看板、聚合组、任务中心、遗留问题、
  * 项目概览与侧栏计数都要重取。失效刷新一律非阻塞（理由同上）。
@@ -250,7 +250,11 @@ export function useDeleteFeature(
           ["search"],
           ["notifications"],
           ["record-feed"],
-          // 被作废的记录可能已在记录页 / 项目主页弹窗里被打开过，按当前项目前缀
+          ["record-drafts"],
+          ["task-record-drafts"],
+          ["my-record-drafts"],
+          ["record-summary"],
+          // 被永久删除的记录可能已在记录页 / 项目主页弹窗里被打开过，按当前项目前缀
           // 一起失效（记录 ID 在删除前未知，取不到逐条 key）。
           ["published-record", projectId],
           ["record-versions", projectId],

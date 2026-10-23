@@ -4,23 +4,25 @@ import { ModuleDeletionError } from "../src/modules/modules/module-deletion.comm
 import { ScopeDeletionWorkflow } from "../src/workflows/scope-deletion.workflow.js";
 
 /**
- * ADR-059：模块/功能删除 Workflow 的分支与汇总口径。真实 PostgreSQL 的端到端
- * 行为由 `scope-deletion.integration.test.ts` 覆盖，这里只锁定单靠真库难以区分的
- * 三件事：门禁与拒绝发生的先后顺序、两段链接解除的汇总、以及审计与动态载荷。
+ * ADR-096：模块/功能删除 Workflow 只负责门禁、调用数据库窄口函数、追加一条
+ * 顶层审计与项目动态。真实级联范围由 scopedeletion 的 PostgreSQL 集成测试覆盖。
  */
 const moduleRow = {
   id: 9,
   projectId: 3,
   code: "PAY-M-2",
   name: "结算模块",
-  kind: "NORMAL",
+  kind: "NORMAL" as const,
   rowVersion: 4,
 };
 
-const softModule = {
+const deletedModule = {
   ...moduleRow,
-  rowVersion: 5,
-  deletedAt: new Date("2026-10-09T00:00:00.000Z"),
+  deletedAt: "2026-10-23T00:00:00.000Z",
+  deletedFeatureCount: 2,
+  deletedTaskCount: 3,
+  deletedRecordCount: 4,
+  removedLinkCount: 5,
 };
 
 const featureRow = {
@@ -32,33 +34,12 @@ const featureRow = {
   rowVersion: 2,
 };
 
-const softFeature = {
+const deletedFeature = {
   ...featureRow,
-  rowVersion: 3,
-  deletedAt: new Date("2026-10-09T00:00:00.000Z"),
-};
-
-const taskRow = {
-  id: 31,
-  projectId: 3,
-  moduleId: 9,
-  featureId: null,
-  rowVersion: 6,
-};
-
-const taskDeletionResult = {
-  id: 31,
-  projectId: 3,
-  moduleId: 9,
-  featureId: null,
-  code: "PAY-T-1",
-  title: "对账任务",
-  workStatus: "TODO" as const,
-  deletedAt: "2026-10-09T00:00:00.000Z",
-  deletedBy: 7,
-  voidedRecordCount: 1,
-  removedLinkCount: 3,
-  detachedGroupRole: null,
+  deletedAt: "2026-10-23T00:00:00.000Z",
+  deletedTaskCount: 3,
+  deletedRecordCount: 4,
+  removedLinkCount: 2,
 };
 
 function harness() {
@@ -68,13 +49,11 @@ function harness() {
     projectWritable: true,
     module: moduleRow as typeof moduleRow | null,
     moduleKind: "NORMAL" as "NORMAL" | "UNCLASSIFIED",
-    aliveFeatures: [] as unknown[],
-    mainTaskIds: [] as number[],
-    tasks: [] as unknown[],
-    detachedLinks: 0,
-    voided: [] as { recordId: number; title: string }[],
+    feature: featureRow as typeof featureRow | null,
+    moduleHardDeleteResult: deletedModule as typeof deletedModule | undefined,
+    featureHardDeleteResult: deletedFeature as
+      typeof deletedFeature | undefined,
   };
-  // 每个桩都在返回前记一次顺序：返回值由用例改 `values` 决定，顺序记录不受影响。
   const step = (label: string, value: unknown): Promise<unknown> => {
     order.push(label);
     return Promise.resolve(value);
@@ -107,8 +86,8 @@ function harness() {
             : { ...values.module, kind: values.moduleKind },
         ),
       ),
-      softDelete: vi.fn(async (..._args: unknown[]) =>
-        step("soft-delete-module", softModule),
+      hardDelete: vi.fn(async (..._args: unknown[]) =>
+        step("hard-delete-module", values.moduleHardDeleteResult),
       ),
     },
     features: {
@@ -116,36 +95,10 @@ function harness() {
         step("authorize-feature", undefined),
       ),
       findForDeletion: vi.fn(async (..._args: unknown[]) =>
-        step("find-feature", featureRow),
+        step("find-feature", values.feature),
       ),
-      listAliveOfModule: vi.fn(async (..._args: unknown[]) =>
-        step("lock-features", values.aliveFeatures),
-      ),
-      softDelete: vi.fn(async (..._args: unknown[]) =>
-        step("soft-delete-feature", softFeature),
-      ),
-    },
-    tasks: {
-      listActiveMainTaskIds: vi.fn(async (..._args: unknown[]) =>
-        step("main-precheck", values.mainTaskIds),
-      ),
-      listForScope: vi.fn(async (..._args: unknown[]) =>
-        step("lock-tasks", values.tasks),
-      ),
-    },
-    taskDeletion: {
-      deleteWithinTransaction: vi.fn(async (..._args: unknown[]) =>
-        step("delete-task", taskDeletionResult),
-      ),
-    },
-    records: {
-      voidScopeRecords: vi.fn(async (..._args: unknown[]) =>
-        step("void-records", values.voided),
-      ),
-    },
-    links: {
-      detachTarget: vi.fn(async (..._args: unknown[]) =>
-        step("detach-links", values.detachedLinks),
+      hardDelete: vi.fn(async (..._args: unknown[]) =>
+        step("hard-delete-feature", values.featureHardDeleteResult),
       ),
     },
     audit: {
@@ -159,11 +112,6 @@ function harness() {
         step("visibility", undefined),
       ),
     },
-    search: {
-      remove: vi.fn(async (..._args: unknown[]) =>
-        step("search-remove", undefined),
-      ),
-    },
     tx,
     order,
     values,
@@ -173,13 +121,8 @@ function harness() {
     deps.access as never,
     deps.modules as never,
     deps.features as never,
-    deps.tasks as never,
-    deps.taskDeletion as never,
-    deps.records as never,
-    deps.links as never,
     deps.audit as never,
     deps.activity as never,
-    deps.search as never,
   );
   return { ...deps, workflow };
 }
@@ -190,8 +133,8 @@ const deleteModule = (harnessed: ReturnType<typeof harness>) =>
 const deleteFeature = (harnessed: ReturnType<typeof harness>) =>
   harnessed.workflow.deleteFeature(7, 3, 9, 11, 2, "功能下线", "req-2");
 
-describe("ADR-059 删除模块与功能的跨域编排", () => {
-  it("未分类模块在写任何数据之前被拒绝", async () => {
+describe("ADR-096 物理删除模块与功能的跨域编排", () => {
+  it("未分类模块在物理删除前被拒绝", async () => {
     const harnessed = harness();
     harnessed.values.moduleKind = "UNCLASSIFIED";
 
@@ -209,13 +152,9 @@ describe("ADR-059 删除模块与功能的跨域编排", () => {
       "lock-project",
       "find-module",
     ]);
-    expect(harnessed.modules.softDelete).not.toHaveBeenCalled();
-    expect(harnessed.links.detachTarget).not.toHaveBeenCalled();
-    expect(
-      harnessed.taskDeletion.deleteWithinTransaction,
-    ).not.toHaveBeenCalled();
+    expect(harnessed.modules.hardDelete).not.toHaveBeenCalled();
     expect(harnessed.audit.append).not.toHaveBeenCalled();
-    expect(harnessed.search.remove).not.toHaveBeenCalled();
+    expect(harnessed.activity.append).not.toHaveBeenCalled();
   });
 
   it("项目不可写或模块不存在时统一按模块不存在返回 404", async () => {
@@ -236,10 +175,10 @@ describe("ADR-059 删除模块与功能的跨域编排", () => {
       (caught: unknown) => caught,
     );
     expect(notFound).toMatchObject({ status: 404, code: "MODULE_NOT_FOUND" });
-    expect(absent.modules.softDelete).not.toHaveBeenCalled();
+    expect(absent.modules.hardDelete).not.toHaveBeenCalled();
   });
 
-  it("版本不一致返回 409，且不软删除模块、不解链接、不写审计", async () => {
+  it("模块版本不一致返回 409，且不调用物理删除、不写审计与动态", async () => {
     const harnessed = harness();
 
     const error = await harnessed.workflow
@@ -250,18 +189,14 @@ describe("ADR-059 删除模块与功能的跨域编排", () => {
       status: 409,
       code: "MODULE_VERSION_CONFLICT",
     });
-    expect(harnessed.modules.softDelete).not.toHaveBeenCalled();
-    expect(harnessed.links.detachTarget).not.toHaveBeenCalled();
+    expect(harnessed.modules.hardDelete).not.toHaveBeenCalled();
     expect(harnessed.audit.append).not.toHaveBeenCalled();
     expect(harnessed.activity.append).not.toHaveBeenCalled();
-    expect(harnessed.search.remove).not.toHaveBeenCalled();
   });
 
-  it("主任务门禁先于任何逐任务删除整体判定，命中即整体拒绝", async () => {
+  it("数据库在取锁后判定版本冲突时同样返回 409 且不写事件", async () => {
     const harnessed = harness();
-    harnessed.values.aliveFeatures = [featureRow];
-    harnessed.values.mainTaskIds = [42, 43];
-    harnessed.values.tasks = [taskRow];
+    harnessed.values.moduleHardDeleteResult = undefined;
 
     const error = await deleteModule(harnessed).catch(
       (caught: unknown) => caught,
@@ -269,197 +204,185 @@ describe("ADR-059 删除模块与功能的跨域编排", () => {
 
     expect(error).toMatchObject({
       status: 409,
-      code: "TASK_GROUP_MAIN_LOCKED",
+      code: "MODULE_VERSION_CONFLICT",
     });
-    expect((error as Error).message).toContain("42、43");
-    expect(harnessed.order).toContain("main-precheck");
-    expect(harnessed.order).not.toContain("delete-task");
-    expect(
-      harnessed.taskDeletion.deleteWithinTransaction,
-    ).not.toHaveBeenCalled();
-    expect(harnessed.tasks.listForScope).not.toHaveBeenCalled();
-    // 功能锁、软删除与其审计发生在任务级联之前（同一事务，整体回滚后不落库）；
-    // 模块级审计、动态与投影必须等整条级联成功。
-    expect(
-      harnessed.audit.append.mock.calls.map(
-        (call) => (call[1] as { action: string }).action,
-      ),
-    ).toEqual(["feature.delete"]);
-    expect(harnessed.records.voidScopeRecords).not.toHaveBeenCalled();
-    // 功能的投影移除发生在级联功能时；模块自身的投影必须等整条级联成功。
-    expect(harnessed.search.remove.mock.calls.map((call) => call[2])).toEqual([
-      "FEATURE",
-    ]);
-    expect(
-      harnessed.activity.append.mock.calls.map(
-        (call) => (call[1] as { activityType: string }).activityType,
-      ),
-    ).toEqual(["FEATURE_DELETED"]);
+    expect(harnessed.modules.hardDelete).toHaveBeenCalledOnce();
+    expect(harnessed.audit.append).not.toHaveBeenCalled();
+    expect(harnessed.activity.append).not.toHaveBeenCalled();
   });
 
-  it("模块级计数把功能与任务两段链接解除、以及两段记录作废一起汇总", async () => {
+  it("模块物理删除返回级联计数，并只追加一条 module.delete 与动态", async () => {
     const harnessed = harness();
-    harnessed.values.aliveFeatures = [featureRow];
-    harnessed.values.detachedLinks = 2;
-    harnessed.values.tasks = [taskRow];
-    harnessed.values.voided = [{ recordId: 77, title: "九月迭代" }];
 
     const result = await deleteModule(harnessed);
 
-    // 链接解除 = 功能级 2 + 任务级 3；记录作废 = 任务级 1 + 范围内 1。
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       id: 9,
-      deletedBy: 7,
-      deletedFeatureCount: 1,
-      deletedTaskCount: 1,
+      projectId: 3,
+      code: "PAY-M-2",
+      name: "结算模块",
+      kind: "NORMAL",
+      deletedFeatureCount: 2,
+      deletedTaskCount: 3,
+      deletedRecordCount: 4,
       removedLinkCount: 5,
-      voidedRecordCount: 2,
-      deletedAt: "2026-10-09T00:00:00.000Z",
     });
-    expect(harnessed.taskDeletion.deleteWithinTransaction).toHaveBeenCalledWith(
+    expect(harnessed.modules.hardDelete).toHaveBeenCalledWith(
       harnessed.tx,
-      {
-        projectId: 3,
-        taskId: 31,
-        rowVersion: 6,
-        actorId: 7,
-        reason: "模块下线",
-        requestId: "req-1",
-      },
+      moduleRow,
+      7,
+      "模块下线",
     );
+    expect(harnessed.features.hardDelete).not.toHaveBeenCalled();
+    expect(harnessed.audit.append).toHaveBeenCalledOnce();
     expect(harnessed.audit.append).toHaveBeenCalledWith(
       harnessed.tx,
       expect.objectContaining({
         action: "module.delete",
+        targetType: "MODULE",
         targetId: "9",
-        eventPayload: expect.objectContaining({
-          deletedFeatureIds: [11],
-          deletedTaskCount: 1,
-          voidedRecords: [77],
+        eventPayload: {
+          moduleId: 9,
+          code: "PAY-M-2",
+          name: "结算模块",
+          kind: "NORMAL",
+          deletedFeatureCount: 2,
+          deletedTaskCount: 3,
+          deletedRecordCount: 4,
           removedLinkCount: 5,
           reason: "模块下线",
-        }),
+        },
       }),
     );
+    expect(harnessed.activity.updateEntityVisibility).toHaveBeenCalledWith(
+      harnessed.tx,
+      {
+        projectId: 3,
+        sourceEntityType: "MODULE",
+        sourceEntityId: 9,
+        visibilityScope: "MEMBER",
+        sourceStatus: "DELETED",
+        sourceRowVersion: 5,
+      },
+    );
+    expect(harnessed.activity.append).toHaveBeenCalledOnce();
     expect(harnessed.activity.append).toHaveBeenCalledWith(
       harnessed.tx,
       expect.objectContaining({
         activityType: "MODULE_DELETED",
         sourceEntityType: "MODULE",
         sourceEntityId: 9,
-        sourceStatus: "DELETED",
-        sourceRowVersion: 5,
-        summary: "删除模块：结算模块",
-        metadata: expect.objectContaining({
-          deletedFeatureCount: 1,
-          deletedTaskCount: 1,
-          voidedRecordIds: [77],
+        sourceChainId: "PROJECT:3",
+        sourceSequence: 12,
+        metadata: {
+          moduleId: 9,
+          code: "PAY-M-2",
+          kind: "NORMAL",
+          deletedFeatureCount: 2,
+          deletedTaskCount: 3,
+          deletedRecordCount: 4,
           removedLinkCount: 5,
-        }),
+        },
       }),
-    );
-    expect(harnessed.search.remove).toHaveBeenCalledWith(
-      harnessed.tx,
-      3,
-      "MODULE",
-      9,
-    );
-    // 父到子的取锁顺序：模块行与功能行都先于任务行。
-    expect(harnessed.order.indexOf("soft-delete-feature")).toBeLessThan(
-      harnessed.order.indexOf("lock-tasks"),
     );
   });
 
-  it("删除功能只覆盖本功能范围，且模块级影响任务不参与级联", async () => {
+  it("功能物理删除只操作本功能，所属模块保留", async () => {
     const harnessed = harness();
-    harnessed.values.detachedLinks = 2;
-    harnessed.values.tasks = [taskRow];
-    harnessed.values.voided = [{ recordId: 78, title: "十月迭代" }];
 
     const result = await deleteFeature(harnessed);
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       id: 11,
+      projectId: 3,
       moduleId: 9,
-      deletedTaskCount: 1,
-      removedLinkCount: 5,
-      voidedRecordCount: 2,
+      code: "PAY-F-4",
+      name: "对账功能",
+      deletedTaskCount: 3,
+      deletedRecordCount: 4,
+      removedLinkCount: 2,
     });
-    expect(harnessed.features.softDelete).toHaveBeenCalledWith(
+    expect(harnessed.features.hardDelete).toHaveBeenCalledWith(
       harnessed.tx,
       featureRow,
       7,
+      "功能下线",
     );
-    expect(harnessed.links.detachTarget).toHaveBeenCalledWith(
-      harnessed.tx,
-      3,
-      "FEATURE",
-      11,
-    );
-    expect(harnessed.tasks.listActiveMainTaskIds).toHaveBeenCalledWith(
-      harnessed.tx,
-      3,
-      { moduleId: 9, featureId: 11 },
-    );
-    expect(harnessed.records.voidScopeRecords).toHaveBeenCalledWith(
-      harnessed.tx,
-      expect.objectContaining({ moduleId: 9, featureId: 11 }),
-    );
+    expect(harnessed.modules.hardDelete).not.toHaveBeenCalled();
+    expect(harnessed.audit.append).toHaveBeenCalledOnce();
     expect(harnessed.audit.append).toHaveBeenCalledWith(
       harnessed.tx,
       expect.objectContaining({
         action: "feature.delete",
         targetType: "FEATURE",
         targetId: "11",
-        eventPayload: expect.objectContaining({
+        eventPayload: {
+          featureId: 11,
           moduleId: 9,
+          code: "PAY-F-4",
+          name: "对账功能",
+          deletedTaskCount: 3,
+          deletedRecordCount: 4,
           removedLinkCount: 2,
-          cascadeFromModuleId: null,
-        }),
+          reason: "功能下线",
+        },
       }),
     );
-    expect(harnessed.search.remove).toHaveBeenCalledWith(
+    expect(harnessed.activity.append).toHaveBeenCalledWith(
       harnessed.tx,
-      3,
-      "FEATURE",
-      11,
+      expect.objectContaining({
+        activityType: "FEATURE_DELETED",
+        sourceEntityType: "FEATURE",
+        sourceEntityId: 11,
+        sourceRowVersion: 3,
+        metadata: {
+          featureId: 11,
+          moduleId: 9,
+          code: "PAY-F-4",
+          deletedTaskCount: 3,
+          deletedRecordCount: 4,
+          removedLinkCount: 2,
+        },
+      }),
     );
-    // 功能路径不做模块级功能扫描。
-    expect(harnessed.features.listAliveOfModule).not.toHaveBeenCalled();
   });
 
-  it("模块级联时每个被删功能单独留一条审计，并按来源标注", async () => {
-    const harnessed = harness();
-    harnessed.values.aliveFeatures = [featureRow];
-    harnessed.values.detachedLinks = 1;
+  it("功能不存在或版本冲突时不调用物理删除", async () => {
+    const absent = harness();
+    absent.values.feature = null;
+    expect(
+      await deleteFeature(absent).catch((caught: unknown) => caught),
+    ).toMatchObject({ status: 404, code: "FEATURE_NOT_FOUND" });
+    expect(absent.features.hardDelete).not.toHaveBeenCalled();
 
-    await deleteModule(harnessed);
-
-    const featureAudits = harnessed.audit.append.mock.calls
-      .map((call) => call[1] as { action: string; eventPayload: unknown })
-      .filter((input) => input.action === "feature.delete");
-    expect(featureAudits).toHaveLength(1);
-    expect(featureAudits[0]?.eventPayload).toMatchObject({
-      featureId: 11,
-      deletedTaskCount: null,
-      voidedRecords: [],
-      removedLinkCount: 1,
-      cascadeFromModuleId: 9,
+    const stale = harness();
+    const error = await stale.workflow
+      .deleteFeature(7, 3, 9, 11, 3, null, "req-2")
+      .catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      status: 409,
+      code: "FEATURE_VERSION_CONFLICT",
     });
+    expect(stale.features.hardDelete).not.toHaveBeenCalled();
+    expect(stale.audit.append).not.toHaveBeenCalled();
   });
 
-  it("空原因回落默认文案，写入审计与记录作废的是同一份原因", async () => {
-    const harnessed = harness();
-
-    await harnessed.workflow.deleteModule(7, 3, 9, 4, "   ", "req-1");
-    const moduleAudit = harnessed.audit.append.mock.calls[0]?.[1] as {
-      eventPayload: { reason: string };
-    };
-    expect(moduleAudit.eventPayload.reason).toBe("模块已被删除");
-    expect(harnessed.records.voidScopeRecords).toHaveBeenCalledWith(
-      harnessed.tx,
-      expect.objectContaining({ reason: "模块已被删除" }),
+  it("空原因回落默认文案，审计与日志使用同一份原因", async () => {
+    const moduleHarnessed = harness();
+    await moduleHarnessed.workflow.deleteModule(7, 3, 9, 4, "   ", "req-1");
+    expect(moduleHarnessed.modules.hardDelete).toHaveBeenCalledWith(
+      moduleHarnessed.tx,
+      moduleRow,
+      7,
+      "模块已被删除",
     );
+    expect(
+      (
+        moduleHarnessed.audit.append.mock.calls[0]?.[1] as {
+          eventPayload: { reason: string };
+        }
+      ).eventPayload.reason,
+    ).toBe("模块已被删除");
 
     const featureHarnessed = harness();
     await featureHarnessed.workflow.deleteFeature(
@@ -471,9 +394,18 @@ describe("ADR-059 删除模块与功能的跨域编排", () => {
       null,
       "req-2",
     );
-    const featureAudit = featureHarnessed.audit.append.mock.calls[0]?.[1] as {
-      eventPayload: { reason: string };
-    };
-    expect(featureAudit.eventPayload.reason).toBe("功能已被删除");
+    expect(featureHarnessed.features.hardDelete).toHaveBeenCalledWith(
+      featureHarnessed.tx,
+      featureRow,
+      7,
+      "功能已被删除",
+    );
+    expect(
+      (
+        featureHarnessed.audit.append.mock.calls[0]?.[1] as {
+          eventPayload: { reason: string };
+        }
+      ).eventPayload.reason,
+    ).toBe("功能已被删除");
   });
 });

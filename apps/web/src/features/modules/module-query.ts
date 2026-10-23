@@ -17,7 +17,7 @@ import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { invalidateShellCounters } from "@shared/api/shell-counters";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
-/** ADR-044：模块层面已下线归档，模块命令只有新建、编辑与删除（ADR-059）。 */
+/** ADR-044：模块层面已下线归档，模块命令只有新建、编辑与删除（ADR-096）。 */
 export type ModuleChange = {
   action: "create" | "update";
   item?: ModuleItem;
@@ -122,16 +122,16 @@ export function useModules(projectId: number, client?: InpulseApiClient) {
   return { query, mutation };
 }
 
-/** ADR-059：删除模块只认模块 ID 与当前行版本（`If-Match`）。 */
+/** ADR-096：删除模块只认模块 ID 与当前行版本（`If-Match`）。 */
 export type ModuleDeletionTarget = {
   readonly id: number;
   readonly rowVersion: number;
 };
 
 /**
- * ADR-059：删除模块。服务端在同一事务内软删除模块、其下全部功能与其下全部任务，
- * 并级联解除这些任务的 GitHub 链接关联、作废其已发布记录、写审计与项目动态；
- * 删除没有恢复入口；模块行只随所属项目的物理删除（ADR-062）一并清除。
+ * ADR-096：删除模块。服务端在同一事务内物理删除模块、其下全部功能与任务，
+ * 以及这些实体的全部迭代记录、版本、遗留项与链接关联；只保留审计与项目动态。
+ * 删除没有恢复入口，模块及其全部下级不会留下可读快照。
  *
  * 失效清单比编辑宽：级联删除了功能与任务，因此任务、看板、聚合组、任务中心、
  * 遗留问题、项目概览与侧栏计数都要重取。失效刷新一律非阻塞（理由同上）。
@@ -180,7 +180,11 @@ export function useDeleteModule(
           ["search"],
           ["notifications"],
           ["record-feed"],
-          // 被作废的记录可能已在记录页 / 项目主页弹窗里被打开过，按当前项目前缀
+          ["record-drafts"],
+          ["task-record-drafts"],
+          ["my-record-drafts"],
+          ["record-summary"],
+          // 被永久删除的记录可能已在记录页 / 项目主页弹窗里被打开过，按当前项目前缀
           // 一起失效（记录 ID 在删除前未知，取不到逐条 key）。
           ["published-record", projectId],
           ["record-versions", projectId],

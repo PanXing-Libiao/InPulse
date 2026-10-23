@@ -105,8 +105,8 @@ export class ProjectRoleGateService {
   }
 
   /**
-   * ADR-059 删除重放门禁（`moduleDeleteReplayAuthorizer` / `featureDeleteReplayAuthorizer`）：
-   * 模块与功能行已软删除、退出可读范围，首次执行用的资源复核必然 404，因此重放
+   * ADR-096 删除重放门禁（`moduleDeleteReplayAuthorizer` / `featureDeleteReplayAuthorizer`）：
+   * 模块与功能行已物理删除、退出可读范围，首次执行用的资源复核必然 404，因此重放
    * 只复核「如果模块还在，这个人当初还能不能删」——仍读实时成员关系，组长被转移
    * 或移除、降级为普通成员后重放一律拒绝，系统管理员保持放行；项目本身已删除时
    * 授权范围必然不含它，同样拒绝。当前认证（Session 有效、用户未被停用）由 HTTP

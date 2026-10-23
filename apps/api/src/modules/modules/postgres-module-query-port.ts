@@ -12,7 +12,7 @@ export class PostgresModuleQueryPort extends ModuleQueryPort {
     input: CheckModuleForWriteInput,
   ): Promise<ModuleWriteCheckResult> {
     // ADR-044：模块只有 ACTIVE 一种状态，取锁成功即代表可写。
-    // ADR-059：已软删除的模块一律视为不存在，不泄露其存在性。
+    // ADR-096：历史软删除的模块一律视为不存在，不泄露其存在性。
     const [resource] = await tx.sql<ModuleForWriteResource[]>`
       SELECT id AS "moduleId", project_id AS "projectId",
         row_version AS "rowVersion"

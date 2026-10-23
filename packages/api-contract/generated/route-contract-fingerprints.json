@@ -271,18 +271,30 @@
     {
       "version": "1.0.0",
       "fingerprint": "fc056ee46babc8afaa0707fa58919975d65022bb6f50a0e576b6ddac18c1110a"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "4af9262524cc28e388aea3da31b2cef2629688b9f2b51ec185289ae24fa9db42"
     }
   ],
   "deleteModule": [
     {
       "version": "1.0.0",
       "fingerprint": "c62f03514d07d42113b0c9908df55f40d6dfa7ee41ab65d4e2b081e96723dca5"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "02af4bb46a9078bc8a504bb7b7844d43df0ac44d012eca91446938b26c064f42"
     }
   ],
   "deleteModuleTask": [
     {
       "version": "1.0.0",
       "fingerprint": "6c33bd7958e90dd4da6d5215199e3c97f7249fee0e043593e20eb6b243c1a616"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "9fe91e30e8e7a9cb14ff42e135978628ed95e44900ae1639a97545f91d60b487"
     }
   ],
   "deleteOrganization": [
@@ -317,6 +329,10 @@
     {
       "version": "1.0.0",
       "fingerprint": "bd4d18286ad83b2cc0c5bc6133d2c559b7eb8d2e5e8707c0777533badefa26e3"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "beb91208cc949332ae02ea0f336a62784b55e55c8dfe86933722103aa13b0440"
     }
   ],
   "deleteUser": [

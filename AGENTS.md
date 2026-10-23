@@ -79,12 +79,13 @@
 - 聚合更新使用条件更新或显式行锁；内容变化必须递增 `row_version`，项目纯状态变更按 [ADR-092](./docs/adr/ADR-092.md) 保持版本不变。唯一约束、版本冲突和状态冲突映射为明确的 409 业务错误。
 - 多聚合命令固定锁序为：任务 ID 升序 -> 任务组 ID 升序 -> 迭代记录 ID 升序 -> 遗留项 ID 升序。预读结果在获得锁后发生变化时，必须重新读取并从头有限重试。
 - 命令需要验证项目、模块或功能仍可写时，必须先按项目 -> 模块 -> 功能的父到子顺序和各层 ID 升序取得 `FOR SHARE`；归档方按相同顺序取得 `FOR UPDATE`，随后才进入上述业务聚合锁序，防止父级归档与子级写入竞态。
+- 任务、功能与模块的物理删除只能经 `app.hard_delete_task` / `app.hard_delete_feature` / `app.hard_delete_module` 三个 `SECURITY DEFINER` 入口执行；共享 helper `app.hard_delete_business_scope` 不得授予 `app_runtime`，业务表 `DELETE` 权限不得因此放开。固定锁序为父级写前门禁 -> 功能 ID 升序 -> 任务 ID 升序 -> 聚合组 ID 升序 -> 迭代记录 ID 升序 -> 遗留项 ID 升序。
 - 所有写接口（POST、PUT、PATCH、DELETE）默认必须在 Route Registry 声明 `idempotencyRequired` 并实现数据库级幂等；普通 GET、HEAD 和纯校验接口显式声明 `none`。[ADR-023](./docs/adr/ADR-023.md) allowlist 中的 operationId 必须且只能声明 `securityFlow`，包括签发/消费一次性安全材料（预认证 CSRF、Session 与 CSRF）、登录/登出与 SSO 认证导航（`startSsoLogin`/`completeSsoLogin`，共五条，[ADR-032](./docs/adr/ADR-032.md)）；新增例外必须另立 ADR。通用幂等记录禁止保存或重放 Cookie、CSRF Token 或任何一次性安全材料。
 - `idempotencyRequired` 的请求摘要必须覆盖大写 method、operationId、幂等契约版本、摘要格式与请求 Schema 版本、Schema 解析后的 path 参数和规范 query、规范 Content-Type、Route Registry 声明的全部行为相关请求头以及 JCS 规范化 body；使用版本头的路由必须包含 `If-Match`。摘要使用独立、带版本密钥的 HMAC-SHA-256，不得把普通 SHA-256 用作密码、验证码或其他低熵输入的离线校验器。Cookie、Authorization、CSRF、追踪头和 Idempotency-Key 不进入摘要。任一语义输入或幂等契约版本不同都返回 409。幂等不能只依赖前端禁用按钮或进程内锁。
 - 每条 `idempotencyRequired` 路由必须登记带版本的 `idempotencyReplayPolicy`：逐个列出可能缓存的 2xx 状态；有 body 时列出精确响应 Schema 引用以及可安全持久化和重放的全部 body 叶子字段，无 body 时使用互斥的 `noBody` 分支。CI 必须拒绝遗漏状态、字段不全或越界、Schema 不一致、Secret 字段以及任何 `Set-Cookie`/认证响应头重放；`none` 与 `securityFlow` 路由的该策略只能为 `none`。请求或安全重放策略变化必须升级幂等契约版本，旧 Key 在新契约下返回 409。
 - 每条 `idempotencyRequired` 路由还必须登记 `replayAuthorizationPolicy`，以类型化、最小化的结果资源引用说明缓存响应暴露了哪些资源。幂等重放前必须重新验证当前认证、原操作权限、所有结果资源的当前可读权限及该路由要求的高风险门禁（当前有效的完整管理员 Session）；任一门禁失败时拒绝且不得泄露已存状态码或响应。只有全部门禁通过后，同 Key、同摘要和同契约版本才重放原 2xx。
 - 项目创建时，创建者必须自动成为活跃成员且创建流程不可取消该成员关系；创建完成后，系统管理员可以按普通成员规则移除创建者（[ADR-033](./docs/adr/ADR-033.md) 起创建者成员行默认担任组长 LEADER，组长须先由系统管理员转移或撤销后才能被移除）。`projects.created_by` 只用于不可变溯源，不赋予额外权限，也不得随成员移除而改变。普通成员创建者被移除后立即失去成员关系派生的项目权限；若创建者本身是系统管理员，其全局管理员权限不受成员记录影响。测试必须分别覆盖这两种身份。
-- 正式记录版本不可变；迭代记录状态只允许 `DRAFT -> PUBLISHED -> VOID`，以及系统管理员执行的 `VOID -> PUBLISHED` 恢复（[ADR-031](./docs/adr/ADR-031.md) 起不再要求 TOTP 重认证）。`status` 是详情、统计、搜索和时间线可见性的唯一真相，不得因恢复后仍保留 `voided_at` 而继续隐藏。恢复必须保留作废快照与全部版本，原因进入不可变审计，具体不变量见 [ADR-024](./docs/adr/ADR-024.md)。任务组成员关系是 MAIN/SOURCE 身份的唯一真相。业务历史默认通过归档、作废或新版本保留，不物理覆盖或删除。
+- 正式记录版本不可变；迭代记录状态只允许 `DRAFT -> PUBLISHED -> VOID`，以及系统管理员执行的 `VOID -> PUBLISHED` 恢复（[ADR-031](./docs/adr/ADR-031.md) 起不再要求 TOTP 重认证）。`status` 是详情、统计、搜索和时间线可见性的唯一真相，不得因恢复后仍保留 `voided_at` 而继续隐藏。恢复必须保留作废快照与全部版本，原因进入不可变审计，具体不变量见 [ADR-024](./docs/adr/ADR-024.md)。任务组成员关系是 MAIN/SOURCE 身份的唯一真相。业务历史默认通过归档、作废或新版本保留，不物理覆盖或删除；唯一显式例外是项目删除以及任务、功能、模块删除（[ADR-062](./docs/adr/ADR-062.md)、[ADR-096](./docs/adr/ADR-096.md)），其级联边界与保留面必须按 ADR 执行。
 - 历史迁移一经合并不得修改、删除或重排。新迁移采用 expand/contract 思路，必须支持从上一正式版本验证升级和回滚兼容窗口。
 - API 进程不得在启动时自动生成 Schema。迁移由独立、受限的 migration 任务执行。
 - Repository/Application 集成测试必须使用真实 PostgreSQL 验证事务、锁、约束和权限，不能只 Mock Repository。
@@ -709,6 +710,8 @@
 
 ## 2026-10-09 ADR-058 取消任务改为「二次确认后删除任务」说明
 
+> **2026-10-23 更新**：本节的任务软删除规则已由 [ADR-096](./docs/adr/ADR-096.md) 替代；现行规则为物理删除，见文末「2026-10-23 ADR-096 任务、功能与模块物理删除说明」。
+
 按用户 2026-10-09 指示（原话「现在我需要更改取消任务，取消任务以后要变成先二次确认，确认后彻底删除这个任务，然后那些任务的github链接要取消关联，如果这个任务有迭代记录要作废，可以点击取消任务以后你刷新页面前还能点击恢复任务，但是刷新后就不行，而且就算取消任务，项目动态和审计日志里面也需要有保留取消任务的记录」，经四轮澄清收敛为「不要恢复入口 + 不做完整还原 + 记录自动作废 + 合并中自动解除后删除」）交付任务删除（[ADR-058](./docs/adr/ADR-058.md)）。因此：
 
 - **任务删除是软删除，不是物理删除**（与 [ADR-049](./docs/adr/ADR-049.md) 的项目软删除同范式）：`app.tasks` 被 7 张表以 `ON DELETE RESTRICT` 引用（`change_records`、`task_status_history`、`task_external_links`、`task_group_members`、`task_feature_impacts`、`task_assignees`、`leftover_task_links`），其中状态历史与迭代记录是必须保留的业务历史，且审计链只追加（[ADR-008](./docs/adr/ADR-008.md)）；「刷新前可恢复」按字面与「彻底删除」不可并存，用户已明确放弃恢复入口，因此删除 = `deleted_at` / `deleted_by` 标记 + 退出全部可见与可写范围，业务历史原样保留。物理清除只随所属项目被物理删除（[ADR-062](./docs/adr/ADR-062.md)，2026-10-09 起；原写作「项目的彻底删除（ADR-051）或保留期自动清理（ADR-055）」，两条路径已随 ADR-062 下线）发生。
@@ -786,6 +789,8 @@
 
 ## 2026-10-09 ADR-059 模块与功能软删除说明
 
+> **2026-10-23 更新**：本节模块与功能的软删除规则已由 [ADR-096](./docs/adr/ADR-096.md) 替代；现行规则为物理删除，见文末「2026-10-23 ADR-096 任务、功能与模块物理删除说明」。
+
 按用户 2026-10-09 指示（原话「现在先本地保存，然后给模块和功能增加删除按钮，如果里面有功能或者任务，要提醒操作者是否删除，如果真的删除那就一起删」，随后限定入口形态「把删除按钮放入模块和功能各自的编辑页面里，像任务那种一样一样」）交付模块与功能删除（[ADR-059](./docs/adr/ADR-059.md)）。因此：
 
 - **删除是软删除，不物理删除**（与 [ADR-049](./docs/adr/ADR-049.md) / [ADR-058](./docs/adr/ADR-058.md) 同范式）：迁移 `0036_module_feature_soft_delete.sql` 给 `app.modules` 与 `app.features` 各加 `deleted_at` / `deleted_by`（`ON DELETE restrict` FK 到 `app.users`）与 `*_deleted_state_check`（两列同空或同非空）；删除 = 打标 + `row_version` 递增 + 退出全部可见与可写范围，**不提供模块 / 功能的还原入口**。物理清除只随所属项目被物理删除（[ADR-062](./docs/adr/ADR-062.md)，2026-10-09 起；原写作「项目的彻底删除（ADR-051）或保留期自动清理（ADR-055）」，两条路径已随 ADR-062 下线）发生。`app_runtime` 的表级 `DELETE` 授权面不变（软删除只需 `UPDATE`）。
@@ -830,7 +835,7 @@
 - **权限与编码**：系统管理员或本项目 ACTIVE 组长可删（`ProjectRoleGateService.projectDeleterRole`；项目管理员与普通成员一样归入 `MEMBER` 返回 403 `PROJECT_DELETE_FORBIDDEN`），非成员 / 已移除成员 / 不存在统一 404 `PROJECT_NOT_FOUND`；项目行删除后 `projects_code_unique` 释放，编码可被后续项目复用（D3②）。迁移 `0038` 先把历史上被软删除的存量行恢复为活跃行（`deleted_at = NULL` + `row_version + 1`）再收窄约束，不物理删除任何存量业务数据。
 - **幂等重放只复核认证**：项目行已消失，`replayAuthorizationPolicy` 为 `{ version: "2.0.0", actorOnly: true }`，**禁止**在 `actorId` 回调里加资源可读性检查（会让合法重放变 404，[ADR-058](./docs/adr/ADR-058.md) 同类教训）；HTTP 层仍复核 `auth_version` / `row_version`，认证失效后重放 401。
 - **前端**：删除入口仍在「编辑项目」弹窗页脚最左侧，二次确认升级为**级联后果警告**（逐项列出将删除的模块 / 功能 / 任务 / 迭代记录 / GitHub 链接 / 通知 / 项目动态 / 项目审计链，并说明编码可复用与 SYSTEM 链留痕）；`ProjectDeletionActions.tsx`、`project-deletion-query.ts`、活动页「已删除项目」筛选与 `ActivityWorkspace.deletions.test.tsx` 已删除。
-- **任务 / 模块 / 功能软删除不受影响**：`app.tasks`（[ADR-058](./docs/adr/ADR-058.md)）与 `app.modules` / `app.features`（[ADR-059](./docs/adr/ADR-059.md)）的 `deleted_at` 保留，其物理清除路径改由本节承接；`RETIRED_ACTION_CODES` 增至 **13 个**（新增 `project.restore` / `project.purge`），历史行仍按中文渲染。
+- **任务 / 模块 / 功能软删除不受影响（历史口径，2026-10-23 起由 ADR-096 改为物理删除）**：`app.tasks`（[ADR-058](./docs/adr/ADR-058.md)）与 `app.modules` / `app.features`（[ADR-059](./docs/adr/ADR-059.md)）的 `deleted_at` 保留，其物理清除路径改由本节承接；`RETIRED_ACTION_CODES` 增至 **13 个**（新增 `project.restore` / `project.purge`），历史行仍按中文渲染。
 - **验证（2026-10-09 本地）**：契约 `generate` / `drift` / `validate`（102 条）与 `permissions:check`（102 / 102）；`project-delete-api.integration.test.ts` **6/6**（级联清空与唯一留痕、权限矩阵与失败零副作用、幂等重放与摘要绑定、重放只复核认证、版本与参数校验分支、编码复用）；API 真库集成 **54 文件 528 例**、API 单测 **72 文件 430 例**、Web 定向单测 **22 文件 158 例**、`pnpm build` 8 个 workspace；定向 E2E `tests/project-delete.spec.ts` **2/2**，全量 E2E **69 / 70**（唯一失败为既有波动用例 `external-links.spec.ts`，单跑 3/3）；迁移 `0038` 在 `app_ci` 与 `app` 均 Applied。**未运行**：整链 `pnpm check`（本机 npm 镜像缺 audit endpoint）、全量 `test:web`、镜像构建与 Trivy、GitHub Actions（未提交未推送）。
 - 本文件上文 ADR-049 / ADR-050 / ADR-051 / ADR-052 / ADR-055 小节，以及 [ADR-058](./docs/adr/ADR-058.md)、[ADR-059](./docs/adr/ADR-059.md) 中「物理清除只随 ADR-051 / ADR-055 发生」的表述，与本节冲突时以 ADR-062 与本节的现行规则为准。
 ## 2026-10-09 项目列表生命周期分档与侧栏项目树联动
@@ -1153,3 +1158,19 @@
 - 有未完成任务时，`disableUser` 必须在同一事务内先完成交接：多负责人任务默认摘掉待停用账号并保留其他负责人；唯一负责人任务必须指定一名或多名接手人或标记删除，否则 422，账号保持 `ACTIVE` 且不撤销会话。全部任务清理后才停用、撤销 Session 并写审计（[ADR-084](docs/adr/ADR-084.md)）。
 - 前端成员列表把停用账号保留在「全部」里，整行灰色、状态显示「停用」，并统一排在列表最后；不提供单独的「停用 / 已隐藏」标签页，行内只保留「编辑」，停用与启用都在编辑弹窗的「账号状态」区。
 - `forceLogoutUser` 已按 [ADR-083](docs/adr/ADR-083.md) 整体移除：路由、Controller、Service、Repository、权限矩阵、OpenAPI、生成客户端与前端入口均不存在；管理员撤销目标会话只能通过停用账号完成。历史审计中的 `admin.user.force_logout` 动作码仍保留中文展示标签。
+
+
+## 2026-10-23 ADR-096 任务、功能与模块物理删除说明
+
+用户于 2026-10-23 明确删除规则，落 [ADR-096](./docs/adr/ADR-096.md)（Accepted），部分替代 [ADR-058](./docs/adr/ADR-058.md) 与 [ADR-059](./docs/adr/ADR-059.md) 的软删除条款。
+
+- **任务**：物理删除任务本体、状态历史、负责人、影响关系、聚合组关系、外部链接关联，以及该任务的全部迭代记录、版本、遗留项和搜索投影；只保留审计、项目动态与顶层 `task.delete`。`app.external_links` 主表保留。
+- **功能**：物理删除功能本体、功能下全部任务及其全部记录/版本/遗留项，以及归属于该功能的全部记录和链接关联；所属模块与其他功能保留；只写一条顶层 `feature.delete`。模块级任务若只通过影响关系关联该功能，不删除任务本身，只清理影响关系。
+- **模块**：物理删除模块本体、模块下全部功能与任务，以及这些实体的全部记录、版本、遗留项、影响关系、聚合组关系、链接关联和搜索投影；只写一条顶层 `module.delete`。未分类模块继续由接口与数据库触发器双重保护，返回 409 `MODULE_UNCLASSIFIED_PROTECTED`。
+- **聚合组**：MAIN 任务允许直接删除；任何包含被删任务的活跃聚合组关闭，未删除的 ACTIVE 成员转 `DETACHED` 并记录解除原因与操作者；组内无剩余成员时删除组行。`detachedGroupId` 在删除成员关系前捕获，修正迁移为 `0060`。
+- **留痕**：级联删除不逐条伪造下级删除事件；同事务追加顶层审计与项目动态，并把原实体历史动态可见性更新为 `DELETED`。审计、项目动态与通知行不删除；删除不发新通知，避免死链。
+- **数据库**：迁移 `0059_contract_hard_delete_task_feature_module.sql` 新增 `app.hard_delete_business_scope`、`app.hard_delete_task`、`app.hard_delete_feature`、`app.hard_delete_module`；`0060_fix_hard_delete_task_detached_group.sql` 修正聚合组 ID 返回。仅三个入口授予 `app_runtime`，业务表不开放 `DELETE`。
+- **契约与前端**：四条删除路由路径不变，幂等契约升至 2.0.0；响应以 `deletedTaskCount` / `deletedFeatureCount` / `deletedRecordCount` / `removedLinkCount` 回述影响面。删除确认文案明确永久删除、不可恢复、只保留审计与项目动态；成功后失效任务、模块、功能、记录、草稿、遗留项、链接、动态、通知、搜索与侧栏计数缓存。
+- **不变项**：记录自身的显式作废/恢复生命周期仍按 [ADR-024](./docs/adr/ADR-024.md) 执行；项目删除仍按 [ADR-062](./docs/adr/ADR-062.md) / [ADR-085](./docs/adr/ADR-085.md)，账号删除仍按 [ADR-088](./docs/adr/ADR-088.md)，三者范围不变。
+- **死代码清理**：删除工作流不再调用 `TaskRecordVoidPort` / `RecordScopeVoidPort`，两个端口、其实现、模块注册及专用 `listPublishedByTaskId` / `listPublishedByScope` 查询已移除；记录显式生命周期服务保留。
+- **验证**：迁移 0059/0060 在真实 PostgreSQL 执行；删除相关 API 单测、真实 PostgreSQL 集成、前端目标与全量测试、契约生成/漂移、权限、格式与文档门禁以本轮实测结果为准；不声称未运行的 CI 或浏览器 E2E 已通过。

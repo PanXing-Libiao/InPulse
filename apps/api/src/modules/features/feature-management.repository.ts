@@ -27,7 +27,7 @@ const dto = (row: Row): FeatureItem => {
   });
 };
 
-/** ADR-059：删除功能命令读取的原始行，含行版本，不解析为 `FeatureItem`。 */
+/** ADR-096：删除功能命令读取的原始行，含行版本，不解析为 `FeatureItem`。 */
 export interface FeatureDeletionRow {
   readonly id: number;
   readonly projectId: number;
@@ -37,9 +37,12 @@ export interface FeatureDeletionRow {
   readonly rowVersion: number;
 }
 
-/** ADR-059：软删除成功后返回的行快照，供响应与审计使用。 */
-export interface FeatureSoftDeletedRow extends FeatureDeletionRow {
-  readonly deletedAt: Date;
+/** ADR-096：功能物理删除后的结果快照与级联计数。 */
+export interface FeatureHardDeletedRow extends FeatureDeletionRow {
+  readonly deletedAt: string;
+  readonly deletedTaskCount: number;
+  readonly deletedRecordCount: number;
+  readonly removedLinkCount: number;
 }
 
 @Injectable()
@@ -117,7 +120,7 @@ export class FeatureManagementRepository {
   }
 
   /**
-   * ADR-059：删除命令的原始行读取，`lock` 时对功能行取排他锁；已软删除的功能视为
+   * ADR-096：删除命令的原始行读取，`lock` 时对功能行取排他锁；历史软删除行视为
    * 不存在。
    */
   async findForDeletion(
@@ -134,33 +137,21 @@ export class FeatureManagementRepository {
   }
 
   /**
-   * ADR-059：删除模块时列举其下存活功能，按功能 ID 升序取行锁——先把全部功能锁住
-   * 再逐个级联删除任务，避免与其它写命令在功能行上交叉等待。
+   * ADR-096：功能物理删除。功能、其下全部任务、这些任务的记录以及归属于该功能
+   * 的全部记录及下级数据由数据库窄口函数同一事务删除。
    */
-  async listAliveOfModule(
-    tx: TransactionContext,
-    projectId: number,
-    moduleId: number,
-    lock = false,
-  ): Promise<readonly FeatureDeletionRow[]> {
-    return tx.sql<
-      FeatureDeletionRow[]
-    >`SELECT id, project_id AS "projectId", module_id AS "moduleId", code, name, row_version AS "rowVersion" FROM app.features WHERE project_id = ${projectId} AND module_id = ${moduleId} AND deleted_at IS NULL ORDER BY id ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
-  }
-
-  /**
-   * ADR-059：功能软删除。`features_row_version` 触发器要求任何 UPDATE 把行版本恰好
-   * 加一，因此这里与其它写命令一致地`row_version + 1`；条件带 `deleted_at IS NULL`
-   * 与预期行版本，并发重复删除只有一个命中。
-   */
-  async softDelete(
+  async hardDelete(
     tx: TransactionContext,
     current: FeatureDeletionRow,
     actorId: number,
-  ): Promise<FeatureSoftDeletedRow | undefined> {
-    const rows = await tx.sql<
-      FeatureSoftDeletedRow[]
-    >`UPDATE app.features SET deleted_at = clock_timestamp(), deleted_by = ${actorId}, row_version = row_version + 1, updated_at = GREATEST(clock_timestamp(), updated_at) WHERE id = ${current.id} AND project_id = ${current.projectId} AND row_version = ${current.rowVersion} AND deleted_at IS NULL RETURNING id, project_id AS "projectId", module_id AS "moduleId", code, name, row_version AS "rowVersion", deleted_at AS "deletedAt"`;
-    return rows[0];
+    reason: string,
+  ): Promise<FeatureHardDeletedRow | undefined> {
+    const rows = await tx.sql<{ result: FeatureHardDeletedRow | null }[]>`
+      SELECT app.hard_delete_feature(
+        ${current.projectId}, ${current.moduleId}, ${current.id},
+        ${current.rowVersion}, ${actorId}, ${reason}
+      ) AS result
+    `;
+    return rows[0]?.result ?? undefined;
   }
 }

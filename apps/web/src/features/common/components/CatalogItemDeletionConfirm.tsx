@@ -5,7 +5,7 @@ import { AppModal as Modal } from "./AppModal";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
- * ADR-059：删除模块 / 功能专用错误文案。`moduleErrorMessage` / `featureErrorMessage`
+ * ADR-096：删除模块 / 功能专用错误文案。`moduleErrorMessage` / `featureErrorMessage`
  * 是编辑场景的通用映射（「输入已保留，请加载最新版本后继续编辑」），删除弹窗没有
  * 输入也没有重载按钮，因此 409 直接透出服务端原因（如未分类模块的
  * `MODULE_UNCLASSIFIED_PROTECTED`、并发删除的版本冲突），不追加编辑话术。
@@ -23,9 +23,9 @@ export function catalogDeletionError(error: unknown): string {
 }
 
 /**
- * ADR-059：模块 / 功能删除的二次确认，与「删除任务」同一形态——页面色条的
- * 危险弹层 + 影响面提示 + 不可恢复声明，确认后由服务端在同一事务内级联删除
- * 下级功能与任务。
+ * ADR-096：模块 / 功能删除的二次确认，与「删除任务」同一形态——页面色条的
+ * 危险弹层 + 影响面提示 + 不可恢复声明；确认后由服务端在同一事务内物理级联
+ * 删除下级功能、任务、迭代记录、版本、遗留项与链接关联。
  *
  * 两个调用方的差异只有名词与 `impact`（服务端下发的 `stats` 计数拼出的影响面），
  * 因此共用一份实现，避免两处文案与结构漂移。
@@ -94,8 +94,9 @@ export function CatalogItemDeletionConfirm({
             description={
               <>
                 <p>
-                  删除后该{noun}
-                  会从项目、任务中心、看板、搜索与动态中消失，且不能恢复。删除动作会记入审计日志与项目动态。
+                  {noun === "模块"
+                    ? "删除后不可恢复；该模块及其下全部功能和任务、这些实体的全部迭代记录、版本、遗留项与 GitHub 链接关联会被永久删除。仅保留审计日志与项目动态。"
+                    : "删除后不可恢复；该功能及其下全部任务、归属于该功能的全部迭代记录、版本、遗留项与 GitHub 链接关联会被永久删除；所属模块与其他功能保留。仅保留审计日志与项目动态。"}
                 </p>
                 <p>{impact}</p>
               </>

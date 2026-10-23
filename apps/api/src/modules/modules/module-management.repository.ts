@@ -28,7 +28,7 @@ const dto = (row: Row): ModuleItem => {
   });
 };
 
-/** ADR-059：删除模块命令读取的原始行，含行版本，不解析为 `ModuleItem`。 */
+/** ADR-096：删除模块命令读取的原始行，含行版本，不解析为 `ModuleItem`。 */
 export interface ModuleDeletionRow {
   readonly id: number;
   readonly projectId: number;
@@ -38,9 +38,13 @@ export interface ModuleDeletionRow {
   readonly rowVersion: number;
 }
 
-/** ADR-059：软删除成功后返回的行快照，供响应与审计使用。 */
-export interface ModuleSoftDeletedRow extends ModuleDeletionRow {
-  readonly deletedAt: Date;
+/** ADR-096：模块物理删除后的结果快照与级联计数。 */
+export interface ModuleHardDeletedRow extends ModuleDeletionRow {
+  readonly deletedAt: string;
+  readonly deletedFeatureCount: number;
+  readonly deletedTaskCount: number;
+  readonly deletedRecordCount: number;
+  readonly removedLinkCount: number;
 }
 
 @Injectable()
@@ -91,8 +95,8 @@ export class ModuleManagementRepository {
   }
 
   /**
-   * ADR-059：删除命令的原始行读取，`lock` 时对模块行取排他锁，阻止与子级写命令
-   * 的写前 `FOR SHARE` 检查并行；已软删除的模块视为不存在。
+   * ADR-096：删除命令的原始行读取，`lock` 时对模块行取排他锁，阻止与子级写命令
+   * 的写前 `FOR SHARE` 检查并行；历史软删除行视为不存在。
    */
   async findForDeletion(
     tx: TransactionContext,
@@ -107,18 +111,21 @@ export class ModuleManagementRepository {
   }
 
   /**
-   * ADR-059：模块软删除。`modules_row_version` 触发器要求任何 UPDATE 把行版本恰好
-   * 加一，因此这里与其它写命令一致地`row_version + 1`；条件带 `deleted_at IS NULL`
-   * 与预期行版本，并发重复删除只有一个命中。
+   * ADR-096：模块物理删除。模块、全部功能与任务、全部迭代记录及下级数据由
+   * 数据库窄口函数同一事务删除；只保留审计、项目动态与删除事件。
    */
-  async softDelete(
+  async hardDelete(
     tx: TransactionContext,
     current: ModuleDeletionRow,
     actorId: number,
-  ): Promise<ModuleSoftDeletedRow | undefined> {
-    const rows = await tx.sql<
-      ModuleSoftDeletedRow[]
-    >`UPDATE app.modules SET deleted_at = clock_timestamp(), deleted_by = ${actorId}, row_version = row_version + 1, updated_at = GREATEST(clock_timestamp(), updated_at) WHERE id = ${current.id} AND project_id = ${current.projectId} AND row_version = ${current.rowVersion} AND deleted_at IS NULL RETURNING id, project_id AS "projectId", code, name, kind, row_version AS "rowVersion", deleted_at AS "deletedAt"`;
-    return rows[0];
+    reason: string,
+  ): Promise<ModuleHardDeletedRow | undefined> {
+    const rows = await tx.sql<{ result: ModuleHardDeletedRow | null }[]>`
+      SELECT app.hard_delete_module(
+        ${current.projectId}, ${current.id}, ${current.rowVersion},
+        ${actorId}, ${reason}
+      ) AS result
+    `;
+    return rows[0]?.result ?? undefined;
   }
 }

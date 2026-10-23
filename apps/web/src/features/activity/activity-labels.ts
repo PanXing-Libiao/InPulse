@@ -53,7 +53,7 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   PROJECT_MEMBER_ROLE_CHANGED: "变更成员角色",
   "module.create": "创建模块",
   "module.update": "更新模块",
-  // ADR-059：删除模块与删除功能动态（与审计 `module.delete` / `feature.delete` 同一动作）。
+  // ADR-096：删除模块与删除功能动态（与审计 `module.delete` / `feature.delete` 同一动作）。
   MODULE_DELETED: "删除模块",
   "module.archive": "归档模块",
   "module.restore": "恢复模块",
@@ -72,7 +72,7 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "task.unarchive": "恢复任务",
   TASK_ARCHIVED: "归档任务",
   TASK_RESTORED: "恢复任务",
-  // ADR-058：删除任务动态（与审计 `task.delete` 同一动作）。
+  // ADR-096：删除任务动态（与审计 `task.delete` 同一动作）。
   TASK_DELETED: "删除任务",
   "task.merge": "合并任务",
   "task.unmerge": "解除合并",

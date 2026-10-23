@@ -9750,7 +9750,7 @@
     "/projects/{projectId}/modules/{moduleId}/delete": {
       "post": {
         "operationId": "deleteModule",
-        "summary": "删除模块：同一事务级联删除其功能与任务、作废相关迭代记录并保留审计与动态（ADR-059）。",
+        "summary": "删除模块：同一事务物理删除模块、其下功能与任务、全部迭代记录及下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
         "responses": {
           "200": {
             "description": "成功",
@@ -9838,13 +9838,13 @@
           "csrfPolicy": "required",
           "idempotencyPolicy": "idempotencyRequired",
           "idempotencyExceptionAdr": "none",
-          "idempotencyContractVersion": "1.0.0",
+          "idempotencyContractVersion": "2.0.0",
           "idempotencyFingerprintVersion": "1.0.0",
           "behaviorHeaders": [
             "If-Match"
           ],
           "idempotencyReplayPolicy": {
-            "version": "1.0.0",
+            "version": "2.0.0",
             "success": {
               "200": {
                 "body": {
@@ -9855,11 +9855,9 @@
                     "code",
                     "name",
                     "kind",
-                    "deletedAt",
-                    "deletedBy",
                     "deletedFeatureCount",
                     "deletedTaskCount",
-                    "voidedRecordCount",
+                    "deletedRecordCount",
                     "removedLinkCount"
                   ]
                 }
@@ -9889,7 +9887,7 @@
               "task",
               "taskGroup"
             ],
-            "retry": "parents FOR SHARE, module FOR UPDATE; cascaded tasks FOR UPDATE in ascending id order and change records voided in ascending id order inside the same transaction"
+            "retry": "parents FOR SHARE, module FOR UPDATE; hard-delete function locks features, tasks, task groups and records in ascending id order"
           },
           "auditAction": "module.delete"
         },
@@ -10607,7 +10605,7 @@
     "/projects/{projectId}/modules/{moduleId}/features/{featureId}/delete": {
       "post": {
         "operationId": "deleteFeature",
-        "summary": "删除功能：同一事务删除其任务、作废相关迭代记录并保留审计与动态；受影响本功能的模块级任务保留（ADR-059）。",
+        "summary": "删除功能：同一事务物理删除功能、其下任务、全部迭代记录及下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
         "responses": {
           "200": {
             "description": "成功",
@@ -10695,13 +10693,13 @@
           "csrfPolicy": "required",
           "idempotencyPolicy": "idempotencyRequired",
           "idempotencyExceptionAdr": "none",
-          "idempotencyContractVersion": "1.0.0",
+          "idempotencyContractVersion": "2.0.0",
           "idempotencyFingerprintVersion": "1.0.0",
           "behaviorHeaders": [
             "If-Match"
           ],
           "idempotencyReplayPolicy": {
-            "version": "1.0.0",
+            "version": "2.0.0",
             "success": {
               "200": {
                 "body": {
@@ -10712,10 +10710,8 @@
                     "moduleId",
                     "code",
                     "name",
-                    "deletedAt",
-                    "deletedBy",
                     "deletedTaskCount",
-                    "voidedRecordCount",
+                    "deletedRecordCount",
                     "removedLinkCount"
                   ]
                 }
@@ -10745,7 +10741,7 @@
               "task",
               "taskGroup"
             ],
-            "retry": "parents FOR SHARE, feature FOR UPDATE; cascaded own tasks FOR UPDATE in ascending id order and change records voided in ascending id order inside the same transaction"
+            "retry": "parents FOR SHARE, feature FOR UPDATE; hard-delete function locks features, tasks, task groups and records in ascending id order"
           },
           "auditAction": "feature.delete"
         },
@@ -11563,7 +11559,7 @@
     "/projects/{projectId}/modules/{moduleId}/features/{featureId}/tasks/{taskId}/delete": {
       "post": {
         "operationId": "deleteTask",
-        "summary": "删除任务：同一事务解除外部链接关联、作废已发布记录、解除聚合组并保留审计与动态。",
+        "summary": "删除任务：同一事务物理删除任务、全部迭代记录与下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
         "responses": {
           "200": {
             "description": "成功",
@@ -11661,13 +11657,13 @@
           "csrfPolicy": "required",
           "idempotencyPolicy": "idempotencyRequired",
           "idempotencyExceptionAdr": "none",
-          "idempotencyContractVersion": "1.0.0",
+          "idempotencyContractVersion": "2.0.0",
           "idempotencyFingerprintVersion": "1.0.0",
           "behaviorHeaders": [
             "If-Match"
           ],
           "idempotencyReplayPolicy": {
-            "version": "1.0.0",
+            "version": "2.0.0",
             "success": {
               "200": {
                 "body": {
@@ -11680,9 +11676,7 @@
                     "code",
                     "title",
                     "workStatus",
-                    "deletedAt",
-                    "deletedBy",
-                    "voidedRecordCount",
+                    "deletedRecordCount",
                     "removedLinkCount",
                     "detachedGroupRole"
                   ]
@@ -11713,7 +11707,7 @@
               "task",
               "taskGroup"
             ],
-            "retry": "parents FOR SHARE then task FOR UPDATE; taskGroup relations are locked and re-read inside the same transaction"
+            "retry": "parents FOR SHARE then task FOR UPDATE; hard-delete function closes touched task groups in the same transaction"
           },
           "auditAction": "task.delete"
         },
@@ -13388,7 +13382,7 @@
     "/projects/{projectId}/modules/{moduleId}/tasks/{taskId}/delete": {
       "post": {
         "operationId": "deleteModuleTask",
-        "summary": "删除模块级任务：同一事务解除外部链接、作废已发布记录与解除聚合组。",
+        "summary": "删除模块级任务：同一事务物理删除任务、全部迭代记录、版本、遗留项与链接关联，并关闭相关聚合组。",
         "responses": {
           "200": {
             "description": "成功",
@@ -13486,7 +13480,7 @@
           "csrfPolicy": "required",
           "idempotencyPolicy": "idempotencyRequired",
           "idempotencyExceptionAdr": "none",
-          "idempotencyContractVersion": "1.0.0",
+          "idempotencyContractVersion": "2.0.0",
           "idempotencyFingerprintVersion": "1.0.0",
           "behaviorHeaders": [
             "If-Match"
@@ -13505,9 +13499,7 @@
                     "code",
                     "title",
                     "workStatus",
-                    "deletedAt",
-                    "deletedBy",
-                    "voidedRecordCount",
+                    "deletedRecordCount",
                     "removedLinkCount",
                     "detachedGroupRole"
                   ]
@@ -13538,7 +13530,7 @@
               "task",
               "taskGroup"
             ],
-            "retry": "parents FOR SHARE then task FOR UPDATE; taskGroup relations are locked and re-read inside the same transaction"
+            "retry": "parents FOR SHARE then task FOR UPDATE; hard-delete function closes touched task groups in the same transaction"
           },
           "auditAction": "task.delete"
         },
@@ -20901,22 +20893,12 @@
             "minLength": 1,
             "maxLength": 500
           },
-          "deletedAt": {
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-          },
-          "deletedBy": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647
-          },
           "deletedTaskCount": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
           },
-          "voidedRecordCount": {
+          "deletedRecordCount": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
@@ -20933,10 +20915,8 @@
           "moduleId",
           "code",
           "name",
-          "deletedAt",
-          "deletedBy",
           "deletedTaskCount",
-          "voidedRecordCount",
+          "deletedRecordCount",
           "removedLinkCount"
         ],
         "additionalProperties": false
@@ -22104,16 +22084,6 @@
               "UNCLASSIFIED"
             ]
           },
-          "deletedAt": {
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-          },
-          "deletedBy": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647
-          },
           "deletedFeatureCount": {
             "type": "integer",
             "minimum": 0,
@@ -22124,7 +22094,7 @@
             "minimum": 0,
             "maximum": 9007199254740991
           },
-          "voidedRecordCount": {
+          "deletedRecordCount": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
@@ -22141,11 +22111,9 @@
           "code",
           "name",
           "kind",
-          "deletedAt",
-          "deletedBy",
           "deletedFeatureCount",
           "deletedTaskCount",
-          "voidedRecordCount",
+          "deletedRecordCount",
           "removedLinkCount"
         ],
         "additionalProperties": false
@@ -28083,17 +28051,7 @@
               "CANCELED"
             ]
           },
-          "deletedAt": {
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
-          },
-          "deletedBy": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647
-          },
-          "voidedRecordCount": {
+          "deletedRecordCount": {
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
@@ -28126,9 +28084,7 @@
           "code",
           "title",
           "workStatus",
-          "deletedAt",
-          "deletedBy",
-          "voidedRecordCount",
+          "deletedRecordCount",
           "removedLinkCount",
           "detachedGroupRole"
         ],

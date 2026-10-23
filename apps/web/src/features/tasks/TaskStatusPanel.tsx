@@ -19,12 +19,12 @@ import { formatBeijingMinute } from "@features/common/beijing-time";
 const labels = {
   COMPLETE: "完成任务",
   REOPEN: "重新打开",
-  // ADR-058：取消任务已改为在“编辑任务”里确认后删除，CANCEL / RESTORE 已无调用点。
+  // ADR-096：取消任务已改为在“编辑任务”里确认后物理删除，CANCEL / RESTORE 已无调用点。
   CANCEL: "取消任务",
   RESTORE: "恢复任务",
 };
 const statuses = { TODO: "未完成", DONE: "已完成", CANCELED: "已取消" };
-// ADR-058：CANCEL / RESTORE 已无调用点，保留分支只为兼容历史深链。
+// ADR-096：CANCEL / RESTORE 已无调用点，保留分支只为兼容历史深链。
 const requiredStatus = {
   COMPLETE: "TODO",
   REOPEN: "DONE",
@@ -43,7 +43,7 @@ const time = (value: string) => formatBeijingMinute(value);
 
 /**
  * C-3：任务状态操作弹窗（完成任务 / 重新打开）与状态历史。
- * ADR-058 起取消任务改为在「编辑任务」里二次确认后删除，不再经过本弹窗。
+ * ADR-096 起取消任务改为在「编辑任务」里二次确认后物理删除，不再经过本弹窗。
  * 与设计师稿 task-modal 一致，触发按钮由父级动作行渲染；本组件只保留弹窗、
  * 提交流程和「状态历史」区块。父级在每次打开时更换 key，输入、冲突状态与
  * 幂等重试键随重新挂载回到初始状态，取消后再次打开不会沿用上一次的内容。

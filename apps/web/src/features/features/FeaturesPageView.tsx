@@ -103,7 +103,7 @@ export function FeaturesPageView({
     featureId,
     client,
   );
-  // ADR-059：删除功能只对系统管理员与本项目组长开放，服务端二次判定。
+  // ADR-096：删除功能只对系统管理员与本项目组长开放，服务端二次判定。
   const deletion = useDeleteFeature(projectId, moduleId, client);
   const { user } = useAuth();
   const moduleQuery = useModules(projectId, client);
@@ -125,7 +125,7 @@ export function FeaturesPageView({
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
   const [merge, setMerge] = useState<Merge | null>(null);
-  /** ADR-059：删除功能的二次确认弹层开关。 */
+  /** ADR-096：删除功能的二次确认弹层开关。 */
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [display, setDisplay] = useState<"cards" | "list">("cards");
   const [search, setSearch] = useState("");
@@ -292,7 +292,7 @@ export function FeaturesPageView({
   const modalTitle = selection?.action === "create" ? "新增功能" : "编辑功能";
   const projectQuery = useProjectDetail({ client, projectId });
   /**
-   * ADR-059：删除入口的显示条件——编辑态且为系统管理员或本项目组长。功能没有
+   * ADR-096：删除入口的显示条件——编辑态且为系统管理员或本项目组长。功能没有
    * 「未分类」概念（那是模块的），所以不需要额外的类型判定。
    */
   const deleteTarget =
@@ -305,21 +305,21 @@ export function FeaturesPageView({
       ? selection.item
       : undefined;
   /**
-   * ADR-059：删除影响面文案。计数取列表已有的 `stats`（与功能卡同一份有效任务
-   * 口径），不为此新增预览接口；删除范围比这两个计数宽（已取消的历史任务也随
-   * 功能消失），所以文案里点明「全部任务」。
+   * ADR-096：删除影响面文案。计数取列表已有的 `stats`（与功能卡同一份有效任务
+   * 口径），不为此新增预览接口；删除范围比这两个计数宽（已取消任务也随功能
+   * 永久删除），所以文案里点明「全部任务」。
    */
   const deletionImpact = (item: FeatureItem): string => {
     const open = item.stats.openTaskCount;
     const done = item.stats.completedTaskCount;
     if (open === 0 && done === 0)
-      return "该功能下没有未完成或已完成的任务：确认删除只影响功能自身。";
+      return "该功能下没有未完成或已完成的任务：确认删除会永久删除该功能与其全部迭代记录、版本、遗留项及 GitHub 链接关联；所属模块与其他功能保留。仅保留审计日志与项目动态。";
     return (
       "该功能下有 " +
       open +
       " 项未完成任务与 " +
       done +
-      " 项已完成任务：确认删除会连同它们一起删除（无论未完成、已完成还是已取消）；被删任务的 GitHub 链接会解除关联，它们已发布的迭代记录会被作废（作废快照与历史版本保留）。"
+      " 项已完成任务：确认删除会永久删除该功能、它们名下的全部任务（无论未完成、已完成还是已取消），以及归属于该功能的全部迭代记录、版本、遗留项与 GitHub 链接关联；所属模块与其他功能保留。仅保留审计日志与项目动态。"
     );
   };
   const openDeletion = () => {
@@ -329,7 +329,7 @@ export function FeaturesPageView({
     setDeleteOpen(true);
   };
   /**
-   * ADR-059：删除功能。服务端在同一事务内级联删除其名下任务；成功后关闭编辑与
+   * ADR-096：删除功能。服务端在同一事务内物理级联删除其名下任务与记录；成功后关闭编辑与
    * 确认两个弹层，停在功能档案的当前功能时还要退回功能列表（它已经不存在了）。
    */
   const confirmDeletion = () => {
@@ -983,7 +983,7 @@ export function FeaturesPageView({
           </div>
           <div className="calm-action-footer">
             {deleteTarget ? (
-              // ADR-059：与「删除任务」「删除模块」同一形态，页脚最左侧的危险动作。
+              // ADR-096：与「删除任务」「删除模块」同一形态，页脚最左侧的危险动作。
               <div className="footer-leading">
                 <Button
                   className="tint-danger-button"
@@ -1041,7 +1041,7 @@ export function FeaturesPageView({
         request={moduleRequest}
         onClose={() => setModuleRequest(null)}
         onSaved={() => setNotice("MODULE")}
-        // ADR-059：在功能档案里删掉当前模块后，本页的模块与功能都不存在了，
+        // ADR-096：在功能档案里删掉当前模块后，本页的模块与功能都不存在了，
         // 回到模块列表（服务端已级联删除其下功能）。
         onDeleted={() => navigate("/projects/" + projectId + "/modules")}
       />

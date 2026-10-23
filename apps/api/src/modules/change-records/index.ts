@@ -9,4 +9,3 @@ export * from "./leftover-search-projection.js";
 export * from "./change-record-read.port.js";
 export * from "./record-feed-read.port.js";
 export * from "./my-task-query.port.js";
-export * from "./task-record-void.port.js";

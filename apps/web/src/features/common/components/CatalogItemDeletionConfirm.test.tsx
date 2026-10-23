@@ -42,7 +42,7 @@ function mount(
   return { onCancel, onConfirm };
 }
 
-describe("ADR-059 目录项删除确认", () => {
+describe("ADR-096 目录项删除确认", () => {
   it("给出影响面与不可恢复声明，确认与取消各自回调", () => {
     const { onCancel, onConfirm } = mount();
 
@@ -52,7 +52,8 @@ describe("ADR-059 目录项删除确认", () => {
     expect(
       screen.getByText(/该模块下有 2 个功能：确认删除会连同这些功能一起删除。/),
     ).toBeTruthy();
-    expect(screen.getByText(/且不能恢复/)).toBeTruthy();
+    expect(screen.getByText(/删除后不可恢复/)).toBeTruthy();
+    expect(screen.getByText(/仅保留审计日志与项目动态/)).toBeTruthy();
 
     const confirm = screen.getByTestId("confirm-delete-module");
     expect(confirm.className).toContain("danger-button");
@@ -96,7 +97,7 @@ describe("ADR-059 目录项删除确认", () => {
   });
 });
 
-describe("ADR-059 catalogDeletionError", () => {
+describe("ADR-096 catalogDeletionError", () => {
   it.each([
     [
       401,

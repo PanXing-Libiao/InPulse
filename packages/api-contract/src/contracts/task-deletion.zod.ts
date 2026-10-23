@@ -4,10 +4,10 @@ const id = z.number().int().positive().max(2147483647);
 const reason = z.string().trim().min(1).max(10000).nullable();
 
 /**
- * ADR-058：取消任务升级为「删除任务」。删除是软删除（`deleted_at` / `deleted_by`），
- * 任务从列表、详情、看板、统计、搜索与全部任务级读写中消失，但历史、状态记录与审计链
- * 全部保留；同一事务内解除该任务的外部链接关联、作废其已发布迭代记录并解除聚合组关系。
- * 删除不可恢复：没有还原路由，也不复用 `transitionTask` 的 CANCEL / RESTORE。
+ * ADR-096：删除任务。任务本体、状态历史、负责人、影响关系、聚合组关系、外部链接
+ * 关联，以及该任务全部迭代记录、版本和遗留项会被永久删除；只保留审计日志、项目
+ * 动态与 `task.delete` 删除事件。删除不可恢复：没有还原路由，也不复用
+ * `transitionTask` 的 CANCEL / RESTORE。
  */
 export const deleteTaskRequestSchema = z
   .object({ reason })
@@ -25,11 +25,9 @@ export const taskDeletionResponseSchema = z
     title: z.string().min(1).max(500),
     /** 删除时刻的工作状态快照：删除不改变状态，只把它从可见范围移除。 */
     workStatus: z.enum(["TODO", "DONE", "CANCELED"]),
-    deletedAt: z.iso.datetime(),
-    deletedBy: id,
-    /** 同事务作废的已发布迭代记录数。 */
-    voidedRecordCount: z.number().int().min(0),
-    /** 同事务解除的任务外部链接关联数。 */
+    /** 同事务物理删除的迭代记录数（含草稿、已发布与历史版本）。 */
+    deletedRecordCount: z.number().int().min(0),
+    /** 同事务删除的任务外部链接关联数；链接主表本身保留。 */
     removedLinkCount: z.number().int().min(0),
     /** 删除时解除的聚合组身份；不在活跃聚合组中为 null。 */
     detachedGroupRole: z.enum(["MAIN", "SOURCE"]).nullable(),
@@ -65,7 +63,7 @@ export const taskDeletionSchemas = {
   },
   TaskDeletionResponse: {
     schema: taskDeletionResponseSchema,
-    summary: "删除结果与同事务解除、作废的影响面计数",
+    summary: "删除结果与同事务物理删除的影响面计数",
     sensitiveFieldPaths: [],
   },
   TaskDeletionReplayContext: {

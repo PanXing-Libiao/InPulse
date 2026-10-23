@@ -3,10 +3,6 @@ import { AuditWritePort } from "../audit/index.js";
 import type { TransactionContext } from "../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../database/unit-of-work.js";
 import { ActivityWritePort } from "../modules/activity/index.js";
-import { TaskRecordVoidPort } from "../modules/change-records/task-record-void.port.js";
-import { ExternalLinksCommandPort } from "../modules/external-links/external-links.port.js";
-import { SearchProjectionWritePort } from "../modules/search/index.js";
-import { TaskGroupDeletionPort } from "../modules/task-groups/task-group-deletion.port.js";
 import { TaskDeletionCommandPort } from "../modules/tasks/task-deletion.command-port.js";
 import type { TaskScope } from "../modules/tasks/task-management.repository.js";
 import { TaskManagementError } from "../modules/tasks/tasks-management.service.js";
@@ -23,14 +19,8 @@ const conflict = () =>
     "TASK_STATE_CONFLICT",
     "任务已被并发修改，请刷新后重试",
   );
-const mainLocked = (groupId: number) =>
-  new TaskManagementError(
-    409,
-    "TASK_GROUP_MAIN_LOCKED",
-    `该任务是聚合组 ${groupId} 的主任务，请先解除合并后再删除`,
-  );
 
-/** ADR-058：删除任务的响应，字段与 DeleteTaskRequest 的响应契约一一对应。 */
+/** ADR-096：删除任务的响应，字段与 DeleteTaskRequest 的响应契约一一对应。 */
 export interface TaskDeletionResult {
   readonly id: number;
   readonly projectId: number;
@@ -39,16 +29,14 @@ export interface TaskDeletionResult {
   readonly code: string;
   readonly title: string;
   readonly workStatus: "TODO" | "DONE" | "CANCELED";
-  readonly deletedAt: string;
-  readonly deletedBy: number;
-  readonly voidedRecordCount: number;
+  readonly deletedRecordCount: number;
   readonly removedLinkCount: number;
   readonly detachedGroupRole: "MAIN" | "SOURCE" | null;
 }
 
 const DEFAULT_REASON = "任务已被删除";
 
-/** ADR-059：级联删除时逐条复用单任务删除入口所需的输入。 */
+/** ADR-096：级联交接等事务内删除任务的共享输入。 */
 export interface TaskDeletionInTransactionInput {
   readonly projectId: number;
   readonly taskId: number;
@@ -60,9 +48,11 @@ export interface TaskDeletionInTransactionInput {
 }
 
 /**
- * ADR-058：删除任务。同一事务内解除外部链接关联、作废该任务全部已发布记录、
- * 解除聚合组来源关系，并保留审计与项目动态；任务行以软删除落地（ADR-049 同范式），
- * 不提供还原入口，因此不存在与删除配对的恢复命令。
+ * ADR-096：删除任务。数据库窄口函数在同一事务内物理删除任务本体、状态历史、
+ * 负责人、影响关系、外部链接关联、聚合组关系与该任务全部迭代记录及其版本、
+ * 遗留项；工作流只追加审计和项目动态，因此「谁删了哪条任务」仍可追溯。
+ *
+ * 删除不可恢复：没有还原路由，也不保留任务或记录快照。
  */
 @Injectable()
 export class TaskDeletionWorkflow {
@@ -72,13 +62,6 @@ export class TaskDeletionWorkflow {
     private readonly commands: TaskDeletionCommandPort,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
-    @Inject(SearchProjectionWritePort)
-    private readonly search: SearchProjectionWritePort,
-    @Inject(ExternalLinksCommandPort)
-    private readonly links: ExternalLinksCommandPort,
-    @Inject(TaskRecordVoidPort) private readonly records: TaskRecordVoidPort,
-    @Inject(TaskGroupDeletionPort)
-    private readonly groups: TaskGroupDeletionPort,
   ) {}
 
   async delete(
@@ -107,47 +90,23 @@ export class TaskDeletionWorkflow {
   }
 
   /**
-   * ADR-059：在同一事务内删除单个任务的共享入口。调用方必须已经完成授权与归属
-   * 复核，并传入任务行的当前版本（级联路径已按 ID 升序 `FOR UPDATE` 取锁）。
-   * 模块与功能的级联删除复用本方法，因此两条入口的副作用链完全一致。
+   * 在同一事务内删除单个任务；管理员账号停用交接等跨域工作流复用本入口。
+   * 调用方必须已经完成授权与归属复核。
    */
   async deleteWithinTransaction(
     tx: TransactionContext,
     input: TaskDeletionInTransactionInput,
   ): Promise<TaskDeletionResult> {
     const { projectId, taskId, actorId, reason, requestId } = input;
-    // 软删除先执行：条件 UPDATE 会持有任务行锁，后续聚合组写入才满足
-    // 「先持任务锁再改成员关系」的前提；任一后续步骤失败则整体回滚。
-    const deleted = await this.commands.softDelete(
+    const deleted = await this.commands.hardDelete(
       tx,
       { id: taskId, projectId },
       input.rowVersion,
       actorId,
+      reason,
     );
     if (!deleted) throw conflict();
-    const removedLinkCount = await this.links.detachTarget(
-      tx,
-      projectId,
-      "TASK",
-      taskId,
-    );
-    // 聚合组：来源关系解除，主任务要求调用方先解除合并。
-    const group = await this.groups.prepareTaskDeletion(tx, {
-      projectId,
-      taskId,
-      actorId,
-      reason,
-    });
-    if (group.kind === "blocked")
-      throw group.reason === "main" ? mainLocked(group.groupId) : conflict();
-    const voided = await this.records.voidTaskRecords(tx, {
-      projectId,
-      taskId,
-      actorId,
-      requestId,
-      reason,
-    });
-    const detachedGroupId = group.kind === "detached" ? group.groupId : null;
+    const occurredAt = new Date(deleted.deletedAt);
     const event = await this.audit.append(tx, {
       projectId,
       actorType: "USER",
@@ -163,19 +122,18 @@ export class TaskDeletionWorkflow {
         featureId: deleted.featureId,
         workStatus: deleted.workStatus,
         reason,
-        voidedRecords: voided.map((entry) => entry.recordId),
-        removedLinkCount,
-        detachedGroupId,
+        deletedRecordCount: deleted.deletedRecordCount,
+        removedLinkCount: deleted.removedLinkCount,
+        detachedGroupId: deleted.detachedGroupId,
+        detachedGroupRole: deleted.detachedGroupRole,
       },
       requestId,
     });
-    // 删除对项目成员可见：项目动态保留「谁删了哪条任务」，审计链只追加。
     const visibility = {
       projectId,
       sourceEntityType: "TASK" as const,
       sourceEntityId: taskId,
       visibilityScope: "MEMBER" as const,
-      // 删除后任务不再有行版本语义，用删除产生的版本号保持投影单调。
       sourceStatus: "DELETED",
       sourceRowVersion: input.rowVersion + 1,
     };
@@ -186,20 +144,20 @@ export class TaskDeletionWorkflow {
       sourceSequence: event.sequenceNo,
       activityType: "TASK_DELETED",
       actorId,
-      summary: `删除任务：${deleted.title}`,
+      summary: "删除任务：" + deleted.title,
       metadata: {
         taskId,
         code: deleted.code,
         moduleId: deleted.moduleId,
         featureId: deleted.featureId,
         workStatus: deleted.workStatus,
-        voidedRecordIds: voided.map((entry) => entry.recordId),
-        removedLinkCount,
-        detachedGroupId,
+        deletedRecordCount: deleted.deletedRecordCount,
+        removedLinkCount: deleted.removedLinkCount,
+        detachedGroupId: deleted.detachedGroupId,
+        detachedGroupRole: deleted.detachedGroupRole,
       },
-      occurredAt: new Date(deleted.deletedAt),
+      occurredAt,
     });
-    await this.search.remove(tx, projectId, "TASK", taskId);
     return {
       id: deleted.id,
       projectId: deleted.projectId,
@@ -208,11 +166,9 @@ export class TaskDeletionWorkflow {
       code: deleted.code,
       title: deleted.title,
       workStatus: deleted.workStatus,
-      deletedAt: new Date(deleted.deletedAt).toISOString(),
-      deletedBy: actorId,
-      voidedRecordCount: voided.length,
-      removedLinkCount,
-      detachedGroupRole: detachedGroupId === null ? null : "SOURCE",
+      deletedRecordCount: deleted.deletedRecordCount,
+      removedLinkCount: deleted.removedLinkCount,
+      detachedGroupRole: deleted.detachedGroupRole,
     };
   }
 }

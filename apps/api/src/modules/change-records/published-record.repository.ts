@@ -153,35 +153,6 @@ export class PublishedRecordRepository {
           : null,
     };
   }
-  /**
-   * ADR-058：删除任务时取该任务全部已发布记录（只取作废所需的 id 与版本）。
-   * 只读、不取锁；授权由调用方在取得任务后完成。
-   */
-  async listPublishedByTaskId(
-    tx: TransactionContext,
-    projectId: number,
-    taskId: number,
-  ): Promise<{ id: number; rowVersion: number }[]> {
-    const rows = await tx.sql<
-      { id: number; rowVersion: number }[]
-    >`SELECT id,row_version AS "rowVersion" FROM app.change_records WHERE project_id=${projectId} AND task_id=${taskId} AND status='PUBLISHED' ORDER BY id`;
-    return Array.from(rows);
-  }
-  /**
-   * ADR-059：删除模块时取该模块全部已发布记录（含模块级与本模块各功能下的记录）；
-   * 删除功能时只取 `scope_type = 'FEATURE'` 且归属该功能的记录——模块级记录不属于
-   * 该功能，不被连带作废。只取作废所需的 id 与版本，只读、不取锁。
-   */
-  async listPublishedByScope(
-    tx: TransactionContext,
-    projectId: number,
-    scope: { readonly moduleId: number; readonly featureId: number | null },
-  ): Promise<{ id: number; rowVersion: number }[]> {
-    const rows = await tx.sql<
-      { id: number; rowVersion: number }[]
-    >`SELECT id,row_version AS "rowVersion" FROM app.change_records WHERE project_id=${projectId} AND module_id=${scope.moduleId} AND ${scope.featureId === null ? tx.sql`true` : tx.sql`scope_type='FEATURE' AND feature_id=${scope.featureId}`} AND status='PUBLISHED' ORDER BY id`;
-    return Array.from(rows);
-  }
   async findVoided(
     tx: TransactionContext,
     projectId: number,

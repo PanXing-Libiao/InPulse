@@ -45,8 +45,8 @@ export type ModuleEditorRequest = {
  * 「编辑模块」）与模块详情页头部（设计师稿 catalog.tsx L55-60）都复用本组件，
  * 避免两处实现出现漂移；动作选择由宿主页面通过 `request` 驱动。
  * ADR-044：模块层面已下线归档，弹层不再有归档/恢复动作与操作原因。
- * ADR-059：编辑态弹层页脚最左侧有「删除模块」（仅系统管理员与本项目组长、且
- * 非未分类模块），二次确认后由服务端级联删除下级功能与任务。
+ * ADR-096：编辑态弹层页脚最左侧有「删除模块」（仅系统管理员与本项目组长、且
+ * 非未分类模块），二次确认后由服务端物理级联删除下级功能、任务与记录。
  */
 export function ModuleEditorModal({
   projectId,
@@ -229,7 +229,7 @@ export function ModuleEditorModal({
     mutation.error instanceof ApiError && mutation.error.status === 409;
   const modalTitle = selection?.action === "create" ? "新增模块" : "编辑模块";
   /**
-   * ADR-059：删除入口的显示条件——编辑态、非未分类模块、系统管理员或本项目组长。
+   * ADR-096：删除入口的显示条件——编辑态、非未分类模块、系统管理员或本项目组长。
    * 未分类模块在数据库层受保护（服务端 409 `MODULE_UNCLASSIFIED_PROTECTED`，
    * 且 `modules_protect_unclassified` 继续禁止物理删除），前端连入口都不渲染。
    */
@@ -244,9 +244,9 @@ export function ModuleEditorModal({
       ? selection.item
       : undefined;
   /**
-   * ADR-059：删除影响面文案。计数取列表已有的 `stats`（未完成 / 已完成用的是与
+   * ADR-096：删除影响面文案。计数取列表已有的 `stats`（未完成 / 已完成用的是与
    * 项目卡、模块卡同一口径的有效任务），不为此新增预览接口；删除范围比这几个
-   * 计数宽（已取消与已删除的历史任务也随模块消失），所以文案里点明「全部任务」。
+   * 计数宽（已取消任务也随模块永久删除），所以文案里点明「全部任务」。
    */
   const deletionImpact = (item: ModuleItem): string => {
     const features = item.stats.activeFeatureCount;
@@ -261,7 +261,7 @@ export function ModuleEditorModal({
       open +
       " 项未完成任务与 " +
       done +
-      " 项已完成任务：确认删除会连同这些功能与它们名下的全部任务一起删除（无论未完成、已完成还是已取消）；被删任务的 GitHub 链接会解除关联，这些任务已发布的迭代记录会被作废（作废快照与历史版本保留）。"
+      " 项已完成任务：确认删除会永久删除该模块、其下这些功能与它们名下的全部任务（无论未完成、已完成还是已取消），以及这些实体的全部迭代记录、版本、遗留项与 GitHub 链接关联。仅保留审计日志与项目动态。"
     );
   };
   const openDeletion = () => {
@@ -271,7 +271,7 @@ export function ModuleEditorModal({
     setDeleteOpen(true);
   };
   /**
-   * ADR-059：删除模块。服务端在同一事务内级联删除下级功能与任务；成功后同时关闭
+   * ADR-096：删除模块。服务端在同一事务内物理级联删除下级功能、任务与记录；成功后同时关闭
    * 编辑弹窗与确认弹窗，并由宿主决定离开页面（模块详情页已经不存在了）。
    */
   const confirmDeletion = () => {
@@ -416,7 +416,7 @@ export function ModuleEditorModal({
           </div>
           <div className="calm-action-footer">
             {deleteTarget ? (
-              // ADR-059：与「删除任务」同一形态，页脚最左侧的危险动作，
+              // ADR-096：与「删除任务」同一形态，页脚最左侧的危险动作，
               // 确认弹层在编辑弹窗之外单独渲染（见下方 CatalogItemDeletionConfirm）。
               <div className="footer-leading">
                 <Button

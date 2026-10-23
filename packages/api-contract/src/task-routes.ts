@@ -150,9 +150,7 @@ const deletionFields = [
   "code",
   "title",
   "workStatus",
-  "deletedAt",
-  "deletedBy",
-  "voidedRecordCount",
+  "deletedRecordCount",
   "removedLinkCount",
   "detachedGroupRole",
 ];
@@ -203,8 +201,8 @@ export const taskRoutes: readonly RouteDefinition[] = [
     ...basicTaskRoutes[4]!,
     method: "POST",
     operationId: "deleteTask",
-    // ADR-058：删除任务为新增命令，任务从可见范围消失但历史与审计保留。
-    idempotencyContractVersion: "1.0.0",
+    // ADR-096：删除任务改为物理删除，只保留审计、项目动态与删除事件。
+    idempotencyContractVersion: "2.0.0",
     replayAuthorizationPolicy: {
       version: "1.0.0",
       resources: {
@@ -215,7 +213,7 @@ export const taskRoutes: readonly RouteDefinition[] = [
     },
     path: collection + "/{taskId}/delete",
     summary:
-      "删除任务：同一事务解除外部链接关联、作废已发布记录、解除聚合组并保留审计与动态。",
+      "删除任务：同一事务物理删除任务、全部迭代记录与下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
     request: {
       ...basicTaskRoutes[4]!.request,
       body: {
@@ -226,7 +224,7 @@ export const taskRoutes: readonly RouteDefinition[] = [
     },
     responses: { "200": json("TaskDeletionResponse"), ...errors },
     idempotencyReplayPolicy: {
-      version: "1.0.0",
+      version: "2.0.0",
       success: {
         "200": {
           body: {
@@ -241,7 +239,7 @@ export const taskRoutes: readonly RouteDefinition[] = [
       rowVersion: "required",
       lockOrder: ["project", "module", "feature", "task", "taskGroup"],
       retry:
-        "parents FOR SHARE then task FOR UPDATE; taskGroup relations are locked and re-read inside the same transaction",
+        "parents FOR SHARE then task FOR UPDATE; hard-delete function closes touched task groups in the same transaction",
     },
   },
 ];
@@ -260,7 +258,7 @@ export const moduleTaskRoutes: readonly RouteDefinition[] = taskRoutes.map(
         route.operationId === "getTaskStatusHistory"
           ? "模块真实归属下的任务状态和历史。"
           : route.operationId === "deleteTask"
-            ? "删除模块级任务：同一事务解除外部链接、作废已发布记录与解除聚合组。"
+            ? "删除模块级任务：同一事务物理删除任务、全部迭代记录、版本、遗留项与链接关联，并关闭相关聚合组。"
             : "模块级任务或成员读取；影响关系为同模块当前集合，增删与完整审计快照原子提交。",
       request: {
         ...route.request,

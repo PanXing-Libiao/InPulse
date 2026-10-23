@@ -4,14 +4,12 @@ const id = z.number().int().positive().max(2147483647);
 const reason = z.string().trim().min(1).max(10000).nullable();
 
 /**
- * ADR-059：模块删除。删除是软删除（`deleted_at` / `deleted_by`），模块从列表、详情、
- * 统计、搜索与全部模块级读写中消失，但模块行、功能、任务、迭代记录与审计链全部保留。
- * 同一事务内级联：软删除其全部功能、按其全部任务逐条执行 ADR-058 的单任务删除语义
- * （解除链接关联、作废该任务的已发布记录、解除聚合组来源关系）、作废本模块与其功能的
- * 已发布迭代记录，并移除搜索投影。删除不可恢复：没有还原路由。
+ * ADR-096：模块删除。模块本体、其下全部功能与任务、这些实体的全部迭代记录、
+ * 版本、遗留项与链接关联会被永久删除；只保留审计日志、项目动态与
+ * `module.delete` 删除事件。删除不可恢复：没有还原路由。
  *
- * 未分类模块（`kind = 'UNCLASSIFIED'`）不可删除，服务端返回 409 `MODULE_UNCLASSIFIED_PROTECTED`；
- * 该模块的物理删除禁令（`app.protect_unclassified_module`）与既有约定并行生效。
+ * 未分类模块（`kind = 'UNCLASSIFIED'`）不可删除，服务端返回 409
+ * `MODULE_UNCLASSIFIED_PROTECTED`；数据库触发器继续作为最终防线。
  */
 export const deleteModuleRequestSchema = z
   .object({ reason })
@@ -27,15 +25,13 @@ export const moduleDeletionResponseSchema = z
     name: z.string().min(1).max(200),
     /** 删除时刻的模块类型快照；删除不改变 kind。 */
     kind: z.enum(["NORMAL", "UNCLASSIFIED"]),
-    deletedAt: z.iso.datetime(),
-    deletedBy: id,
-    /** 同事务级联软删除的功能数。 */
+    /** 同事务物理删除的功能数。 */
     deletedFeatureCount: z.number().int().min(0),
-    /** 同事务级联删除的任务数（模块级任务与其功能下的任务之和）。 */
+    /** 同事务物理删除的任务数（模块级任务与其功能下的任务之和）。 */
     deletedTaskCount: z.number().int().min(0),
-    /** 同事务作废的已发布迭代记录数（模块级、功能级与任务级之和）。 */
-    voidedRecordCount: z.number().int().min(0),
-    /** 同事务解除的外部链接关联数（含级联任务自身解除的关联）。 */
+    /** 同事务物理删除的迭代记录数（模块级、功能级与任务级之和）。 */
+    deletedRecordCount: z.number().int().min(0),
+    /** 同事务删除的外部链接关联数（含级联任务自身关联）。 */
     removedLinkCount: z.number().int().min(0),
   })
   .strict()
@@ -66,7 +62,7 @@ export const moduleDeletionSchemas = {
   },
   ModuleDeletionResponse: {
     schema: moduleDeletionResponseSchema,
-    summary: "删除模块结果与同事务级联的影响面计数",
+    summary: "删除模块结果与同事务物理级联的影响面计数",
     sensitiveFieldPaths: [],
   },
   ModuleDeletionReplayContext: {

@@ -46,17 +46,6 @@ import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgre
 import { TasksManagementService } from "../src/modules/tasks/tasks-management.service.js";
 import { ProjectMemberTaskCommandPort } from "../src/modules/tasks/project-member-task.command-port.js";
 import { SqlTaskDeletionCommandPort } from "../src/modules/tasks/task-deletion.command-port.js";
-import { ExternalLinksRepository } from "../src/modules/external-links/external-links.repository.js";
-import { ExternalLinksCommandPort } from "../src/modules/external-links/external-links.port.js";
-import { RecordLifecycleService } from "../src/modules/change-records/record-lifecycle.service.js";
-import { RecordLifecycleRepository } from "../src/modules/change-records/record-lifecycle.repository.js";
-import { RecordPublicationRepository } from "../src/modules/change-records/record-publication.repository.js";
-import { PublishedRecordRepository } from "../src/modules/change-records/published-record.repository.js";
-import { LeftoverSearchProjectionSync } from "../src/modules/change-records/leftover-search-projection.js";
-import { RecordLifecycleTaskRecordVoidPort } from "../src/modules/change-records/task-record-void.port.js";
-import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
-import { PostgresTaskBranchQueryPort } from "../src/modules/task-groups/task-branch-query.port.js";
-import { SqlTaskGroupDeletionPort } from "../src/modules/task-groups/task-group-deletion.port.js";
 import { TaskDeletionWorkflow } from "../src/workflows/task-deletion.workflow.js";
 import { PostgresUserSessionRepository } from "../src/auth/user-session.repository.js";
 import { ApiExceptionFilter } from "../src/http/api-exception.filter.js";
@@ -455,26 +444,6 @@ beforeAll(async () => {
     taskDeletionCommands,
     audit,
     activity,
-    search,
-    new ExternalLinksCommandPort(new ExternalLinksRepository()),
-    new RecordLifecycleTaskRecordVoidPort(
-      new RecordLifecycleService(
-        access,
-        new PostgresModuleQueryPort(),
-        new PostgresFeatureQueryPort(),
-        new RecordPublicationRepository(),
-        new PublishedRecordRepository(),
-        new RecordLifecycleRepository(),
-        audit,
-        activity,
-        search,
-        new LeftoverSearchProjectionSync(search),
-      ),
-    ),
-    new SqlTaskGroupDeletionPort(
-      new PostgresTaskBranchQueryPort(new TaskGroupRepository()),
-      new TaskGroupRepository(),
-    ),
   );
   userService = new AdminUserService(
     repository,
@@ -992,11 +961,11 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
 
     expect(deleteResponse.status).toBe(204);
     const [deletedTask] = (await client.sql`
-      SELECT deleted_at AS "deletedAt"
+      SELECT count(*)::int AS count
         FROM app.tasks
        WHERE id = ${deleteTask.taskId}
-    `) as unknown as readonly { readonly deletedAt: string | null }[];
-    expect(deletedTask?.deletedAt).not.toBeNull();
+    `) as unknown as readonly { readonly count: number }[];
+    expect(deletedTask?.count).toBe(0);
     expect(await userState(deleteTarget.userId)).toMatchObject({
       status: "DISABLED",
       openTaskCount: 0,

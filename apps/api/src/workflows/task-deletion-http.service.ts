@@ -27,7 +27,7 @@ interface TaskDeletionResource {
 }
 
 /**
- * ADR-058：删除任务的 HTTP 接入。请求/响应校验、同源、CSRF 与幂等与其它任务
+ * ADR-096：删除任务的 HTTP 接入。请求/响应校验、同源、CSRF 与幂等与其它任务
  * 写命令同口径；版本门禁用 `If-Match`，重放前复核当前认证与「项目可写 + 父级
  * 归属」的原操作权限（任务已删除，不能再按任务可读性复核，同 ADR-049 的
  * `projectDeleteReplayAuthorizer` 处理）。
@@ -107,7 +107,7 @@ export class TaskDeletionHttpService {
           ...(moduleScope ? { featureId: null } : {}),
         },
         command = parsedCommand.data as { reason: string | null };
-      // 这里只做认证：重放路径同样会执行该回调，而任务行已被软删除，
+      // 这里只做认证：重放路径同样会执行该回调，而任务行已被物理删除，
       // 带 taskId 的授权复核只允许出现在首次执行的 execute 中。
       const actor = async (tx: TransactionContext) => {
         const actor = await this.mutation.verify(tx, request.headers);
@@ -182,8 +182,8 @@ export class TaskDeletionHttpService {
               "TASK_NOT_FOUND",
               "任务不存在或无法访问",
             );
-          // 任务行已被软删除，不能再按任务可读性复核；改为复核原操作权限
-          // （项目可写与父级归属），任务已从可见范围消失不应拒绝合法重放。
+          // 任务行已被物理删除，不能再按任务可读性复核；改为复核原操作权限
+          // （项目可写与父级归属），删除成功不应让合法重放退化成 404。
           await this.commands.authorize(tx, current.userId, {
             projectId: saved.projectId,
             moduleId: saved.moduleId,
