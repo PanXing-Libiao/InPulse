@@ -49,6 +49,21 @@ const FIXTURE_LOGIN_FILTER = [
   "sso_subject LIKE 'e2e\\_%'",
   "login_name LIKE 'e2e\\_%'",
   "login_name LIKE 'f03\\_%'",
+  "login_name LIKE 'deleted-user-%'",
+  "login_name LIKE 'user\\_%'",
+  "login_name LIKE 'sso\\_%'",
+  "login_name LIKE 'login\\_%'",
+  "login_name LIKE 'invalidate\\_%'",
+  "login_name LIKE 'csrf\\_%'",
+  "login_name LIKE 'backup\\_%'",
+  "login_name LIKE 'archive\\_%'",
+].join(" OR ");
+
+/** 已物理删除的夹具账号仍保留在墓碑表；项目 created_by 可能因此失去对应 users 行。 */
+const FIXTURE_TOMBSTONE_LOGIN_FILTER = [
+  "login_name LIKE 'e2e\\_%'",
+  "login_name LIKE 'f03\\_%'",
+  "login_name LIKE 'deleted-user-%'",
   "login_name LIKE 'user\\_%'",
   "login_name LIKE 'sso\\_%'",
   "login_name LIKE 'login\\_%'",
@@ -61,7 +76,13 @@ const FIXTURE_LOGIN_FILTER = [
 export function formatFixtureCleanupReport(
   report: FixtureCleanupReport,
 ): string {
-  if (report.fixtureUsers === 0) {
+  if (
+    report.fixtureUsers === 0 &&
+    report.fixtureProjects === 0 &&
+    report.auditRowsDeleted === 0 &&
+    !report.systemChainRewound &&
+    !report.systemChainBroken
+  ) {
     const head = "[e2e] 夹具清理：未发现 E2E 夹具数据";
     return report.orphansRemoved > 0
       ? `${head}；兜底清除悬空引用 ${String(report.orphansRemoved)} 行`
@@ -93,13 +114,17 @@ export async function cleanupFixtures(
     return await sql.begin(async (transaction) => {
       await transaction.unsafe("SET LOCAL session_replication_role = replica");
       await transaction.unsafe(
-        `CREATE TEMP TABLE _cleanup_users ON COMMIT DROP AS
-           SELECT id FROM app.users WHERE ${FIXTURE_LOGIN_FILTER}`,
+        `CREATE TEMP TABLE _cleanup_subjects ON COMMIT DROP AS
+           SELECT id FROM app.users WHERE ${FIXTURE_LOGIN_FILTER}
+           UNION
+           SELECT user_id AS id
+             FROM app.deleted_user_identities
+            WHERE ${FIXTURE_TOMBSTONE_LOGIN_FILTER}`,
       );
       await transaction.unsafe(
         `CREATE TEMP TABLE _cleanup_projects ON COMMIT DROP AS
            SELECT id FROM app.projects
-            WHERE created_by IN (SELECT id FROM _cleanup_users)`,
+            WHERE created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
 
       // ADR-085：经 API 删除的夹具项目已不存在于 app.projects，项目链仍保留。
@@ -113,19 +138,20 @@ export async function cleanupFixtures(
               AND l.action = 'project.create'
               AND l.target_type = 'PROJECT'
               AND l.target_id = l.project_id::text
-              AND l.actor_id IN (SELECT id FROM _cleanup_users)
+              AND l.actor_id IN (SELECT id FROM _cleanup_subjects)
               AND NOT EXISTS (
                 SELECT 1 FROM app.projects p WHERE p.id = l.project_id
               )`,
       );
 
-      const userRows = await transaction.unsafe(
-        "SELECT count(*)::int AS n FROM _cleanup_users",
+      const subjectRows = await transaction.unsafe(
+        "SELECT count(*)::int AS n FROM _cleanup_subjects",
       );
       const projectRows = await transaction.unsafe(
         "SELECT count(*)::int AS n FROM _cleanup_projects",
       );
-      const fixtureUsers = Number(userRows[0]?.["n"] ?? 0);
+      const cleanupSubjects = Number(subjectRows[0]?.["n"] ?? 0);
+      const fixtureUsers = cleanupSubjects;
       const fixtureProjects = Number(projectRows[0]?.["n"] ?? 0);
 
       let deletedRows = 0;
@@ -174,6 +200,15 @@ export async function cleanupFixtures(
               SELECT 1 FROM app.users u WHERE u.id = app.ai_assist_settings.updated_by
             )`,
         );
+        // ADR-090：通知抑制项以用户为外键；用户已被物理删除时，历史孤儿也必须清掉。
+        await remove(
+          `DELETE FROM app.user_notification_suppressions
+            WHERE NOT EXISTS (
+              SELECT 1 FROM app.users u
+               WHERE u.id = app.user_notification_suppressions.user_id
+            )`,
+        );
+
         // ADR-077 项目群三张表：投递表先删（它引用绑定表），再删绑定表与待用码。
         await remove(
           `DELETE FROM app.wecom_group_deliveries
@@ -205,21 +240,24 @@ export async function cleanupFixtures(
                       WHERE u.id = app.project_wecom_binding_codes.consumed_by_user_id
                    ))`,
         );
+        // 项目删除走 replica 模式时，`ON DELETE CASCADE` 的外键触发器不会执行；
+        // 这两张后加的项目附属表必须在清理项目前显式删除，并兜底清掉历史孤儿。
+        await remove(
+          `DELETE FROM app.project_wraps
+            WHERE NOT EXISTS (
+              SELECT 1 FROM app.projects p
+               WHERE p.id = app.project_wraps.project_id
+            )`,
+        );
+        await remove(
+          `DELETE FROM app.project_wecom_group_notification_options
+            WHERE NOT EXISTS (
+              SELECT 1 FROM app.projects p
+               WHERE p.id = app.project_wecom_group_notification_options.project_id
+            )`,
+        );
         return deletedRows - start;
       };
-
-      if (fixtureUsers === 0) {
-        const orphansRemoved = await sweepOrphanReferences();
-        return {
-          fixtureUsers: 0,
-          fixtureProjects: 0,
-          deletedRows: orphansRemoved,
-          auditRowsDeleted: 0,
-          orphansRemoved,
-          systemChainRewound: false,
-          systemChainBroken: false,
-        } satisfies FixtureCleanupReport;
-      }
 
       // 非夹具项目在清理前的不变量计数：删除动作不得让它变差。
       const beforeInvariants = await transaction.unsafe(
@@ -248,17 +286,17 @@ export async function cleanupFixtures(
       await remove(
         `DELETE FROM app.document_import_runs
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR actor_id IN (SELECT id FROM _cleanup_users)`,
+             OR actor_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.notifications
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR recipient_id IN (SELECT id FROM _cleanup_users)`,
+             OR recipient_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.activity_projection
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR actor_id IN (SELECT id FROM _cleanup_users)`,
+             OR actor_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.search_projection
@@ -283,12 +321,12 @@ export async function cleanupFixtures(
       await remove(
         `DELETE FROM app.leftover_task_links
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_users)`,
+             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.external_links
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_users)`,
+             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.change_record_version_leftovers
@@ -297,12 +335,12 @@ export async function cleanupFixtures(
       await remove(
         `DELETE FROM app.change_record_versions
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_users)`,
+             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.change_record_leftover_items
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_users)`,
+             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.change_record_feature_impacts
@@ -311,8 +349,8 @@ export async function cleanupFixtures(
       await remove(
         `DELETE FROM app.change_records
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR author_id IN (SELECT id FROM _cleanup_users)
-             OR handler_id IN (SELECT id FROM _cleanup_users)`,
+             OR author_id IN (SELECT id FROM _cleanup_subjects)
+             OR handler_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.task_feature_impacts
@@ -321,49 +359,57 @@ export async function cleanupFixtures(
       await remove(
         `DELETE FROM app.task_status_history
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR changed_by IN (SELECT id FROM _cleanup_users)`,
+             OR changed_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.task_group_members
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR original_assignee_id IN (SELECT id FROM _cleanup_users)
-             OR detached_by IN (SELECT id FROM _cleanup_users)`,
+             OR original_assignee_id IN (SELECT id FROM _cleanup_subjects)
+             OR detached_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.task_groups
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_users)`,
+             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.task_assignees
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR user_id IN (SELECT id FROM _cleanup_users)`,
+             OR user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.tasks
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR creator_id IN (SELECT id FROM _cleanup_users)`,
+             OR creator_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.features
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_users)`,
+             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.modules
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_users)`,
+             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.project_archive_requests
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR requested_by IN (SELECT id FROM _cleanup_users)
-             OR decided_by IN (SELECT id FROM _cleanup_users)`,
+             OR requested_by IN (SELECT id FROM _cleanup_subjects)
+             OR decided_by IN (SELECT id FROM _cleanup_subjects)`,
+      );
+      await remove(
+        `DELETE FROM app.project_wraps
+          WHERE project_id IN (SELECT id FROM _cleanup_projects)`,
+      );
+      await remove(
+        `DELETE FROM app.project_wecom_group_notification_options
+          WHERE project_id IN (SELECT id FROM _cleanup_projects)`,
       );
       await remove(
         `DELETE FROM app.project_members
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR user_id IN (SELECT id FROM _cleanup_users)`,
+             OR user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.projects
@@ -386,30 +432,47 @@ export async function cleanupFixtures(
       const systemRows = await remove(
         `DELETE FROM app.audit_logs
           WHERE chain_id = 'SYSTEM'
-            AND actor_id IN (SELECT id FROM _cleanup_users)`,
+            AND actor_id IN (SELECT id FROM _cleanup_subjects)`,
+      );
+      // 集成测试还会写入没有 actor 的 SYSTEM 测试事件；这些行不能靠悬空 actor 识别，
+      // 按测试专用 action 定向清除，避免测试库审计页长期积累假事件。
+      const fixtureAuditRows = await remove(
+        `DELETE FROM app.audit_logs
+          WHERE chain_id = 'SYSTEM'
+            AND actor_id IS NULL
+            AND (
+              action LIKE 'SYSTEM_TEST%'
+              OR action LIKE 'AUDIT_SEED%'
+              OR action LIKE 'AUDIT_CROSS%'
+              OR action = 'auth.sso_login_failed'
+            )`,
       );
       await remove(
         `DELETE FROM app.idempotency_records
-          WHERE actor_id IN (SELECT id FROM _cleanup_users)`,
+          WHERE actor_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.session_csrf_tokens
           WHERE session_id IN (
             SELECT id FROM app.user_sessions
-             WHERE user_id IN (SELECT id FROM _cleanup_users)
+             WHERE user_id IN (SELECT id FROM _cleanup_subjects)
           )`,
       );
       await remove(
+        `DELETE FROM app.user_notification_suppressions
+          WHERE user_id IN (SELECT id FROM _cleanup_subjects)`,
+      );
+      await remove(
         `DELETE FROM app.user_sessions
-          WHERE user_id IN (SELECT id FROM _cleanup_users)`,
+          WHERE user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.user_totp_factors
-          WHERE user_id IN (SELECT id FROM _cleanup_users)`,
+          WHERE user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.mfa_recovery_codes
-          WHERE user_id IN (SELECT id FROM _cleanup_users)`,
+          WHERE user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       // 会话外的 RESTRICT 引用：夹具用户还会被企业微信绑定、绑定验证码以及两张全局单例
       // 配置表（企业微信机器人 / AI 辅助转换，`updated_by`）引用。事务跑在 replica 模式下
@@ -417,19 +480,19 @@ export async function cleanupFixtures(
       // RESTRICT 约束时报 FK 违反。这四张表按用户维度先删，孤儿行由下面的兜底一并清掉。
       await remove(
         `DELETE FROM app.user_wecom_bindings
-          WHERE user_id IN (SELECT id FROM _cleanup_users)`,
+          WHERE user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.wecom_binding_codes
-          WHERE user_id IN (SELECT id FROM _cleanup_users)`,
+          WHERE user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.wecom_robot_config
-          WHERE updated_by IN (SELECT id FROM _cleanup_users)`,
+          WHERE updated_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.ai_assist_settings
-          WHERE updated_by IN (SELECT id FROM _cleanup_users)`,
+          WHERE updated_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       // ADR-077（迁移 `0044`）的企业微信**项目群**三张表同样引用夹具用户 / 项目：
       // `project_wecom_groups.bound_by_user_id` 与 `.project_id`、
@@ -443,22 +506,29 @@ export async function cleanupFixtures(
           WHERE group_binding_id IN (
             SELECT id FROM app.project_wecom_groups
              WHERE project_id IN (SELECT id FROM _cleanup_projects)
-                OR bound_by_user_id IN (SELECT id FROM _cleanup_users)
+                OR bound_by_user_id IN (SELECT id FROM _cleanup_subjects)
           )`,
       );
       await remove(
         `DELETE FROM app.project_wecom_groups
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR bound_by_user_id IN (SELECT id FROM _cleanup_users)`,
+             OR bound_by_user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.project_wecom_binding_codes
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR consumed_by_user_id IN (SELECT id FROM _cleanup_users)`,
+             OR consumed_by_user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
 
       await remove(
-        `DELETE FROM app.users WHERE id IN (SELECT id FROM _cleanup_users)`,
+        `DELETE FROM app.users WHERE id IN (SELECT id FROM _cleanup_subjects)`,
+      );
+
+      // 已物理删除的夹具账号会保留身份墓碑；它们属于测试夹具，必须与账号、项目和
+      // 业务行一起清理，否则下一次清理会再次按墓碑找回已删项目。
+      await remove(
+        `DELETE FROM app.deleted_user_identities
+          WHERE user_id IN (SELECT id FROM _cleanup_subjects)`,
       );
 
       // 夹具用户删除后才可能出现悬空 actor；覆盖全部链，含缺失 project_id 的 PROJECT 链行。
@@ -483,6 +553,17 @@ export async function cleanupFixtures(
            USING _cleanup_orphan_projects p
           WHERE h.project_id = p.id`,
       );
+      // 项目已物理删除且项目链已无日志时，链头只是上一轮测试留下的空壳。
+      const emptyProjectChainHeads = await remove(
+        `DELETE FROM app.audit_chain_heads h
+          WHERE h.project_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM app.projects p WHERE p.id = h.project_id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM app.audit_logs l WHERE l.chain_id = h.chain_id
+            )`,
+      );
 
       const orphansRemoved = await sweepOrphanReferences();
 
@@ -501,7 +582,19 @@ export async function cleanupFixtures(
           WHERE h.chain_id = 'SYSTEM'
             AND h.last_sequence > t.sequence_no`,
       );
-      const systemChainRewound = Number(rewind.count ?? 0) > 0;
+      const resetEmptySystemHead = await transaction.unsafe(
+        `UPDATE app.audit_chain_heads h
+            SET last_sequence = 0,
+                last_hash = decode(repeat('00', 32), 'hex'),
+                updated_at = now()
+          WHERE h.chain_id = 'SYSTEM'
+            AND h.last_sequence <> 0
+            AND NOT EXISTS (
+              SELECT 1 FROM app.audit_logs l WHERE l.chain_id = 'SYSTEM'
+            )`,
+      );
+      const systemChainRewound =
+        Number(rewind.count ?? 0) + Number(resetEmptySystemHead.count ?? 0) > 0;
 
       await transaction.unsafe(
         `SELECT setval('app.users_id_seq',
@@ -515,7 +608,7 @@ export async function cleanupFixtures(
       );
 
       let systemChainBroken = false;
-      if (systemRows > 0) {
+      if (systemRows + fixtureAuditRows > 0) {
         const breaks = await transaction.unsafe(
           `SELECT count(*)::int AS n
              FROM app.audit_logs a
@@ -535,7 +628,7 @@ export async function cleanupFixtures(
         `SELECT
            (SELECT count(*)::int FROM app.document_import_runs r
              WHERE r.project_id IN (SELECT id FROM _cleanup_projects)
-                OR r.actor_id IN (SELECT id FROM _cleanup_users))
+                OR r.actor_id IN (SELECT id FROM _cleanup_subjects))
              AS remaining_import_runs,
            (SELECT count(*)::int FROM app.document_import_runs r
              WHERE NOT EXISTS (
@@ -565,6 +658,9 @@ export async function cleanupFixtures(
              )) AS orphan_wecom_deliveries,
            (SELECT count(*)::int FROM app.users
              WHERE ${FIXTURE_LOGIN_FILTER}) AS remaining_users,
+           (SELECT count(*)::int FROM app.deleted_user_identities
+             WHERE user_id IN (SELECT id FROM _cleanup_subjects))
+             AS remaining_tombstones,
            (SELECT count(*)::int FROM app.projects
              WHERE id IN (SELECT id FROM _cleanup_projects))
              AS remaining_projects,
@@ -580,6 +676,54 @@ export async function cleanupFixtures(
                   AND m.user_id = p.created_by
                   AND m.joined_at = p.created_at
              )) AS broken_bootstrap,
+           (SELECT count(*)::int FROM app.audit_logs l
+             WHERE l.chain_id = 'SYSTEM'
+               AND l.actor_id IS NULL
+               AND (
+                 l.action LIKE 'SYSTEM_TEST%'
+                 OR l.action LIKE 'AUDIT_SEED%'
+                 OR l.action LIKE 'AUDIT_CROSS%'
+                 OR l.action = 'auth.sso_login_failed'
+               )) AS remaining_fixture_audit_rows,
+           (SELECT count(*)::int FROM app.audit_chain_heads h
+             WHERE h.project_id IS NOT NULL
+               AND NOT EXISTS (
+                 SELECT 1 FROM app.projects p WHERE p.id = h.project_id
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM app.audit_logs l WHERE l.chain_id = h.chain_id
+               )) AS orphan_project_chain_heads,
+           (SELECT count(*)::int FROM app.audit_chain_heads h
+             LEFT JOIN LATERAL (
+               SELECT l.sequence_no, l.record_hash
+                 FROM app.audit_logs l
+                WHERE l.chain_id = h.chain_id
+                ORDER BY l.sequence_no DESC
+                LIMIT 1
+             ) t ON true
+             WHERE h.last_sequence <> coalesce(t.sequence_no, 0)
+                OR h.last_hash <> coalesce(
+                     t.record_hash,
+                     decode(repeat('00', 32), 'hex')
+                   )) AS inconsistent_chain_heads,
+           (SELECT count(*)::int FROM app.user_notification_suppressions s
+             WHERE NOT EXISTS (
+               SELECT 1 FROM app.users u WHERE u.id = s.user_id
+             )) AS orphan_user_notification_suppressions,
+           (SELECT count(*)::int FROM app.project_wraps w
+             WHERE NOT EXISTS (
+               SELECT 1 FROM app.projects p WHERE p.id = w.project_id
+             )) AS orphan_project_wraps,
+           (SELECT count(*)::int FROM app.project_wecom_group_notification_options o
+             WHERE NOT EXISTS (
+               SELECT 1 FROM app.projects p WHERE p.id = o.project_id
+             )) AS orphan_project_notification_options,
+           (SELECT count(*)::int FROM app.activity_projection a
+             LEFT JOIN app.audit_logs l
+               ON l.chain_id = a.source_chain_id
+              AND l.sequence_no = a.source_sequence
+             WHERE a.source_chain_id IS NOT NULL
+               AND l.chain_id IS NULL) AS orphan_activities,
            (SELECT count(*)::int FROM (
              SELECT p.id
                FROM app.projects p
@@ -595,6 +739,7 @@ export async function cleanupFixtures(
         // 夹具残留与悬空审计 actor 必须为 0。
         ...[
           "remaining_users",
+          "remaining_tombstones",
           "remaining_projects",
           "remaining_import_runs",
           "orphan_import_runs",
@@ -602,6 +747,13 @@ export async function cleanupFixtures(
           "orphan_project_wecom_codes",
           "orphan_project_wecom_groups",
           "orphan_wecom_deliveries",
+          "orphan_user_notification_suppressions",
+          "remaining_fixture_audit_rows",
+          "orphan_project_chain_heads",
+          "inconsistent_chain_heads",
+          "orphan_project_wraps",
+          "orphan_project_notification_options",
+          "orphan_activities",
         ].filter((key) => Number(checks[key] ?? 0) !== 0),
         // 项目不变量只要求清理未让计数变差：本地库可能存在规范化之前建立的历史项目。
         ...["broken_bootstrap", "missing_unclassified"].filter(
@@ -623,9 +775,11 @@ export async function cleanupFixtures(
         auditRowsDeleted:
           projectChainRows +
           systemRows +
+          fixtureAuditRows +
           strayRows +
           orphanProjectAuditRows +
-          orphanProjectChainHeads,
+          orphanProjectChainHeads +
+          emptyProjectChainHeads,
         orphansRemoved,
         systemChainRewound,
         systemChainBroken,
