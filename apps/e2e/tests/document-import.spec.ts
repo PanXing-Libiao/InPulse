@@ -164,7 +164,9 @@ test("F-32 文档导入弹窗在矮窗口下页脚不被裁切、正文内部滚
   await textarea.fill(document);
   const textareaBox = await textarea.boundingBox();
   expect(textareaBox, "文本框应有布局盒").not.toBeNull();
-  expect(textareaBox!.height).toBeGreaterThan(200);
+  // ADR-094 的「导入位置」工具条会占用一行高度；620px 视口下仍有约 199px，
+  // 这里守住「是一块可编辑的大文本区」这一交互目标，而不是写死一次性的像素值。
+  expect(textareaBox!.height).toBeGreaterThanOrEqual(180);
   const textareaMetrics = await textarea.evaluate((el) => ({
     scrollHeight: el.scrollHeight,
     clientHeight: el.clientHeight,
