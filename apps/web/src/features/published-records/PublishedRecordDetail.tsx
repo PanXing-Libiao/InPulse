@@ -89,6 +89,8 @@ export function PublishedRecordDetail({
   labels,
   readOnly = false,
   onOpenTask,
+  githubOpen: controlledGithubOpen,
+  onGithubOpenChange,
 }: {
   readonly projectId: number;
   readonly recordId: number;
@@ -123,12 +125,20 @@ export function PublishedRecordDetail({
    * 缺省仍是深链到功能档案的 ?taskId=，由目标页自己打开任务详情。
    */
   readonly onOpenTask?: ((location: TaskLocation) => void) | undefined;
+  /** 受控展开：发布后独立详情切换为列表卡片时，页面可保留用户刚打开的关联区。 */
+  readonly githubOpen?: boolean | undefined;
+  readonly onGithubOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const { user } = useAuth();
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const [oldVersion, setOldVersion] = useState(0),
     [newVersion, setNewVersion] = useState(0),
-    [githubOpen, setGithubOpen] = useState(false);
+    [githubOpenState, setGithubOpenState] = useState(false);
+  const githubOpen = controlledGithubOpen ?? githubOpenState;
+  const setGithubOpen = (next: boolean) => {
+    if (controlledGithubOpen === undefined) setGithubOpenState(next);
+    onGithubOpenChange?.(next);
+  };
   const detail = useQuery({
     queryKey: ["published-record", projectId, recordId],
     queryFn: ({ signal }) =>
@@ -467,7 +477,7 @@ export function PublishedRecordDetail({
             type="button"
             className={`record-github-toggle${githubOpen ? "" : " collapsed"}`}
             aria-expanded={githubOpen}
-            onClick={() => setGithubOpen((open) => !open)}
+            onClick={() => setGithubOpen(!githubOpen)}
           >
             <InpulseIcon
               name="chevron"

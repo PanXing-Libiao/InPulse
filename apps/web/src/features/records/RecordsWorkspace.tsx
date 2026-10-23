@@ -90,6 +90,8 @@ export function RecordsWorkspace({
   const [collapsedDays, setCollapsedDays] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  /** 发布后独立详情会切到时间线卡片，关联区展开状态必须由页面持有，避免重建时折叠。 */
+  const [githubOpenRecordId, setGithubOpenRecordId] = useState(0);
   const toggleDay = (key: string) =>
     setCollapsedDays((prev) => {
       const next = new Set(prev);
@@ -201,6 +203,7 @@ export function RecordsWorkspace({
     setParams(nextParams);
   };
   const toggleRecord = (id: number, open: boolean) => {
+    if (!open && githubOpenRecordId === id) setGithubOpenRecordId(0);
     const nextParams = new URLSearchParams(params);
     if (open && Number(nextParams.get("publishedId")) !== id)
       nextParams.set("publishedId", String(id));
@@ -399,6 +402,10 @@ export function RecordsWorkspace({
             writable={canWrite(projectId)}
             standalone
             onListChanged={() => void list.refetch()}
+            githubOpen={githubOpenRecordId === publishedId}
+            onGithubOpenChange={(open) =>
+              setGithubOpenRecordId(open ? publishedId : 0)
+            }
           />
         </section>
       )}
@@ -478,6 +485,10 @@ export function RecordsWorkspace({
                           }
                           onListChanged={() => void list.refetch()}
                           featureNames={featureNames}
+                          githubOpen={githubOpenRecordId === item.record.id}
+                          onGithubOpenChange={(open) =>
+                            setGithubOpenRecordId(open ? item.record.id : 0)
+                          }
                         />
                       </div>
                     ))}

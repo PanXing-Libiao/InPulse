@@ -25,6 +25,8 @@ export function PublishedRecordCard({
   writable,
   onListChanged,
   featureNames,
+  githubOpen,
+  onGithubOpenChange,
 }: {
   readonly item: RecordFeedItem;
   readonly open: boolean;
@@ -34,6 +36,9 @@ export function PublishedRecordCard({
   readonly onListChanged?: (() => void) | undefined;
   /** 功能名称表：把记录事实区里的影响功能 ID 还原成名称。 */
   readonly featureNames?: ReadonlyMap<number, string> | undefined;
+  /** 由记录页持有的 GitHub 关联展开状态，避免列表刷新重建时丢失。 */
+  readonly githubOpen?: boolean | undefined;
+  readonly onGithubOpenChange?: ((open: boolean) => void) | undefined;
 }) {
   const record = item.record;
   return (
@@ -102,6 +107,8 @@ export function PublishedRecordCard({
           client={client}
           writable={writable}
           onListChanged={onListChanged}
+          githubOpen={githubOpen}
+          onGithubOpenChange={onGithubOpenChange}
           labels={{
             project: item.projectName,
             module: item.moduleName,
