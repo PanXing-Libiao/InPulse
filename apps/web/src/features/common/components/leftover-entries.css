@@ -12,7 +12,7 @@
 }
 .leftover-field-label {
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .leftover-entries {
   display: flex;
@@ -30,7 +30,7 @@
 }
 .leftover-entry-lock {
   color: #7b8fa2;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 24px;
   white-space: nowrap;
 }

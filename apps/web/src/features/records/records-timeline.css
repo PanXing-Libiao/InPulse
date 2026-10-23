@@ -66,7 +66,7 @@
   top: 4px;
   right: calc(100% + 30px);
   color: #7b93ab;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-variant-numeric: tabular-nums;
   line-height: 18px;
   white-space: nowrap;
@@ -81,7 +81,7 @@
   top: 26px;
   right: calc(100% + 30px);
   color: #93a1b0;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-variant-numeric: tabular-nums;
   line-height: 18px;
   white-space: nowrap;
@@ -150,12 +150,12 @@
 
 .timeline-toggle strong {
   color: #31475e;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .timeline-toggle small {
   color: #93a1b0;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .record-card-list {
@@ -214,7 +214,7 @@
 .record-summary-text strong {
   display: block;
   color: #314b65;
-  font-size: 14px;
+  font-size: var(--text-lg);
   line-height: 1.6;
 }
 
@@ -222,12 +222,12 @@
   display: block;
   margin-top: 5px;
   color: #7b8fa2;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .record-summary-text small.record-summary-path {
   color: #93a1b0;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .record-summary-badges {
@@ -253,7 +253,7 @@
 .record-expanded-head h3 {
   margin: 0;
   color: #314b65;
-  font-size: 15px;
+  font-size: var(--text-xl);
 }
 
 .record-expanded > section {
@@ -264,21 +264,21 @@
 .record-expanded h4 {
   margin: 0 0 8px;
   color: #314b65;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 
 .record-expanded h5 {
   margin: 0 0 8px;
   color: #37566f;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
 .record-expanded > p {
   margin: 14px 0 0;
   color: #60768b;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.8;
 }
 
@@ -290,7 +290,7 @@
   padding: 16px 18px;
   border-radius: 9px;
   background: #f7fafd;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .record-facts dt {

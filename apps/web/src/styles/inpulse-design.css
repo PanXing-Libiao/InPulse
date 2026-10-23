@@ -56,7 +56,7 @@
 .admin-user-form > label {
   margin: 16px 0 6px;
   color: #586d83;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 18px;
 }
 
@@ -67,7 +67,7 @@
 .admin-user-form > p {
   margin: 6px 0 0;
   color: #6d8ca9;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 
@@ -108,7 +108,7 @@
 }
 .catalog-modal .completion-flow > h2 {
   margin-top: 28px;
-  font-size: 23px;
+  font-size: var(--text-4xl);
   font-weight: 400;
   line-height: 34.5px;
   color: #243b53;
@@ -125,7 +125,7 @@
 }
 .catalog-modal .completion-flow textarea {
   min-height: 85px;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.7;
 }
 /* 双卡片是 `.dialog-form` 的子级，间距由上面的 23px `margin-top` 承担。 */
@@ -180,17 +180,17 @@
 }
 .catalog-modal .completion-links-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #33475c;
 }
 .catalog-modal .completion-links-hint {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: #8091a4;
 }
 .catalog-modal .completion-links-empty {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #8091a4;
 }
 /* 链接多时清单会把弹窗撑长，这里按「下拉框」收拢：触发器只给选中计数，
@@ -206,7 +206,7 @@
   border-radius: 8px;
   background: #fff;
   color: #33475c;
-  font-size: 12px;
+  font-size: var(--text-md);
   text-align: left;
   cursor: pointer;
 }
@@ -313,7 +313,7 @@
 .catalog-modal .completion-links-url {
   flex: 1 1 0;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #456078;
   white-space: nowrap;
   overflow: hidden;
@@ -338,7 +338,7 @@
 .catalog-modal .completion-links-error {
   display: block;
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #c0392b;
 }
 .catalog-modal .completion-links-recovery-actions {
@@ -398,7 +398,7 @@
   height: auto;
   min-height: 0;
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 400;
   line-height: 16.5px;
 }
@@ -435,7 +435,7 @@
 /* 成员提示行（`.impact-fieldset` 内的说明文字）。 */
 .member-hint {
   display: block;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .calm-field > label .member-count {
@@ -445,7 +445,7 @@
   border-radius: 999px;
   background: #eaf2fb;
   color: #3f6c98;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -464,7 +464,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 400;
   color: #586d83;
 }
@@ -493,7 +493,7 @@
   align-items: center;
   gap: 6px;
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .calm-member-task-card .check-list input[type="checkbox"] {
@@ -570,19 +570,19 @@
 
 .notification-popover li span {
   color: #3c5670;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.65;
 }
 
 .notification-popover li small {
   color: #98a5b3;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .notification-state {
   padding: 20px 16px 18px;
   color: #8796a5;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
   text-align: center;
 }
@@ -601,7 +601,7 @@
   background: #fafcfe;
   color: #3273bb;
   padding: 11px 16px;
-  font-size: 12px;
+  font-size: var(--text-md);
   text-align: left;
 }
 
@@ -626,7 +626,7 @@
 .account-popover .account-identity strong {
   display: block;
   color: #2f4a63;
-  font-size: 12px;
+  font-size: var(--text-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -658,7 +658,7 @@
 .palette-results li button strong {
   display: block;
   color: #2f4a63;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -668,7 +668,7 @@
 .palette-results li button small {
   display: block;
   color: #8b9aab;
-  font-size: 11px;
+  font-size: var(--text-sm);
   margin-top: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -697,7 +697,7 @@
   display: block;
   margin-top: 5px;
   color: #8a9aab;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .activity-page {
@@ -721,7 +721,7 @@
   min-height: 28px;
   border-radius: 5px;
   padding: 4px 9px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -853,14 +853,14 @@
 
 .audit-action-option strong {
   color: #26394d;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .audit-action-option span {
   color: #8294a7;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .audit-action-option.is-active {
@@ -874,7 +874,7 @@
 .audit-action-empty {
   padding: 9px;
   color: #8294a7;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 
@@ -979,7 +979,7 @@
 .activity-totals-hint {
   margin: 0 0 10px;
   color: #8291a1;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .activity-day + .activity-day .activity-day-head {
@@ -989,7 +989,7 @@
 .activity-day-date {
   text-align: right;
   color: #5b7892;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-variant-numeric: tabular-nums;
   line-height: 18px;
   white-space: nowrap;
@@ -1018,12 +1018,12 @@
 
 .activity-day-toggle strong {
   color: #31475e;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .activity-day-toggle small {
   color: #93a1b0;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .activity-day-toggle:hover strong {
@@ -1038,7 +1038,7 @@
   border: 1px solid #dfe7ef;
   border-radius: 4px;
   color: #6f8295;
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -1071,7 +1071,7 @@
   padding: 0 2px;
   color: #33465c;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--text-md);
   /* 输入自己不再画框，聚焦提示统一由 .audit-time-field:focus-within 的整盒描边承担；
      否则 Chromium 会在盒内再套一圈 UA 轮廓，出现「外圈 + 内框」的双层蓝框。 */
   outline: none;
@@ -1116,7 +1116,7 @@
   border-radius: 8px;
   background: #ffffff;
   color: #8796a5;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .activity-state-error {
@@ -1252,7 +1252,7 @@
   gap: 4px;
   height: auto !important;
   padding: 2px 4px !important;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.5;
 }
 
@@ -1270,7 +1270,7 @@
   gap: 6px;
   height: auto !important;
   padding: 6px 4px !important;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .back-button.ant-btn:hover {
@@ -1304,7 +1304,7 @@
   border-radius: 10px;
   background: #ffffff;
   color: #8796a5;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .calm-empty-state {
@@ -1324,7 +1324,7 @@
 
 .calm-empty-state strong {
   color: #344f68;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 .calm-empty-state p {
@@ -1411,7 +1411,7 @@
 .feature-facts h3 {
   margin: 0;
   color: #344b63;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 .feature-task-section {
@@ -1460,7 +1460,7 @@
   align-items: center;
   gap: 4px;
   color: #7f90a2;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* 任务详情的迭代记录行与聚合组一致：摘要整块是打开详情弹窗的按钮。
@@ -1489,7 +1489,7 @@
 
 .task-record-open strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #22384f;
 }
 
@@ -1497,7 +1497,7 @@
   display: block;
   margin-top: 3px;
   color: #98a5b3;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .task-record-open:hover strong,
@@ -1536,7 +1536,7 @@
   gap: 6px;
   margin-bottom: 4px;
   color: #2472c3;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 /* 「查看遗留来源记录」由整页链接改为就地打开记录弹窗的按钮，保留链接观感。 */
 .leftover-source-open {
@@ -1559,12 +1559,12 @@
 .task-status-section h3 {
   margin: 0 0 14px;
   color: #354f66;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 .task-status-published {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .task-status-history {
@@ -1595,19 +1595,19 @@
 
 .task-status-history strong {
   color: #37566f;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .task-status-history p {
   margin: 4px 0 0;
   color: #8395a7;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .calm-form label {
   display: block;
   color: #526b83;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
@@ -1661,7 +1661,7 @@
   border-radius: 6px;
   background: #f6f8fb;
   color: #405a72;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .calm-form fieldset {
@@ -1680,7 +1680,7 @@
   background: #ffffff;
   color: #405a72;
   outline: none;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .calm-form input,
@@ -1706,7 +1706,7 @@
 .calm-form p[role="alert"] {
   margin: 0;
   color: #b45b55;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .calm-form .ant-input[disabled],
@@ -1744,12 +1744,12 @@
 .merge-choice > p:first-child {
   margin: 0;
   color: #37566f;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .merge-choice dl {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .merge-choice dt {
@@ -1862,7 +1862,7 @@
 
 .project-notification-modal .settings-table td small {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 
@@ -1879,7 +1879,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #6d8ca9;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   letter-spacing: normal;
   line-height: 1.5;
@@ -1909,7 +1909,7 @@
 }
 
 .project-members-panel .member-selection-top {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .project-members-panel .member-selection-title {
@@ -1920,7 +1920,7 @@
 
 .project-members-panel .member-selection-title em {
   color: #8fa1b3;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-style: normal;
 }
 
@@ -2097,7 +2097,7 @@
   border-radius: 8px;
   background: transparent !important;
   color: #60778d !important;
-  font-size: 13px;
+  font-size: var(--text-base);
   box-shadow: none !important;
   transition:
     color 0.16s ease,
@@ -2134,7 +2134,7 @@
   height: 28px !important;
   padding: 0 10px !important;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* 卡片内的归档/批准等危险操作改为与文字按钮同重量的红色幽灵按钮，
@@ -2224,7 +2224,7 @@
   border-radius: 50%;
   background: transparent;
   color: #6b8b77;
-  font-size: 18px;
+  font-size: var(--text-2xl);
   line-height: 1;
   cursor: pointer;
 }
@@ -2269,13 +2269,13 @@
   gap: 3px;
   min-width: 0;
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 
 .creation-success-body strong {
   color: #2b6d4d;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .creation-success-actions {
@@ -2318,7 +2318,7 @@
   width: 36px !important;
   height: 36px !important;
   flex: 0 0 36px;
-  font-size: 14px !important;
+  font-size: var(--text-lg) !important;
 }
 
 .member-identity {
@@ -2330,12 +2330,12 @@
 
 .member-identity strong {
   color: #2f4a63;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .member-identity span {
   color: #8191a2;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .member-status {
@@ -2347,7 +2347,7 @@
 
 .member-status small {
   color: #9aa7b5;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .member-card-actions {
@@ -2414,13 +2414,13 @@
  * 避免编号比任务标题更抢眼。 */
 .member-task-main strong {
   color: #7b8b9b;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
 .member-task-main span {
   color: #132238;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   line-height: 1.6;
 }
@@ -2434,7 +2434,7 @@
   align-items: center;
   gap: 6px;
   color: #6f8195;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .catalog-modal .calm-empty-state {
@@ -2471,7 +2471,7 @@
   border-radius: 8px;
   background: #e3f0fc;
   color: #1467d8;
-  font-size: 12px;
+  font-size: var(--text-md);
   white-space: nowrap;
 }
 
@@ -2636,7 +2636,7 @@
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .project-picker-meta {
@@ -2649,7 +2649,7 @@
 
 .project-picker-meta strong {
   color: #132238;
-  font-size: 13px;
+  font-size: var(--text-base);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2657,7 +2657,7 @@
 
 .project-picker-meta small {
   color: #8191a2;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .project-picker-row > svg {
@@ -2679,7 +2679,7 @@
 .settings-table th {
   background: #f8fafc;
   color: #7d8b9a;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 11px 15px;
   white-space: nowrap;
@@ -2689,21 +2689,21 @@
   padding: 14px 15px;
   border-top: 1px solid #edf1f5;
   color: #637489;
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
 .settings-table td strong {
   display: block;
   color: #273b51;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
 .settings-table td small {
   display: block;
   color: #607286;
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-top: 5px;
 }
 
@@ -2714,7 +2714,7 @@
 /* 权限矩阵「规则说明」列：原 10px 小字在宽表里偏小，按用户要求提到 11px；
    列头和左侧功能名保持原字号。 */
 .permission-matrix-table td small {
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.6;
 }
 
@@ -2733,18 +2733,18 @@
 /* 2026-10-20 用户要求：权限矩阵只留一行标题，标题放大、加粗并加深颜色。 */
 .permission-matrix-panel .calm-section-title h3 {
   color: #132238;
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
 }
 
 /* 2026-10-20 用户要求：权限矩阵表头字体放大。 */
 .permission-matrix-panel .permission-matrix-table th {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .notification-policy-panel .calm-section-title h3 {
   color: #132238;
-  font-size: 18px;
+  font-size: var(--text-2xl);
   font-weight: 700;
 }
 
@@ -2776,7 +2776,7 @@
   width: 34px !important;
   height: 34px !important;
   flex: 0 0 34px;
-  font-size: 13px !important;
+  font-size: var(--text-base) !important;
 }
 
 .member-id {
@@ -2789,16 +2789,16 @@
 
 .member-id strong {
   color: #132238;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .member-id small {
   color: #8191a2;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .settings-members-panel .calm-section-title h3 {
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 700;
 }
 
@@ -2808,7 +2808,7 @@
   margin-left: 4px;
   color: #8191a2;
   font-weight: 400;
-  font-size: 11px;
+  font-size: var(--text-sm);
   vertical-align: baseline;
 }
 
@@ -2825,7 +2825,7 @@
   align-items: center;
   gap: 6px;
   color: #3f9d58;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* 状态点：启用绿、停用灰，颜色随 currentColor 联动。 */
@@ -2847,7 +2847,7 @@
 
 .member-actions-note {
   color: #8191a2;
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 
@@ -2901,7 +2901,7 @@
   border-radius: 7px;
   background: #fffaf0;
   color: #8a6520;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.65;
 }
 
@@ -2973,18 +2973,18 @@
 
 .merge-source-task-label {
   color: #6d8498;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .merge-source-task-code {
   color: #8494a6;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .merge-source-task-title {
   margin: 0;
   color: #22384f;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.5;
 }
@@ -2994,7 +2994,7 @@
  * `.merge-candidate-list` / `.merge-selected` 三块规则已无引用，同批删除。 */
 .merge-select-empty {
   color: #6d8498;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* 无匹配但触发器仍显示已选主任务时，同一条提示落在下拉下方。 */
@@ -3017,7 +3017,7 @@
 .merge-branch-choice legend {
   padding: 0 6px;
   color: #5c7691;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .merge-branch-choice label {
@@ -3025,13 +3025,13 @@
   align-items: center;
   gap: 8px;
   color: #3c5a77;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* 聚合组详情：成员与分支面板、记录筛选与分页。 */
 .task-group-created {
   color: #8494a6;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .task-group-panels {
@@ -3081,7 +3081,7 @@
 .task-group-member > strong,
 .task-group-member-title > strong {
   color: var(--task-fg, #22384f);
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .task-group-member.detached {
@@ -3125,7 +3125,7 @@
 .task-group-member-meta {
   margin: 0;
   color: #8494a6;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .task-group-record-filter {
@@ -3175,7 +3175,7 @@
 
 .task-group-record-open > strong {
   color: #22384f;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .task-group-record-open:hover > strong,
@@ -3201,7 +3201,7 @@
 
 .task-group-record-meta {
   color: #8a98a8;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .task-group-record-links {
@@ -3222,7 +3222,7 @@
   border: 0;
   background: transparent;
   color: #6b8199;
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -3244,14 +3244,14 @@
   align-items: center;
   gap: 5px;
   color: #2671c9;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .task-group-record-links small {
   display: block;
   margin-top: 2px;
   color: #8a98a8;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .task-group-load-more {
@@ -3378,7 +3378,7 @@
 
 .member-toolbar-info {
   color: #61788e;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .member-toolbar-actions {
@@ -3405,7 +3405,7 @@
 .organization-step-title {
   margin: 0 0 8px;
   color: #23384c;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 /* ADR-081 组织管理（2026-10-16 第二轮）：不再用弹窗，就地展开在「成员与角色」页内。 */
@@ -3427,7 +3427,7 @@
 .organization-manager-title {
   margin: 0;
   color: #132238;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 /* 组织候选竖排，长组织名不互相挤压。 */
@@ -3475,7 +3475,7 @@
   border-radius: 999px;
   background: transparent;
   color: #6c8094;
-  font-size: 13px;
+  font-size: var(--text-base);
   cursor: pointer;
   transition:
     background 0.15s,
@@ -3489,7 +3489,7 @@
 
 .member-org-tab b {
   color: #97a6b6;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -3514,7 +3514,7 @@
   border-radius: 10px;
   background: #f7fbff;
   color: #314c65;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .member-rename-bar label {
@@ -3529,7 +3529,7 @@
   border-radius: 7px;
   background: #ffffff;
   color: #23384c;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .member-rename-bar input:focus {
@@ -3541,7 +3541,7 @@
 .member-rename-bar .ant-btn {
   height: 28px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .settings-members-panel .permission-note {
@@ -3567,7 +3567,7 @@
 .my-org-count {
   flex: 0 0 auto;
   color: #8d9bab;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .settings-members-panel .member-row {
@@ -3619,7 +3619,7 @@
 
 .settings-members-panel .member-meta .badge {
   padding: 3px 7px;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .settings-members-panel .member-actions {
@@ -3632,7 +3632,7 @@
   height: 30px !important;
   padding: 0 10px !important;
   border-radius: 7px;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 500;
 }
 
@@ -3654,12 +3654,12 @@
   background: #f3f8fe;
   color: #314c65;
   box-shadow: none;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .member-batchbar .member-org-select.ant-select {
   --ant-select-height: 34px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .member-batchbar .ant-input {
@@ -3677,7 +3677,7 @@
 
 .member-task-count {
   color: #b25e12;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -3708,7 +3708,7 @@
   border-radius: 8px;
   background: #ffffff;
   color: #132238;
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 
@@ -3735,7 +3735,7 @@
 
 .member-org-pick-count {
   color: #8492a1;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .member-org-pick.is-selected .member-org-pick-count {
@@ -3783,7 +3783,7 @@
   border-radius: 50%;
   background: #e8f1fb;
   color: #3c6e9c;
-  font-size: 16px;
+  font-size: var(--text-xl);
   font-weight: 600;
 }
 
@@ -3795,14 +3795,14 @@
 
 .disable-account-copy strong {
   color: #172b40;
-  font-size: 15px;
+  font-size: var(--text-xl);
   line-height: 1.2;
 }
 
 .disable-account-copy span {
   margin-top: 3px;
   color: #7b8ea1;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .disable-account-badges {
@@ -3819,7 +3819,7 @@
   height: 21px;
   padding: 0 7px;
   border-radius: 5px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -3848,7 +3848,7 @@
 .disable-account-error {
   padding: 22px 0;
   color: #7b8ea1;
-  font-size: 13px;
+  font-size: var(--text-base);
   text-align: center;
 }
 
@@ -3880,19 +3880,19 @@
   border-radius: 50%;
   background: #e3f3ea;
   color: #3e8b61;
-  font-size: 18px;
+  font-size: var(--text-2xl);
   font-weight: 600;
 }
 
 .disable-account-done strong {
   color: #28513b;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 .disable-account-done p {
   margin: 4px 0 0;
   color: #6c8276;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .disable-project-list {
@@ -3932,7 +3932,7 @@
   border-radius: 9px;
   background: #dfeafb;
   color: #1f5f9f;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.02em;
 }
@@ -3951,7 +3951,7 @@
 
 .disable-project-copy strong {
   color: #1c3348;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 700;
   line-height: 1.2;
 }
@@ -3959,7 +3959,7 @@
 .disable-project-copy span {
   margin-top: 3px;
   color: #8a99aa;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 400;
 }
 
@@ -3985,7 +3985,7 @@
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .disable-task-row td {
@@ -4023,7 +4023,7 @@
 
 .disable-task-title {
   color: #233a50;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -4032,7 +4032,7 @@
 .disable-task-code {
   margin-top: 2px;
   color: #b3bfca;
-  font-size: 9px;
+  font-size: var(--text-avatar);
   letter-spacing: 0.3px;
   white-space: nowrap;
 }
@@ -4047,7 +4047,7 @@
   border-radius: 6px;
   background: #f7fafd;
   color: #42586d;
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -4086,7 +4086,7 @@
   border-radius: 7px;
   background: #f3f8fe;
   color: #2b6cb0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   transition:
     background 0.15s ease,
     border-color 0.15s ease;
@@ -4102,7 +4102,7 @@
   padding: 0 9px;
   border-radius: 7px;
   color: #b54334;
-  font-size: 11px;
+  font-size: var(--text-sm);
   transition:
     background 0.15s ease,
     color 0.15s ease;
@@ -4126,14 +4126,14 @@
 .disable-add-panel .ant-checkbox-wrapper {
   margin-inline-start: 0;
   color: #42586d;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .disable-add-empty {
   flex: 1 1 auto;
   min-width: 0;
   color: #8a99aa;
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.35;
 }
 
@@ -4152,7 +4152,7 @@
   border-radius: 6px;
   background: #e7f1fd;
   color: #2472c3;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .disable-picker-chip button {
@@ -4160,7 +4160,7 @@
   border: 0;
   background: transparent;
   color: #7fa3c9;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 400;
   line-height: 1;
   cursor: pointer;
@@ -4171,7 +4171,7 @@
   align-items: center;
   gap: 6px;
   color: #8a99aa;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 .disable-deleted-note button {
@@ -4191,7 +4191,7 @@
   margin-right: auto;
   align-self: center;
   color: #7b8ea1;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 @media (max-width: 760px) {
@@ -4260,14 +4260,14 @@
 .project-member-overview-head h2 {
   margin: 0;
   color: #172235;
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-weight: 750;
   line-height: 1.35;
 }
 
 .project-member-overview-count {
   color: #7d8da1;
-  font-size: 12px;
+  font-size: var(--text-md);
   white-space: nowrap;
 }
 
@@ -4310,7 +4310,7 @@
   outline: 0;
   background: transparent;
   color: #26364b;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .project-member-search input::placeholder {
@@ -4320,7 +4320,7 @@
 .project-member-result-count {
   margin-left: auto;
   color: #8b99aa;
-  font-size: 12px;
+  font-size: var(--text-md);
   white-space: nowrap;
 }
 
@@ -4382,7 +4382,7 @@
   display: block;
   overflow: hidden;
   color: #243247;
-  font-size: 13.5px;
+  font-size: var(--text-lg);
   font-weight: 750;
   line-height: 1.4;
   text-overflow: ellipsis;
@@ -4395,7 +4395,7 @@
   gap: 5px;
   margin-top: 5px;
   color: #8b99aa;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .project-member-summary-actions {
@@ -4411,7 +4411,7 @@
   border-radius: 8px;
   background: #f4f7fb;
   color: #4c6683;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   font-weight: 650;
   white-space: nowrap;
   transition:
@@ -4478,7 +4478,7 @@
 .project-member-insight span {
   display: block;
   color: #8d9cad;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .project-member-insight strong {
@@ -4486,7 +4486,7 @@
   margin-top: 4px;
   overflow: hidden;
   color: #26354a;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 750;
   line-height: 1.45;
   text-overflow: ellipsis;
@@ -4543,7 +4543,7 @@
   flex: 0 0 34px;
   background: #e8f1fd;
   color: #2f63b5;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .project-member-person-copy {
@@ -4556,7 +4556,7 @@
 .project-member-person-copy strong {
   overflow: hidden;
   color: #27364b;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4564,7 +4564,7 @@
 
 .project-member-person-copy small {
   color: #8c9aac;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .project-member-role {
@@ -4574,14 +4574,14 @@
 
 .project-member-role .badge {
   padding: 4px 8px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 650;
 }
 
 .project-member-task {
   justify-self: end;
   color: #55697f;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 650;
   white-space: nowrap;
 }
@@ -4648,11 +4648,11 @@
 }
 
 .audit-log-page .activity-day-toggle strong {
-  font-size: 12.5px;
+  font-size: var(--text-base);
 }
 
 .audit-log-page .activity-day-toggle small {
-  font-size: 10.5px;
+  font-size: var(--text-sm);
 }
 
 .audit-log-page .audit-log-row {
@@ -4677,7 +4677,7 @@
 .audit-log-page .audit-log-time {
   align-self: center;
   color: #617a92;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   font-variant-numeric: tabular-nums;
   line-height: 1.5;
 }
@@ -4695,7 +4695,7 @@
   border: 0;
   background: #edf4fb;
   color: #4f7aa2;
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 
 .audit-log-copy {
@@ -4714,14 +4714,14 @@
 .audit-log-main strong {
   flex: 0 0 auto;
   color: #304b65;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 650;
 }
 
 .audit-log-page .audit-log-main strong span {
   margin-left: 7px;
   color: #536b82;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 400;
 }
 
@@ -4730,7 +4730,7 @@
   margin: 0;
   overflow: hidden;
   color: #8b9bad;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4749,13 +4749,13 @@
   margin-top: 6px;
   margin-left: 46px;
   color: #96a4b2;
-  font-size: 10.5px;
+  font-size: var(--text-sm);
 }
 
 .audit-log-meta small {
   display: block;
   color: #96a4b2;
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   line-height: 1.5;
 }
 
@@ -4766,7 +4766,7 @@
   border-radius: 4px;
   background: #f2f6fa;
   color: #8296a9;
-  font-size: 10px;
+  font-size: var(--text-xs);
   line-height: 1.45;
 }
 
@@ -4786,7 +4786,7 @@
   border-radius: 7px;
   background: transparent;
   color: #617990;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;

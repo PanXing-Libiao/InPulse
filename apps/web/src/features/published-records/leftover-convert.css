@@ -26,7 +26,7 @@
 
 .leftover-convert-modal.catalog-modal .leftover-convert-source {
   margin: 0 0 18px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   line-height: 1.7;
   color: #9aa5b3;
 }
@@ -60,7 +60,7 @@
 }
 .leftover-convert-modal.catalog-modal .leftover-convert-latest h3 {
   margin: 0 0 10px;
-  font-size: 13.5px;
+  font-size: var(--text-lg);
   color: #2b3440;
 }
 .leftover-convert-modal.catalog-modal .leftover-convert-form > .ant-alert,
@@ -79,7 +79,7 @@
 }
 .leftover-convert-modal.catalog-modal .leftover-convert-row > label {
   display: block;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #9aa5b3;
   text-align: right;
 }
@@ -98,7 +98,7 @@
 }
 .leftover-convert-modal.catalog-modal .leftover-convert-form > p[role="alert"] {
   margin: -4px 0 12px 78px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #c0392b;
 }
 @media (max-width: 700px) {

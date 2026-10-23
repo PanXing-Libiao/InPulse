@@ -58,7 +58,7 @@
   .calm-select-avatar {
   width: 16px;
   height: 16px;
-  font-size: 9px;
+  font-size: var(--text-avatar);
 }
 .calm-select-multiple.ant-select
   .ant-select-selection-item
@@ -75,7 +75,7 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   flex: 0 0 auto;
   object-fit: cover;
@@ -92,7 +92,7 @@
   width: 20px;
   height: 20px;
   border-radius: 6px;
-  font-size: 9px;
+  font-size: var(--text-avatar);
 }
 
 /* ===== menu（浅色菜单） ===== */
@@ -109,7 +109,7 @@
   min-height: 33px;
   padding: 6px 10px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #18181b;
 }
 .ant-select-dropdown.calm-select-popup-menu
@@ -180,7 +180,7 @@
   width: 30px;
   height: 30px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .calm-select-rich-text {
   display: flex;
@@ -190,7 +190,7 @@
   flex: 1;
 }
 .calm-select-rich-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #18181b;
   overflow: hidden;
@@ -198,7 +198,7 @@
   white-space: nowrap;
 }
 .calm-select-rich-desc {
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #71717a;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -225,7 +225,7 @@
   min-height: 34px;
   padding: 5px 10px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #132238;
 }
 .ant-select-dropdown.calm-select-popup-member
@@ -250,7 +250,7 @@
   white-space: nowrap;
 }
 .calm-select-member-note {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: #8492a1;
   flex: 0 0 auto;
 }
@@ -268,7 +268,7 @@
   padding: 6px 10px 2px;
 }
 .calm-select-group-title {
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: #8492a1;
   letter-spacing: 0.02em;
@@ -292,7 +292,7 @@
   min-height: 30px;
   padding: 4px 8px;
   border-radius: 5px;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #37352f;
 }
 .ant-select-dropdown.calm-select-popup-notion
@@ -317,7 +317,7 @@
   white-space: nowrap;
 }
 .calm-select-emoji {
-  font-size: 14px;
+  font-size: var(--text-lg);
   line-height: 1;
   flex: 0 0 auto;
 }

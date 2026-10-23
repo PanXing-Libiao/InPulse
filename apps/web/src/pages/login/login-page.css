@@ -94,7 +94,7 @@
   border: 1px solid var(--login-border);
   border-radius: 999px;
   background: #ffffff;
-  font-size: 16px;
+  font-size: var(--text-xl);
 }
 
 .login-card .ant-input-affix-wrapper {
@@ -103,7 +103,7 @@
   border: 1px solid var(--login-border);
   border-radius: 999px;
   background: #ffffff;
-  font-size: 16px;
+  font-size: var(--text-xl);
   box-shadow: none;
   transition:
     border-color 0.2s ease,
@@ -150,7 +150,7 @@
 
 .login-card .ant-checkbox-wrapper {
   color: #6b7280;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .login-card .ant-alert {
@@ -164,7 +164,7 @@
   border-radius: 999px;
   background: var(--login-yellow);
   color: var(--login-ink);
-  font-size: 17px;
+  font-size: var(--text-2xl);
   font-weight: 600;
   letter-spacing: 0.02em;
   box-shadow: 0 12px 26px rgba(247, 200, 0, 0.3);
@@ -196,7 +196,7 @@
 .login-transition-text {
   margin: 0;
   color: #6b7280;
-  font-size: 15px;
+  font-size: var(--text-xl);
 }
 
 .login-card-footer {
@@ -208,7 +208,7 @@
 
 .login-card-brand {
   color: #f0d57f;
-  font-size: 20px;
+  font-size: var(--text-3xl);
   font-style: italic;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -265,6 +265,6 @@
   }
 
   .login-card-brand {
-    font-size: 17px;
+    font-size: var(--text-2xl);
   }
 }

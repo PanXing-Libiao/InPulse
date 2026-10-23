@@ -34,7 +34,7 @@
   left: 12px;
   transform: translateY(-50%);
   color: #adb7c4;
-  font-size: 13.5px;
+  font-size: var(--text-lg);
   line-height: 1;
   pointer-events: none;
 }
@@ -87,7 +87,7 @@ div.ant-popover.calm-date-popover
   width: 258px;
   padding: 10px;
   color: #18181b;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 
 .calm-date-head {
@@ -144,7 +144,7 @@ div.ant-popover.calm-date-popover
 .calm-date-week span {
   padding: 4px 0;
   color: #a1a1aa;
-  font-size: 11px;
+  font-size: var(--text-sm);
   text-align: center;
 }
 
@@ -191,7 +191,7 @@ div.ant-popover.calm-date-popover
 
 .calm-date-time-label {
   color: #71717a;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .calm-date-time .calm-date-select {
