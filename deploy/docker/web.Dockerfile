@@ -38,15 +38,20 @@ RUN apt-get update \
 # 不刷新就会被新公告卡住 Trivy 镜像门禁（实测 perl-base 的 CRITICAL 与 gzip、
 # libpcre2-8-0、libsqlite3-0、libssh2-1t64 的 HIGH 使扫描失败；2026-10-08 又新增
 # libheif 的 CVE-2026-84450/CVE-2026-84451 与 openssl 的 CVE-2026-75804/
-# CVE-2026-84782 共 12 个 HIGH）。这里逐个点名
+# CVE-2026-84782 共 12 个 HIGH；2026-10-21 又新增 libexpat1 的 5 个 HIGH）。这里逐个点名
 # 升级而不用整体 upgrade，以保证 nginx 仍停在 1.30.x 评审基线；`--only-upgrade`
 # 只升级已安装的包：未安装的包跳过、已是最新的包不动，不安装新包、不删除任何包。
+# 项目只使用标准静态托管和反向代理；GeoIP、image-filter、njs、xslt 动态模块
+# 未被 nginx.conf 加载，却会带入 libxml2、libtiff、libx11 等额外攻击面，故移除。
 RUN apt-get update \
  && apt-get install -y --only-upgrade \
       gzip libexpat1 libpcre2-8-0 libsqlite3-0 libssh2-1t64 \
       perl perl-base libperl5.40 perl-modules-5.40 \
       libheif1 libheif-plugin-dav1d libheif-plugin-libde265 \
-      libssl3t64 openssl openssl-provider-legacy \
+      libssl3t64 openssl openssl-provider-legacy libexpat1 \
+ && apt-get purge -y \
+      nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt \
+ && apt-get autoremove -y \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 

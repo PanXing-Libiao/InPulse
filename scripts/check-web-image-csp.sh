@@ -27,6 +27,7 @@ export MSYS_NO_PATHCONV=1
 export MSYS2_ARG_CONV_EXCL="*"
 
 IMAGE="${1:-inpulse/web:ci}"
+PUBLIC_HOST="${WEB_CSP_PUBLIC_HOST:-test-inpulse.libiaorobot.com}"
 HTTP_PORT="${WEB_CSP_HTTP_PORT:-18080}"
 HTTPS_PORT="${WEB_CSP_HTTPS_PORT:-18443}"
 CONTAINER="inpulse-web-csp-$$"
@@ -95,6 +96,7 @@ nworkdir="$(to_native_path "$workdir")"
 nh() { to_native_path "$workdir/$1"; }   # 供 curl -o/-D 使用的原生输出路径
 scratch="$nworkdir/scratch/body"   # 可丢弃的响应体文件（不能用 /dev/null 或目录）
 mkdir -p "$workdir/scratch"
+printf '%s\n' 'inpulse-acme-probe' > "$workdir/acme-token"
 
 openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 \
   -keyout "$(nh tls_key)" \
@@ -111,14 +113,19 @@ docker run -d --name "$CONTAINER" \
   -p "127.0.0.1:${HTTPS_PORT}:8443" \
   -v "$(nh tls_cert):/run/secrets/tls_cert:ro" \
   -v "$(nh tls_key):/run/secrets/tls_key:ro" \
+  -v "$(nh acme-token):/usr/share/nginx/html/.well-known/acme-challenge/probe:ro" \
   "$IMAGE" >/dev/null
 
 https="https://127.0.0.1:${HTTPS_PORT}"
 http="http://127.0.0.1:${HTTP_PORT}"
 
+site_curl() {
+  curl -H "Host: $PUBLIC_HOST" "$@"
+}
+
 ready=0
 for _ in $(seq 1 30); do
-  if curl -fsSk -o "$scratch" -H 'Accept: text/html' "$https/"; then
+  if site_curl -fsSk -o "$scratch" -H 'Accept: text/html' "$https/"; then
     ready=1
     break
   fi
@@ -126,13 +133,22 @@ for _ in $(seq 1 30); do
 done
 [ "$ready" = "1" ] || fail "web image did not become ready on $https"
 
-# 1. HTTP 入口 308 跳转到同主机 HTTPS（ACMEC challenge 之外的请求）。
-curl -sS -o "$scratch" -D "$(nh http_headers)" "$http/login" || true
+# 1. HTTP 入口 308 跳转到白名单内主机的 HTTPS；恶意 Host 不得进入 Location。
+site_curl -sS -o "$scratch" -D "$(nh http_headers)" "$http/login" || true
 [ "$(status_of "$workdir/http_headers")" = "308" ] || fail "HTTP entry must return 308, got $(status_of "$workdir/http_headers")"
-grep -qi "^Location: https://" "$workdir/http_headers" || fail "HTTP entry must redirect to https"
+grep -qi "^Location: https://${PUBLIC_HOST}/login" "$workdir/http_headers" || fail "HTTP entry must redirect to the canonical HTTPS host"
+curl -sS -o "$scratch" -D "$(nh http_bad_host_headers)" -H 'Host: evil.example' "$http/login" || true
+[ "$(status_of "$workdir/http_bad_host_headers")" = "421" ] || fail "HTTP entry must reject an untrusted Host with 421"
+if grep -qi "^Location:" "$workdir/http_bad_host_headers"; then
+  fail "an untrusted Host must not produce a redirect Location"
+fi
+
+# ACME challenge 不受隐藏文件规则影响。
+site_curl -fsSk -D "$(nh acme_headers)" -o "$(nh acme_body)" "$https/.well-known/acme-challenge/probe"
+[ "$(status_of "$workdir/acme_headers")" = "200" ] || fail "ACME challenge must remain reachable"
 
 # 2. 入口 HTML：逐响应 nonce + 安全头 + no-store。
-curl -fsSk -D "$(nh h1)" -o "$(nh body1)" -H 'Accept: text/html' "$https/"
+site_curl -fsSk -D "$(nh h1)" -o "$(nh body1)" -H 'Accept: text/html' "$https/"
 [ "$(status_of "$workdir/h1")" = "200" ] || fail "entry HTML must return 200"
 nonce1="$(expect_nonce "$workdir/h1" "$workdir/body1" "entry HTML")"
 [ "$(header cache-control "$workdir/h1")" = "no-store" ] || fail "entry HTML must be no-store"
@@ -143,35 +159,50 @@ header permissions-policy "$workdir/h1" | grep -q "camera=()" || fail "entry HTM
 header strict-transport-security "$workdir/h1" | grep -q "max-age=31536000" || fail "entry HTML must set HSTS"
 
 # 3. 下一条响应必须换新 nonce，且不跨响应复用。
-curl -fsSk -D "$(nh h2)" -o "$(nh body2)" -H 'Accept: text/html' "$https/"
+site_curl -fsSk -D "$(nh h2)" -o "$(nh body2)" -H 'Accept: text/html' "$https/"
 nonce2="$(expect_nonce "$workdir/h2" "$workdir/body2" "second entry HTML")"
 [ "$nonce1" != "$nonce2" ] || fail "nonce must not be reused across responses"
 
 # 4. 客户端路由回退到同一入口位置（try_files -> /index.html）。
-curl -fsSk -D "$(nh h3)" -o "$(nh body3)" -H 'Accept: text/html' "$https/projects/1/activity?tab=all"
+site_curl -fsSk -D "$(nh h3)" -o "$(nh body3)" -H 'Accept: text/html' "$https/projects/1/activity?tab=all"
 [ "$(status_of "$workdir/h3")" = "200" ] || fail "SPA fallback must return 200"
 expect_nonce "$workdir/h3" "$workdir/body3" "SPA fallback" >/dev/null
 [ "$(header cache-control "$workdir/h3")" = "no-store" ] || fail "SPA fallback must be no-store"
 [ "$(header x-content-type-options "$workdir/h3")" = "nosniff" ] || fail "SPA fallback must keep security headers"
 
 # 5. 条件请求不能返回复用旧 nonce 的 304。
-curl -fsSk -D "$(nh h4)" -o "$scratch" -H 'Accept: text/html' \
+site_curl -fsSk -D "$(nh h4)" -o "$scratch" -H 'Accept: text/html' \
   -H "If-None-Match: \"$(header etag "$workdir/h1")\"" \
   -H "If-Modified-Since: $(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S GMT')" \
   "$https/"
 [ "$(status_of "$workdir/h4")" = "200" ] || fail "conditional request must return 200, got $(status_of "$workdir/h4")"
 
 # 6. 代理路径保留安全头与 no-store（API 未启动时为 502，仍必须带头）。
-curl -sSk -D "$(nh h5)" -o "$scratch" "$https/api/v1/health/live" || true
+site_curl -sSk -D "$(nh h5)" -o "$scratch" "$https/api/v1/health/live" || true
 [ "$(status_of "$workdir/h5")" = "502" ] || fail "API upstream is expected to be unreachable in this check"
 [ "$(header x-content-type-options "$workdir/h5")" = "nosniff" ] || fail "proxied API response must keep security headers"
 [ "$(header cache-control "$workdir/h5")" = "no-store" ] || fail "proxied API response must be no-store"
 [ "$(header x-frame-options "$workdir/h5")" = "DENY" ] || fail "proxied API response must keep X-Frame-Options"
 
-# 7. 哈希静态资源 immutable。
+# 7. HTTPS 同样拒绝未知 Host、隐藏版本号并阻断敏感路径。
+curl -sSk -D "$(nh h_bad_host)" -o "$scratch" -H 'Host: evil.example' "$https/" || true
+[ "$(status_of "$workdir/h_bad_host")" = "421" ] || fail "HTTPS entry must reject an untrusted Host with 421"
+server_header="$(header server "$workdir/h1")"
+case "$server_header" in
+  nginx|"") ;;
+  */*) fail "Server header must not expose the nginx version: $server_header" ;;
+  *) fail "unexpected Server header: $server_header" ;;
+esac
+for sensitive_path in /.git/config /.env /compose.yaml /secrets/ /api/openapi.json /robots.txt; do
+  site_curl -sSk -D "$(nh h_sensitive)" -o "$scratch" "$https$sensitive_path" || true
+  [ "$(status_of "$workdir/h_sensitive")" = "404" ] || fail "$sensitive_path must return 404, got $(status_of "$workdir/h_sensitive")"
+  [ "$(header x-content-type-options "$workdir/h_sensitive")" = "nosniff" ] || fail "$sensitive_path 404 must keep security headers"
+done
+
+# 8. 哈希静态资源 immutable。
 asset_path="$(grep -o '/assets/[^"]*\.js' "$workdir/body1" | head -n 1)"
 [ -n "$asset_path" ] || fail "hashed asset path missing in entry HTML"
-curl -fsSk -D "$(nh h6)" -o "$scratch" "$https$asset_path"
+site_curl -fsSk -D "$(nh h6)" -o "$scratch" "$https$asset_path"
 [ "$(status_of "$workdir/h6")" = "200" ] || fail "hashed asset must return 200"
 header cache-control "$workdir/h6" | grep -q "immutable" || fail "hashed asset must be immutable"
 

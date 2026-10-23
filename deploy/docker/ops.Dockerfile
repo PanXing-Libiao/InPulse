@@ -62,12 +62,17 @@ RUN apt-get update \
 # /etc/ssl/private/ssl-cert-snakeoil.key；Trivy 镜像门禁把该公开占位 key 判为
 # HIGH secret 并使 CI 失败，而 ops 只运行 pg_dump 客户端与 Node，不需要任何
 # 本机 TLS 服务端证书，因此删除占位 key/pem 与其悬空的 CA 哈希链接。
+# 使用 --no-install-recommends，并移除 wget、邮件服务和 libunbound 等仅由推荐依赖
+# 带入、pg_dump/pg_restore 与备份流程不需要的组件，减少无上游补丁的扫描面。
 ARG PGDG_CLIENT_VERSION=18.6-1.pgdg12+2
 RUN apt-get update \
- && apt-get install -y -V ca-certificates lsb-release wget postgresql-common \
+ && apt-get install -y --no-install-recommends -V ca-certificates lsb-release wget postgresql-common \
  && /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y \
  && apt-get update \
- && apt-get install -y -V postgresql-client-18=${PGDG_CLIENT_VERSION} \
+ && apt-get install -y --no-install-recommends -V postgresql-client-18=${PGDG_CLIENT_VERSION} \
+ && apt-get purge -y \
+      bsd-mailx exim4-base exim4-config exim4-daemon-light libgnutls-dane0 libunbound8 wget \
+ && apt-get autoremove -y \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
  && rm -f /etc/ssl/private/ssl-cert-snakeoil.key /etc/ssl/certs/ssl-cert-snakeoil.pem \

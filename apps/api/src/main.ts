@@ -3,6 +3,7 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
+import { disableFrameworkFingerprint } from "./http-security.js";
 import { trustedProxySetting } from "./trusted-proxy.js";
 
 /**
@@ -13,6 +14,7 @@ const JSON_BODY_LIMIT = "1mb";
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  disableFrameworkFingerprint(app);
   app.useBodyParser("json", { limit: JSON_BODY_LIMIT });
   const express = app.getHttpAdapter().getInstance() as {
     set(setting: string, value: string): unknown;

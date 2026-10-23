@@ -412,8 +412,8 @@ for _ in $(seq 1 60); do
 done
 echo "[health] api=$status"
 $COMPOSE ps --format '{{.Name}} | {{.Status}}'
-curl -sk -o /dev/null -w '[probe] /health/ready -> %{http_code}\n' https://127.0.0.1/health/ready
-curl -sk -o /dev/null -w '[probe] / -> %{http_code}\n' https://127.0.0.1/
+curl -sk -H 'Host: test-inpulse.libiaorobot.com' -o /dev/null -w '[probe] /health/ready -> %{http_code}\n' https://127.0.0.1/health/ready
+curl -sk -H 'Host: test-inpulse.libiaorobot.com' -o /dev/null -w '[probe] / -> %{http_code}\n' https://127.0.0.1/
 
 if [ "$status" != "healthy" ]; then
   echo "[FAIL] api 未达到 healthy，最近日志："
