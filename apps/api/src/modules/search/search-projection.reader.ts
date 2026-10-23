@@ -60,7 +60,7 @@ export class PostgresSearchProjectionReader implements SearchProjectionReader {
     const projectIds = [...new Set(input.projectIds)];
     const rows = await this.#sql.unsafe<SearchProjectionRow[]>(
       `SELECT
-         id::text,
+         sp.id::text AS id,
          project_id,
          entity_type,
          entity_id,
@@ -69,13 +69,13 @@ export class PostgresSearchProjectionReader implements SearchProjectionReader {
          record_id,
          title,
          summary
-       FROM app.search_projection
+       FROM app.search_projection AS sp
       WHERE normalized_search_text &@~
             app.pgroonga_query_escape($1)
         AND project_id = ANY($2::int[])
         AND visibility_scope = ANY($3::text[])
-        AND id > $4::bigint
-      ORDER BY id ASC
+        AND sp.id > $4::bigint
+      ORDER BY sp.id ASC
       LIMIT $5`,
       [
         input.normalizedQuery,

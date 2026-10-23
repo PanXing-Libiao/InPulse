@@ -436,6 +436,55 @@ describe("SearchQueryService with real PostgreSQL", () => {
     expect(second.hasMore).toBe(second.nextCursor !== null);
   });
 
+  test("cursor pagination orders numeric ids across digit widths", async () => {
+    const query = "cursorregression20261023";
+    const projectId = projectIds.get("p1") as number;
+    const base = 10n ** 15n - 5n;
+    const expectedIds = Array.from(
+      { length: 25 },
+      (_, index) => base + BigInt(index),
+    );
+    await runtime.begin(async (transaction) => {
+      for (const [index, id] of expectedIds.entries()) {
+        const entityId = seedOffset + 4_000_000 + index;
+        const title = `游标排序回归 ${String(index + 1).padStart(2, "0")}`;
+        await transaction`
+          INSERT INTO app.search_projection (
+            id, project_id, entity_type, entity_id, title, summary, raw_text,
+            normalized_search_text, visibility_scope, source_status, source_row_version
+          ) OVERRIDING SYSTEM VALUE
+          VALUES (
+            ${id.toString()}, ${projectId}, ${"TASK"}, ${entityId}, ${title}, ${"游标排序回归"},
+            ${title + " " + query}, ${normalizeSearchText(query)}, ${"MEMBER"},
+            ${"ACTIVE"}, 1
+          )
+        `;
+      }
+    });
+    try {
+      const ids: string[] = [];
+      let after: string | undefined;
+      for (let page = 0; page < 10; page += 1) {
+        const result = await service.search({
+          actorUserId: memberA,
+          query,
+          limit: 5,
+          ...(after === undefined ? {} : { after }),
+        });
+        ids.push(...result.items.map((item) => item.id));
+        if (!result.hasMore) break;
+        after = result.nextCursor ?? undefined;
+      }
+      expect(ids).toEqual(expectedIds.map((id) => id.toString()));
+    } finally {
+      await runtime`
+        DELETE FROM app.search_projection
+         WHERE project_id = ${projectId}
+           AND normalized_search_text = ${normalizeSearchText(query)}
+      `;
+    }
+  });
+
   test("golden query recall at top-20 remains at least 90%", async () => {
     const seed = buildSearchSeed();
     expect(goldenQueries).toHaveLength(200);
