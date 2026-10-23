@@ -17,12 +17,12 @@ import {
   InpulseIcon,
   type InpulseIconName,
 } from "@features/common/components/InpulseIcon";
-import { useProjectTier } from "@features/common/project-tier-context";
 import { NotificationBell } from "@features/notifications/NotificationBell";
 import { createNotificationTaskOpenState } from "@features/notifications/notification-task-state";
 import { WecomBindingModal } from "@features/settings/WecomBindingModal";
 import { WecomBindingPromptModal } from "@features/settings/WecomBindingPromptModal";
 import { ProjectTree } from "@features/project-tree/ProjectTree";
+import { useProjects } from "@features/projects/project-query";
 import { preloadRoutePath } from "../router/route-preload";
 import { treeScopeOf } from "@features/project-tree/tree-selection";
 import { useShellCounters } from "./shell-data";
@@ -178,6 +178,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [wecomOpen, setWecomOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // 桌面端把左侧导航整体收起（≤700px 走抽屉与汉堡开关，该状态不参与）。
@@ -187,6 +188,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const navAnimationTimerRef = useRef<number | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const accountRootRef = useRef<HTMLDivElement>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
   const { status, user, logout } = useAuth();
   const selectedKey = resolveSelectedKey(location.pathname);
   const catalogScope = useMemo(
@@ -194,9 +196,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     [location.pathname],
   );
   const treeScope = useMemo(() => treeScopeOf(catalogScope), [catalogScope]);
-  // 侧栏项目树与项目列表页的滑块共享同一分档（ProjectTierProvider）：
-  // 分组标题随档位说明当前列的是哪一档项目。
-  const { tier } = useProjectTier();
   const displayName = user?.name.trim() || "访客";
   const avatarText = user?.name.trim().charAt(0) || "访";
   const roleLabel = user?.isAdmin ? "系统管理员" : user ? "成员" : "未登录";
@@ -207,12 +206,22 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     client: projectClient,
     enabled: status === "authenticated",
   });
+  const accessibleProjects = useProjects({
+    client: projectClient,
+    enabled: status === "authenticated",
+  });
+  const projectCount = accessibleProjects.data?.items.length ?? 0;
   const shellCounts: Readonly<Record<string, number>> = useMemo(
     () => ({
       tasks: shellCounters.myOpenTaskCount ?? 0,
+      projects: projectCount,
       issues: shellCounters.openLeftoverCount ?? 0,
     }),
-    [shellCounters.myOpenTaskCount, shellCounters.openLeftoverCount],
+    [
+      shellCounters.myOpenTaskCount,
+      shellCounters.openLeftoverCount,
+      projectCount,
+    ],
   );
   const projectPage = useMemo(
     () => resolveProjectPage(location.pathname),
@@ -280,6 +289,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [accountOpen]);
+
+  useEffect(() => {
+    if (!projectMenuOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!projectMenuRef.current?.contains(event.target as Node)) {
+        setProjectMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProjectMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [projectMenuOpen]);
 
   const handleNavigation = (path: string) => {
     setMobileNavOpen(false);
@@ -390,10 +421,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           type="button"
           className={"nav-item" + (selectedKey === item.key ? " active" : "")}
           aria-current={selectedKey === item.key ? "page" : undefined}
+          aria-expanded={item.key === "projects" ? projectMenuOpen : undefined}
+          {...(item.key === "projects"
+            ? { "aria-controls": "sidebar-project-menu" }
+            : {})}
           onPointerEnter={() => void prepareNavigation()}
           onPointerDown={() => void prepareNavigation()}
           onFocus={() => void prepareNavigation()}
           onClick={() => {
+            // 「项目列表」同时完成两件事：跳到项目列表页，并展开侧栏项目抽屉。
+            if (item.key === "projects") {
+              setProjectMenuOpen(true);
+            }
             void prepareNavigation().finally(() => {
               navigationPreparationRef.current.delete(item.key);
               handleNavigation(item.path);
@@ -403,7 +442,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           {item.icon ? <InpulseIcon name={item.icon} size={17} /> : null}
           <span>{item.label}</span>
           {count > 0 ? (
-            <em aria-hidden="true" title={`${count} 项待处理`}>
+            <em
+              aria-hidden="true"
+              title={
+                item.key === "projects"
+                  ? `${count} 个项目`
+                  : `${count} 项待处理`
+              }
+            >
               {count}
             </em>
           ) : null}
@@ -499,29 +545,32 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           </div>
           <nav className="nav-group" aria-label="工作区导航">
             <p>工作台</p>
-            {workspaceNavigation.map(renderNavigationItem)}
-            {projectScopeId === null &&
-            location.pathname !== "/projects" ? null : (
-              <>
-                {/* 项目列表页也展开项目树：点「项目列表」即可直接进具体项目，
-                    不必先进某个项目再切换。 */}
-                <p className="nav-section">
-                  {projectScopeId !== null
-                    ? "当前项目"
-                    : tier === "maintenance"
-                      ? "维护中项目"
-                      : "项目"}
-                </p>
-                <div className="nav-tree-panel">
-                  <ProjectTree
-                    activeScope={treeScope}
-                    activePageSegment={projectPage?.segment ?? null}
-                    onNavigate={handleNavigation}
-                    onPreloadPath={preloadRoutePath}
-                    {...(projectClient ? { client: projectClient } : {})}
-                  />
+            {workspaceNavigation.map((item) =>
+              item.key === "projects" ? (
+                <div
+                  key={item.key}
+                  className="nav-project-menu"
+                  ref={projectMenuRef}
+                >
+                  {renderNavigationItem(item)}
+                  {projectMenuOpen ? (
+                    <div
+                      id="sidebar-project-menu"
+                      className="nav-tree-panel project-menu-panel"
+                    >
+                      <ProjectTree
+                        activeScope={treeScope}
+                        activePageSegment={projectPage?.segment ?? null}
+                        onNavigate={handleNavigation}
+                        onPreloadPath={preloadRoutePath}
+                        {...(projectClient ? { client: projectClient } : {})}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-              </>
+              ) : (
+                renderNavigationItem(item)
+              ),
             )}
             <p className="nav-section">交付记录</p>
             {deliveryNavigation.map(renderNavigationItem)}

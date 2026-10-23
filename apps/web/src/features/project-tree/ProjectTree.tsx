@@ -452,8 +452,6 @@ const ProjectBranch: React.FC<ProjectBranchProps> = ({
         <span className="tree-label">
           <strong>{item.name}</strong>
         </span>
-        {/* 项目编码是唯一短标识：同名/相近的项目行靠它区分。 */}
-        <span className="tree-code">{item.code}</span>
       </button>
       <div
         className="tree-children"
