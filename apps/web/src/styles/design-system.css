@@ -3303,18 +3303,6 @@ a:focus-visible {
   font-size: 12px;
   padding: 5px;
 }
-.module-information {
-  margin-bottom: 24px;
-  padding: 16px 20px;
-  background: white;
-  border: 1px solid #e3eaf2;
-  border-radius: 10px;
-}
-.module-information p {
-  color: #657a90;
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
 .calm-description p {
   white-space: pre-wrap;
 }

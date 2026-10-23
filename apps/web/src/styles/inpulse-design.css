@@ -1348,19 +1348,12 @@
   min-width: 0;
 }
 
-.calm-disclosure.module-information {
-  margin: 0 0 14px;
-  padding: 12px 14px;
-  border: 1px solid #e3eaf2;
-  border-radius: 9px;
-  background: #fbfdff;
-}
-
-.module-information summary {
-  color: #37566f;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+/* 模块页把说明留在标题下方：全局浏览页隐藏页头段落的规则在这里显式豁免。 */
+.page-header > div > p.module-description {
+  display: block;
+  max-width: 760px;
+  white-space: pre-wrap;
+  line-height: 1.7;
 }
 
 /* 页面标题行：返回箭头紧贴标题，取代原先的文字面包屑行。 */

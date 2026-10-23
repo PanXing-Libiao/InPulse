@@ -16,6 +16,7 @@ import {
   type InpulseApiClient,
   type CurrentUserResponse,
   type FeatureItem,
+  type ModuleItem,
 } from "@generated/api";
 import { FeaturesPageView } from "./FeaturesPageView";
 import { AuthStateProvider } from "@features/auth/auth-context";
@@ -93,6 +94,51 @@ function mountDetail(client: InpulseApiClient, featureId: number) {
     </ConfigProvider>,
   );
 }
+
+describe("模块说明展示", () => {
+  it("只在模块标题下方保留一处说明，不再渲染折叠资料框", async () => {
+    const module: ModuleItem = {
+      id: 4,
+      projectId: 2,
+      code: "PR-M-1",
+      name: "退款模块",
+      description: "弱网/断网下的本地暂存与数据一致性。",
+      kind: "NORMAL",
+      sortOrder: 0,
+      rowVersion: 1,
+      createdAt: "2026-09-09T00:00:00.000Z",
+      updatedAt: "2026-09-09T00:00:00.000Z",
+      stats: {
+        activeFeatureCount: 0,
+        openTaskCount: 0,
+        completedTaskCount: 0,
+      },
+    };
+    const api = {
+      listFeatures: vi.fn().mockResolvedValue({ items: [] }),
+      listModules: vi.fn().mockResolvedValue({ items: [module] }),
+      listModuleTasks: vi.fn().mockResolvedValue({ items: [] }),
+      getProject: vi
+        .fn()
+        .mockResolvedValue({ project: { id: 2, name: "项目" } }),
+    } as unknown as InpulseApiClient;
+
+    mount(api);
+
+    expect(
+      await screen.findByRole("heading", { name: "退款模块" }),
+    ).toBeVisible();
+    // 说明只跟在模块标题下出现一次，折叠框和「模块说明」小标题都不再渲染。
+    const description = screen.getByText("弱网/断网下的本地暂存与数据一致性。");
+    expect(description).toBeVisible();
+    expect(description).toHaveClass("module-description");
+    expect(
+      screen.getAllByText("弱网/断网下的本地暂存与数据一致性。"),
+    ).toHaveLength(1);
+    expect(document.querySelector(".module-information")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "模块说明" })).toBeNull();
+  });
+});
 
 /** 读取容器内每个徽章的 `badge-*` class，用于断言「同一文案全站同色」。 */
 const badgeTones = (selector: string): string[] =>

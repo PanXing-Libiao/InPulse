@@ -53,7 +53,7 @@ export interface AppModalProps extends Omit<
    * 无障碍名称。不传时取 `title`、再取 `eyebrow` 的字符串值。
    * 供自渲 `.drawer-header` 的弹层（任务详情等）单独指定 `role="dialog"` 的名字。
    */
-  readonly label?: string;
+  readonly label?: string | undefined;
   /** 头部小标题，渲染为设计契约的 `.detail-label`（如「项目名 / 模块名」）。 */
   readonly eyebrow?: ReactNode;
   /** 关闭按钮的无障碍标签；设计稿按场景给出「关闭」「关闭任务详情」等文案。 */
@@ -73,6 +73,12 @@ export interface AppModalProps extends Omit<
    * 所以不接受 antd 的函数式 `footer`，也不再走 antd 的原生 footer。
    */
   readonly footer?: ReactNode;
+  /**
+   * 同一个弹层保持打开、只在内部切换内容时（如任务详情 → 编辑任务），
+   * 传入随内容变化的稳定值。`active` 不变时打开逻辑不会重跑，
+   * 靠这个值把初始焦点移回新内容的第一个可聚焦元素。
+   */
+  readonly focusToken?: string | number;
 }
 
 function mergeClass(...names: (string | undefined)[]): string {
@@ -180,6 +186,7 @@ export function AppModal({
   body = false,
   headerActions,
   footer,
+  focusToken,
   title,
   closable,
   className,
@@ -213,17 +220,28 @@ export function AppModal({
   const mergedMask =
     typeof mask === "boolean" ? mask : { ...maskConfig, closable: dismissable };
 
+  const priorFocus = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!active) return;
-    const box = boxRef.current;
-    const prior = document.activeElement as HTMLElement | null;
+    priorFocus.current = document.activeElement as HTMLElement | null;
     const unlock = lockScroll();
-    box?.querySelector<HTMLElement>(FOCUSABLE)?.focus({ preventScroll: true });
     return () => {
       unlock();
+      const prior = priorFocus.current;
+      priorFocus.current = null;
       if (prior?.isConnected) prior.focus({ preventScroll: true });
     };
   }, [active]);
+
+  // 同一弹层保持打开、只替换内容时（任务详情 → 编辑任务），上面的打开逻辑
+  // 不会重跑；靠 focusToken 把初始焦点移到新内容的第一个可聚焦元素。
+  useEffect(() => {
+    if (!active) return;
+    boxRef.current
+      ?.querySelector<HTMLElement>(FOCUSABLE)
+      ?.focus({ preventScroll: true });
+  }, [active, focusToken]);
 
   // 入栈/出栈：关闭与卸载都要把自己从栈里摘掉，避免残留项顶住 Esc。
   useEffect(() => {

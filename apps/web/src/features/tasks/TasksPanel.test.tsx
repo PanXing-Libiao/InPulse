@@ -10,7 +10,12 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { ApiError, type InpulseApiClient, type TaskItem } from "@generated/api";
+import {
+  ApiError,
+  type InpulseApiClient,
+  type ModuleItem,
+  type TaskItem,
+} from "@generated/api";
 import { AuthStateProvider } from "@features/auth/auth-context";
 import { TasksPanel } from "./TasksPanel";
 import { mergeTask, taskEdit } from "./task-query";
@@ -181,6 +186,112 @@ describe("F-14 功能级任务入口", () => {
     expect(
       screen.queryByRole("button", { name: "自定义归属新建任务" }),
     ).toBeNull();
+  });
+});
+
+describe("F-14 模块级任务入口", () => {
+  it("统一为固定归属当前模块的「新建任务」，不再提供自定义归属", async () => {
+    const module: ModuleItem = {
+      id: 3,
+      projectId: 2,
+      code: "PR-M-1",
+      name: "离线与同步",
+      description: "",
+      kind: "NORMAL",
+      sortOrder: 0,
+      rowVersion: 1,
+      createdAt: "2026-09-09T00:00:00.000Z",
+      updatedAt: "2026-09-09T00:00:00.000Z",
+      stats: {
+        activeFeatureCount: 0,
+        openTaskCount: 0,
+        completedTaskCount: 0,
+      },
+    };
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <MemoryRouter>
+            <AuthStateProvider>
+              <TasksPanel
+                projectId={2}
+                moduleId={3}
+                featureId={null}
+                writable
+                client={client({
+                  listModuleTasks: vi.fn().mockResolvedValue({ items: [] }),
+                  listModuleTaskAssignees: vi
+                    .fn()
+                    .mockResolvedValue({ items: [] }),
+                  listModules: vi.fn().mockResolvedValue({ items: [module] }),
+                })}
+              />
+            </AuthStateProvider>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </ConfigProvider>,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "自定义归属新建任务" }),
+    ).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "新建任务" }));
+    const dialog = within(
+      await screen.findByRole("dialog", { name: "新建任务" }),
+    );
+    // 归属已锁定为当前模块：弹窗只回显模块名，不再提供范围/模块选择。
+    expect(dialog.getByText("所属模块")).toBeInTheDocument();
+    expect(await dialog.findByText("离线与同步")).toBeInTheDocument();
+  });
+
+  it("按搜索关键词过滤模块任务，并把总数回传给页面", async () => {
+    const moduleTask = {
+      ...item,
+      scopeType: "MODULE" as const,
+      featureId: null,
+      impactFeatureIds: [],
+    };
+    const onCount = vi.fn();
+    render(
+      <ConfigProvider theme={{ token: { motion: false } }}>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <MemoryRouter>
+            <AuthStateProvider>
+              <TasksPanel
+                projectId={2}
+                moduleId={3}
+                featureId={null}
+                writable
+                showHeader={false}
+                search="查无此项"
+                onSearchChange={() => undefined}
+                onCountChange={onCount}
+                client={client({
+                  listModuleTasks: vi
+                    .fn()
+                    .mockResolvedValue({ items: [moduleTask] }),
+                  listModuleTaskAssignees: vi
+                    .fn()
+                    .mockResolvedValue({ items: [] }),
+                })}
+              />
+            </AuthStateProvider>
+          </MemoryRouter>
+        </QueryClientProvider>
+      </ConfigProvider>,
+    );
+
+    expect(await screen.findByText("没有匹配的任务")).toBeInTheDocument();
+    expect(screen.queryByText("退款任务")).toBeNull();
+    await waitFor(() => expect(onCount).toHaveBeenCalledWith(1));
   });
 });
 
@@ -426,6 +537,17 @@ describe("F-14 task editing", () => {
     fireEvent.click(modal.getByRole("button", { name: /保\s*存/ }));
     await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
     expect(updateTask.mock.calls[1]![5].headers["If-Match"]).toBe('"2"');
+  });
+  it("keeps one modal surface when switching from detail to edit", async () => {
+    mount(client());
+    fireEvent.click(
+      await screen.findByRole("article", { name: /^查看任务详情/ }),
+    );
+    const detail = await screen.findByRole("dialog", { name: "任务详情" });
+    fireEvent.click(await screen.findByRole("button", { name: "编辑任务" }));
+    const editor = await screen.findByRole("dialog", { name: "编辑任务" });
+    // 详情与编辑共用一个弹层：同一个 DOM 节点原地换内容，遮罩不会卸载重播。
+    expect(editor).toBe(detail);
   });
   it("shows read failure/retry and disables creation in archived feature", async () => {
     mount(
