@@ -7071,3 +7071,13 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | DOC-IMPORT-AI-TARGET-GATE-001     | 静态门禁                                        | 类型、格式、契约与依赖边界                             | 全工作区 `pnpm typecheck`（8 workspace）通过；`pnpm lint`、`pnpm format:check` 通过；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由通过；`permissions:check` 129 / 129 通过；`check:frontend:boundaries` 389 模块 / 2026 依赖无违规；`check:docs`（144 个 Markdown）、`check:secrets`（1420 个文件）与 `git diff --check` 通过；`pnpm build` 全工作区生产构建通过     | 本地通过（2026-10-22）                            |
 
 已知边界：目标是“AI 整理范围”，不是数据库写入锁；用户仍可在预览前修改草稿，最终导入继续走 ADR-064 的内容驱动链路。服务端只新增一个只读定位事务，不写审计、不生成幂等记录，上游 AI 调用仍在事务外。无新增路由、数据库迁移或依赖；不传 `target` 的旧调用保持原行为。
+
+## 2026-10-23 发布前依赖安全补丁与全量验收
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| RELEASE-DEP-001 | 依赖安全 | 开发工具链补丁 | vite 8.2.2 -> 8.2.4；vitest、@vitest/mocker、@vitest/spy 5.0.0 -> 5.0.3；lockfile 由 pnpm 生成 | 本地通过（2026-10-23） |
+| RELEASE-GATE-001 | 静态门禁 | 全量检查 | pnpm check 全绿；pnpm audit 为 0 个已知漏洞 | 本地通过（2026-10-23） |
+| RELEASE-TEST-001 | 测试 | 发布回归 | 单元测试 1729/1729；真实 PostgreSQL 集成 674/674；Playwright 89/89；搜索专项 20/20 | 本地通过（2026-10-23） |
+| RELEASE-IMAGE-001 | 发布镜像 | 构建、扫描与运行 | 五个生产镜像完成构建与扫描；依赖补丁后重建 Web 镜像并复扫；Trivy CRITICAL/HIGH 为 0；Web CSP 冒烟通过；空库迁移 56/56；API 容器 live/ready 200、未登录搜索 401 | 本地通过（2026-10-23） |
+| RELEASE-GAP-001 | 外部联调 | 发布前置项 | 真实 SSO/Casdoor、企业微信机器人、外部 AI 上游与 GitHub Actions 尚未在本轮验证；迁移镜像的本地验收构建使用镜像源，正式镜像须由 CI 重建 | 待测试环境与 CI |
