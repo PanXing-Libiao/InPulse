@@ -116,8 +116,9 @@ api 容器内访问 Casdoor discovery 返回 200（`egress` 生效）。
 - 换源用 `-Mirror <host>`。`docker.1ms.run` 于 2026-10-15 实测可拉取 `node`、`postgres`；
   `docker.m.daocloud.io` 对 `library/*` 返回 502。
 
-- 若构建容器连官方 npm registry 不稳定、Corepack 下载 pnpm 本身失败，可加
-  `-CorepackRegistry https://registry.npmmirror.com`；未传参时仍使用官方 registry。
+- 若构建容器连官方 npm registry 不稳定，可加
+  `-CorepackRegistry https://registry.npmmirror.com`；该参数同时用于 Corepack 下载 pnpm 和 pnpm 安装依赖，
+  未传参时仍使用官方 registry。
 
 基础镜像清单直接从 `deploy/docker/*.Dockerfile` 解析，改 Dockerfile 不用改脚本。
 

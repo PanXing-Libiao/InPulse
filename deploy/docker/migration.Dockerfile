@@ -22,7 +22,7 @@ COPY apps/web/package.json apps/web/
 COPY packages/api-contract/package.json packages/api-contract/
 COPY packages/eslint-config/package.json packages/eslint-config/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --registry "$COREPACK_NPM_REGISTRY"
 
 COPY . .
 

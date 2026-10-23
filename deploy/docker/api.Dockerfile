@@ -24,7 +24,7 @@ COPY packages/api-contract/package.json packages/api-contract/
 COPY packages/canonical-json/package.json packages/canonical-json/
 COPY packages/eslint-config/package.json packages/eslint-config/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --registry "$COREPACK_NPM_REGISTRY"
 
 COPY . .
 
