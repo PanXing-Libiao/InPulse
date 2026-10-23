@@ -15,6 +15,8 @@ FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd
 WORKDIR /workspace
 
 ENV CI=true
+ARG COREPACK_NPM_REGISTRY=https://registry.npmjs.org
+ENV COREPACK_NPM_REGISTRY=${COREPACK_NPM_REGISTRY}
 RUN corepack enable
 
 # 与 API/迁移镜像同构：依赖清单先复制，安装层不随源码变化失效；新增 workspace

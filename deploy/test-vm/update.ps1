@@ -73,6 +73,7 @@ param(
   [string]$VmPassword,
   [string]$SshKey,
   [string]$Mirror,
+  [string]$CorepackRegistry,
   [switch]$NoMirror,
   [string]$Version = '0.1.0',
   [string]$Tag,
@@ -113,6 +114,7 @@ if ([string]::IsNullOrWhiteSpace($VmPassword)) {
   $VmPassword = [Environment]::GetEnvironmentVariable('INPULSE_VM_PASSWORD')
 }
 $Mirror = Get-Default $Mirror 'INPULSE_DOCKER_MIRROR' 'docker.1ms.run'
+$CorepackRegistry = Get-Default $CorepackRegistry 'INPULSE_COREPACK_REGISTRY' 'https://registry.npmjs.org'
 
 $imageMap = [ordered]@{
   'api'          = @{ Dockerfile = 'deploy/docker/api.Dockerfile';          Image = 'inpulse/api';          EnvKey = 'API_IMAGE_REF' }
@@ -335,7 +337,7 @@ if (-not $SkipBuild) {
     $logPath = Join-Path $workDir "build-$t.log"
     Write-Host ''
     Write-Host "=== 构建 $localImage ===" -ForegroundColor Cyan
-    & docker build --progress plain -f (Join-Path $Repo $m.Dockerfile) -t $localImage $Repo 2>&1 |
+    & docker build --progress plain --build-arg "COREPACK_NPM_REGISTRY=$CorepackRegistry" -f (Join-Path $Repo $m.Dockerfile) -t $localImage $Repo 2>&1 |
       ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { [string]$_ } } | Tee-Object -FilePath $logPath
     Test-ExitCode $LASTEXITCODE "构建 $t（完整日志：$logPath）"
     Write-Host "=== 导出 $t.tar ===" -ForegroundColor Cyan
