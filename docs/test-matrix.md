@@ -7071,3 +7071,17 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | DOC-IMPORT-AI-TARGET-GATE-001     | 静态门禁                                        | 类型、格式、契约与依赖边界                             | 全工作区 `pnpm typecheck`（8 workspace）通过；`pnpm lint`、`pnpm format:check` 通过；`contract:drift` 6 个产物一致；`contract:validate` 129 条路由通过；`permissions:check` 129 / 129 通过；`check:frontend:boundaries` 389 模块 / 2026 依赖无违规；`check:docs`（144 个 Markdown）、`check:secrets`（1420 个文件）与 `git diff --check` 通过；`pnpm build` 全工作区生产构建通过     | 本地通过（2026-10-22）                            |
 
 已知边界：目标是“AI 整理范围”，不是数据库写入锁；用户仍可在预览前修改草稿，最终导入继续走 ADR-064 的内容驱动链路。服务端只新增一个只读定位事务，不写审计、不生成幂等记录，上游 AI 调用仍在事务外。无新增路由、数据库迁移或依赖；不传 `target` 的旧调用保持原行为。
+
+## 2026-10-21 域名发布前安全加固与测试 VM 同步
+
+本轮处理域名对外发布前的扫描项，并按仓库规则先本地验证、后同步公司测试 VM。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| SEC-FINGERPRINT-001 | API 单元 + 真实 HTTP | 隐藏框架指纹 | `disableFrameworkFingerprint` 关闭 Express `X-Powered-By`；真实 HTTP 响应断言无该头，2 例通过 | 本地通过（2026-10-21） |
+| SEC-NGINX-001 | 镜像级 Nginx 冒烟 | Host 白名单与隐藏路径 | 正常 Host 200/308；`evil.example` 返回 421 且无 `Location`；`.git`、`.env`、`compose.yaml`、`secrets/`、`api/openapi.json`、`robots.txt` 均 404；ACME 路径仍走静态文件规则；`Server` 仅 `nginx` 无版本号 | 本地与测试 VM 通过（2026-10-21） |
+| SEC-DEPENDENCY-001 | 依赖审计 + Web 构建 | Vite 安全更新 | `vite` 8.2.2 -> 8.2.4 修复 `GHSA-587h-7wmj-h5pm`；公共 registry `pnpm audit --audit-level=high` 无 HIGH/CRITICAL，仍有 1 个 moderate（`mammoth -> argparse -> sprintf-js`，上游暂无修复） | 本地通过（2026-10-21） |
+| SEC-IMAGE-001 | 生产镜像 Trivy | 容器漏洞 | CI 同口径 `--scanners vuln --severity CRITICAL,HIGH --ignore-unfixed`：`api`、`web`、`db-bootstrap` 均为 0；db 实际安装 `libcurl4t64 8.14.1-2+deb13u7` | 本地通过（2026-10-21） |
+| SEC-VM-001 | 测试 VM 部署 | 备份、健康与数据 | 同步前 `pre-sync-20261021-172814.dump` 经 `pg_restore --list` 校验 758 项；`api`/`web`/`db` 全部 healthy；`/health/ready`、`/`、`/login` 200，匿名 `/api/v1/users` 401，SSO start 302，Casdoor discovery 200；迁移 `0 applied, 56 present`；数据 users 14、projects 7、audit_logs 1687、sessions 148，库 186 MB，PGroonga 4.0.8；`pg_data` 卷仍在 `/var/lib/postgresql` | 测试 VM 通过（2026-10-21） |
+
+已知边界：本轮未重跑全量 Playwright、真实 PostgreSQL 集成与 GitHub Actions；`web` 单元测试为 121 文件 1021 例通过，API 单元测试为 82 文件 526 例通过。Nginx 的 `/health/live` 与 `/health/ready` 历史 location 用自身的 `Cache-Control` 覆盖了 server 级 `add_header`，因此这两个探针响应未携带 HSTS/CSP；首页与业务路由安全头已验证正常，探针端点不承载页面内容。`docker compose config` 对非 Swarm secret 的 uid/gid/mode 仍会打印预期 warning，不影响部署。

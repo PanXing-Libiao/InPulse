@@ -851,6 +851,71 @@ async function checkDockerfiles() {
       "deploy/docker/nginx.conf: must include the security headers snippet in every location",
     );
   }
+  if (!/^\s*server_tokens\s+off;/m.test(nginxConf)) {
+    problems.push(
+      "deploy/docker/nginx.conf: server_tokens must be off to avoid exposing the nginx version",
+    );
+  }
+  if (/return\s+308\s+https:\/\/\$host\b/.test(nginxConf)) {
+    problems.push(
+      "deploy/docker/nginx.conf: HTTP redirect must not interpolate an untrusted $host",
+    );
+  }
+  if (!/map\s+\$host\s+\$inpulse_https_origin\b/.test(nginxConf)) {
+    problems.push(
+      "deploy/docker/nginx.conf: must validate Host via the $inpulse_https_origin map",
+    );
+  }
+  if (
+    !/if\s*\(\$inpulse_https_origin\s*=\s*""\)\s*\{\s*return\s+421;/.test(
+      nginxConf,
+    )
+  ) {
+    problems.push(
+      "deploy/docker/nginx.conf: untrusted Host values must return 421",
+    );
+  }
+  if (!/return\s+308\s+\$inpulse_https_origin\$request_uri;/.test(nginxConf)) {
+    problems.push(
+      "deploy/docker/nginx.conf: HTTP redirect must use the validated HTTPS origin",
+    );
+  }
+  for (const blockedPath of [
+    "compose\\.ya?ml",
+    "secrets(?:/|$)",
+    "api/openapi(?:\\.json)?$",
+    "robots\\.txt$",
+  ]) {
+    if (!nginxConf.includes(blockedPath)) {
+      problems.push(
+        "deploy/docker/nginx.conf: missing sensitive-path block for " +
+          blockedPath,
+      );
+    }
+  }
+  if (!/location\s+~\s+\^\/\\\.\s*\{/.test(nginxConf)) {
+    problems.push(
+      "deploy/docker/nginx.conf: hidden paths must be blocked before the SPA fallback",
+    );
+  }
+
+  const mainSource = await readFile("apps/api/src/main.ts", "utf8").catch(
+    () => "",
+  );
+  const httpSecuritySource = await readFile(
+    "apps/api/src/http-security.ts",
+    "utf8",
+  ).catch(() => "");
+  if (!/disableFrameworkFingerprint\(app\)/.test(mainSource)) {
+    problems.push(
+      "apps/api/src/main.ts: must call disableFrameworkFingerprint(app)",
+    );
+  }
+  if (!/app\.disable\("x-powered-by"\)/.test(httpSecuritySource)) {
+    problems.push(
+      "apps/api/src/http-security.ts: must disable the x-powered-by header",
+    );
+  }
   const securityHeaders = await readFile(
     "deploy/docker/nginx-security-headers.conf",
     "utf8",

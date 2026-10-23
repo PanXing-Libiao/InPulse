@@ -21,7 +21,7 @@ Compose + 本地 registry 的测试环境，不是生产发布流程：生产镜
 | 部署目录补充  | `backups/`（同步前的 pg_dump）、`compose.yaml.bak-*`、`.env.deploy.bak-*`（回滚用）                            |
 | 企业微信桥接  | 独立容器 `inpulse-wecom-bridge`（非 compose 管理；源码 `deploy/test-vm/wecom-bridge/` 为本地唯一源，用 `deploy/test-vm/update-bridge.ps1` 同步；个人绑定码自助绑定与项目群绑定兑换均已实现，见「企业微信机器人桥接」） |
 | AI 辅助转换   | 已启用（`AI_ASSIST_ENABLED=1`）；API Key 已于 2026-10-15 在设置页重填并确认可用（见「AI 辅助转换启用」） |
-| 当前版本      | api/migrate 为 `0.1.0-20261021-4ce04902`，web 为 `0.1.0-20261021-9abf8bfb`；db-bootstrap/ops 仍为 `0.1.0-20261015-6f23ab4`；桥接为 `0.1.0-20261021-bridge7cddf14`；`BACKUP_GIT_SHA=9abf8bfb`（2026-10-21 11:12 最新同步） |
+| 当前版本      | api 为 `0.1.0-20261022-3e9d5970`，migrate 为 `0.1.0-20261021-4ce04902`，db-bootstrap 为 `0.1.0-20261021-secfix1`，web 为 `0.1.0-20261023-sec1`，ops 为 `0.1.0-20261022-1d0ca6b`；桥接为 `0.1.0-20261021-bridge7cddf14`；`BACKUP_GIT_SHA=1d0ca6b5`（2026-10-23 09:53 最新同步） |
 
 ## 一次性准备
 
@@ -81,6 +81,12 @@ api 容器内访问 Casdoor discovery 返回 200（`egress` 生效）。
 2026-10-21 10:48 再同步 `-Targets web -FixEol -NoMirror` 到 `0.1.0-20261021-2c2be247`（星标排序同步到侧栏，对应提交 `2c2be247`）：本次只重建 web，api/migrate 保持 `0.1.0-20261021-4ce04902`；migrate 重跑报 `0 applied, 56 already present`，web 转为 healthy，`/health/ready`、`/`、`/login` 返回 200，匿名 `/api/v1/users` 401，`/api/v1/auth/sso/start` 302；本次无迁移，未另做数据库备份。
 
 2026-10-21 11:12 再同步 `-Targets web -FixEol -NoMirror` 到 `0.1.0-20261021-9abf8bfb`（组织批量操作条移至成员列表上方，对应提交 `9abf8bfb`）：本次仍只重建 web，api/migrate 保持 `0.1.0-20261021-4ce04902`；migrate 重跑报 `0 applied, 56 already present`，web 转为 healthy，`/health/ready`、`/`、`/login` 返回 200，匿名 `/api/v1/users` 401，`/api/v1/auth/sso/start` 302；本次无迁移，未另做数据库备份。
+
+2026-10-21 17:34 域名发布前安全加固同步：先用 `-Targets api,web`、再用 `-Targets db-bootstrap` 更新到 `0.1.0-20261021-secfix1`（API/web digest 分别 `bb9934317d68`/`461ba74f6c8d`，db `227f4224df92`），未重建 migrate。同步前落 `backups/pre-sync-20261021-172814.dump`（`pg_restore --list` 758 项，`pg_data` 仍挂 `/var/lib/postgresql`）；VM `compose.yaml` 先备份为 `compose.yaml.bak-secfix1-20261021-172645`，仅给 web 健康检查补 `Host: test-inpulse.libiaorobot.com`，`egress` 保持不变。内容包含 Vite 8.2.4（修复 `GHSA-587h-7wmj-h5pm`）、API 关闭 `X-Powered-By`、Nginx `server_tokens off`、Host 白名单（未知 Host 421）、隐藏/部署路径 404，以及 web `libexpat1`、db `libcurl4t64` 安全升级。结果：migrate `0 applied, 56 already present`；api/web/db 全部 healthy；`/health/ready`、`/`、`/login` 200，匿名 `/api/v1/users` 401，`/api/v1/auth/sso/start` 302；恶意 Host 421 且无恶意 `Location`，隐藏路径均 404，`Server: nginx` 无版本号；api 容器访问 Casdoor discovery 200（`egress` 生效）；数据为 users 14、projects 7、audit_logs 1687、sessions 148，库 186 MB，PGroonga 4.0.8，`libcurl4t64 8.14.1-2+deb13u7`。Trivy 按 CI 口径（CRITICAL/HIGH、忽略未修复）扫描 api/web/db-bootstrap 均为 0；公共 registry `pnpm audit --audit-level=high` 只剩 1 个 moderate（`mammoth -> argparse -> sprintf-js`，上游暂无修复）。本次工作区仍有未提交改动，Tag 只表示安全修复批次，不代表已提交内容。
+
+2026-10-22 10:10 同步远端 Web 三批与本地 web/ops 镜像：`-Targets web,ops -Tag 0.1.0-20261022-1d0ca6b`；未改 api/migrate/db；`.env.deploy.bak-20261022-101020` 已保留；migrate exit=0，api/web/db 全部 healthy；公网 `/health/ready`、`/`、`/login` 200，SSO start 302，恶意 Host 421，`Server: nginx` 无版本。
+
+2026-10-23 09:53 修复 Web 安全回归并同步 `0.1.0-20261023-sec1`：最新 Trivy 库发现旧 web 镜像 `libexpat1 2.8.3` 的 5 个可修复 High，同时实际响应暴露 `Server: nginx/1.30.4` 且恶意 Host 返回 200。重建后 web digest 为 `8e5aedb18d50`，CI 口径 5/5 通过；域名入口复测 `/health/ready` 200、`/` 200、`/login` 200、匿名 `/api/v1/users` 401、SSO start 302、恶意 Host 421、HTTP 首页 308、隐藏路径 404。
 
 常用参数：
 

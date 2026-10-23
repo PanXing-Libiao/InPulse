@@ -273,6 +273,8 @@ services:
           "CMD",
           "curl",
           "-fsS",
+          "-H",
+          "Host: libiaorobot.com",
           "-o",
           "/dev/null",
           "http://127.0.0.1:8080/health/live",
