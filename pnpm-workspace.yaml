@@ -12,12 +12,12 @@ catalog:
   postgres: 3.4.9
   tsx: 4.23.13
   typescript: 5.9.3
-  vitest: 5.0.0
+  vitest: 5.0.3
 
 minimumReleaseAgeExclude:
-  - "@vitest/mocker@5.0.0"
-  - "@vitest/spy@5.0.0"
-  - vitest@5.0.0
+  - "@vitest/mocker@5.0.3"
+  - "@vitest/spy@5.0.3"
+  - vitest@5.0.3
 
 overrides:
   ansi-regex: "^5.0.1"
