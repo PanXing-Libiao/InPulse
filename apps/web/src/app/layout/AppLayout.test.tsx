@@ -158,7 +158,7 @@ describe("AppLayout", () => {
     expect(screen.getByText("成员与设置")).toBeInTheDocument();
   });
 
-  it("renders the current project group and the task board entry on project routes", async () => {
+  it("lands on the project list and opens the project drawer from project routes", async () => {
     const projectClient = {
       listProjects: vi.fn().mockResolvedValue({
         items: [
@@ -208,25 +208,34 @@ describe("AppLayout", () => {
               path="projects/:projectId/task-board"
               element={<div>任务看板内容</div>}
             />
+            <Route path="projects" element={<div>项目列表内容</div>} />
           </Route>
         </Routes>
       </MemoryRouter>,
     );
 
     const nav = screen.getByRole("navigation", { name: "工作区导航" });
-    expect(within(nav).getByText("当前项目")).toBeInTheDocument();
-    // 项目子页收进目录树：任务看板是项目节点下的子页行。
-    const board = await within(nav).findByRole("button", {
-      name: "任务看板",
+    const projectsEntry = within(nav).getByRole("button", {
+      name: /项目列表/,
     });
-    expect(board).toHaveClass("page-node");
-    expect(board).toHaveAttribute("aria-current", "true");
-    // 项目概览已与「模块与功能」合并：项目节点下不再有概览子页行。
-    expect(within(nav).queryByRole("button", { name: "项目概览" })).toBeNull();
+    await waitFor(() => {
+      expect(projectsEntry.querySelector("em")?.textContent).toBe("1");
+    });
+    // 计数徽标与「任务中心」「遗留问题」共用同一套 nav-item em 样式。
+    expect(projectsEntry.querySelector("em")?.tagName).toBe("EM");
+    expect(document.querySelector(".nav-item-inline-count")).toBeNull();
+    // 默认收起，不占用侧栏常驻高度。
+    expect(document.querySelector(".project-tree")).toBeNull();
+    await userEvent.click(
+      within(nav).getByRole("button", { name: /项目列表/ }),
+    );
+    // 点击「项目列表」同时落到项目列表页，并把项目抽屉展开。
+    expect(await screen.findByText("项目列表内容")).toBeInTheDocument();
     expect(
-      within(nav).getByRole("button", { name: "模块与功能" }),
+      await within(nav).findByRole("button", {
+        name: /AGV 智能搬运平台/,
+      }),
     ).toBeInTheDocument();
-    expect(await screen.findByText("任务看板内容")).toBeInTheDocument();
   });
 
   it("expands the project list on the projects page and hides it outside project routes", async () => {
@@ -257,15 +266,28 @@ describe("AppLayout", () => {
       </MemoryRouter>,
     );
 
-    // 项目列表页直接展开项目树，不必先进某个项目才能切换。
+    // 项目数量贴在「项目列表」文字后；点击该行展开项目抽屉。
     const nav = screen.getByRole("navigation", { name: "工作区导航" });
-    expect(within(nav).getByText("项目")).toBeInTheDocument();
+    const projectsEntry = within(nav).getByRole("button", {
+      name: /项目列表/,
+    });
+    await waitFor(() => {
+      expect(projectsEntry.querySelector("em")?.textContent).toBe("2");
+    });
+    expect(projectsEntry.querySelector("em")?.tagName).toBe("EM");
+    expect(document.querySelector(".nav-item-inline-count")).toBeNull();
+    expect(document.querySelector(".project-tree")).toBeNull();
+    await userEvent.click(
+      within(nav).getByRole("button", { name: /项目列表/ }),
+    );
     expect(
       await within(nav).findByRole("button", { name: /AGV 智能搬运平台/ }),
     ).toBeInTheDocument();
+    // 项目编码小字已删除，行内只保留标识与项目名称。
+    expect(document.querySelector(".tree-code")).toBeNull();
     unmount();
 
-    // 项目路由之外（如任务中心）不渲染项目树。
+    // 项目路由之外（如任务中心）默认不渲染项目抽屉。
     renderLayout(
       <MemoryRouter initialEntries={["/tasks"]}>
         <Routes>
@@ -505,7 +527,7 @@ describe("AppLayout", () => {
     } as unknown as InpulseApiClient;
 
     renderLayout(
-      <MemoryRouter initialEntries={["/projects/7/modules"]}>
+      <MemoryRouter initialEntries={["/projects"]}>
         <Routes>
           <Route
             path="/"
@@ -516,6 +538,7 @@ describe("AppLayout", () => {
               />
             }
           >
+            <Route path="projects" element={<div>项目列表根页</div>} />
             <Route
               path="projects/:projectId/modules"
               element={<div>项目主页内容</div>}
@@ -533,30 +556,21 @@ describe("AppLayout", () => {
       </MemoryRouter>,
     );
 
-    // 系统目录嵌在「项目与功能」导航项下，不再单独成块；项目路由自动展开。
+    // 系统目录收进「项目列表」的抽屉，不再单独成块或常驻撑高侧栏。
     const nav = screen.getByRole("navigation", { name: "工作区导航" });
     expect(within(nav).getByText("任务中心")).toBeInTheDocument();
     expect(within(nav).queryByText("系统目录", { selector: "p" })).toBeNull();
+    await userEvent.click(
+      within(nav).getByRole("button", { name: /项目列表/ }),
+    );
     expect(
       await within(nav).findByRole("button", { name: /AGV 智能搬运平台/ }),
     ).toBeInTheDocument();
-    expect(
-      await within(nav).findByRole("button", { name: /调度模块/ }),
-    ).toBeInTheDocument();
-    // 目录只是导航，项目主页本身仍然完整渲染。
-    expect(screen.getByText("项目主页内容")).toBeInTheDocument();
-
-    await userEvent.click(
-      await screen.findByRole("button", { name: /调度模块/ }),
-    );
-    expect(await screen.findByText("功能目录内容")).toBeInTheDocument();
-    await userEvent.click(
-      await screen.findByRole("button", { name: /车辆调度/ }),
-    );
-    expect(await screen.findByText("功能档案内容")).toBeInTheDocument();
+    // 项目编码小字已从抽屉中移除。
+    expect(document.querySelector(".tree-code")).toBeNull();
   });
 
-  it("hides the project tree outside project pages", async () => {
+  it("keeps the project dropdown collapsed by default outside project pages", async () => {
     renderLayout(
       <MemoryRouter initialEntries={["/tasks"]}>
         <Routes>
@@ -571,7 +585,7 @@ describe("AppLayout", () => {
     );
 
     expect(await screen.findByText("任务中心内容")).toBeInTheDocument();
-    // 目录树只存在于「当前项目」分组：非项目路由不渲染项目上下文。
+    // 非项目路由也默认收起项目抽屉，不占用侧栏空间。
     expect(document.querySelector(".project-tree")).toBeNull();
     expect(screen.queryByText("当前项目")).not.toBeInTheDocument();
   });

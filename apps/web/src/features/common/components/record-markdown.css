@@ -34,7 +34,7 @@
 .record-markdown h6 {
   margin: 12px 0 8px;
   color: #354f66;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 
 /* 全局 reset 把 ul/ol 的 list-style 清成 none（design-system.css），正文列表因此在
@@ -69,7 +69,7 @@
   padding: 1px 5px;
   border-radius: 4px;
   background: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .record-markdown pre {
@@ -115,6 +115,6 @@
   display: block;
   margin-bottom: 2px;
   color: #314b65;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
 }

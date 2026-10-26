@@ -2,11 +2,15 @@ import React, { lazy, Suspense, useState } from "react";
 import { Alert, Button } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { useModules } from "@features/modules/module-query";
+import {
+  ModuleEditorModal,
+  type ModuleEditorRequest,
+} from "@features/modules/ModuleEditorModal";
+import { useProjectDetail } from "@features/projects/project-query";
 import { TasksPanel } from "@features/tasks/TasksPanel";
 import type { TaskLocation } from "@features/tasks/task-links";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
-import { CalmSectionTitle, CalmTabs } from "@features/common/components/Calm";
-import { moduleLifecycleLabel } from "@features/common/resource-lifecycle";
+import { CalmSegmented, CalmTabs } from "@features/common/components/Calm";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
 /**
@@ -23,15 +27,22 @@ export default function ModuleTasksPage() {
   const params = useParams();
   const projectId = Number(params["projectId"]);
   const moduleId = Number(params["moduleId"]);
+  const validScope = [projectId, moduleId].every(
+    (id) => Number.isInteger(id) && id > 0 && id <= 2147483647,
+  );
   const { query } = useModules(projectId);
+  const projectQuery = useProjectDetail({ projectId, enabled: validScope });
   /** 聚合组弹窗里点击成员任务标题后要就地打开的任务（null 表示弹层关闭）。 */
   const [taskTarget, setTaskTarget] = useState<TaskLocation | null>(null);
-  if (
-    ![projectId, moduleId].every(
-      (id) => Number.isInteger(id) && id > 0 && id <= 2147483647,
-    )
-  )
-    return <Alert type="error" title="模块地址无效" />;
+  /** ADR-044：模块只有编辑，弹层与模块列表页共用。 */
+  const [moduleRequest, setModuleRequest] =
+    useState<ModuleEditorRequest | null>(null);
+  /** 页头「新增任务」打开面板内同一个模块级创建弹窗。 */
+  const [createOpen, setCreateOpen] = useState(false);
+  const [view, setView] = useState<"cards" | "list">("cards");
+  const [search, setSearch] = useState("");
+  const [taskCount, setTaskCount] = useState(0);
+  if (!validScope) return <Alert type="error" title="模块地址无效" />;
   if (query.isPending)
     return <CalmSkeleton variant="list" rows={4} label="正在加载模块任务" />;
   if (query.isError)
@@ -70,42 +81,66 @@ export default function ModuleTasksPage() {
             </button>
             <h1>{module.name}</h1>
           </div>
-          <p>{module.description || "模块级任务与功能档案的公共工作区。"}</p>
+          {module.description ? (
+            <p className="module-description">{module.description}</p>
+          ) : null}
         </div>
         <div className="catalog-actions">
-          <Button className="secondary-button" href={featuresHref}>
-            查看功能目录
+          <Button
+            className="secondary-button"
+            onClick={() => setModuleRequest({ action: "update", item: module })}
+          >
+            编辑模块
+          </Button>
+          <Button
+            className="primary-button"
+            onClick={() => setCreateOpen(true)}
+          >
+            <InpulseIcon name="plus" size={15} />
+            新增任务
           </Button>
         </div>
       </div>
-      <details className="calm-disclosure module-information">
-        <summary>
-          模块资料 · {module.name} ·{" "}
-          {moduleLifecycleLabel(module.stats.completedTaskCount)}
-        </summary>
-        {module.description ? (
-          <>
-            <h4>职责与范围</h4>
-            <p>{module.description}</p>
-          </>
-        ) : null}
-      </details>
-      <CalmTabs
-        className="calm-tabs module-work-tabs"
-        label="模块工作区"
-        activeKey="模块级任务"
-        onChange={(key) => {
-          if (key === "功能目录") navigate(featuresHref);
-        }}
-        items={[
-          { key: "功能目录", label: "功能目录" },
-          { key: "模块级任务", label: "模块级任务" },
-        ]}
-      />
-      <CalmSectionTitle
-        title="共同技术工作"
-        hint="一份任务，可影响当前模块的多个功能"
-      />
+      <div className="module-work-bar">
+        <CalmTabs
+          className="calm-tabs module-work-tabs"
+          label="模块工作区"
+          activeKey="模块级任务"
+          onChange={(key) => {
+            if (key === "功能目录") navigate(featuresHref);
+          }}
+          items={[
+            {
+              key: "功能目录",
+              label: <>功能目录 {module.stats.activeFeatureCount}</>,
+            },
+            {
+              key: "模块级任务",
+              label: <>模块级任务 {taskCount}</>,
+            },
+          ]}
+        />
+        <div className="feature-view-controls">
+          <CalmSegmented
+            label="任务展示方式"
+            value={view}
+            options={[
+              { value: "cards", label: "卡片" },
+              { value: "list", label: "列表" },
+            ]}
+            onChange={setView}
+          />
+          <div className="task-search">
+            <InpulseIcon name="search" size={15} />
+            <input
+              aria-label="搜索当前模块的任务"
+              placeholder="搜索当前模块的任务"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+        </div>
+      </div>
       <TasksPanel
         projectId={projectId}
         moduleId={moduleId}
@@ -113,6 +148,21 @@ export default function ModuleTasksPage() {
         /* ADR-044：模块层面已下线归档，模块级任务始终可写。 */
         writable
         onOpenTask={setTaskTarget}
+        showHeader={false}
+        view={view}
+        onViewChange={setView}
+        search={search}
+        onSearchChange={setSearch}
+        createOpen={createOpen}
+        onCreateClose={() => setCreateOpen(false)}
+        onCountChange={setTaskCount}
+      />
+      <ModuleEditorModal
+        projectId={projectId}
+        projectName={projectQuery.data?.project?.name ?? null}
+        request={moduleRequest}
+        onClose={() => setModuleRequest(null)}
+        onDeleted={() => navigate("/projects/" + projectId + "/modules")}
       />
       <Suspense fallback={null}>
         {taskTarget === null ? null : (

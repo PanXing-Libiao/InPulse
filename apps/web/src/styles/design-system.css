@@ -19,16 +19,30 @@
   --sidebar-foreground: #c9d7e7;
   /* 侧栏展开宽度：收起动画（宽度过渡）与三段内容的固定排版宽度共用同一个值。 */
   --sidebar-width: 236px;
-  /* 以下两个字体变量与原 Tailwind @theme 的默认值一致，供下面的 preflight 使用。 */
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
-    "Segoe UI Symbol", "Noto Color Emoji";
+  /* 全站唯一字体栈：与 Ant Design 主题的 fontFamily 保持一致。 */
+  --font-sans: Arial, "Microsoft YaHei", sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
     "Courier New", monospace;
   --default-font-family: var(--font-sans);
   --default-mono-font-family: var(--font-mono);
+
+  /* 全站字号阶梯（桌面端）：正文 13px，辅助文字 10–12px，正文强调 14px，
+     标题 16/18/20/22/24/27px。8px/9px 仅用于项目标识和头像首字。
+     业务样式统一引用这些变量，不再直接写半像素字号。 */
+  --text-logo: 8px;
+  --text-avatar: 9px;
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 12px;
+  --text-base: 13px;
+  --text-lg: 14px;
+  --text-xl: 16px;
+  --text-2xl: 18px;
+  --text-3xl: 20px;
+  --text-4xl: 22px;
+  --text-5xl: 24px;
+  --text-6xl: 27px;
 }
 /* 以下基础重置逐条等价于原 Next/Tailwind 版的 preflight（base 层），保证元素默认渲染与重构前一致。 */
 *,
@@ -301,8 +315,8 @@ input:where([type="button"], [type="reset"], [type="submit"]) {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, "Microsoft YaHei", sans-serif;
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
 }
 button {
   cursor: pointer;
@@ -339,14 +353,14 @@ button {
 }
 .brand strong {
   display: block;
-  font-size: 15px;
+  font-size: var(--text-xl);
   letter-spacing: -0.2px;
 }
 .brand small,
 .footer-account-text small {
   display: block;
   color: #8ca6be;
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-top: 4px;
   letter-spacing: 0.4px;
 }
@@ -360,7 +374,7 @@ button {
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .workspace > svg {
   margin-left: auto;
@@ -371,7 +385,7 @@ button {
 }
 .nav-group p {
   color: #718da8;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 1.2px;
   margin: 0 9px 8px;
@@ -412,7 +426,7 @@ button {
 }
 .nav-item em {
   font-style: normal;
-  font-size: 10px;
+  font-size: var(--text-xs);
   border-radius: 10px;
   padding: 2px 7px;
   background: #284865;
@@ -422,13 +436,50 @@ button {
   background: #2b82b8;
   color: white;
 }
-/* 项目分组之外的容器只提供底色，不再画一条贯穿所有项目的竖线：
-   分组边界交给每个项目自己。 */
+/* 项目入口：整行就是下拉开关，不再额外放右侧箭头按钮。 */
+.nav-project-menu {
+  margin-bottom: 3px;
+}
+.nav-project-menu > .nav-item {
+  margin-bottom: 0;
+}
+/* 展开区留在导航流内，但自身限高并滚动：项目再多也不会把下方功能入口挤出视野。 */
 .nav-tree-panel {
   margin: 2px 0 10px;
   padding: 6px;
   border-radius: 8px;
   background: #0b1b2e;
+}
+.project-menu-panel {
+  width: 100%;
+  max-height: min(260px, 42dvh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #28455f;
+  background: #0b1b2e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  animation: project-menu-in 0.16s ease both;
+}
+.project-menu-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.project-menu-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.project-menu-panel::-webkit-scrollbar-thumb {
+  background: #3f6d94;
+  border-radius: 999px;
+}
+@keyframes project-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* 侧栏系统目录树：沿用导航行样式，罗列 项目 → 子页 → 模块 → 功能 四层。 */
@@ -535,6 +586,9 @@ button {
   .nav-item {
     transition: none;
   }
+  .project-menu-panel {
+    animation: none;
+  }
 }
 .tree-row {
   width: 100%;
@@ -549,7 +603,7 @@ button {
   padding: 0 11px;
   margin-bottom: 2px;
   text-align: left;
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
   /* 同 .nav-item：目录行的 hover / 选中用短过渡，展开与滚动因此更连贯。 */
   transition:
@@ -631,25 +685,13 @@ button {
   color: white;
   box-shadow: inset 3px 0 #45d2d5;
 }
-/* 项目编码：行尾的短标识，配合项目标识色块区分相近的项目名。 */
-.tree-code {
-  flex: 0 0 auto;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: #6d86a1;
-  font-variant-numeric: tabular-nums;
-}
-.tree-row:hover .tree-code,
-.project-node.selected .tree-code {
-  color: #cfe2f2;
-}
 /* 项目标识：编码前两位 + 由编码派生的色系，同一项目在侧栏与项目主页颜色一致。 */
 .tree-row .tree-logo {
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
   border-radius: 5px;
-  font-size: 8px;
+  font-size: var(--text-logo);
   letter-spacing: 0.02em;
 }
 /* 项目子页行（任务看板/模块与功能）：介于项目与模块之间的第二层。 */
@@ -712,7 +754,7 @@ button {
 }
 .tree-hint {
   color: #6f91ad;
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin: 2px 0 4px 58px;
 }
 /* 功能层提示比模块层再深一级，与功能行文字对齐。 */
@@ -765,7 +807,7 @@ button {
 .footer-account-text strong {
   display: block;
   color: white;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .footer-account-text strong,
 .footer-account-text small {
@@ -949,12 +991,12 @@ button {
 .detail-label {
   color: #6d8ca9;
   letter-spacing: 1.3px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
 }
 .page-header h1 {
   margin: 8px 0 7px;
-  font-size: 27px;
+  font-size: var(--text-6xl);
   letter-spacing: -0.8px;
 }
 .page-header p {
@@ -1008,7 +1050,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .panel {
   background: white;
@@ -1025,12 +1067,12 @@ button {
 }
 .panel-head h2 {
   margin: 0 0 5px;
-  font-size: 14px;
+  font-size: var(--text-lg);
 }
 .panel-head p {
   margin: 0;
   color: #8a98a8;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .module-card,
 .project-card {
@@ -1048,7 +1090,7 @@ button {
   border-radius: 7px;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 800;
   /* 与侧栏树、项目选择器一致：作为 flex 子项不被横向压扁，始终保持正方形。 */
   flex-shrink: 0;
@@ -1070,14 +1112,14 @@ button {
 .project-logo.tiny {
   width: 18px;
   height: 18px;
-  font-size: 8px;
+  font-size: var(--text-logo);
   border-radius: 4px;
   display: inline-grid;
   vertical-align: middle;
 }
 .due {
   color: #8d9baa;
-  font-size: 10px;
+  font-size: var(--text-xs);
   width: 48px;
   text-align: right;
 }
@@ -1087,7 +1129,7 @@ button {
   height: 27px;
   background: #e5f1fb;
   color: #3f80bf;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .badge {
   display: inline-flex;
@@ -1096,7 +1138,7 @@ button {
   border-radius: 4px;
   background: #f0f3f6;
   color: #718092;
-  font-size: 10px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 .badge-blue {
@@ -1201,14 +1243,14 @@ button {
   align-items: center;
 }
 .project-card h2 {
-  font-size: 15px;
+  font-size: var(--text-xl);
   margin: 17px 0 8px;
   /* 项目编号可能很长且不含空格，允许在任意位置断行，避免撑破卡片。 */
   overflow-wrap: anywhere;
 }
 .project-card p {
   color: #7b8998;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.6;
   min-height: 36px;
 }
@@ -1216,7 +1258,7 @@ button {
   padding-top: 13px;
   border-top: 1px solid #edf1f5;
   color: #8492a1;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .card-footer span {
   display: flex;
@@ -1290,13 +1332,13 @@ button {
   gap: 7px;
   height: 29px;
   padding: 0 12px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
 }
 /* 分段项数量角标：未选中用中性灰签、选中项转蓝签（与 .badge-blue 同色系）。
    数量取自 R-3 统计，不可知时不渲染，见 TaskCenterPageView 的 statusOptions。 */
 .segmented-count {
   font-style: normal;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1;
   padding: 4px 6px;
@@ -1311,7 +1353,7 @@ button {
 /* 页头「遗留问题」入口的数量签：与 .badge-amber 同色，比裸数字更明确。 */
 .header-count {
   font-style: normal;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1;
   padding: 3px 7px;
@@ -1384,7 +1426,7 @@ table {
 th {
   background: #f8fafc;
   color: #7d8b9a;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   padding: 11px 15px;
   white-space: nowrap;
@@ -1393,7 +1435,7 @@ td {
   padding: 14px 15px;
   border-top: 1px solid #edf1f5;
   color: #637489;
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 tbody tr {
@@ -1408,12 +1450,12 @@ td small {
 }
 td strong {
   color: #273b51;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 td small {
   color: #99a5b2;
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-top: 5px;
 }
 .person-avatar {
@@ -1421,12 +1463,12 @@ td small {
   height: 24px;
   background: #e6f1fb;
   color: #3476b5;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .version {
   color: #2776bd;
   font-weight: 700;
-  font-size: 12px;
+  font-size: var(--text-md);
   width: 35px;
 }
 .callout {
@@ -1446,14 +1488,14 @@ td small {
 .callout p {
   margin: 4px 0 0;
   color: #9c7b4a;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .small-button {
   height: 29px;
   color: #3978b5;
   background: white;
   padding: 0 8px;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .audit-toolbar {
   display: flex;
@@ -1470,7 +1512,7 @@ td small {
 .audit-toolbar span {
   margin-left: auto;
   color: #a0aab5;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 /* 时间范围字段（2026-10-10 方案 B）：两个独立输入框，各自带前置「开始 / 结束」
    小标签与一条分隔线；边框盒子由 label 承担，原生 input 退成无边框内容。
@@ -1480,7 +1522,7 @@ td small {
   margin-left: 0;
   flex: none;
   color: #8b9aab;
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 .audit-time-field {
@@ -1522,13 +1564,13 @@ td small {
 .audit-time {
   text-align: right;
   color: #75869a;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .audit-time small {
   display: block;
   color: #a0aab5;
   margin-top: 4px;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .audit-line {
   position: relative;
@@ -1578,7 +1620,7 @@ td small {
   align-items: center;
   gap: 4px;
   color: #9ba7b3;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .settings-layout {
   display: grid;
@@ -1603,7 +1645,7 @@ td small {
   text-align: left;
   background: transparent;
   color: #5b6f85;
-  font-size: 13px;
+  font-size: var(--text-base);
   padding: 10px 12px;
   border-radius: 7px;
 }
@@ -1652,12 +1694,12 @@ td small {
   display: block;
 }
 .member-row strong {
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .member-row span,
 .member-row > small {
   color: #919eaa;
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-top: 4px;
 }
 .member-row > small {
@@ -1670,7 +1712,7 @@ td small {
   display: flex;
   gap: 9px;
   color: #5b7892;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.6;
   border-radius: 5px;
 }
@@ -1695,7 +1737,7 @@ td small {
   gap: 15px;
 }
 .drawer-header h2 {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   line-height: 1.4;
   margin: 7px 0 0;
 }
@@ -1730,7 +1772,7 @@ td small {
   flex-direction: column;
   gap: 6px;
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .dialog-form input,
 .dialog-form textarea {
@@ -1762,7 +1804,7 @@ td small {
   display: block;
   margin: 4px 0 0;
   color: #99a5b2;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .check-list {
   display: flex;
@@ -1790,7 +1832,7 @@ td small {
   align-items: center;
   gap: 7px;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 .back-button:hover {
@@ -1807,13 +1849,13 @@ td small {
 }
 .project-detail-title h1 {
   margin: 6px 0 5px;
-  font-size: 25px;
+  font-size: var(--text-5xl);
   letter-spacing: -0.6px;
 }
 .project-detail-title p {
   margin: 0;
   color: #74869a;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 /* 项目名与「编辑项目」图标同排；图标用淡蓝底圆形纽，与左侧返回圆钮同一配色、
    更小一号，不在标题行里与主操作抢色。 */
@@ -1865,7 +1907,7 @@ td small {
   border-radius: 5px;
   background: #ffffff;
   color: #40546d;
-  font-size: 13px;
+  font-size: var(--text-base);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -1881,7 +1923,7 @@ td small {
 .repo-jump-button .repo-jump-path {
   overflow: hidden;
   color: #74869a;
-  font-size: 12px;
+  font-size: var(--text-md);
   text-overflow: ellipsis;
 }
 .repo-jump-button svg {
@@ -1910,7 +1952,7 @@ td small {
 }
 .project-overview-strip span {
   color: #8090a1;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 700;
   letter-spacing: 0.4px;
 }
@@ -1949,7 +1991,7 @@ td small {
 }
 .project-overview-strip strong {
   color: #243b54;
-  font-size: 20px;
+  font-size: var(--text-3xl);
   letter-spacing: -0.3px;
 }
 
@@ -1971,12 +2013,12 @@ td small {
 }
 .project-setup-guide-head h2 {
   color: #22384f;
-  font-size: 15px;
+  font-size: var(--text-xl);
 }
 .project-setup-guide-head p {
   margin-top: 4px;
   color: #7d8fa2;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 .project-setup-steps {
@@ -2013,7 +2055,7 @@ td small {
   border-radius: 50%;
   background: #eef4fa;
   color: #7b8ea1;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 700;
 }
 .project-setup-step.is-current .project-setup-step-mark {
@@ -2030,23 +2072,23 @@ td small {
 }
 .project-setup-step-body strong {
   color: #2c4257;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .project-setup-step-body p {
   margin-top: 2px;
   color: #8494a6;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.6;
 }
 .project-setup-step-done {
   flex-shrink: 0;
   color: #4d8a6b;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .project-setup-step-hint {
   flex-shrink: 0;
   color: #9aa9b8;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 @media (max-width: 700px) {
   .project-setup-step {
@@ -2066,7 +2108,7 @@ td small {
 .task-id {
   color: #7890a6;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   letter-spacing: 0.4px;
 }
 .task-card-footer {
@@ -2079,7 +2121,7 @@ td small {
     align-items: flex-start;
   }
   .project-detail-title h1 {
-    font-size: 21px;
+    font-size: var(--text-4xl);
   }
   .project-overview-strip {
     gap: 8px;
@@ -2127,7 +2169,7 @@ td small {
     align-items: flex-start;
   }
   .page-header h1 {
-    font-size: 24px;
+    font-size: var(--text-5xl);
   }
   .cards-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -2213,7 +2255,7 @@ td small,
   color: #607286;
 }
 .badge {
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .badge-red {
   color: #a6343f;
@@ -2231,7 +2273,7 @@ a:focus-visible {
 /* Personal task scopes and assignment. */
 .view-description {
   color: #607286;
-  font-size: 12px;
+  font-size: var(--text-md);
   margin: 0 0 22px;
 }
 
@@ -2241,7 +2283,7 @@ a:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #425d76;
 }
 .member-editor {
@@ -2404,7 +2446,7 @@ a:focus-visible {
   gap: 12px;
 }
 .calm-task-card h3 {
-  font-size: 16px;
+  font-size: var(--text-xl);
   line-height: 1.6;
   /* 2026-09-23 放宽：标题与归属行由 8px → 12px。 */
   margin: 20px 0 12px;
@@ -2441,7 +2483,7 @@ a:focus-visible {
 }
 .calm-task-card > p {
   color: #687f93;
-  font-size: 12px;
+  font-size: var(--text-md);
   margin: 0 0 23px;
 }
 /* 任务介绍固定两行：长短描述的卡片同高，底部信息行在整排卡片间对齐。
@@ -2509,7 +2551,7 @@ a:focus-visible {
 /* 归属行的项目名（2026-10-10）：比同行的模块 / 功能大一档并随 <strong> 加粗，颜色不写死——
    紧急白字组与金黄深字组等卡片色调规则作用在 <p> 上，由它继承。 */
 .task-belonging > .belonging-project {
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 /* 负责人单独一行贴在卡片分隔线上方并右对齐：横线以上右侧只放负责人，
    横线以下的左下角给标签、右下角给截止时间。
@@ -2520,7 +2562,7 @@ a:focus-visible {
   gap: 12px;
   justify-content: flex-end;
   color: #637b91;
-  font-size: 12px;
+  font-size: var(--text-md);
   /* 2026-09-23 放宽：与分隔线之间由 15px → 18px。 */
   margin: 0 0 18px;
 }
@@ -2534,7 +2576,7 @@ a:focus-visible {
   /* 2026-09-23 放宽：分隔线与底部标签行之间由 15px → 18px。 */
   padding-top: 18px;
   color: #637b91;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .calm-card-bottom > span {
   display: flex;
@@ -2554,7 +2596,7 @@ a:focus-visible {
   align-items: center;
   margin: 0 0 18px;
   color: #61788e;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 /* 标题行/表单里的并排动作按钮：保持固定间距，避免 space-between 把按钮推散。 */
 .calm-section-actions {
@@ -2579,13 +2621,13 @@ a:focus-visible {
   gap: 8px;
   margin: 0;
   color: #314c65;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 .import-assist-panel .import-assist-note {
   margin: 0;
   color: #61788e;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 /* 文档导入弹窗的必填要素说明：左竖线 + 淡底，一句话说清导入前要交代哪些东西。 */
@@ -2595,7 +2637,7 @@ a:focus-visible {
   border-radius: 0 8px 8px 0;
   padding: 10px 14px 12px;
   color: #61788e;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.9;
 }
 .import-format-guide p {
@@ -2606,7 +2648,7 @@ a:focus-visible {
 }
 .calm-section-title h3 {
   color: #314c65;
-  font-size: 14px;
+  font-size: var(--text-lg);
   margin: 0;
 }
 /* 标题与其紧邻的附加节点（草稿箱展开/收起的箭头）排成一行，不被推到标题行最右端。 */
@@ -2637,11 +2679,11 @@ a:focus-visible {
 .calm-section-toggle-title {
   display: block;
   color: #314c65;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
 }
 .calm-feature-card h2 {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   margin: 23px 0 10px;
 }
 /* 功能名固定占两行高（2026-09-24）：长短不一的名字会把状态徽章行、功能说明、
@@ -2662,7 +2704,7 @@ a:focus-visible {
   overflow: hidden;
 }
 .calm-feature-card > p {
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.7;
   color: #647c92;
   min-height: 44px;
@@ -2697,15 +2739,15 @@ a:focus-visible {
   padding: 24px;
 }
 .calm-projects .project-card h2 {
-  font-size: 18px;
+  font-size: var(--text-2xl);
 }
 .calm-projects .project-card p {
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.7;
 }
 .calm-subtitle {
   color: #6d8297;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.7;
   margin: 9px 0 0;
 }
@@ -2722,7 +2764,7 @@ a:focus-visible {
   border-bottom: 2px solid transparent;
   padding: 13px 2px;
   color: #6c8094;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .calm-tabs button.selected {
   color: #1467d8;
@@ -2743,7 +2785,7 @@ a:focus-visible {
   align-items: center;
   gap: 5px;
   color: #6b8195;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .calm-more {
   display: flex;
@@ -2752,12 +2794,12 @@ a:focus-visible {
   padding: 13px 4px 0;
 }
 .calm-description h3 {
-  font-size: 14px;
+  font-size: var(--text-lg);
   color: #354f66;
   margin: 0 0 14px;
 }
 .calm-description > p {
-  font-size: 14px;
+  font-size: var(--text-lg);
   line-height: 1.9;
   color: #61788d;
   margin: 0;
@@ -2769,7 +2811,7 @@ a:focus-visible {
 .calm-disclosure summary {
   cursor: pointer;
   color: #61788e;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .calm-disclosure[open] summary {
   margin-bottom: 17px;
@@ -2778,7 +2820,7 @@ a:focus-visible {
   display: grid;
   grid-template-columns: 85px 1fr;
   gap: 15px;
-  font-size: 12px;
+  font-size: var(--text-md);
   padding-top: 18px;
 }
 .calm-meta span {
@@ -2792,7 +2834,7 @@ a:focus-visible {
   padding: 40px 20px;
   color: #71869a;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .calm-empty > svg {
   display: block;
@@ -2800,7 +2842,7 @@ a:focus-visible {
   color: #8eabc3;
 }
 .calm-empty p {
-  font-size: 12px;
+  font-size: var(--text-md);
   margin-top: 9px;
 }
 .record-card-list {
@@ -2830,14 +2872,14 @@ a:focus-visible {
 }
 .record-card summary strong {
   display: block;
-  font-size: 14px;
+  font-size: var(--text-lg);
   line-height: 1.6;
   color: #314b65;
 }
 .record-card summary small {
   display: block;
   color: #7b8fa2;
-  font-size: 11px;
+  font-size: var(--text-sm);
   margin-top: 5px;
 }
 .record-card[open] summary > svg {
@@ -2851,19 +2893,19 @@ a:focus-visible {
   border-top: 1px solid #edf1f5;
 }
 .record-expanded h4 {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   margin: 0 0 8px;
   color: #314b65;
 }
 .record-expanded h5 {
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   margin: 0 0 8px;
   color: #37566f;
 }
 .record-expanded p {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #60768b;
   line-height: 1.8;
   white-space: pre-wrap;
@@ -2895,7 +2937,7 @@ a:focus-visible {
   min-width: 0;
 }
 .leftover-followup {
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 /* 全局 reset 把 select 的边框与背景清零，版本对比选择器需显式恢复表单外观。 */
 .record-version-pickers {
@@ -2909,7 +2951,7 @@ a:focus-visible {
   flex-direction: column;
   gap: 6px;
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .record-version-pickers select {
   height: 34px;
@@ -2966,7 +3008,7 @@ a:focus-visible {
   justify-content: space-between;
 }
 .leftover-append-head strong {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #37566f;
 }
 .leftover-append-close {
@@ -2975,7 +3017,7 @@ a:focus-visible {
   border-radius: 6px;
   background: none;
   color: #7b8fa2;
-  font-size: 16px;
+  font-size: var(--text-xl);
   line-height: 1;
   cursor: pointer;
 }
@@ -2991,7 +3033,7 @@ a:focus-visible {
   flex-wrap: wrap;
 }
 .leftover-append-foot > span {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #7b8fa2;
 }
 .leftover-append-actions {
@@ -3003,7 +3045,7 @@ a:focus-visible {
 }
 .completion-flow h2 {
   margin-top: 28px;
-  font-size: 23px;
+  font-size: var(--text-4xl);
 }
 .completion-choices {
   display: grid;
@@ -3028,12 +3070,12 @@ a:focus-visible {
 }
 .completion-choices strong {
   color: #304b63;
-  font-size: 15px;
+  font-size: var(--text-xl);
 }
 .completion-choices span {
   grid-column: 2;
   color: #758a9e;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .completion-choices > button > svg:last-child {
   grid-column: 3;
@@ -3041,7 +3083,7 @@ a:focus-visible {
 }
 .completion-flow textarea {
   min-height: 85px;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.7;
 }
 .calm-action-footer {
@@ -3227,7 +3269,7 @@ a:focus-visible {
   gap: 7px;
   height: 29px;
   padding: 0 12px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
 }
 .catalog-form {
   display: flex;
@@ -3272,20 +3314,8 @@ a:focus-visible {
   background: none;
   border: 0;
   color: #2874bf;
-  font-size: 12px;
+  font-size: var(--text-md);
   padding: 5px;
-}
-.module-information {
-  margin-bottom: 24px;
-  padding: 16px 20px;
-  background: white;
-  border: 1px solid #e3eaf2;
-  border-radius: 10px;
-}
-.module-information p {
-  color: #657a90;
-  line-height: 1.8;
-  white-space: pre-wrap;
 }
 .calm-description p {
   white-space: pre-wrap;
@@ -3442,7 +3472,7 @@ a:focus-visible {
   align-self: center;
 }
 .feature-modal-header h2 {
-  font-size: 24px;
+  font-size: var(--text-5xl);
   margin: 8px 0;
   line-height: 1.35;
 }
@@ -3467,12 +3497,12 @@ a:focus-visible {
   padding-top: 22px;
 }
 .feature-reading h3 {
-  font-size: 14px;
+  font-size: var(--text-lg);
   margin: 0 0 12px;
 }
 .feature-reading p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.9;
   color: #526b83;
   white-space: pre-wrap;
@@ -3486,7 +3516,7 @@ a:focus-visible {
 }
 .feature-facts dl {
   margin: 20px 0;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .feature-facts dt {
   color: #8091a4;
@@ -3521,7 +3551,7 @@ a:focus-visible {
 .catalog-modal > .drawer-header .task-origin-crumb {
   display: block;
   color: #6d8ca9;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   letter-spacing: normal;
   line-height: 1.5;
@@ -3592,7 +3622,7 @@ a:focus-visible {
   border-radius: 999px;
   background: #eeeaff;
   color: #6b58c4;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   line-height: 18px;
 }
 .feature-tag-remove {
@@ -3626,7 +3656,7 @@ a:focus-visible {
   border-radius: 999px;
   background: transparent;
   color: #78716c;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   line-height: 1;
 }
 .calm-form .feature-tag-add:hover {
@@ -3646,7 +3676,7 @@ a:focus-visible {
   border-radius: 999px;
   background: #ffffff;
   color: #405a72;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   outline: none;
 }
 .calm-form .feature-tag-entry::placeholder {
@@ -3655,7 +3685,7 @@ a:focus-visible {
 .feature-tag-limit {
   margin: 0;
   color: #b45b55;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .surface-modal button:focus-visible {
   outline: 2px solid #2d84e6;
@@ -3687,7 +3717,7 @@ a:focus-visible {
     align-self: auto;
   }
   .feature-modal-header h2 {
-    font-size: 21px;
+    font-size: var(--text-4xl);
   }
   .feature-modal-content {
     padding: 20px;
@@ -3731,7 +3761,7 @@ a:focus-visible {
 /* 功能档案页把任务面板嵌在 .feature-reading 里，那里的 .feature-reading h3 会给
    面板标题也补上 12px 下边距；在垂直居中的标题行里这会把标题顶高，这里显式清零。 */
 .task-panel-heading h3 {
-  font-size: 16px;
+  font-size: var(--text-xl);
   margin: 0;
 }
 .task-status-filter select {
@@ -3739,7 +3769,7 @@ a:focus-visible {
   border-radius: 7px;
   background: white;
   padding: 6px 9px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #344b63;
 }
 .task-status-filter select:focus-visible {
@@ -3756,12 +3786,12 @@ a:focus-visible {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .feature-list-table th {
   padding: 15px 20px;
   background: #f8fafd;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 500;
   color: #788ba0;
   white-space: nowrap;
@@ -3864,13 +3894,13 @@ a:focus-visible {
 }
 .feature-list-open strong {
   display: block;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
 }
 .feature-list-open span {
   display: block;
   color: #7c8fa3;
-  font-size: 12px;
+  font-size: var(--text-md);
   margin-top: 7px;
   max-width: 420px;
   overflow: hidden;
@@ -3929,7 +3959,7 @@ a:focus-visible {
   border-radius: 7px;
   background: white;
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #344b63;
   width: 230px;
 }
@@ -3993,7 +4023,7 @@ a:focus-visible {
   background: #f5f8fc;
   padding: 18px;
   align-self: start;
-  font-size: 12px;
+  font-size: var(--text-md);
   border-radius: 8px;
   color: #637c95;
 }
@@ -4027,7 +4057,7 @@ a:focus-visible {
 /* ===================== InPulse 原型补充样式（任务中心枢纽） ===================== */
 .muted {
   color: #8494a6;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.85;
   margin: 0;
 }
@@ -4074,7 +4104,7 @@ a:focus-visible {
   min-width: 0;
 }
 .task-modal-header h2 {
-  font-size: 23px;
+  font-size: var(--text-4xl);
   line-height: 1.42;
   margin: 9px 0 12px;
 }
@@ -4111,7 +4141,7 @@ a:focus-visible {
   padding: 3px 7px;
   border-radius: 5px;
   background: #f1f5f9;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 /* 加载态（2026-09-30「弹窗首帧不跳尺寸」）：任务详情是 xl 宽体的长内容，实测 844px
    （= 视口上限），而骨架只有 140px，弹窗会先闪出一条窄条再撑满。加载时按视口上限
@@ -4233,13 +4263,13 @@ a:focus-visible {
 }
 .task-record-list a strong {
   display: block;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .task-record-list a small {
   display: block;
   margin-top: 3px;
   color: #98a5b3;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .task-modal-facts {
   min-width: 0;
@@ -4284,7 +4314,7 @@ a:focus-visible {
   padding: 8px 10px;
   border-radius: 5px;
   width: 100%;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .more-wrap .calm-more .text-button:hover {
   background: #f2f7fc;
@@ -4427,7 +4457,7 @@ td.due-overdue {
   gap: 13px;
   align-items: center;
   color: #7f90a2;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .task-card-counts span {
   display: flex;
@@ -4518,7 +4548,7 @@ td.due-overdue {
   min-width: 0;
   color: #2c6fb5;
   text-decoration: none;
-  font-size: 12px;
+  font-size: var(--text-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4529,7 +4559,7 @@ td.due-overdue {
 }
 .github-list code {
   color: #6f8091;
-  font-size: 11px;
+  font-size: var(--text-sm);
   background: #eef2f6;
   padding: 2px 6px;
   border-radius: 4px;
@@ -4554,7 +4584,7 @@ td.due-overdue {
   flex-direction: column;
   gap: 6px;
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
   min-width: 0;
 }
 .github-add input,
@@ -4596,7 +4626,7 @@ td.due-overdue {
   padding: 16px 18px;
   background: #f7fafd;
   border-radius: 9px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .record-facts dt {
   color: #8494a6;
@@ -4613,7 +4643,7 @@ td.due-overdue {
   border-top: 1px solid #edf1f5;
 }
 .record-github h4 {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #37566f;
   margin: 0 0 12px;
 }
@@ -4626,7 +4656,7 @@ td.due-overdue {
   padding: 0;
   margin: 0 0 12px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #314b65;
 }
@@ -4726,7 +4756,7 @@ td.due-overdue {
   flex-wrap: wrap;
 }
 .issue-head strong {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #2f4a63;
   line-height: 1.6;
   /* 统一卡：标题恒独占一行（flex-basis: 100%），最多 2 行并截断。2026-10-20
@@ -4749,7 +4779,7 @@ td.due-overdue {
 .issue-origin {
   margin: 9px 0 0;
   color: #8494a6;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.75;
   /* 来源行同理：项目 / 模块 / 功能名长短不一，封顶 2 行；不再固定预留
      2 行高度，短来源行的卡片随内容收紧。 */
@@ -4809,7 +4839,7 @@ td.due-overdue {
   flex-direction: column;
   gap: 6px;
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
   min-width: 0;
 }
 .filter-panel select {
@@ -4824,7 +4854,7 @@ td.due-overdue {
   flex-direction: row;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #5d7288;
   grid-column: 1/-1;
 }
@@ -4837,7 +4867,7 @@ td.due-overdue {
   align-items: center;
   gap: 8px;
   color: #5d7288;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .check-line input {
   width: 15px;
@@ -4858,7 +4888,7 @@ td.due-overdue {
   border: 1px solid #dfe7ef;
   background: white;
   color: #66798c;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .chip:hover {
   border-color: #86afd7;
@@ -4905,7 +4935,7 @@ td.due-overdue {
   padding: 14px 16px 10px;
 }
 .popover-head strong {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #2b4560;
   min-width: 0;
   overflow: hidden;
@@ -4947,12 +4977,12 @@ td.due-overdue {
 }
 .notification-popover span {
   color: #3c5670;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.65;
 }
 .notification-popover small {
   color: #98a5b3;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 .notification-popover li:not(.read) button {
   background: #f6fbff;
@@ -4975,7 +5005,7 @@ td.due-overdue {
   border-radius: 7px;
   text-align: left;
   color: #4d6479;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .account-popover > button:hover {
   background: #f4f9fe;
@@ -5013,12 +5043,12 @@ td.due-overdue {
   border: 0;
   outline: none;
   background: transparent;
-  font-size: 15px;
+  font-size: var(--text-xl);
   color: #22384f;
 }
 .palette-input kbd {
   color: #93a0af;
-  font-size: 10px;
+  font-size: var(--text-xs);
   border: 1px solid #dce4eb;
   border-radius: 4px;
   padding: 3px 6px;
@@ -5044,7 +5074,7 @@ td.due-overdue {
   margin: 0;
   padding: 11px 18px;
   color: #8b9aab;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.65;
   background: #fafcfe;
   border-bottom: 1px solid #eef2f6;
@@ -5065,7 +5095,7 @@ td.due-overdue {
 .palette-results h4 {
   margin: 6px 8px;
   color: #8494a6;
-  font-size: 10px;
+  font-size: var(--text-xs);
   letter-spacing: 1.1px;
   text-transform: uppercase;
 }
@@ -5093,7 +5123,7 @@ td.due-overdue {
 .palette-results button strong {
   display: block;
   color: #2f4a63;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5102,7 +5132,7 @@ td.due-overdue {
 .palette-results button small {
   display: block;
   color: #8b9aab;
-  font-size: 11px;
+  font-size: var(--text-sm);
   margin-top: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5157,13 +5187,13 @@ td.due-overdue {
   flex: 1;
   min-width: 0;
   color: #3c5670;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.6;
 }
 .mini-record-list button small {
   display: block;
   color: #98a5b3;
-  font-size: 10px;
+  font-size: var(--text-xs);
   margin-top: 4px;
 }
 .rule-list {
@@ -5181,7 +5211,7 @@ td.due-overdue {
   border: 1px solid var(--border);
   border-radius: 8px;
   color: #6b7d90;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.75;
 }
 .rule-list li strong {
@@ -5221,7 +5251,7 @@ td.due-overdue {
   background: #f1f8fe;
   border-radius: 7px;
   color: #5b7892;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.8;
 }
 .permission-hint svg {
@@ -5243,7 +5273,7 @@ td.due-overdue {
   overflow: auto;
 }
 .snapshot-body h3 {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #546b82;
   margin: 22px 0 10px;
 }
@@ -5255,7 +5285,7 @@ td.due-overdue {
   border-radius: 0;
   color: #44596e;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 1.7;
   max-height: 46vh;
   overflow: auto;
@@ -5291,7 +5321,7 @@ td.due-overdue {
    卡片顶部因此空出一大截。 */
 .snapshot-body .snapshot-group-title {
   margin: 0 0 7px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
   letter-spacing: 0.08em;
   color: #7d8ea1;
@@ -5304,7 +5334,7 @@ td.due-overdue {
 }
 .snapshot-group .calm-meta code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 /* 可复制字段：值占满剩余宽度，按钮贴右；默认低对比，悬停整组或键盘聚焦才提亮，
    避免一列按钮抢走视线。 */
@@ -5325,7 +5355,7 @@ td.due-overdue {
   padding: 0 7px;
   color: #8b9cb0;
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--text-sm);
   line-height: 19px;
   cursor: pointer;
   opacity: 0.5;
@@ -5359,7 +5389,7 @@ td.due-overdue {
   background: #ffffff;
 }
 .snapshot-payload-kind {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.09em;
   color: #8b9cb0;
@@ -5369,7 +5399,7 @@ td.due-overdue {
 }
 .field-label {
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
   flex: 0 0 auto;
 }
 .impact-fieldset {
@@ -5384,7 +5414,7 @@ td.due-overdue {
 }
 .impact-fieldset legend {
   color: #586d83;
-  font-size: 11px;
+  font-size: var(--text-sm);
   padding: 0 6px;
 }
 @media (max-width: 1000px) {
@@ -5562,7 +5592,7 @@ td.due-overdue {
 }
 .account-popover .account-identity small {
   color: #98a5b3;
-  font-size: 10px;
+  font-size: var(--text-xs);
 }
 
 /* ===================== 任务看板（R-8 项目任务看板） =====================
@@ -5593,7 +5623,7 @@ td.due-overdue {
   margin-bottom: 12px;
 }
 .tb-page-head h1 {
-  font-size: 19px;
+  font-size: var(--text-3xl);
   letter-spacing: -0.2px;
   color: var(--tb-title);
   font-weight: 600;
@@ -5603,7 +5633,7 @@ td.due-overdue {
   flex-wrap: wrap;
 }
 .tb-page-head h1 span {
-  font-size: 11.5px;
+  font-size: var(--text-md);
   font-weight: 400;
   color: var(--tb-sub);
 }
@@ -5617,7 +5647,7 @@ td.due-overdue {
   color: #8a6520;
   border-radius: 9px;
   padding: 7px 12px;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   margin-bottom: 10px;
 }
 
@@ -5654,12 +5684,12 @@ td.due-overdue {
   gap: 1px;
 }
 .tb-ring-center b {
-  font-size: 22px;
+  font-size: var(--text-4xl);
   color: var(--tb-title);
   letter-spacing: -0.5px;
 }
 .tb-ring-center span {
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: var(--tb-sub);
 }
 .tb-overview-mid {
@@ -5677,11 +5707,11 @@ td.due-overdue {
   flex-wrap: wrap;
 }
 .tb-overview-head b {
-  font-size: 15px;
+  font-size: var(--text-xl);
   color: var(--tb-title);
 }
 .tb-overview-head span {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--tb-sub);
 }
 .tb-split-bar {
@@ -5708,7 +5738,7 @@ td.due-overdue {
   display: flex;
   align-items: center;
   gap: 14px;
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   color: #7b8da0;
   flex-wrap: wrap;
 }
@@ -5731,7 +5761,7 @@ td.due-overdue {
   border: 0;
   background: none;
   color: var(--primary);
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   padding: 0;
   cursor: pointer;
 }
@@ -5757,12 +5787,12 @@ td.due-overdue {
   gap: 1px;
 }
 .tb-metric span {
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   color: var(--tb-sub);
   white-space: nowrap;
 }
 .tb-metric b {
-  font-size: 18px;
+  font-size: var(--text-2xl);
   color: var(--tb-title);
   letter-spacing: -0.3px;
 }
@@ -5793,7 +5823,7 @@ td.due-overdue {
 }
 .tb-toolbar .segmented button {
   padding: 5px 12px;
-  font-size: 12px;
+  font-size: var(--text-md);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -5814,7 +5844,7 @@ td.due-overdue {
   border: 1px solid var(--border);
   background: #fff;
   color: #4c6178;
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 .tb-chip:hover {
@@ -5827,7 +5857,7 @@ td.due-overdue {
 }
 .tb-chip-count {
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--muted);
@@ -5855,7 +5885,7 @@ td.due-overdue {
   border-radius: 8px;
   background: #fff;
   color: #4c6178;
-  font-size: 12px;
+  font-size: var(--text-md);
   padding: 0 8px;
   outline: none;
 }
@@ -5868,7 +5898,7 @@ td.due-overdue {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fbfdff;
-  font-size: 12px;
+  font-size: var(--text-md);
   padding: 0 10px;
   color: var(--tb-title);
   outline: none;
@@ -6003,12 +6033,12 @@ td.due-overdue {
   min-width: 0;
 }
 .tb-lane-title h2 {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--tb-title);
   font-weight: 600;
 }
 .tb-lane-title p {
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   color: var(--tb-sub);
   margin-top: 1px;
 }
@@ -6017,7 +6047,7 @@ td.due-overdue {
   align-items: center;
   padding: 1px 6px;
   border-radius: 4px;
-  font-size: 9.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   background: #ffebeb;
   color: var(--tb-red);
@@ -6049,12 +6079,12 @@ td.due-overdue {
   background: #d9a13f;
 }
 .tb-lane-progress b {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--tb-title);
   font-variant-numeric: tabular-nums;
 }
 .tb-lane-progress span {
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   color: var(--tb-sub);
 }
 .tb-lane-people {
@@ -6070,7 +6100,7 @@ td.due-overdue {
   font-weight: 600;
   width: 22px;
   height: 22px;
-  font-size: 10px;
+  font-size: var(--text-xs);
   border: 2px solid #fff;
   margin-left: -7px;
 }
@@ -6204,12 +6234,12 @@ td.due-overdue {
 }
 .tb-code {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-xs);
   color: #7f93a8;
   letter-spacing: 0.2px;
 }
 .tb-card-title {
-  font-size: 12.5px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #2a4058;
   line-height: 1.35;
@@ -6234,7 +6264,7 @@ td.due-overdue {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   color: var(--tb-sub);
   margin-top: auto;
 }
@@ -6262,7 +6292,7 @@ td.due-overdue {
   height: 15px;
   border-radius: 50%;
   color: #fff;
-  font-size: 8.5px;
+  font-size: var(--text-avatar);
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -6299,7 +6329,7 @@ td.due-overdue {
   border-radius: 50%;
   background: var(--tb-green-soft);
   color: var(--tb-green);
-  font-size: 9px;
+  font-size: var(--text-avatar);
   font-weight: 700;
 }
 
@@ -6320,7 +6350,7 @@ td.due-overdue {
   padding: 6px 14px;
   background: #fff;
   border-bottom: 1px solid #eef2f7;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.4px;
   color: #95a5b6;
@@ -6347,11 +6377,11 @@ td.due-overdue {
   border-top: 0;
 }
 .tb-lgroup strong {
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: var(--tb-title);
 }
 .tb-lgroup-sub {
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   color: var(--tb-sub);
 }
 .tb-lgroup .tb-bar {
@@ -6391,7 +6421,7 @@ td.due-overdue {
   padding: 5px 14px;
   border: 0;
   border-top: 1px solid #f3f7fa;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #41566c;
   background: var(--tb-row-bg, none);
   width: 100%;
@@ -6490,7 +6520,7 @@ td.due-overdue {
 }
 .tb-row-sub {
   color: var(--tb-sub);
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6501,7 +6531,7 @@ td.due-overdue {
   gap: 6px;
   min-width: 0;
   color: #4c6178;
-  font-size: 11px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 /* 2026-09-23 ADR-040：负责人列列出全部负责人，超出 116px 列宽时省略，
@@ -6514,10 +6544,10 @@ td.due-overdue {
 .tb-row-owner .tb-ava {
   width: 16px;
   height: 16px;
-  font-size: 8.5px;
+  font-size: var(--text-avatar);
 }
 .tb-prio {
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 .tb-prio--red {
@@ -6541,7 +6571,7 @@ td.due-overdue {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 .tb-st--blue {
@@ -6569,12 +6599,12 @@ td.due-overdue {
   color: var(--tb-sub);
 }
 .tb-empty-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   color: var(--tb-title);
   font-weight: 600;
 }
 .tb-empty-sub {
-  font-size: 11px;
+  font-size: var(--text-sm);
   margin: 4px 0 14px;
 }
 .tb-foot {
@@ -6583,7 +6613,7 @@ td.due-overdue {
   align-items: center;
   justify-content: space-between;
   color: var(--tb-sub);
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   gap: 12px;
   flex-wrap: wrap;
 }
@@ -6930,13 +6960,17 @@ td.due-overdue {
 /* 双类名盖过 .surface-modal-lg 的 840px：工作台要放下两栏。 */
 .surface-modal.import-workbench {
   width: min(1080px, calc(100vw - 56px));
+  /* 固定外框：空态、内容梳理、预览文档之间切换都不再改变窗口大小。 */
+  height: min(760px, calc(100dvh - 56px));
 }
 .import-workbench .drawer-header {
+  flex-shrink: 0;
   padding: 18px 22px;
 }
 .import-workbench-body {
   position: relative;
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 10px;
   padding: 16px 22px 0;
@@ -6960,8 +6994,131 @@ td.due-overdue {
 }
 .import-target-label {
   color: #314c65;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   font-weight: 600;
+}
+/* 2026-10-26：导入方式与导入位置合并为单行工具条，去掉两处标签文字；
+   常驻说明收进 ⓘ，异常提示仍留在工具条下方。 */
+.import-target-bar.import-bar-inline {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.import-bar-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 9px 4px 10px;
+}
+.import-bar-inline .segmented {
+  padding: 2px;
+  border-radius: 8px;
+}
+.import-bar-inline .segmented button {
+  padding: 4px 11px;
+  border-radius: 6px;
+  font-size: var(--text-md);
+}
+.import-mode-group,
+.import-target-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.import-mode-group {
+  flex: none;
+}
+.import-target-group {
+  flex: 1 1 auto;
+}
+.import-target-crumb {
+  flex: none;
+  color: #a9bccd;
+  font-size: var(--text-md);
+  font-weight: 400;
+  line-height: 1;
+}
+/* 2026-10-26：模块页固定项目入口，先标出当前项目，再接「所属模块 / 所属功能」。 */
+.import-target-project {
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 3px 9px 3px 4px;
+  border: 1px solid #dbe7f2;
+  border-radius: 8px;
+  background: #fff;
+}
+.import-target-project-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+.import-target-project-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #1f3b54;
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.import-target-info {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid #cfe0ee;
+  border-radius: 50%;
+  background: #fff;
+  color: #7d94a9;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: help;
+}
+.import-target-info:hover {
+  border-color: #9dc4e4;
+  color: #2b6fa8;
+}
+.import-bar-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 0 12px 8px;
+}
+.import-bar-notes .import-target-note {
+  font-size: var(--text-xs);
+}
+/* 目标摘要在下拉里已经能看到，单行工具条里不再重复显示；保留给屏幕阅读器。 */
+.import-bar-inline .import-target-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .import-target-select.ant-select {
   flex: 0 0 auto;
@@ -6971,16 +7128,18 @@ td.due-overdue {
   border-radius: 8px !important;
 }
 .import-target-summary {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: #2f5f86;
-  font-size: 12px;
+  font-size: var(--text-md);
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .import-target-note {
   color: #7a8ea3;
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 .import-target-note.is-error {
   color: #b14a46;
@@ -7035,7 +7194,7 @@ td.due-overdue {
 }
 .import-pane-title {
   color: #314c65;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 .import-pane-headright,
@@ -7055,7 +7214,7 @@ td.due-overdue {
   background: transparent;
   padding: 0 0 6px;
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #5a7591;
   cursor: pointer;
   border-bottom: 2px solid transparent;
@@ -7067,7 +7226,7 @@ td.due-overdue {
 }
 .import-pill {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--text-sm);
   padding: 2px 8px;
   border-radius: 999px;
   background: #e8f1fb;
@@ -7082,12 +7241,12 @@ td.due-overdue {
   color: #7a5300;
 }
 .import-assist-name {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 700;
   color: #16273a;
 }
 .import-assist-count {
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #5a7591;
 }
 /* 空态拖入区：浅底、不描边（用户定稿的那一版）。 */
@@ -7111,7 +7270,7 @@ td.due-overdue {
 }
 .import-drop-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: #35577a;
   display: flex;
@@ -7120,13 +7279,13 @@ td.due-overdue {
 }
 .import-drop-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #9db1c5;
   line-height: 1.85;
 }
 .import-drop-or {
   margin: 2px 0 0;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #8fa5bb;
   display: flex;
   align-items: center;
@@ -7151,19 +7310,19 @@ td.due-overdue {
   flex-shrink: 0;
 }
 .import-draft-title {
-  font-size: 17px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   color: #16273a;
   letter-spacing: 0.2px;
 }
 .import-draft-count {
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #9db1c5;
 }
 .import-draft-warn {
   margin: 0;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #8a6512;
   background: #fff7e2;
   border: 1px solid #f0dca6;
@@ -7190,7 +7349,7 @@ td.due-overdue {
   padding: 11px 13px;
 }
 .import-draft-modname {
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: #16273a;
 }
@@ -7199,7 +7358,7 @@ td.due-overdue {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #5a7591;
 }
 .import-draft-feature {
@@ -7209,7 +7368,7 @@ td.due-overdue {
   margin-top: 4px;
 }
 .import-draft-funcname {
-  font-size: 12.5px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #35577a;
 }
@@ -7219,7 +7378,7 @@ td.due-overdue {
   align-items: baseline;
   gap: 4px 10px;
   padding-left: 14px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #24405c;
 }
 .import-draft-taskname {
@@ -7228,7 +7387,7 @@ td.due-overdue {
 }
 .import-draft-taskmeta {
   flex: none;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #8fa5bb;
 }
 .import-draft-taskextra {
@@ -7236,7 +7395,7 @@ td.due-overdue {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #8fa5bb;
 }
 .import-draft-field {
@@ -7277,7 +7436,7 @@ td.due-overdue {
   border-radius: 6px;
   padding: 1px 6px;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #24405c;
   background: #fff;
   outline: none;
@@ -7302,7 +7461,7 @@ td.due-overdue {
   border-radius: 999px;
   padding: 0 3px 0 7px;
   background: #eef5fc;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   line-height: 18px;
   color: #2d5b8b;
   white-space: nowrap;
@@ -7323,7 +7482,7 @@ td.due-overdue {
   border-radius: 50%;
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1;
   color: #7d9ab8;
   cursor: pointer;
@@ -7339,10 +7498,12 @@ td.due-overdue {
 }
 
 .import-draft-raw {
+  flex: 1 1 0;
+  min-height: 0 !important;
   font-family: ui-monospace, Consolas, monospace !important;
-  font-size: 12.5px !important;
+  font-size: var(--text-base) !important;
   line-height: 1.95 !important;
-  min-height: 300px;
+  resize: none !important;
 }
 .import-assist-msgs {
   /* 消息区不封顶：右栏被左栏 stretch 撑高时，这里一旦提前收住，flex 列会把余量留在
@@ -7368,7 +7529,7 @@ td.due-overdue {
   justify-content: center;
   gap: 8px;
   color: #1467d8;
-  font-size: 13px;
+  font-size: var(--text-base);
   text-align: center;
   /* 底色要压住下面的草稿 / 空态文案，否则提示行会和被盖住的文字叠在一起。 */
   background: rgb(255 255 255 / 95%);
@@ -7381,7 +7542,7 @@ td.due-overdue {
   align-items: center;
   gap: 7px;
   color: #46617c;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   background: #f2f7fd;
   border-color: #dbe8f6;
 }
@@ -7419,7 +7580,7 @@ td.due-overdue {
   gap: 4px;
   text-align: center;
   color: #b9c6d4;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   line-height: 1.9;
   padding: 0 24px;
 }
@@ -7430,6 +7591,14 @@ td.due-overdue {
   display: flex;
   gap: 6px;
 }
+/* 粘贴自由正文后的主操作：蓝色实心，和右上角的次要动作拉开层级。 */
+.import-assist-action .import-assist-run {
+  height: 32px;
+  padding: 0 18px;
+  border-radius: 7px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(36, 114, 195, 0.24);
+}
 /* 对话：AI 白气泡靠左，用户蓝气泡靠右，都不标发言者。 */
 .import-msg {
   display: flex;
@@ -7439,7 +7608,7 @@ td.due-overdue {
   border: 1px solid #e4ecf5;
   border-radius: 9px;
   padding: 7px 10px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   line-height: 1.65;
   color: #24384c;
 }
@@ -7456,7 +7625,7 @@ td.due-overdue {
   flex-shrink: 0;
 }
 .import-chip {
-  font-size: 11.5px;
+  font-size: var(--text-md);
   padding: 3px 9px;
   border-radius: 999px;
   background: #fff3d6;
@@ -7482,7 +7651,7 @@ td.due-overdue {
 }
 .import-unmatched-title {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: #8a6512;
 }
@@ -7491,7 +7660,7 @@ td.due-overdue {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .import-unmatched-name {
   font-weight: 600;
@@ -7500,7 +7669,7 @@ td.due-overdue {
 .import-unmatched-pos,
 .import-unmatched-kind {
   color: #8fa5bb;
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 .import-unmatched-cands {
   display: flex;
@@ -7521,7 +7690,7 @@ td.due-overdue {
   border: 1px solid #f0dca6;
   border-radius: 7px;
   background: white;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #7a5300;
 }
 .import-member-cands {
@@ -7532,7 +7701,7 @@ td.due-overdue {
   overflow: auto;
 }
 .import-member-empty {
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #8fa5bb;
 }
 .import-composer {
@@ -7550,7 +7719,7 @@ td.due-overdue {
   border: 1px solid #cfdcea;
   border-radius: 8px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #24384c;
   background: #fff;
 }
@@ -7574,7 +7743,7 @@ td.due-overdue {
 }
 .import-issue {
   margin: 0;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #7d8f9f;
 }
 .import-issue.is-err {
@@ -7588,7 +7757,7 @@ td.due-overdue {
 .import-workbench .import-format-guide summary {
   cursor: pointer;
   color: #314c65;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   font-weight: 600;
 }
 .import-workbench .import-format-guide[open] summary {
@@ -7603,7 +7772,7 @@ td.due-overdue {
   width: 100%;
 }
 .import-foot-note {
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #5a7591;
   min-width: 0;
   overflow: hidden;
@@ -7618,6 +7787,7 @@ td.due-overdue {
 /* 预览态：项目名与元信息一行，下面按模块卡片列出功能与任务。 */
 .import-preview-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 10px;
   padding: 16px 22px 0;
@@ -7626,7 +7796,7 @@ td.due-overdue {
 }
 .import-summary-line {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-base);
   color: #24405c;
   line-height: 1.75;
 }
@@ -7636,12 +7806,12 @@ td.due-overdue {
   gap: 2px;
 }
 .import-preview-name {
-  font-size: 17px;
+  font-size: var(--text-2xl);
   font-weight: 700;
   color: #16273a;
 }
 .import-preview-meta {
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #5a7591;
 }
 .import-plan-cards {
@@ -7660,7 +7830,7 @@ td.due-overdue {
   gap: 8px;
   background: #f4f8fc;
   padding: 8px 11px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #24405c;
 }
@@ -7674,7 +7844,7 @@ td.due-overdue {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #35577a;
   margin-bottom: 6px;
 }
@@ -7682,7 +7852,7 @@ td.due-overdue {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #24405c;
   border-left: 2px solid #dbe7f4;
   padding-left: 9px;
@@ -7698,12 +7868,12 @@ td.due-overdue {
 .import-plan-taskmeta {
   flex: none;
   color: #5a7591;
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 /* 标签：模块绿、功能紫、复用态浅灰，一眼分辨层级。 */
 .import-tag {
   font-style: normal;
-  font-size: 11px;
+  font-size: var(--text-sm);
   border-radius: 999px;
   padding: 1px 7px;
   background: #e8f5ec;
@@ -7753,7 +7923,7 @@ td.due-overdue {
   padding: 0 8px;
   margin: 0;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #8a6512;
   cursor: pointer;
 }
@@ -7778,7 +7948,7 @@ td.due-overdue {
 }
 .import-unmatched-note {
   margin: 0;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   color: #9b8a5f;
   line-height: 1.6;
 }
@@ -7846,7 +8016,7 @@ div.ant-popover.import-member-popover
 .import-member-suggest-note {
   margin: 0 0 3px;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: #9db1c5;
   line-height: 1.5;
 }
@@ -7861,7 +8031,7 @@ div.ant-popover.import-member-popover
   padding: 5px 6px;
   background: transparent;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   color: #24405c;
   text-align: left;
   cursor: pointer;
@@ -7880,7 +8050,7 @@ div.ant-popover.import-member-popover
   border-radius: 50%;
   object-fit: cover;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
   color: #fff;
 }
@@ -7896,7 +8066,7 @@ div.ant-popover.import-member-popover
   border-radius: 999px;
   padding: 1px 7px;
   background: #eaf1fa;
-  font-size: 10.5px;
+  font-size: var(--text-sm);
   color: #5a7591;
 }
 
@@ -7917,7 +8087,7 @@ div.ant-popover.import-member-popover
   border-radius: 8px;
   background: #f1f8fe;
   color: #5b7892;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 
@@ -7966,7 +8136,7 @@ div.ant-popover.import-member-popover
   padding: 0;
   list-style: none;
   color: #60768b;
-  font-size: 12.5px;
+  font-size: var(--text-base);
   line-height: 1.7;
 }
 
@@ -7988,7 +8158,7 @@ div.ant-popover.import-member-popover
   border-radius: 50%;
   background: #e8f1fa;
   color: #3f79b4;
-  font-size: 11px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -7999,7 +8169,7 @@ div.ant-popover.import-member-popover
   border-radius: 10px;
   background: #fbfdff;
   color: #8fa5b8;
-  font-size: 12px;
+  font-size: var(--text-md);
   text-align: center;
 }
 
@@ -8014,7 +8184,7 @@ div.ant-popover.import-member-popover
 .wecom-binding-code code {
   display: block;
   color: #314b65;
-  font-size: 22px;
+  font-size: var(--text-4xl);
   font-weight: 600;
   letter-spacing: 3px;
   user-select: all;
@@ -8030,7 +8200,7 @@ div.ant-popover.import-member-popover
 
 .wecom-binding-code-foot small {
   color: #7b8fa2;
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 
 .wecom-binding-code-actions {
@@ -8038,7 +8208,7 @@ div.ant-popover.import-member-popover
   align-items: center;
   gap: 10px;
   color: #5b7892;
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 
 /* 机器人链接提示块：管理页配置的 botProfileUrl，指引成员在企业微信中打开机器人。 */
@@ -8049,7 +8219,7 @@ div.ant-popover.import-member-popover
   border-radius: 10px;
   background: #f7fafd;
   color: #5b7892;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 
@@ -8073,7 +8243,7 @@ div.ant-popover.import-member-popover
   border-radius: 6px;
   background: #eef4fa;
   color: #314b65;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   word-break: break-all;
   user-select: all;
 }
@@ -8085,7 +8255,7 @@ div.ant-popover.import-member-popover
 .wecom-binding-meta {
   margin: 12px 0 0;
   color: #7b8fa2;
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 
 .wecom-binding-alert {
@@ -8144,7 +8314,7 @@ div.ant-popover.wecom-unbind-popconfirm
 
 .wecom-robot-field > label {
   color: #526b83;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
@@ -8154,7 +8324,7 @@ div.ant-popover.wecom-unbind-popconfirm
 
 .wecom-robot-field > small[role="alert"] {
   color: #b45b55;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .wecom-robot-actions {
@@ -8195,7 +8365,7 @@ div.ant-popover.wecom-unbind-popconfirm
   display: flex;
   flex-wrap: wrap;
   color: #5b7892;
-  font-size: 11.5px;
+  font-size: var(--text-md);
   line-height: 1.6;
 }
 
@@ -8218,7 +8388,7 @@ div.ant-popover.wecom-unbind-popconfirm
 
 .ai-assist-field > label {
   color: #526b83;
-  font-size: 12px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
@@ -8228,7 +8398,7 @@ div.ant-popover.wecom-unbind-popconfirm
 
 .ai-assist-field > small[role="alert"] {
   color: #b45b55;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .ai-assist-field .ant-input-number {

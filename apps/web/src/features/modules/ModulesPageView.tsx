@@ -380,6 +380,7 @@ export function ModulesPageView({
         open={importOpen}
         mode="PROJECT"
         projectId={projectId}
+        projectName={projectName ?? undefined}
         client={client}
         onClose={() => setImportOpen(false)}
         onImported={(result: ProjectDocumentImportResult) => {

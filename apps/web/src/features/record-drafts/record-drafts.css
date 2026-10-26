@@ -17,16 +17,16 @@
 }
 .draft-source-head h2 {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: var(--text-xl);
 }
 .draft-source-head p {
   margin: 0 0 8px;
   color: #74869a;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .draft-source-head a {
   color: #2472c3;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .record-drafts-page .calm-section-title {
   align-items: center;
@@ -62,7 +62,7 @@
 
 .draft-detail h3 {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #314b65;
 }
@@ -70,7 +70,7 @@
 /* 正文与正式记录详情同档：13px、灰蓝 #60768b、1.8 行高。 */
 .draft-detail .record-markdown {
   color: #60768b;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.8;
 }
 
@@ -87,7 +87,7 @@
 .draft-detail-note {
   margin: 10px 0 0;
   color: #8b9aac;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* 说明落在操作区左侧：`.calm-action-footer` 是 flex，靠右的是按钮组。 */
@@ -201,7 +201,7 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
   color: #132238;
-  font-size: 14px;
+  font-size: var(--text-lg);
   font-weight: 600;
   line-height: 1.35;
 }
@@ -212,7 +212,7 @@
   gap: 6px;
   margin-top: auto;
   color: #93a4b5;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .draft-card-scope {
@@ -239,7 +239,7 @@
   border-radius: 50%;
   background: #2472c3;
   color: #fff;
-  font-size: 9px;
+  font-size: var(--text-avatar);
   line-height: 1;
 }
 
@@ -322,7 +322,7 @@
 
 .record-source-line {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--text-md);
   color: #7a8da0;
   overflow-wrap: anywhere;
 }
@@ -338,7 +338,7 @@
   gap: 6px 22px;
   margin: 0;
   padding: 0;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .record-scope-fact {
@@ -371,7 +371,7 @@
 /* 页脚上方一行提示：说明「发布后项目成员可见」和「保存草稿」的区别。 */
 .record-publish-hint {
   margin: 14px 0 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.6;
   color: #8091a4;
 }
@@ -386,13 +386,13 @@
 
 .record-github-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: #33475c;
 }
 
 .record-github-hint {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: #8091a4;
 }
 

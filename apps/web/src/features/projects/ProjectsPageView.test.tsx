@@ -395,8 +395,8 @@ describe("ADR-064 / ADR-094 项目列表文档导入入口", () => {
     expect(screen.getByTestId("document-import-mode")).toBeInTheDocument();
     expect(screen.getByLabelText("导入文档内容")).toBeInTheDocument();
     expect(
-      screen
-        .getByRole("button", { name: "新建整项目" })
+      within(screen.getByRole("dialog", { name: "从文档导入" }))
+        .getByRole("button", { name: "新建项目" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
   });

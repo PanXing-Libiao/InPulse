@@ -40,12 +40,12 @@
 .summary-filter-label {
   min-width: 34px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .summary-range-text {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .summary-range-inputs {
@@ -62,7 +62,7 @@
   background: var(--card);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .summary-scroll {
@@ -84,18 +84,18 @@
 
 .summary-doc h3 {
   margin: 0 0 6px;
-  font-size: 20px;
+  font-size: var(--text-3xl);
 }
 
 .summary-scope {
   margin: 0 0 18px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .summary-overview {
   margin: 0 0 20px;
-  font-size: 13.5px;
+  font-size: var(--text-lg);
   line-height: 1.9;
 }
 
@@ -105,12 +105,12 @@
 
 .summary-section h4 {
   margin: 0 0 8px;
-  font-size: 13.5px;
+  font-size: var(--text-lg);
 }
 
 .summary-section p {
   margin: 0 0 8px;
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.8;
 }
 
@@ -122,7 +122,7 @@
 }
 
 .summary-section li {
-  font-size: 13px;
+  font-size: var(--text-base);
   line-height: 1.75;
 }
 
@@ -135,7 +135,7 @@
   padding-top: 12px;
   border-top: 1px dashed var(--border);
   color: var(--muted-foreground);
-  font-size: 11.5px;
+  font-size: var(--text-md);
   line-height: 1.7;
 }
 
@@ -158,17 +158,17 @@
 
 .summary-stat-grid span {
   color: var(--muted-foreground);
-  font-size: 11.5px;
+  font-size: var(--text-md);
 }
 
 .summary-stat-grid strong {
-  font-size: 17px;
+  font-size: var(--text-2xl);
 }
 
 .summary-detail-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 .summary-detail-table th,
@@ -182,7 +182,7 @@
 /* 表头比表体的 12px 略大一档（2026-09-29 用户要求「这几个字稍微大一点」）。 */
 .summary-detail-table th {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -199,7 +199,7 @@
   align-self: center;
   gap: 6px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 
 /* 编辑态出口：撤销降级为状态行末尾的浅链接（2026-10-15）。 */
@@ -207,7 +207,7 @@
   height: auto;
   padding: 0;
   color: var(--primary);
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.4;
 }
 
@@ -355,7 +355,7 @@
   background: var(--card);
   color: #5b45c9;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
   box-shadow: 0 2px 10px #5b45c914;
@@ -445,7 +445,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--text-lg);
   line-height: 1.65;
   resize: none;
 }
@@ -468,7 +468,7 @@
   border-radius: 50%;
   background: transparent;
   color: #9aa3b8;
-  font-size: 14px;
+  font-size: var(--text-lg);
   line-height: 20px;
   cursor: pointer;
   transition:
@@ -498,7 +498,7 @@
   background: #f6f4ff;
   color: #6a58d6;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-md);
   cursor: pointer;
   transition:
     background 0.15s,
@@ -518,13 +518,13 @@
 
 .summary-ai-chip.on::before {
   content: "✓";
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .summary-ai-error {
   margin: 0 16px 2px;
   color: #c0453f;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.6;
 }
 
@@ -542,7 +542,7 @@
   flex: 1 1 auto;
   min-width: 0;
   color: var(--muted-foreground);
-  font-size: 11.5px;
+  font-size: var(--text-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -556,7 +556,7 @@
 
 .summary-ai-count {
   color: #a6aec0;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 .summary-ai-count.warn {
@@ -574,7 +574,7 @@
   background: linear-gradient(135deg, #7a63e6, #5b45c9);
   color: #fff;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 600;
   box-shadow: 0 8px 20px #5b45c942;
   cursor: pointer;
@@ -603,13 +603,13 @@
   border-radius: 5px;
   background: #ffffff2b;
   font-family: inherit;
-  font-size: 10px;
+  font-size: var(--text-xs);
   font-weight: 400;
 }
 
 /* 可编辑正文：段落与模型原文一一对应，改过的段左侧画橙点。 */
 .summary-ai-doc > .summary-ai-sec:first-child > .summary-ai-paragraph {
-  font-size: 19px;
+  font-size: var(--text-3xl);
   font-weight: 700;
 }
 
@@ -630,12 +630,12 @@
 
 .summary-ai-heading {
   margin: 0 0 8px;
-  font-size: 14.5px;
+  font-size: var(--text-lg);
 }
 
 .summary-ai-paragraph {
   margin: 0 0 10px;
-  font-size: 13.5px;
+  font-size: var(--text-lg);
   line-height: 1.9;
 }
 
@@ -647,7 +647,7 @@
 }
 
 .summary-ai-list li {
-  font-size: 13.5px;
+  font-size: var(--text-lg);
   line-height: 1.75;
 }
 
@@ -678,7 +678,7 @@
   background: var(--card);
   color: #5b6f84;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 

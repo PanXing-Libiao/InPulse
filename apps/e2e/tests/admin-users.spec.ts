@@ -76,6 +76,10 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "新增用户" })).toHaveCount(0);
     await expect(page.getByText("当前账号", { exact: true })).toHaveCount(0);
+    // 先等目标成员数据渲染完成再量工具栏几何，避免把加载中の过渡布局当成最终排版。
+    await expect(
+      page.locator(".member-row").filter({ hasText: loginName }),
+    ).toContainText(name);
     const scope = page.getByRole("group", { name: "成员状态筛选" });
     const filterBox = await scope.boundingBox();
     const searchBox = await page.getByLabel("搜索成员").boundingBox();
