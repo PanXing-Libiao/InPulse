@@ -444,7 +444,7 @@ describe("ADR-094 项目列表入口的工作台内切换", () => {
     expect(screen.getByLabelText("导入文档内容")).toBeInTheDocument();
     expect(
       screen
-        .getByRole("button", { name: "新建整项目" })
+        .getByRole("button", { name: "新建项目" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.queryByTestId("document-import-target")).toBeNull();
@@ -729,6 +729,17 @@ describe("ADR-071 左右分栏工作台", () => {
 
     // 进去就能 Ctrl+V：不用先点一下输入框。
     await waitFor(() => expect(document.activeElement).toBe(importTextarea()));
+  });
+
+  it("空态直接 Ctrl+V：剪贴板文本一步落进粘贴框", async () => {
+    mount();
+
+    fireEvent.paste(window, {
+      clipboardData: { getData: () => WORKBENCH_DOCUMENT },
+    });
+
+    await waitFor(() => expect(document.activeElement).toBe(importTextarea()));
+    expect(importTextarea()).toHaveValue(WORKBENCH_DOCUMENT);
   });
 
   it("粘贴模板后左栏按层级渲染结构化草稿，右栏给出规模计数", async () => {

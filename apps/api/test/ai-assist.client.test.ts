@@ -97,7 +97,7 @@ describe("DocumentImportAiAssistClient", () => {
       "所有任务的「负责人」都要写进去",
     );
     expect(body.messages[0]!.content).toContain(
-      "创建者本人（本次导入的人，也就是提供这份文档的人）必须写进「- 项目成员：」：TA 是不是任务负责人都不影响。本次导入人的姓名是「特哥」，名单里写这个名字。",
+      "创建者本人（本次导入的人，也就是提供这份材料的人）必须写进「- 项目成员：」：TA 是不是任务负责人都不影响。本次导入人的姓名是「特哥」，名单里写这个名字。",
     );
     // 「补充说明：」行是写文档的人本人的补充，必须落到草稿上（否则用户看见的就是「AI 没反应」）。
     expect(body.messages[0]!.content).toContain("以「补充说明：」开头");
@@ -106,10 +106,48 @@ describe("DocumentImportAiAssistClient", () => {
     expect(body.messages[0]!.content).toContain("禁止填写「原文档仅列出…」");
     expect(body.messages[0]!.content).toContain("只改该类字段");
     expect(body.messages[0]!.content).toContain("不要顺手润色整份草稿");
+    // 2026-10-26：输入可能是聊天记录、会议纪要或模糊描述，先判断整体项目方向，再整理模板。
+    expect(body.messages[0]!.content).toContain("聊天记录、会议纪要或零散想法");
+    expect(body.messages[0]!.content).toContain(
+      "先判断这些材料整体想做一个什么项目",
+    );
+    expect(body.messages[0]!.content).toContain("对话很模糊时");
+    expect(body.messages[0]!.content).toContain(
+      "项目 / 模块层的整体目标可以合理归纳",
+    );
+    expect(body.messages[0]!.content).toContain("以最后一次明确决定为准");
+    expect(body.messages[0]!.content).toContain("不要把这类过程性说明写进字段");
     expect(body.messages[1]).toEqual({
       role: "user",
       content: "我的项目文档原文",
     });
+  });
+
+  test("模糊对话提示词：允许归纳项目方向，但不硬造具体内容", async () => {
+    const { fetchImpl, calls } = stubFetch(() =>
+      jsonResponse(completion("## 模块：支付")),
+    );
+    const client = new DocumentImportAiAssistClient(fetchImpl);
+    await client.generateDraft(config, {
+      mode: "WHOLE_PROJECT",
+      text: "A：仓库发货总对不上，能不能扫个码就知道今天发什么？B：领导还想看进度。",
+    });
+    const body = JSON.parse(String(calls[0]!.init.body)) as {
+      messages: readonly { role: string; content: string }[];
+    };
+    const system = body.messages[0]!.content;
+    expect(system).toContain("把每个人说的话还原成业务意图");
+    expect(system).toContain(
+      "没有明确的项目名、模块名或任务，也要给出有依据的概括",
+    );
+    expect(system).toContain("不能为了填满模板硬造");
+    expect(system).toContain("技术形态（如二维码、条形码、App、Web）");
+    expect(system).toContain(
+      "不要用「某某项目」「未命名项目」「项目一」这类占位名",
+    );
+    expect(body.messages[1]!.content).toBe(
+      "A：仓库发货总对不上，能不能扫个码就知道今天发什么？B：领导还想看进度。",
+    );
   });
 
   test("整项目指令在拿不到导入人姓名时要求不要编造", async () => {

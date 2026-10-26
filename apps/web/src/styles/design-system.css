@@ -6960,13 +6960,17 @@ td.due-overdue {
 /* 双类名盖过 .surface-modal-lg 的 840px：工作台要放下两栏。 */
 .surface-modal.import-workbench {
   width: min(1080px, calc(100vw - 56px));
+  /* 固定外框：空态、内容梳理、预览文档之间切换都不再改变窗口大小。 */
+  height: min(760px, calc(100dvh - 56px));
 }
 .import-workbench .drawer-header {
+  flex-shrink: 0;
   padding: 18px 22px;
 }
 .import-workbench-body {
   position: relative;
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 10px;
   padding: 16px 22px 0;
@@ -6993,6 +6997,95 @@ td.due-overdue {
   font-size: var(--text-base);
   font-weight: 600;
 }
+/* 2026-10-26：导入方式与导入位置合并为单行工具条，去掉两处标签文字；
+   常驻说明收进 ⓘ，异常提示仍留在工具条下方。 */
+.import-target-bar.import-bar-inline {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.import-bar-main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 9px 4px 10px;
+}
+.import-bar-inline .segmented {
+  padding: 2px;
+  border-radius: 8px;
+}
+.import-bar-inline .segmented button {
+  padding: 4px 11px;
+  border-radius: 6px;
+  font-size: var(--text-md);
+}
+.import-mode-group,
+.import-target-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.import-mode-group {
+  flex: none;
+}
+.import-target-group {
+  flex: 1 1 auto;
+}
+.import-target-crumb {
+  flex: none;
+  color: #a9bccd;
+  font-size: var(--text-md);
+  font-weight: 400;
+  line-height: 1;
+}
+.import-target-info {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid #cfe0ee;
+  border-radius: 50%;
+  background: #fff;
+  color: #7d94a9;
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: help;
+}
+.import-target-info:hover {
+  border-color: #9dc4e4;
+  color: #2b6fa8;
+}
+.import-bar-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 0 12px 8px;
+}
+.import-bar-notes .import-target-note {
+  font-size: var(--text-xs);
+}
+/* 目标摘要在下拉里已经能看到，单行工具条里不再重复显示；保留给屏幕阅读器。 */
+.import-bar-inline .import-target-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 .import-target-select.ant-select {
   flex: 0 0 auto;
 }
@@ -7001,10 +7094,12 @@ td.due-overdue {
   border-radius: 8px !important;
 }
 .import-target-summary {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: #2f5f86;
   font-size: var(--text-md);
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -7369,10 +7464,12 @@ td.due-overdue {
 }
 
 .import-draft-raw {
+  flex: 1 1 0;
+  min-height: 0 !important;
   font-family: ui-monospace, Consolas, monospace !important;
   font-size: var(--text-base) !important;
   line-height: 1.95 !important;
-  min-height: 300px;
+  resize: none !important;
 }
 .import-assist-msgs {
   /* 消息区不封顶：右栏被左栏 stretch 撑高时，这里一旦提前收住，flex 列会把余量留在
@@ -7459,6 +7556,14 @@ td.due-overdue {
   flex-shrink: 0;
   display: flex;
   gap: 6px;
+}
+/* 粘贴自由正文后的主操作：蓝色实心，和右上角的次要动作拉开层级。 */
+.import-assist-action .import-assist-run {
+  height: 32px;
+  padding: 0 18px;
+  border-radius: 7px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(36, 114, 195, 0.24);
 }
 /* 对话：AI 白气泡靠左，用户蓝气泡靠右，都不标发言者。 */
 .import-msg {
@@ -7648,6 +7753,7 @@ td.due-overdue {
 /* 预览态：项目名与元信息一行，下面按模块卡片列出功能与任务。 */
 .import-preview-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 10px;
   padding: 16px 22px 0;
