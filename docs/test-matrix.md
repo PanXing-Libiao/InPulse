@@ -7123,3 +7123,24 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR096-GATE-001 | 静态与文档门禁 | 类型、格式、契约与迁移 | 全工作区类型检查、lint、format、契约漂移与校验、权限矩阵、迁移检查、依赖边界、Secret 与文档链接/锚点检查通过；生成客户端与 OpenAPI 已同步；未修改历史迁移 | 本地通过（2026-10-23） |
 
 已知边界：本轮未重跑 Playwright、全量 API 集成、生产镜像构建、Trivy 与 GitHub Actions；这些结果不能由本矩阵推导为已通过。0059 与修正函数内部聚合组计数的 0060 已在本机 PostgreSQL 18.6 执行，0060 已冻结，后续修正必须新增 0061。导出、回收站、延迟清理与还原不在范围内。
+
+## 2026-10-26 SSO 群组组织同步（ADR-097）
+
+用户要求 SSO 登录读取 Casdoor 群组，自动建立对应组织并分类人员，且完整路径与 Casdoor 对齐。验证必须区分缺失 claim、空数组、非法路径、全量替换与 CASDOOR 只读，不能把“登录成功”误判为“组织已同步”。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR097-UNIT-001 | API 单元 | 群组路径解析 | `casdoor-group-path.test.ts` 覆盖保留原始路径、按深度与字典序稳定排序、展开全部祖先且不把 Casdoor owner 当组织；非法空段 / 斜杠 / 超限 / 重复项被拒绝 | 本地通过（2026-10-26） |
+| ADR097-UNIT-002 | API 单元 | id_token claim 边界 | `sso-oidc.client.test.ts` 证明验签后只保留身份字段与 `groups`，区分缺失 `null` 与空数组，并拒绝非字符串、空字符串、重复或超限路径；非身份 claim 不进入本地映射 | 本地通过（2026-10-26） |
+| ADR097-API-001 | API 集成（真实 PostgreSQL + 桩 IdP） | 首次建组织与多群组 | `sso-login.integration.test.ts`：首次登录按完整路径创建祖先与直接群组组织，owner 不建组织，一人多群组全部保留；账号开通 / 绑定审计先于 `auth.sso_organizations_synced`，登录审计与 Session 同事务 | 本地通过（2026-10-26） |
+| ADR097-API-002 | API 集成（真实 PostgreSQL + 桩 IdP） | 缺失、空数组与全量替换 | `groups` 缺失时登录成功且原成员关系不变；`groups: []` 清空全部关系；再次提供新群组时删除旧关系并写入新关系；不额外保留祖先成员关系 | 本地通过（2026-10-26） |
+| ADR097-API-003 | API 集成（真实 PostgreSQL + 桩 IdP） | 非法路径回滚与并发 | 非法 `groups` 返回 `token-invalid`，不创建账号、组织或 Session；两个用户并发同步同一群组只创建一套 CASDOOR 组织；同一用户并发不产生交叉成员关系 | 本地通过（2026-10-26） |
+| ADR097-API-004 | API 集成（真实 PostgreSQL + HTTP） | CASDOOR 只读与手工调整拒绝 | `organizations-api.integration.test.ts`：CASDOOR 组织改名 / 删除 409 `ORGANIZATION_SSO_MANAGED`；管理员不能把 SSO 用户手工加入或移出组织，也不能把本地账号加入 CASDOOR 组织；LOCAL 组织 CRUD、批量归属与幂等重放不回归 | 本地通过（2026-10-26） |
+| ADR097-DB-001 | 真实 PostgreSQL | 结构与授权 | `database.test.ts`：`app.user_organizations` 复合主键、级联 FK、来源 CHECK、CASDOOR 完整路径唯一与 LOCAL 名称唯一、来源一致性触发器、CASDOOR 只读触发器、运行时 / 备份最小授权和部署断言存在 | 本地通过（2026-10-26） |
+| ADR097-DB-002 | 真实 PostgreSQL | 非法来源与只读防线 | 拒绝组织来源改写、CASDOOR 组织本地修改 / 删除、用户与组织来源错配、SSO 用户挂 MANUAL 关系、本地用户挂 CASDOOR 关系；不改写历史迁移 | 本地通过（2026-10-26） |
+| ADR097-WEB-001 | Web 单元 | 多组织展示与选择器 | `AdminUsersPageView` 展示多组织并禁用 SSO 用户组织操作；`MyOrganizationPanel` 展示全部所属组织与去重成员；`CreateProjectModal` 按全部组织分组、整组选择按并集去重且仍受 1～20 人限制；文档导入成员匹配兼容数组结构 | 本地通过（2026-10-26） |
+| ADR097-E2E-001 | Playwright 浏览器 | 管理员用户页 SSO 徽章与列对齐 | `admin-users.spec.ts` 在管理员与预置 SSO 账号同列表时验证组织区与「统一身份」徽章处于同一容器，状态列和操作列 x 坐标差不超过 2px；全量 Playwright 89/89 本地通过 | 本地通过（2026-10-26） |
+| ADR097-CONTRACT-001 | 契约静态门禁 | Schema、重放与权限 | Route Registry 129 条；`contract:validate` 与 `contract:drift` 通过；组织契约幂等 2.0.0、`createUser` / `updateUser` 为 1.4.0；`AdminUserItem` 重放叶子完整覆盖 `organizations[]` 与 `managedBySso`；`permissions:check` 129 条操作 / 129 条路由通过 | 本地通过（2026-10-26） |
+| ADR097-MIGRATION-001 | 真实 PostgreSQL 全新库 | bootstrap 与全量迁移 | 新库先执行 `000_roles.sql`、`020_pgroonga.sql`，再由 `app_migrator` 执行 `pnpm db:migrate`；全部迁移应用成功；`app_migrator` 使用数据库默认 `search_path`，历史迁移 `0047` 的 `pg_get_triggerdef()` 部署断言不再误判 | 本地通过（2026-10-26） |
+
+已知边界：未连接真实 Casdoor 生产实例，未验证实际 IdP 的 `JWT-Custom` 配置结果；全量 Playwright 89/89 已在本地通过（2026-10-26），但不替代真实 Casdoor 联调；不声称 CI、生产镜像或 Trivy 已通过。Casdoor Group 没有不可变数字 ID，路径改名或移动会表现为旧成员关系消失、新组织出现；本轮不自动删除已消失群组的本地组织行。

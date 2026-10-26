@@ -112,8 +112,7 @@ describe("UserDirectoryService", () => {
         "id",
         "isAdmin",
         "name",
-        "organizationId",
-        "organizationName",
+        "organizations",
       ]);
       expect(item).not.toHaveProperty("loginName");
       expect(item).not.toHaveProperty("email");
@@ -121,20 +120,18 @@ describe("UserDirectoryService", () => {
     }
   });
 
-  test("返回组织归属：已分配用户带 organizationId/organizationName，未分配为 null", async () => {
+  test("返回组织归属：已分配用户带 organizations，未分配为空数组", async () => {
     const organizationName = `F081 目录组织 ${randomBytes(4).toString("hex")}`;
     const orgRows = (await client!.sql`
-      INSERT INTO app.organizations (name)
-      VALUES (${organizationName})
+      INSERT INTO app.organizations (name, source)
+      VALUES (${organizationName}, 'LOCAL')
       RETURNING id
     `) as unknown as readonly { id: number }[];
     const organizationId = orgRows[0]!.id;
     const assignedId = await createUser(client!.sql);
     await client!.sql`
-      UPDATE app.users
-         SET organization_id = ${organizationId},
-             row_version = row_version + 1
-       WHERE id = ${assignedId}
+      INSERT INTO app.user_organizations (user_id, organization_id, source)
+      VALUES (${assignedId}, ${organizationId}, 'MANUAL')
     `;
     const unassignedId = await createUser(client!.sql);
     const cookie = await issueSessionCookie(assignedId);
@@ -143,12 +140,16 @@ describe("UserDirectoryService", () => {
 
     expect(directory).toBeDefined();
     const assigned = directory!.find((item) => item.id === assignedId);
-    expect(assigned).toMatchObject({ organizationId, organizationName });
+    expect(assigned?.organizations).toEqual([
+      {
+        id: organizationId,
+        name: organizationName,
+        source: "LOCAL",
+        groupPath: null,
+      },
+    ]);
     const unassigned = directory!.find((item) => item.id === unassignedId);
-    expect(unassigned).toMatchObject({
-      organizationId: null,
-      organizationName: null,
-    });
+    expect(unassigned?.organizations).toEqual([]);
   });
 
   test("匿名或停用用户的 Session 不返回目录", async () => {

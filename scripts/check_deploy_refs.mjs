@@ -12,7 +12,11 @@
  * 用法：
  *   node scripts/check_deploy_refs.mjs --env deploy/.env.deploy
  *   node scripts/check_deploy_refs.mjs --env deploy/.env.deploy.test
+ *   node scripts/check_deploy_refs.mjs --static --env deploy/.env.deploy.test
  *   node scripts/check_deploy_refs.mjs --env deploy/.env.deploy.example  # 应被拒绝
+ *
+ * --static 只做不需要 Docker 的 ref、文件、Dockerfile 与备份资产检查，并会明确
+ * 跳过 compose render 和结构不变量；CI/发布门禁必须继续使用默认的严格模式。
  *
  * 注意：真实 digest 只能由受信镜像仓库解析后写入，本脚本不生成也不伪造 digest。
  */
@@ -71,7 +75,7 @@ const REQUIRED_BACKUP_ASSETS = [
   "docs/runbooks/audit-archive.md",
 ];
 
-async function checkBackupSchedule(rendered) {
+async function checkBackupSchedule(rendered = {}) {
   const problems = [];
   const texts = new Map();
 
@@ -458,11 +462,16 @@ function info(message) {
 }
 
 function parseArgs(argv) {
-  const args = { env: "deploy/.env.deploy", compose: "deploy/compose.yaml" };
+  const args = {
+    env: "deploy/.env.deploy",
+    compose: "deploy/compose.yaml",
+    static: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--env" || arg === "--env-file") args.env = argv[i + 1];
     else if (arg === "--compose") args.compose = argv[i + 1];
+    else if (arg === "--static") args.static = true;
   }
   return args;
 }
@@ -969,11 +978,25 @@ async function checkDockerfiles() {
 }
 
 async function main() {
-  const { env, compose } = parseArgs(process.argv.slice(2));
+  const args = parseArgs(process.argv.slice(2));
+  const env = args.env;
+  const compose = args.compose;
+  const staticMode = args.static;
   const envValues = await loadEnv(env);
   if (envValues === null) {
     process.exit(exitCode);
     return;
+  }
+
+  const backupGitSha = envValues.get("BACKUP_GIT_SHA");
+  if (backupGitSha === undefined || backupGitSha === "") {
+    fail("BACKUP_GIT_SHA is missing from " + env);
+  } else if (!/^[0-9a-f]{40}$/.test(backupGitSha)) {
+    fail(
+      "BACKUP_GIT_SHA must be a full 40-hex commit SHA, got " +
+        backupGitSha.length +
+        " chars",
+    );
   }
 
   // 1. required IMAGE_REF present and valid
@@ -998,6 +1021,46 @@ async function main() {
       `image ref(s) invalid; resolve them at a trusted registry before release`,
     );
     process.exit(exitCode);
+  }
+
+  if (staticMode) {
+    const requiredFiles = [
+      compose,
+      ...REQUIRED_DOCKERFILES,
+      ...REQUIRED_DOCKER_ASSETS,
+      ...REQUIRED_INIT_ASSETS,
+    ];
+    for (const file of requiredFiles) {
+      if (!existsSync(file)) {
+        fail("missing required static deploy asset: " + file);
+      }
+    }
+    if (exitCode !== 0) {
+      process.exit(exitCode);
+      return;
+    }
+
+    const dockerProblems = await checkDockerfiles();
+    if (dockerProblems.length > 0) {
+      for (const problem of dockerProblems) fail(problem);
+      process.exit(exitCode);
+      return;
+    }
+
+    const backupProblems = await checkBackupSchedule({});
+    if (backupProblems.length > 0) {
+      for (const problem of backupProblems) fail(problem);
+      process.exit(exitCode);
+      return;
+    }
+
+    info(
+      count +
+        " image refs valid; static Dockerfile and backup-asset checks OK. " +
+        "Compose render and structure invariants were SKIPPED because this is static mode; " +
+        "CI and release gates must run the strict check.",
+    );
+    return;
   }
 
   // 3. compose render + image check + structure

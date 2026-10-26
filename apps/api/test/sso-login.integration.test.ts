@@ -20,6 +20,7 @@ import { PostgresSsoUserRepository } from "../src/auth/sso/sso-user.repository.j
 import { SsoOidcClient } from "../src/auth/sso/sso-oidc.client.js";
 import type { SsoConfig } from "../src/auth/sso/sso.config.js";
 import { PostgresUserCredentialRepository } from "../src/auth/user-credential.repository.js";
+import { PostgresOrganizationSyncService } from "../src/organizations/organization-sync.service.js";
 import { PostgresUserSessionRepository } from "../src/auth/user-session.repository.js";
 import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { testUrls } from "./database.helpers.js";
@@ -221,6 +222,78 @@ async function lastFailureReason(): Promise<string | undefined> {
   return rows[0]?.payload.reason;
 }
 
+interface SsoOrganizationRow {
+  readonly id: number;
+  readonly name: string;
+  readonly source: string;
+  readonly groupPath: string;
+  readonly parentId: number | null;
+  readonly membershipSource: string | null;
+}
+
+async function directCasdoorMemberships(
+  userId: number,
+): Promise<readonly SsoOrganizationRow[]> {
+  return (await client!.sql`
+    SELECT o.id,
+           o.name,
+           o.source,
+           o.sso_group_path AS "groupPath",
+           o.parent_id AS "parentId",
+           uo.source AS "membershipSource"
+      FROM app.user_organizations AS uo
+      JOIN app.organizations AS o ON o.id = uo.organization_id
+     WHERE uo.user_id = ${userId}
+       AND o.source = 'CASDOOR'
+     ORDER BY o.sso_group_path
+  `) as unknown as readonly SsoOrganizationRow[];
+}
+
+async function organizationsByOwner(
+  owner: string,
+): Promise<readonly SsoOrganizationRow[]> {
+  return (await client!.sql`
+    SELECT id,
+           name,
+           source,
+           sso_group_path AS "groupPath",
+           parent_id AS "parentId",
+           NULL::TEXT AS "membershipSource"
+      FROM app.organizations
+     WHERE source = 'CASDOOR'
+       AND sso_owner = ${owner}
+     ORDER BY sso_group_path
+  `) as unknown as readonly SsoOrganizationRow[];
+}
+
+async function latestOrganizationSyncPayload(userId: number): Promise<
+  | {
+      readonly groupsClaimPresent?: boolean;
+      readonly groupCount?: number;
+      readonly createdOrganizationCount?: number;
+      readonly membershipCount?: number;
+    }
+  | undefined
+> {
+  const rows = (await reader!.sql`
+    SELECT event_payload AS "payload"
+      FROM app.audit_logs
+     WHERE chain_id = 'SYSTEM'
+       AND actor_id = ${userId}
+       AND action = 'auth.sso_organizations_synced'
+     ORDER BY sequence_no DESC
+     LIMIT 1
+  `) as unknown as readonly {
+    readonly payload: {
+      readonly groupsClaimPresent?: boolean;
+      readonly groupCount?: number;
+      readonly createdOrganizationCount?: number;
+      readonly membershipCount?: number;
+    };
+  }[];
+  return rows[0]?.payload;
+}
+
 beforeAll(async () => {
   client = createDatabaseClient(testUrls().runtime, {
     applicationName: "inpulse-sso-login-integration-test",
@@ -243,6 +316,7 @@ beforeAll(async () => {
     unitOfWork,
     new PostgresSsoLoginAttemptRepository(),
     new PostgresSsoUserRepository(),
+    new PostgresOrganizationSyncService(),
     new PostgresUserCredentialRepository(),
     new PostgresUserSessionRepository(),
     new PostgresSessionCsrfTokenRepository(),
@@ -331,6 +405,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
 
     expect(await auditActions(user.id)).toEqual([
       "auth.sso_account_provisioned",
+      "auth.sso_organizations_synced",
       "auth.sso_login",
     ]);
 
@@ -402,9 +477,204 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
     expect(await sessionRows(created.id)).toHaveLength(2);
     expect(await auditActions(created.id)).toEqual([
       "auth.sso_account_provisioned",
+      "auth.sso_organizations_synced",
       "auth.sso_login",
+      "auth.sso_organizations_synced",
       "auth.sso_login",
     ]);
+  });
+
+  test("首次 SSO 登录按 Casdoor 群组路径建立层级组织并写入直接成员关系", async () => {
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const groups = [owner + "/总部/测试部", owner + "/研发/平台组"];
+    const loginName = uniqueLoginName("sso_groups");
+    const { state } = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(state),
+      subject: uniqueSubject(),
+      loginName,
+      displayName: "群组同事",
+      email: uniqueEmail(),
+      groups,
+    });
+
+    const result = await service.complete(completeInput(state, "203.0.113.41"));
+    expect(result.location).toBe("/projects");
+    const user = (await usersByLoginName(loginName))[0]!;
+
+    const organizations = await organizationsByOwner(owner);
+    expect(new Set(organizations.map((row) => row.groupPath))).toEqual(
+      new Set([
+        owner + "/总部",
+        owner + "/总部/测试部",
+        owner + "/研发",
+        owner + "/研发/平台组",
+      ]),
+    );
+    const byPath = new Map(
+      organizations.map((row) => [row.groupPath, row] as const),
+    );
+    expect(byPath.get(owner + "/总部")?.parentId).toBeNull();
+    expect(byPath.get(owner + "/总部/测试部")?.name).toBe("测试部");
+    expect(byPath.get(owner + "/总部/测试部")?.parentId).toBe(
+      byPath.get(owner + "/总部")?.id,
+    );
+    expect(byPath.get(owner + "/研发/平台组")?.parentId).toBe(
+      byPath.get(owner + "/研发")?.id,
+    );
+
+    const memberships = await directCasdoorMemberships(user.id);
+    expect(new Set(memberships.map((row) => row.groupPath))).toEqual(
+      new Set(groups),
+    );
+    expect(memberships.every((row) => row.membershipSource === "CASDOOR")).toBe(
+      true,
+    );
+
+    expect(await latestOrganizationSyncPayload(user.id)).toMatchObject({
+      groupsClaimPresent: true,
+      groupCount: 2,
+      createdOrganizationCount: 4,
+      membershipCount: 2,
+    });
+    expect(await auditActions(user.id)).toEqual([
+      "auth.sso_account_provisioned",
+      "auth.sso_organizations_synced",
+      "auth.sso_login",
+    ]);
+  });
+
+  test("groups 缺失不修改、空数组清空、再次提供时全量替换", async () => {
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const loginName = uniqueLoginName("sso_groups_replace");
+    const subject = uniqueSubject();
+    const firstGroup = owner + "/研发/平台组";
+    const secondGroup = owner + "/研发/测试组";
+
+    const first = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(first.state),
+      subject,
+      loginName,
+      displayName: "群组替换",
+      email: uniqueEmail(),
+      groups: [firstGroup, secondGroup],
+    });
+    await service.complete(completeInput(first.state, "203.0.113.42"));
+    const user = (await usersByLoginName(loginName))[0]!;
+    expect(
+      new Set(
+        (await directCasdoorMemberships(user.id)).map((row) => row.groupPath),
+      ),
+    ).toEqual(new Set([firstGroup, secondGroup]));
+
+    const missing = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(missing.state),
+      subject,
+      loginName,
+      displayName: "群组缺失",
+      email: uniqueEmail(),
+    });
+    await service.complete(completeInput(missing.state, "203.0.113.42"));
+    expect(
+      new Set(
+        (await directCasdoorMemberships(user.id)).map((row) => row.groupPath),
+      ),
+    ).toEqual(new Set([firstGroup, secondGroup]));
+    expect(await latestOrganizationSyncPayload(user.id)).toMatchObject({
+      groupsClaimPresent: false,
+      groupCount: 0,
+    });
+
+    const empty = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(empty.state),
+      subject,
+      loginName,
+      displayName: "群组清空",
+      email: uniqueEmail(),
+      groups: [],
+    });
+    await service.complete(completeInput(empty.state, "203.0.113.42"));
+    expect(await directCasdoorMemberships(user.id)).toEqual([]);
+    expect(await latestOrganizationSyncPayload(user.id)).toMatchObject({
+      groupsClaimPresent: true,
+      groupCount: 0,
+      membershipCount: 0,
+    });
+
+    const replacement = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(replacement.state),
+      subject,
+      loginName,
+      displayName: "群组替换",
+      email: uniqueEmail(),
+      groups: [secondGroup],
+    });
+    await service.complete(completeInput(replacement.state, "203.0.113.42"));
+    expect(
+      (await directCasdoorMemberships(user.id)).map((row) => row.groupPath),
+    ).toEqual([secondGroup]);
+    expect(
+      (await organizationsByOwner(owner)).some(
+        (row) => row.groupPath === firstGroup,
+      ),
+    ).toBe(true);
+  });
+
+  test("非法 groups 路径拒绝登录且不创建账号、组织或会话", async () => {
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const loginName = uniqueLoginName("sso_groups_invalid");
+    const { state } = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(state),
+      subject: uniqueSubject(),
+      loginName,
+      displayName: "非法群组",
+      email: uniqueEmail(),
+      groups: [owner + "//测试部"],
+    });
+
+    const result = await service.complete(completeInput(state, "203.0.113.43"));
+
+    expect(result.location).toBe("/login?sso_error=token-invalid");
+    expect(await usersByLoginName(loginName)).toHaveLength(0);
+    expect(await organizationsByOwner(owner)).toHaveLength(0);
+    expect(await lastFailureReason()).toBe("token-invalid");
+  });
+
+  test("两个用户并发同步同一 Casdoor 群组只创建一套组织", async () => {
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const groups = [owner + "/研发/平台组"];
+    const firstUserId = await createLocalUser({
+      loginName: uniqueLoginName("sso_sync_a"),
+      email: null,
+      ssoSubject: uniqueSubject(),
+    });
+    const secondUserId = await createLocalUser({
+      loginName: uniqueLoginName("sso_sync_b"),
+      email: null,
+      ssoSubject: uniqueSubject(),
+    });
+    const sync = new PostgresOrganizationSyncService();
+
+    const results = await Promise.all(
+      [firstUserId, secondUserId].map((userId) =>
+        unitOfWork.run((tx) => sync.syncSsoMemberships({ tx, userId, groups })),
+      ),
+    );
+
+    expect(
+      results.reduce(
+        (count, result) => count + result.createdOrganizationCount,
+        0,
+      ),
+    ).toBe(2);
+    expect(await organizationsByOwner(owner)).toHaveLength(2);
+    expect(await directCasdoorMemberships(firstUserId)).toHaveLength(1);
+    expect(await directCasdoorMemberships(secondUserId)).toHaveLength(1);
   });
 
   test("登录名命中且邮箱一致时绑定既有账号而不是新建", async () => {
@@ -430,6 +700,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
     expect(users[0]?.ssoSubject).toBe(subject);
     expect(await auditActions(existingId)).toEqual([
       "auth.sso_account_linked",
+      "auth.sso_organizations_synced",
       "auth.sso_login",
     ]);
   });

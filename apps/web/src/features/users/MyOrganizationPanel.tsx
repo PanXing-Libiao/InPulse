@@ -18,8 +18,8 @@ export interface MyOrganizationPanelProps {
 }
 
 /**
- * ADR-081 普通成员的只读成员视图：自己所属组织与同组织 ACTIVE 成员的
- * 脱敏信息（姓名、头像、是否管理员）；未分配时说明原因。
+ * ADR-097 普通成员的只读成员视图：自己所属全部组织与去重后的同组织
+ * ACTIVE 成员脱敏信息；未分配时说明原因。
  */
 export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
   client,
@@ -56,21 +56,25 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
     );
   }
 
-  const organization = query.data.organization;
+  const organizations = query.data.organizations;
   const items = query.data.items;
+  const organizationNames = new Map(
+    organizations.map((organization) => [organization.id, organization.name]),
+  );
 
-  if (organization === null) {
+  if (organizations.length === 0) {
     return (
       <section className="panel settings-panel settings-members-panel">
         <CalmSectionTitle title="成员与角色" />
         <CalmEmptyState
           icon="users"
           title="尚未加入组织"
-          description="你还没有被分配组织，联系系统管理员分配后即可看到同组织成员。"
+          description="你还没有组织归属。本地账号可联系系统管理员分配，SSO 账号请检查 Casdoor 群组配置。"
         />
         <div className="permission-note">
           <span>
-            组织用于把成员分组，不影响项目权限；成员列表由系统管理员维护。
+            组织用于把成员分组，不影响项目权限；SSO 账号的组织由 Casdoor
+            群组自动同步。
           </span>
         </div>
       </section>
@@ -79,9 +83,21 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
 
   return (
     <section className="panel settings-panel settings-members-panel my-org-panel">
-      <CalmSectionTitle title={organization.name}>
+      <CalmSectionTitle title="成员与角色">
         <span className="my-org-count">共 {items.length} 位成员</span>
       </CalmSectionTitle>
+      <div className="permission-note">
+        {organizations.map((organization) => (
+          <CalmBadge
+            key={organization.id}
+            tone={organization.source === "CASDOOR" ? "cyan" : "gray"}
+          >
+            {organization.source === "CASDOOR"
+              ? (organization.groupPath ?? organization.name)
+              : organization.name}
+          </CalmBadge>
+        ))}
+      </div>
       <div className="member-list">
         {items.map((user) => (
           <div className="member-row" key={user.id}>
@@ -98,6 +114,12 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
               <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
                 {user.isAdmin ? "系统管理员" : "项目成员"}
               </CalmBadge>
+              {user.organizationIds.map((organizationId) => (
+                <CalmBadge key={organizationId} tone="cyan">
+                  {organizationNames.get(organizationId) ??
+                    "组织 " + organizationId}
+                </CalmBadge>
+              ))}
             </div>
           </div>
         ))}

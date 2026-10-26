@@ -73,7 +73,15 @@ describe("CreateProjectModal", () => {
   it("submits normalized values with CSRF and idempotency headers", async () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
     const getUserDirectory = vi.fn().mockResolvedValue({
-      items: [{ id: 1, name: "开发者 C", avatarUrl: null, isAdmin: false }],
+      items: [
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+      ],
     });
     const createProject = vi.fn().mockResolvedValue(createdProject);
     const client = {
@@ -118,7 +126,15 @@ describe("CreateProjectModal", () => {
   it("shows a 409 message without calling the success callback", async () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
     const getUserDirectory = vi.fn().mockResolvedValue({
-      items: [{ id: 1, name: "开发者 C", avatarUrl: null, isAdmin: false }],
+      items: [
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+      ],
     });
     const createProject = vi.fn().mockRejectedValue(
       new ApiError(409, {
@@ -156,9 +172,27 @@ describe("CreateProjectModal", () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
     const getUserDirectory = vi.fn().mockResolvedValue({
       items: [
-        { id: 1, name: "开发者 C", avatarUrl: null, isAdmin: false },
-        { id: 2, name: "开发者 B", avatarUrl: null, isAdmin: false },
-        { id: 3, name: "管理员 A", avatarUrl: null, isAdmin: true },
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+        {
+          id: 2,
+          name: "开发者 B",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+        {
+          id: 3,
+          name: "管理员 A",
+          avatarUrl: null,
+          isAdmin: true,
+          organizations: [],
+        },
       ],
     });
     const createProject = vi.fn().mockResolvedValue(createdProject);
@@ -202,32 +236,34 @@ describe("CreateProjectModal", () => {
           name: "开发者 C",
           avatarUrl: null,
           isAdmin: false,
-          organizationId: 7,
-          organizationName: "研发一组",
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+          ],
         },
         {
           id: 2,
           name: "开发者 B",
           avatarUrl: null,
           isAdmin: false,
-          organizationId: 7,
-          organizationName: "研发一组",
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+          ],
         },
         {
           id: 3,
           name: "开发者 D",
           avatarUrl: null,
           isAdmin: false,
-          organizationId: 7,
-          organizationName: "研发一组",
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+          ],
         },
         {
           id: 4,
           name: "管理员 A",
           avatarUrl: null,
           isAdmin: true,
-          organizationId: null,
-          organizationName: null,
+          organizations: [],
         },
       ],
     });
@@ -279,6 +315,85 @@ describe("CreateProjectModal", () => {
     );
   });
 
+  it("多组织重叠成员按并集保留，取消一个组织不会误删另一组织的成员", async () => {
+    const getUserDirectory = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+          ],
+        },
+        {
+          id: 2,
+          name: "开发者 B",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+            { id: 8, name: "研发二组", source: "LOCAL", groupPath: null },
+          ],
+        },
+        {
+          id: 3,
+          name: "开发者 D",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [
+            { id: 8, name: "研发二组", source: "LOCAL", groupPath: null },
+          ],
+        },
+      ],
+    });
+    const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
+    const createProject = vi.fn().mockResolvedValue(createdProject);
+    const client = {
+      issueCsrfToken,
+      getUserDirectory,
+      createProject,
+    } as unknown as InpulseApiClient;
+    renderModal(client);
+
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    await fillForm(dialog);
+    fireEvent.click(
+      await within(dialog).findByRole("button", {
+        name: /全选组织 研发一组/,
+      }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /全选组织 研发二组/ }),
+    );
+    await expect(
+      within(dialog).findByText(/共 3 人/),
+    ).resolves.toBeInTheDocument();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: /取消全选组织 研发一组/,
+      }),
+    );
+    await expect(
+      within(dialog).findByText(/共 3 人/),
+    ).resolves.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", {
+        name: /组织已全选 研发一组（已选 1\/1 人）/,
+      }),
+    ).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(within(dialog).getByRole("button", { name: "创建项目" }));
+    await waitFor(() => expect(createProject).toHaveBeenCalledTimes(1));
+    expect(createProject).toHaveBeenCalledWith(
+      expect.objectContaining({ memberIds: [2, 3] }),
+      expect.any(Object),
+    );
+  });
+
   it("组内可单独挑选：单人勾选后组织按钮显示已选进度", async () => {
     const getUserDirectory = vi.fn().mockResolvedValue({
       items: [
@@ -287,24 +402,27 @@ describe("CreateProjectModal", () => {
           name: "开发者 C",
           avatarUrl: null,
           isAdmin: false,
-          organizationId: 7,
-          organizationName: "研发一组",
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+          ],
         },
         {
           id: 2,
           name: "开发者 B",
           avatarUrl: null,
           isAdmin: false,
-          organizationId: 7,
-          organizationName: "研发一组",
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+          ],
         },
         {
           id: 3,
           name: "开发者 D",
           avatarUrl: null,
           isAdmin: false,
-          organizationId: 7,
-          organizationName: "研发一组",
+          organizations: [
+            { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
+          ],
         },
       ],
     });

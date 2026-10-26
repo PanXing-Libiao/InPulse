@@ -47,7 +47,7 @@ F-12 本地接口已登记到可执行权限矩阵，真实 HTTP/数据库验收
 | 操作 | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 额外条件 |
 |---|---:|---:|---:|---:|---:|---:|---|
 | 读取当前用户 | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 服务端从 `__Host-session` 解析身份，不接受客户端传入用户 ID；响应 `no-store` |
-| 读取用户目录（`getUserDirectory` · `GET /api/v1/users`） | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 服务端从 Session 解析身份；返回 `id`、`name`、`avatarUrl`、`isAdmin` 与组织归属（`organizationId` / `organizationName`，未分配为 `null`；ADR-081），不返回登录名、邮箱、密码哈希或停用状态；只返回 ACTIVE 且 `disabled_at IS NULL` 的用户，最多 300 条；响应 `no-store`；新建项目「项目成员」选择器按组织分组并支持整组勾选 |
+| 读取用户目录（`getUserDirectory` · `GET /api/v1/users`） | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 服务端从 Session 解析身份；返回 `id`、`name`、`avatarUrl`、`isAdmin` 与 `organizations` 数组（每项含 `id` / `name` / `source` / `groupPath`，未分配为空数组；ADR-081、ADR-097），不返回登录名、邮箱、密码哈希或停用状态；只返回 ACTIVE、未停用且未删除的用户，最多 300 条；响应 `no-store`；新建项目「项目成员」选择器按全部所属组织分组并支持整组勾选，重叠成员按并集去重 |
 | 创建项目（`createProject` · `POST /api/v1/projects`） | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 请求者自动成为活跃成员且创建时不可取消；请求头需同步 CSRF，正文 `memberIds` 为可选项目成员且不含创建者，服务端在单事务内校验全员 ACTIVE 并写审计、搜索/活动投影与通知；要求 `Idempotency-Key`，重放前需重新验证当前认证与项目可读权限；成功返回 200；`code` 显式提供时须符合 `^[A-Z][A-Z0-9_]{1,31}$`，未提供时由服务端从名称派生 |
 | 项目列表（`listProjects` · `GET /api/v1/projects`）与项目详情（`getProject` · `GET /api/v1/projects/{projectId}`） | 401 | 列表返回本人全部活跃项目，详情按资源允许 | 列表只返回本人活跃项目，详情 404 | 列表只返回本人其他活跃项目，已移除项目不返回，详情 404 | 401 | 列表与详情均返回全部项目 | 服务端从 Session 解析 actor 并先取得 `AuthorizedProjectScope`，SQL 前限制项目范围，不接受客户端传入范围；无权限与不存在统一 404；历史数据仍可读；响应 `no-store`；`projectId` 非法时 422 |
 | 编辑项目（`updateProject` · `PATCH /api/v1/projects/{projectId}`） | 401 | 允许 | 404 | 404 | 401 | 允许 | 项目编码创建后不可修改，只允许整笔替换 `name` 与 `description`；项目三态下都可写（ADR-043 起项目已无归档态）；CSRF 与 `Idempotency-Key` 必填、`If-Match` 乐观锁（版本冲突 409）；名称/描述、审计 `project.update`、活动与搜索投影同一事务；重放前重新验证当前成员关系与项目可写性 |
@@ -326,14 +326,14 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---|---|---|---|---|---|---|
-| `listOrganizations` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；返回全部组织（id / name / rowVersion / createdAt / updatedAt），按 id 升序；只读，无 CSRF 与幂等；响应 `no-store` |
-| `createOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（契约 1.0.0）；`name` 1～100 字符，按 `lower(btrim(name))` 函数唯一索引去重；重名 409 `ORGANIZATION_NAME_CONFLICT`；审计 `admin.organization.create` |
-| `updateOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（1.0.0）+ `If-Match`（`row_version`）；404 `ORGANIZATION_NOT_FOUND`；409 `ORGANIZATION_VERSION_CONFLICT` / `ORGANIZATION_NAME_CONFLICT`；审计 `admin.organization.update` |
-| `deleteOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（1.0.0）+ `If-Match`；204 无 body；同一事务先显式清空成员归属（递增 `row_version`，数据库级 `ON DELETE SET NULL` 兜底）再删组织；审计 `admin.organization.delete`（只记成员数） |
-| `assignUsersOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（1.0.0）；`userIds` 1～200 去重、`organizationId` 为正整数或 `null`；按用户 ID 升序 `FOR UPDATE` 逐行切换归属；目标组织不存在 422 `ORGANIZATION_NOT_FOUND`；重复调用 `updatedCount = 0` 自然幂等；审计 `admin.user.organizations.assign` |
-| `getMyOrganizationMembers` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效会话：返回当前用户所属组织与该组织 ACTIVE 成员（`id` / `name` / `avatarUrl` / `isAdmin`，最多 300 条；不返回登录名、邮箱与停用状态）；未分配返回空列表；只读，响应 `no-store` |
+| `listOrganizations` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；返回全部 LOCAL 与 CASDOOR 组织（`id` / `name` / `source` / `groupPath` / `parentId` / `rowVersion` / `createdAt` / `updatedAt`），按 id 升序；只读，无 CSRF 与幂等；响应 `no-store` |
+| `createOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 数据库级幂等（契约 2.0.0）；只创建 LOCAL 组织；`name` 1～100 字符，按 `lower(btrim(name))` 对 LOCAL 名称唯一去重；重名 409 `ORGANIZATION_NAME_CONFLICT`；审计 `admin.organization.create` |
+| `updateOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（2.0.0）+ `If-Match`（`row_version`）；仅 LOCAL 组织可改名，CASDOOR 组织 409 `ORGANIZATION_SSO_MANAGED`；404 `ORGANIZATION_NOT_FOUND`；409 `ORGANIZATION_VERSION_CONFLICT` / `ORGANIZATION_NAME_CONFLICT`；审计 `admin.organization.update` |
+| `deleteOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（2.0.0）+ `If-Match`；204 无 body；仅 LOCAL 组织可删除，CASDOOR 组织 409 `ORGANIZATION_SSO_MANAGED`；同一事务显式清理成员关系，数据库外键 `ON DELETE CASCADE` 兜底，不删除用户；审计 `admin.organization.delete`（只记成员数） |
+| `assignUsersOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（2.0.0）；`userIds` 1～200 去重、`organizationId` 为正整数或 `null`；按用户 ID 升序 `FOR UPDATE`；只允许本地账号与 LOCAL 目标组织，SSO 用户或 CASDOOR 目标返回 409 `ORGANIZATION_SSO_MANAGED`；本地账号使用单组织替换语义，重复调用 `updatedCount = 0`；目标组织不存在 422 `ORGANIZATION_NOT_FOUND`；审计 `admin.user.organizations.assign` |
+| `getMyOrganizationMembers` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效会话：返回当前用户全部 `organizations` 与去重后的同组织 ACTIVE 成员；成员含 `id` / `name` / `avatarUrl` / `isAdmin` / `organizationIds`（最多 300 条；不返回登录名、邮箱与停用状态）；未分配返回空数组；只读，响应 `no-store` |
 
-六条路由承载 ADR-081 的组织（部门）能力：组织是全局平铺配置，一名成员至多归属一个组织（未分配为 `NULL`，删除组织即回到未分配），组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。路由总数 119 → 125，`permissions:check` 125 条操作 / 125 条路由通过（2026-10-16 实测）；真实 PostgreSQL 集成用例 `apps/api/test/organizations-api.integration.test.ts` 3 例本地通过；迁移 `0046_organizations.sql`。2026-10-16 第二批（部分）与修正：① `getUserDirectory` 增加只读组织字段（未分配为 `null`，仍不含登录名与邮箱），新建项目「初始项目成员」选择器按组织分组并支持「全选组织」快捷按钮（仍受 1～20 人与项目成员约束不变）；② 修正 `/settings` 前端路由守卫——ADR-081 首批声明「入口对全体成员开放」但路由仍要求管理员，已改为登录守卫（`requiresAuth`），普通成员进入后只渲染只读同组织视图，管理能力由页面按 `isAdmin` 收缩；③ 真实 PostgreSQL 集成 `apps/api/test/user-directory.integration.test.ts` 增至 3 例（含组织归属 `null` / 非 `null`）。
+六条路由承载 ADR-081 的组织（部门）能力。2026-10-16 历史口径为「一名成员至多归属一个组织、未分配为 `NULL`」，该口径自 [ADR-097](adr/ADR-097.md) 起只继续适用于本地口令账号；SSO 用户可同时属于多个 CASDOOR 群组。组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。ADR-081 落库时新增迁移 `0046_organizations.sql`、路由总数 119 → 125；ADR-097 未新增业务路由，当前仍为 129 条操作 / 129 条路由。2026-10-16 第二批与修正保留：① `getUserDirectory` 增加只读组织字段，新建项目「初始项目成员」选择器按组织分组并支持「全选组织」；② 修正 `/settings` 前端路由守卫为登录守卫，普通成员进入后只渲染只读同组织视图；③ 真实 PostgreSQL 集成覆盖组织归属空数组与非空数组。
 
 ## ADR-088 离职账号物理删除（2026-10-20）
 
@@ -369,3 +369,20 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | `updateProjectWecomGroupNotificationOptions` | 401 | 403（普通成员）/ 允许（组长） | 404 | 404 | 401 | 允许 | 完整认证 Session + 同源 + CSRF + `Idempotency-Key`（数据库级幂等 1.0.0）；仅系统管理员或本项目组长；项目须有 ACTIVE 群绑定，否则 409 `PROJECT_WECOM_GROUP_NOT_BOUND`；整组替换五类 `disabledCategories`；写审计 `project.wecomGroup.notificationOptions.update`，记录 groupBindingId / before / after；重放重新校验组长或管理员身份及 ACTIVE 绑定 |
 
 本路由把项目群通知选项从浏览器本地状态升级为服务端项目配置；桥接每轮物化前读取同一份开关，缺行与未识别事件默认放行。关闭只影响之后物化的新 `PENDING` 消息，不回溯历史、已排队或已发送消息，也不改变个人单聊和站内个人通知偏好。路由总数 128 → 129，`permissions:check` 129 条操作 / 129 条路由（2026-10-20 实测）。
+
+## ADR-097 SSO 群组组织同步（2026-10-26）
+
+本节按 [ADR-097](adr/ADR-097.md)（Accepted）修订 ADR-081 的组织来源与成员关系模型；六条组织路由、授权等级、CSRF、幂等与 `If-Match` 要求不变，路由总数保持 129。
+
+| operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
+|---|---|---|---|---|---|---|---|
+| `listOrganizations` | 401 | 403 | 403 | 403 | 401 | 允许 | 返回 LOCAL 与 CASDOOR 组织；CASDOOR 条目含 `groupPath` 与 `parentId`，响应 `no-store` |
+| `createOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 只创建 LOCAL 组织；完整管理员 Session + CSRF + 数据库级幂等（2.0.0）；重名 409 `ORGANIZATION_NAME_CONFLICT` |
+| `updateOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 只允许改名 LOCAL 组织；CASDOOR 组织 409 `ORGANIZATION_SSO_MANAGED`；要求完整管理员 Session + CSRF + 幂等（2.0.0）+ `If-Match` |
+| `deleteOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 只允许删除 LOCAL 组织；CASDOOR 组织 409 `ORGANIZATION_SSO_MANAGED`；成员关系级联清理但不删除用户 |
+| `assignUsersOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 只允许本地账号与 LOCAL 目标组织；SSO 用户或 CASDOOR 目标 409 `ORGANIZATION_SSO_MANAGED`；本地账号仍为单组织替换 |
+| `getMyOrganizationMembers` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 返回当前用户全部组织与去重成员；成员携带全部 `organizationIds`，脱敏口径不变 |
+
+**登录同步边界**：只有绑定 `sso_subject` 的账号由 SSO 管理组织。Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`；`groups` 缺失时登录成功但不改组织，`groups: []` 清空全部关系，非法路径按 `token-invalid` 拒绝并回滚。只同步直接群组，祖先仅建立层级。Casdoor `groups`、`isAdmin`、roles 与 permissions 不授予 InPulse 权限。
+
+**验证**：真实 PostgreSQL + 桩 IdP 覆盖首次建层级组织、多群组、缺失 / 空数组 / 全量替换、非法路径回滚、并发同群组登录、审计顺序、CASDOOR 只读与 SSO 用户手工操作拒绝；`permissions:check` 129 条操作 / 129 条路由通过（2026-10-26）。真实 Casdoor 生产联调未执行。

@@ -20,6 +20,7 @@ import { PostgresSsoUserRepository } from "../src/auth/sso/sso-user.repository.j
 import { SsoOidcClient } from "../src/auth/sso/sso-oidc.client.js";
 import type { SsoConfig } from "../src/auth/sso/sso.config.js";
 import { PostgresUserCredentialRepository } from "../src/auth/user-credential.repository.js";
+import { PostgresOrganizationSyncService } from "../src/organizations/organization-sync.service.js";
 import { PostgresUserSessionRepository } from "../src/auth/user-session.repository.js";
 import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { testUrls } from "./database.helpers.js";
@@ -108,6 +109,7 @@ function buildService(
     unitOfWork,
     new PostgresSsoLoginAttemptRepository(),
     new PostgresSsoUserRepository(),
+    new PostgresOrganizationSyncService(),
     new PostgresUserCredentialRepository(),
     new PostgresUserSessionRepository(),
     new PostgresSessionCsrfTokenRepository(),

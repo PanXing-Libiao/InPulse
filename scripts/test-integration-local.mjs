@@ -27,12 +27,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  localDatabaseUrl,
+  prepareManagedLocalDatabase,
+  resolveLocalPostgresPort,
+  resolvePostgresBin,
+} from "./local-postgres.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_DATABASE_URL =
-  "postgresql://cluster_bootstrap@127.0.0.1:55432/app_ci";
-/** 本机常见安装位置；找不到时回落到 PATH 上的 pg_dump（未安装则为空）。 */
-const CANDIDATE_POSTGRES_BIN = ["D:\\PostgreSQL\\18\\pgsql\\bin"];
 
 const USAGE = `InPulse 本地集成测试
 
@@ -102,17 +104,15 @@ function pick(environment, fileValues, key, fallback) {
   return fallback;
 }
 
-function resolvePostgresBin(environment, fileValues) {
-  const configured = pick(environment, fileValues, "POSTGRES_BIN", "");
-  if (configured.length > 0) {
-    return { dir: configured, source: "配置" };
+function resolvePostgresBinForBackup(environment, fileValues) {
+  try {
+    return {
+      dir: resolvePostgresBin(environment, fileValues),
+      source: "PostgreSQL 18 检测",
+    };
+  } catch {
+    return { dir: "", source: "未找到" };
   }
-  for (const candidate of CANDIDATE_POSTGRES_BIN) {
-    if (existsSync(candidate)) {
-      return { dir: candidate, source: "内置探测" };
-    }
-  }
-  return { dir: "", source: "未找到" };
 }
 
 function probeDatabase(url) {
@@ -152,12 +152,16 @@ async function main() {
 
   const fileValues = readEnvFile(options.envFile);
   const environment = { ...process.env };
+  const defaultDatabaseUrl = localDatabaseUrl(
+    "app_ci",
+    resolveLocalPostgresPort(process.env, fileValues),
+  );
 
   const testDatabaseUrl = pick(
     process.env,
     fileValues,
     "TEST_DATABASE_URL",
-    DEFAULT_DATABASE_URL,
+    defaultDatabaseUrl,
   );
   const migrationDatabaseUrl = pick(
     process.env,
@@ -169,7 +173,7 @@ async function main() {
   environment["TEST_DATABASE_URL"] = testDatabaseUrl;
   environment["MIGRATION_DATABASE_URL"] = migrationDatabaseUrl;
 
-  const postgresBin = resolvePostgresBin(process.env, fileValues);
+  const postgresBin = resolvePostgresBinForBackup(process.env, fileValues);
   if (postgresBin.dir.length > 0) {
     const suffix = process.platform === "win32" ? ".exe" : "";
     environment["INPULSE_BACKUP_PG_DUMP"] = path.join(
@@ -187,20 +191,40 @@ async function main() {
     `PostgreSQL 18 bin：${postgresBin.dir.length > 0 ? `${postgresBin.dir}（${postgresBin.source}）` : "未配置，pg_dump/pg_restore 回落到 PATH"}`,
   );
 
-  const probe = await probeDatabase(testDatabaseUrl);
-  if (!probe.reachable) {
-    throw new Error(
-      `连不上测试库 ${probe.host}:${probe.port}；请先启动本地 PostgreSQL（docker 容器 inpulse-pg 映射 55432），` +
-        "并按 AGENTS.md 的一次性准备创建 app_ci。",
+  const managed = await prepareManagedLocalDatabase({
+    root: ROOT,
+    databaseUrl: testDatabaseUrl,
+    fileValues,
+    environment: process.env,
+    migrate: !options.skipMigrate,
+  });
+  if (managed !== null) {
+    console.log(
+      "本地原生 PostgreSQL 就绪：" +
+        managed.dataDir +
+        "（库 " +
+        managed.database +
+        "）",
     );
-  }
-
-  if (!options.skipMigrate) {
-    console.log("\n== 补齐测试库迁移 ==");
-    const migrateStatus = runPnpm("pnpm db:migrate", environment);
-    if (migrateStatus !== 0) {
-      process.exitCode = migrateStatus;
-      return;
+  } else {
+    const probe = await probeDatabase(testDatabaseUrl);
+    if (!probe.reachable) {
+      throw new Error(
+        "连不上测试库 " +
+          probe.host +
+          ":" +
+          probe.port +
+          "；请启动 PostgreSQL 18 + PGroonga（可用 POSTGRES_BIN 指向本机安装），" +
+          "或设置 TEST_DATABASE_URL 指向独立测试库。",
+      );
+    }
+    if (!options.skipMigrate) {
+      console.log("\n== 补齐测试库迁移 ==");
+      const migrateStatus = runPnpm("pnpm db:migrate", environment);
+      if (migrateStatus !== 0) {
+        process.exitCode = migrateStatus;
+        return;
+      }
     }
   }
 

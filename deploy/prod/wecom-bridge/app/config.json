@@ -1,0 +1,9 @@
+{
+  "databaseUrl": "",
+  "keyringFile": "/run/secrets/wecom_robot_encryption_key",
+  "configPollMs": 5000,
+  "pushOnCallback": true,
+  "commandFile": "/state/commands.txt",
+  "groupDeliveries": true,
+  "cardActionUrl": "https://inpulse.libiaorobot.com/"
+}

@@ -22,8 +22,7 @@ function directory(
     name: item.name,
     avatarUrl: null,
     isAdmin: false,
-    organizationId: null,
-    organizationName: null,
+    organizations: [],
   }));
 }
 

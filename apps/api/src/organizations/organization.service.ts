@@ -12,6 +12,7 @@ import { AuditWritePort } from "../audit/index.js";
 import type { TransactionContext } from "../database/transaction-context.js";
 import {
   organizationNotFound,
+  organizationSsoManaged,
   organizationVersionConflict,
 } from "./organization.error.js";
 import { OrganizationRepository } from "./organization.repository.js";
@@ -55,7 +56,7 @@ export class OrganizationService {
     input: OrganizationCreateRequest,
   ): Promise<OrganizationItem> {
     await this.highRisk.verify(tx, meta.headers);
-    const created = await this.repository.create(tx, input.name);
+    const created = await this.repository.createLocal(tx, input.name);
     await this.appendAudit(tx, meta, "admin.organization.create", created.id, {
       organizationId: created.id,
       name: created.name,
@@ -73,6 +74,7 @@ export class OrganizationService {
     await this.highRisk.verify(tx, meta.headers);
     const current = await this.repository.find(tx, organizationId, true);
     if (current === undefined) throw organizationNotFound();
+    if (current.source === "CASDOOR") throw organizationSsoManaged();
     if (current.rowVersion !== version) throw organizationVersionConflict();
     const updated = await this.repository.updateName(tx, current, input.name);
     if (updated === undefined) throw organizationVersionConflict();
@@ -92,6 +94,7 @@ export class OrganizationService {
     await this.highRisk.verify(tx, meta.headers);
     const current = await this.repository.find(tx, organizationId, true);
     if (current === undefined) throw organizationNotFound();
+    if (current.source === "CASDOOR") throw organizationSsoManaged();
     if (current.rowVersion !== version) throw organizationVersionConflict();
     const memberCount = await this.repository.clearMembers(tx, organizationId);
     await this.repository.remove(tx, current);
@@ -116,16 +119,22 @@ export class OrganizationService {
     await this.highRisk.verify(tx, meta.headers);
     const userIds = normalizeOrganizationUserIds(input.userIds);
     if (input.organizationId !== null) {
-      const exists = await this.repository.lockOrganizationForAssign(
+      const organization = await this.repository.find(
         tx,
         input.organizationId,
+        true,
       );
-      if (!exists) throw organizationNotFound(422);
+      if (organization === undefined) throw organizationNotFound(422);
+      if (organization.source === "CASDOOR") throw organizationSsoManaged();
     }
-    await this.repository.lockUsers(tx, userIds);
+    const lockedUsers = await this.repository.lockUsers(tx, userIds);
+    if (lockedUsers.some((user) => user.managedBySso)) {
+      throw organizationSsoManaged();
+    }
+    const assignableUserIds = lockedUsers.map((user) => user.id);
     const updatedCount = await this.repository.assignUsers(
       tx,
-      userIds,
+      assignableUserIds,
       input.organizationId,
     );
     await this.appendAudit(
@@ -135,7 +144,7 @@ export class OrganizationService {
       input.organizationId,
       {
         organizationId: input.organizationId,
-        userIds,
+        userIds: assignableUserIds,
         updatedCount,
       },
     );

@@ -159,8 +159,23 @@ describe("AppRouter integration", () => {
       if (url.includes("/organizations/me/members")) {
         return new Response(
           JSON.stringify({
-            organization: { id: 7, name: "研发一组" },
-            items: [{ id: 9, name: "林雨妍", avatarUrl: null, isAdmin: false }],
+            organizations: [
+              {
+                id: 7,
+                name: "研发一组",
+                source: "LOCAL",
+                groupPath: null,
+              },
+            ],
+            items: [
+              {
+                id: 9,
+                name: "林雨妍",
+                avatarUrl: null,
+                isAdmin: false,
+                organizationIds: [7],
+              },
+            ],
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         );

@@ -69,7 +69,8 @@ pnpm contract:drift
 pnpm contract:validate
 pnpm build
 pnpm test:e2e              # 需要 PostgreSQL 18 + PGroonga；先执行 pnpm build
-pnpm check:deploy:test      # 需要 Docker；使用合成 ref 校验 compose 结构与 ref 格式
+pnpm check:deploy:static    # 本地静态检查，不需要 Docker
+pnpm check:deploy:test      # CI/发布严格模式：需要 Docker，渲染 compose 结构
 pnpm check:deps
 pnpm check:frontend:boundaries
 pnpm permissions:check
@@ -81,27 +82,31 @@ pnpm check:docs
 辅助命令：
 
 ```shell
-pnpm check             # 一次跑完上述全部非数据库门禁
+pnpm check             # 一次跑完上述全部非数据库门禁（本地静态部署校验，不依赖 Docker）
 pnpm format            # 用 Prettier 写入格式
 pnpm contract:generate # 重新生成 OpenAPI 与 TypeScript 客户端
 pnpm test:web          # 只运行 apps/web 单元测试
 pnpm db:seed:demo      # 把仓库内的演示种子数据载入本地库（已有数据时加 -- --force）
 pnpm db:seed:check     # 校验 database/seed/demo-data.sql 与导出规则一致
-pnpm check:deploy:test # Compose 渲染 + exact-tag@sha256 + 结构不变量正例
-pnpm check:deploy      # 真实发布 ref 检查，需要 deploy/.env.deploy
+pnpm check:deploy:static # 不需要 Docker：ref、Dockerfile、备份资产静态检查
+pnpm check:deploy:test # CI/发布：Compose 渲染 + exact-tag@sha256 + 结构不变量
+pnpm check:deploy      # 真实发布 ref 的严格检查，需要 deploy/.env.deploy 与 Docker
 pnpm test:integration:local # 本地一键跑集成测试：先补齐 app_ci 迁移，再执行 test:integration
 pnpm test:e2e:local    # 本地一键跑浏览器 E2E：默认指向 app_ci，解析出演示库 app 时拒绝运行
 ```
 
-`test:integration:local` 只服务本地开发（不参与 CI 门禁）：把 `TEST_DATABASE_URL` /
-`MIGRATION_DATABASE_URL` 默认指向本地 docker 容器 `inpulse-pg`（55432）上的测试库 `app_ci`，
-按仓库既有的 `POSTGRES_BIN` 注入备份集成测试需要的 `pg_dump` / `pg_restore`，并在跑测试前先对
-测试库执行一次 `pnpm db:migrate` 补齐迁移（拉取到新迁移后不必再手工迁移）。取值优先级为
-「进程环境变量 > `deploy/.env.dev.local` > 内置默认」，`--skip-migrate` 可跳过迁移步骤。
+`test:integration:local` 只服务本地开发（不参与 CI 门禁）：默认把 `TEST_DATABASE_URL` /
+`MIGRATION_DATABASE_URL` 指向本机原生 PostgreSQL 18（55432）上的测试库 `app_ci`。首次运行会
+自动检测 PostgreSQL + PGroonga，必要时初始化并启动 `.data/pg-dev`，创建 `app_ci`、执行 bootstrap
+与迁移；随后按现有 `POSTGRES_BIN` 注入备份集成测试需要的 `pg_dump` / `pg_restore` 并运行测试。
+取值优先级为「进程环境变量 > `deploy/.env.dev.local` > 内置默认」，`--skip-migrate` 可跳过迁移步骤。
+可用 `POSTGRES_BIN` 指向本机 PostgreSQL 18 的 `bin` 目录，或用 `INPULSE_LOCAL_PG_PORT` /
+`INPULSE_LOCAL_PG_DATA` 调整本地集群；不需要 Docker Desktop。
 
-`test:e2e:local` 同样只服务本地：它把 `E2E_DATABASE_URL` 默认指向 `app_ci`（取值优先级相同），跑测试前
-先补齐测试库迁移，并在解析出演示库 `app` 时直接拒绝运行——E2E 夹具会直接写进数据库，写进演示库会
-污染演示数据。其余参数原样转发给 Playwright，例如 `pnpm test:e2e:local tests/search.spec.ts` 只跑单个 spec。
+`test:e2e:local` 同样只服务本地：它把 `E2E_DATABASE_URL` 默认指向同一套原生集群上的 `app_ci`
+（取值优先级相同），自动启动数据库、补齐测试库迁移，并在解析出演示库 `app` 时直接拒绝运行——
+E2E 夹具会直接写进数据库，写进演示库会污染演示数据。其余参数原样转发给 Playwright，例如
+`pnpm test:e2e:local tests/search.spec.ts` 只跑单个 spec。
 
 以下命令已落库，但需要已初始化 PostgreSQL 18 + PGroonga 的实例
 （`max_connections >= 150`），当前未纳入 CI：
@@ -115,6 +120,8 @@ pnpm test
 同时运行数据库与搜索服务测试套件。两者都要求先按[数据库说明](./database/README.md)初始化
 角色、PGroonga 和迁移，并设置 `MIGRATION_DATABASE_URL` 与
 `TEST_DATABASE_URL`。
+
+> 这个 Docker 探针链只用于 CI、发布证据和可选 PoC，不是本地日常开发、集成测试或 E2E 的前置；日常本地链路使用本机 PostgreSQL 18 + PGroonga，不需要 Docker Desktop。VM 部署仍在 VM 上使用 Docker，不受本机限制影响。
 
 PGroonga 搜索 PoC 使用仓库内 Dockerfile 构建 PostgreSQL 18.6 探针镜像，
 执行迁移、现有数据库测试、V1 语义探针、200 条冻结金标召回、跨项目隔离、查询
@@ -156,11 +163,12 @@ Secret、角色和功能开发事务契约见[数据库说明](./database/README
 
 ## 本地开发启动
 
-本地开发要求一个已初始化的 PostgreSQL 18 + PGroonga 实例（初始化见[数据库说明](./database/README.md)）。
-仓库提供一键启动脚本，按「检查数据库（含迁移版本校验）-> 构建 API -> 启动 API -> 启动 Vite」的顺序拉起开发环境，
-并在启动后探测统一身份认证跳转；脚本只服务本地开发，不参与 CI 门禁。第 1 步会把 `database/migrations` 与本地库
-`app.schema_migrations` 比对，落后时直接失败并打印 `MIGRATION_DATABASE_URL=... pnpm db:migrate` 命令
-（库落后会让项目级接口一律 500），`DATABASE_URL` 指向非本机默认库时跳过校验。
+本地开发使用本机原生 PostgreSQL 18 + PGroonga，不需要 Docker Desktop。首次运行会自动检测安装
+（可用 `POSTGRES_BIN` 指向 `bin` 目录），必要时初始化并启动 `.data/pg-dev`（只监听
+`127.0.0.1:55432`），创建本地 `app` 库并执行角色、PGroonga bootstrap 与迁移；已有集群会直接复用。
+仓库提供一键启动脚本，按「准备原生数据库 -> 构建 API -> 启动 API -> 启动 Vite」的顺序拉起开发环境，
+并在启动后探测统一身份认证跳转；脚本只服务本地开发，不参与 CI 门禁。
+`DATABASE_URL` 指向其它主机或端口时按外部数据库处理，脚本不会启动本机集群，也不会代跑迁移。
 
 ```powershell
 node scripts/dev-start.mjs                # 按配置启动，默认启用统一身份认证
@@ -197,7 +205,7 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
 1. 复制模板 `deploy/.env.dev.example` 为 `deploy/.env.dev.local`（该文件名被 `.gitignore` 忽略，不进入仓库）；
 2. 向 Casdoor 应用负责人索取 `SSO_CLIENT_ID` 与 Client Secret，把 Client Secret 保存到仓库外的本地文件，
    并在 `SSO_CLIENT_SECRET_FILE` 中填写该文件的绝对路径；
-3. 在 Casdoor 的 `INPulse` 应用中登记本地回调地址 `http://127.0.0.1:5173/api/v1/auth/sso/callback`；
+3. 在 Casdoor 的 `INPulse` 应用中登记本地回调地址 `http://127.0.0.1:5173/api/v1/auth/sso/callback`，并把 Token format 设为 `JWT-Custom`、Token fields 至少包含 `Groups`、Token group format 设为 `Path`；否则登录 Token 可能没有 `groups`，或无法得到可对齐的完整群组路径；
 4. 重新运行 `node scripts/dev-start.mjs`，打开登录页即自动跳出到统一身份认证（管理员应急口令入口为 `/login?local=1`）。
 
 本地读取 `/run/secrets/` 之外的 Secret 文件时，脚本会同时设置 `NODE_ENV=test` 与
@@ -214,12 +222,13 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
 - 用正式取值替换 `SSO_ISSUER`、`SSO_CLIENT_ID`、`SSO_REDIRECT_URI` 与全部 `REPLACE_ME_*` 占位；
 - 把 Casdoor 应用签发的 Client Secret 写入 `deploy/secrets/sso_client_secret`
   （compose 以只读 Secret 挂载到 `/run/secrets/sso_client_secret`，禁止用环境变量代替）；
-- 在 Casdoor 应用中登记 `SSO_REDIRECT_URI` 指向的正式回调地址。
+- 在 Casdoor 应用中登记 `SSO_REDIRECT_URI` 指向的正式回调地址；
+- 把 Casdoor application 的 Token format 设为 `JWT-Custom`、Token fields 至少包含 `Groups`、Token group format 设为 `Path`，确保 id_token 提供完整路径形式的 `groups` claim。
 
 配置非法或缺失时 API 按 fail closed 以本地登录模式启动，访问登录页回落到 `/login?local=1&sso=disabled`；`/login?local=1` 仍作为管理员应急口令入口可用。
 决策与回滚边界见[单点登录 ADR](./docs/adr/ADR-032.md)、[登录入口 ADR](./docs/adr/ADR-036.md)与[直达登录 ADR](./docs/adr/ADR-080.md)。
 
-测试环境（单机 Docker Compose + 本地 registry）的一键更新、迁移与回滚步骤见[测试 VM 更新手册](./deploy/test-vm/README.md)。
+测试环境（单机 Docker Compose + 本地 registry）的一键更新、迁移与回滚步骤见[测试 VM 更新手册](./deploy/test-vm/README.md)。正式环境固定走 `deploy/prod/update.ps1 -ConfirmProduction`，基座、发布门禁与当前上线缺口见[正式环境部署入口](./deploy/prod/README.md)。
 
 ## 文档导航
 
@@ -257,3 +266,13 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
 ### 2026-10-16 登录页直达单点登录
 
 见 [ADR-080](docs/adr/ADR-080.md)。`/login`（含 `?from=`）默认直达统一身份认证（匿名访问即整页跳转 `/api/v1/auth/sso/start`），本地口令表单退居 `/login?local=1` 与 `sso=disabled` 回落的隐藏应急入口，`?sso_error=` 回落只显示错误与手动重试；服务端路由、契约与权限矩阵不变。
+
+### 2026-10-26 SSO 群组自动对齐 Casdoor（ADR-097）
+
+统一身份认证登录时，InPulse 会读取已验签 id_token 中的 `groups`，按 Casdoor 的 `owner/parent.../name` 完整路径自动建立组织层级，并把 SSO 用户分类到其直接群组。一人可同时属于多个群组；祖先组织会作为层级建立，但不会自动把用户加入祖先群组。
+
+- Casdoor application 必须使用 `JWT-Custom` Token format，Token fields 至少包含 `Groups`，Token group format 为 `Path`；不满足时 `groups` 可能缺失或不是完整路径，InPulse 会分别表现为跳过同步或拒绝非法路径。
+- 每次成功 SSO 登录在同一事务内全量对账：缺失 `groups` 不修改组织，`groups: []` 清空组织，合法数组替换全部直接群组关系；任何组织写入失败都会回滚 Session。
+- CASDOOR 组织在 InPulse 中只读，管理员手工改名、删除或调整 SSO 用户组织会返回 409 `ORGANIZATION_SSO_MANAGED`；已消失的群组只移除成员关系，不自动删除本地组织行。
+- `groups`、Casdoor `isAdmin`、roles 与 permissions 不授予任何 InPulse 权限。本地口令账号仍由管理员维护单个 LOCAL 组织。
+- 迁移 `0061_contract_sso_casdoor_organizations.sql` 新增 `app.user_organizations` 等结构；部署前按既有顺序执行 bootstrap 与迁移。真实 Casdoor 生产联调尚未在本轮执行。

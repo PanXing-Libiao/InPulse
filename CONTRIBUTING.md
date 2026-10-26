@@ -180,7 +180,8 @@ pnpm test:integration      # 同上
 pnpm contract:drift
 pnpm contract:validate
 pnpm build
-pnpm check:deploy:test
+pnpm check:deploy:static   # 本地无需 Docker
+pnpm check:deploy:test     # CI/发布严格模式（需要 Docker）
 pnpm check:deps
 pnpm check:frontend:boundaries
 pnpm permissions:check
@@ -198,12 +199,13 @@ pnpm check:docs
 - `db:migrations:check`：校验迁移文件的顺序、命名与内容哈希一致性；
 - `db:migrate`：以 `MIGRATION_DATABASE_URL`（`app_migrator` 角色）对空库执行 `0000-0005` 显式迁移，需要已安装 PGroonga 的 PostgreSQL 18；
 - `test:integration`：以 `TEST_DATABASE_URL`（`cluster_bootstrap` 角色）对真实 PostgreSQL 验证约束、事务、锁、100 并发审计链、PGroonga bootstrap 与索引、以及数据库角色/权限探针，需要已安装 PGroonga 的 PostgreSQL 18，不得用 mock 替代；
-- `test:integration:local`：本地一键封装（不参与 CI）。默认把 `TEST_DATABASE_URL` / `MIGRATION_DATABASE_URL` 指向本地 docker `inpulse-pg`（55432）的 `app_ci`，先执行 `pnpm db:migrate` 补齐迁移，再按 `POSTGRES_BIN` 注入 `INPULSE_BACKUP_PG_DUMP` / `INPULSE_BACKUP_PG_RESTORE` 后运行 `pnpm test:integration`；`--skip-migrate` 跳过迁移，`--env-file` 换配置文件（默认 `deploy/.env.dev.local`）；
-- `test:e2e:local`：本地一键封装（不参与 CI）。默认把 `E2E_DATABASE_URL` 指向本地 docker `inpulse-pg`（55432）上的测试库 `app_ci`，跑测试前先执行 `pnpm db:migrate` 补齐迁移，并在解析出演示库 `app` 时直接拒绝运行（E2E 夹具会直接写进数据库，写进演示库会污染演示数据）；`--skip-migrate` 跳过迁移，`--env-file` 换配置文件（默认 `deploy/.env.dev.local`），其余参数原样转发给 Playwright；
+- `test:integration:local`：本地一键封装（不参与 CI）。默认把 `TEST_DATABASE_URL` / `MIGRATION_DATABASE_URL` 指向本机原生 PostgreSQL 18（55432）的测试库 `app_ci`；首次运行自动启动 `.data/pg-dev`、创建测试库、执行 bootstrap 与迁移，再按 `POSTGRES_BIN` 注入 `INPULSE_BACKUP_PG_DUMP` / `INPULSE_BACKUP_PG_RESTORE` 后运行 `pnpm test:integration`；`--skip-migrate` 跳过迁移，`--env-file` 换配置文件（默认 `deploy/.env.dev.local`）。不需要 Docker Desktop；
+- `test:e2e:local`：本地一键封装（不参与 CI）。默认把 `E2E_DATABASE_URL` 指向本机原生 PostgreSQL 18（55432）上的测试库 `app_ci`；首次运行自动启动集群、创建测试库并补齐迁移，解析出演示库 `app` 时直接拒绝运行（E2E 夹具会直接写进数据库，写进演示库会污染演示数据）；`--skip-migrate` 跳过迁移，`--env-file` 换配置文件（默认 `deploy/.env.dev.local`），其余参数原样转发给 Playwright。不需要 Docker Desktop；
 - `test:search:db`：运行 `apps/api` 的搜索服务层与真实 HTTP API 集成测试，需要已初始化 PGroonga 且 `max_connections >= 150` 的 PostgreSQL 18 实例，按既定决定未纳入 CI；
 - `contract:generate`：由 Schema Registry/Zod 与 Route Registry 生成 OpenAPI 3.1、契约指纹与 TypeScript 客户端，生成物禁止手工修改；
 - `contract:drift`：逐字节比对已提交生成物与 Registry 的生成结果，并拒绝生成目录内出现非生成器产出的文件；
-- `check:deploy:test`：使用 `deploy/.env.deploy.test` 的合成镜像 ref 渲染 `docker compose config`，校验 exact-tag@sha256 格式、PostgreSQL 18 命名卷、非 root/只读、资源限制、独立迁移、健康检查与仅 Nginx 暴露端口；需要 Docker，不代表生产镜像已构建或 digest 来自受信仓库；
+- `check:deploy:static`：不需要 Docker，对 `deploy/.env.deploy.test` 的合成 ref、Dockerfile、Nginx/健康检查资产与备份调度做静态校验；
+- `check:deploy:test`：CI/发布用的严格模式，使用 `deploy/.env.deploy.test` 的合成镜像 ref 渲染 `docker compose config`，校验 exact-tag@sha256 格式、PostgreSQL 18 命名卷、非 root/只读、资源限制、独立迁移、健康检查与仅 Nginx 暴露端口；需要 Docker，不代表生产镜像已构建或 digest 来自受信仓库；
 - `contract:validate`：Route Registry 策略完整性、幂等重放与重放授权策略的字段边界、响应 Schema 一致性以及 Controller operationId 绑定检查；
 - `build`：api（`tsc`）与 web（`vite`）生产构建；
 - `check:deps`：前端分层（`app -> pages -> features -> shared/generated`）、跨模块内部访问、循环依赖、Controller 直连数据库与前端裸 `fetch` 检查；后端跨模块只允许访问目标模块的公开表面（`public/**`、模块 `index.ts`、`*.port.ts`），对应第 3 节的 Domain/Public Port；
@@ -213,7 +215,7 @@ pnpm check:docs
 - `deps:audit`：`pnpm audit --audit-level=high`，需要访问 registry；曾因 `ansi-regex@5.0.0`（high，来自 `origin/main` PR #16 的 `@testing-library` 依赖链）失败，已由 `pnpm-workspace.yaml` 的 `overrides` 固定到 `^5.0.1` 解决；2026-09-09 另因 `multer@2.2.0` 的 3 个 high（GHSA-wc9g-mqfw-jrwm、GHSA-qfvm-cv95-jqjf、GHSA-535w-7cp7-47q4，来自 `@nestjs/platform-express@11.2.3`）失败，已在同一文件固定到 `2.3.0` 并由公共 registry 审计零漏洞；2026-10-08 main CI 的 `Dependency audit` 又因 6 条公告转红（1 critical `proxy-addr@2.0.7` GHSA-jqcg-44mw-7w3h；3 high：`brace-expansion@5.0.9` 的 GHSA-qhr7-859c-m2p7 与 GHSA-6j4f-fj2g-mc7p、`source-map-js@1.2.1` GHSA-68fv-2mgg-jv7q；2 moderate：`multer@2.3.0` GHSA-3pph-fpjx-jg34、`brace-expansion` GHSA-q2hr-2g5m-vwhr），已由同一文件把 `proxy-addr` 固定到 `2.0.8`、`brace-expansion` 固定到 `5.0.12`、`source-map-js` 固定到 `1.2.2`、`multer` 收紧到 `2.4.0` 并由公共 registry 审计恢复零漏洞；上述依赖变更均须按 `AGENTS.md` 第 4 节作为独立依赖升级 PR 由人工确认，不得调低阈值；
 - `check:secrets`：对受版本控制与待提交文件执行 Secret 扫描；
 - `check:docs`：使用 Node.js 内置模块，检查 HEAD、暂存区、工作区与未忽略的新文件，并校验仓库内 Markdown 相对链接、引用式链接和标题锚点；
-- `check`：按上述顺序一次跑完全部非数据库门禁，不含 `db:migrate`、`test:integration` 与 `test:search:db`。
+- `check`：按上述顺序一次跑完全部非数据库门禁，不含 `db:migrate`、`test:integration` 与 `test:search:db`；本地无 Docker 时使用 `check:deploy:static`，CI/发布仍单独执行严格 `check:deploy:test`。
 
 本机运行数据库门禁：Windows 设置 `POSTGRES_BIN` 指向**已安装 PGroonga** 的 PostgreSQL 18 `bin` 目录后运行 `pnpm db:test:local`，它会创建 loopback 临时实例，依次执行 `000_roles.sql`、`020_pgroonga.sql`、空库迁移与 database 包全部测试后销毁实例；脚本检测不到 PGroonga 时直接失败，因此不含 PGroonga 的官方 PostgreSQL 18.6 安装无法满足该门禁。同一个 `POSTGRES_BIN` 也覆盖 `apps/ops` 的备份/恢复集成测试：未注入 `INPULSE_BACKUP_PG_DUMP` / `INPULSE_BACKUP_PG_RESTORE` 时，测试按 `POSTGRES_BIN` 解析 `pg_dump` / `pg_restore`，两者都没有才回落到 PATH 上的 `pg_dump`。CI 改为用 `database/poc/search-pgroonga/Dockerfile.pgroonga-pg18.6` 基于 digest 固定的 `postgres:18.6` 构建探针镜像，并在容器内执行同一组步骤。
 

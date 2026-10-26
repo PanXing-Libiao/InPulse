@@ -7,10 +7,35 @@ vi.mock("./organization-query", () => ({
     isPending: false,
     isError: false,
     data: {
-      organization: { id: 3, name: "第一小组" },
+      organizations: [
+        {
+          id: 3,
+          name: "第一小组",
+          source: "LOCAL",
+          groupPath: null,
+        },
+        {
+          id: 8,
+          name: "平台组",
+          source: "CASDOOR",
+          groupPath: "libiaorobot.com/研发/平台组",
+        },
+      ],
       items: [
-        { id: 1, name: "邵晨宇", avatarUrl: null, isAdmin: false },
-        { id: 2, name: "林雨妍", avatarUrl: null, isAdmin: true },
+        {
+          id: 1,
+          name: "邵晨宇",
+          avatarUrl: null,
+          isAdmin: false,
+          organizationIds: [3, 8],
+        },
+        {
+          id: 2,
+          name: "林雨妍",
+          avatarUrl: null,
+          isAdmin: true,
+          organizationIds: [8],
+        },
       ],
     },
   }),
@@ -18,20 +43,28 @@ vi.mock("./organization-query", () => ({
 }));
 
 describe("MyOrganizationPanel", () => {
-  it("highlights the organization name once above the member list", () => {
+  it("renders all organizations and keeps member organization badges", () => {
     const { container } = render(<MyOrganizationPanel currentUserId={1} />);
 
     const title = container.querySelector(
       ".my-org-panel .calm-section-title h3",
     );
-    expect(title).toHaveTextContent("第一小组");
+    expect(title).toHaveTextContent("成员与角色");
     expect(screen.getByText("共 2 位成员")).toBeVisible();
+
+    const organizationBadges = container.querySelectorAll(
+      ".my-org-panel .permission-note .badge",
+    );
+    expect(organizationBadges).toHaveLength(2);
+    expect(organizationBadges[0]).toHaveTextContent("第一小组");
+    expect(organizationBadges[1]).toHaveTextContent(
+      "libiaorobot.com/研发/平台组",
+    );
 
     const rows = Array.from(container.querySelectorAll(".member-row"));
     expect(rows).toHaveLength(2);
-    for (const row of rows) {
-      expect(row.textContent).not.toContain("第一小组");
-    }
+    expect(rows[0]).toHaveTextContent("第一小组");
+    expect(rows[0]).toHaveTextContent("平台组");
     expect(screen.getByText("当前账号", { exact: true })).toBeVisible();
     expect(screen.getByText("系统管理员", { exact: true })).toBeVisible();
   });

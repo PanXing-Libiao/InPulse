@@ -9,12 +9,14 @@ export interface SsoProviderMetadata {
   readonly jwksUri: string;
 }
 
-/** 只提取业务需要的四类 claim；id_token 其余字段一律丢弃。 */
+/** 只提取身份字段与已验签的 groups；id_token 其余字段一律丢弃。 */
 export interface SsoIdTokenClaims {
   readonly subject: string;
   readonly loginName: string;
   readonly displayName: string;
   readonly email: string | null;
+  /** null 表示 claim 缺失；空数组表示用户明确没有 Casdoor 群组。 */
+  readonly groups: readonly string[] | null;
 }
 
 export interface SsoIdTokenVerification {
@@ -102,7 +104,7 @@ export class SsoOidcClient {
     return idToken;
   }
 
-  /** 校验 RS256 签名与 iss/aud/exp/nbf/nonce，并提取四类业务 claim。 */
+  /** 校验 RS256 签名与 iss/aud/exp/nbf/nonce，并提取身份与 groups claim。 */
   async verifyIdToken(
     idToken: string,
     verification: SsoIdTokenVerification,
@@ -169,7 +171,8 @@ export class SsoOidcClient {
     }
     const displayName = stringClaim(claims["displayName"]) ?? loginName;
     const email = stringClaim(claims["email"]) ?? null;
-    return { subject, loginName, displayName, email };
+    const groups = groupsClaim(claims["groups"]);
+    return { subject, loginName, displayName, email, groups };
   }
 
   private async verificationKey(kid: string | undefined) {
@@ -311,6 +314,20 @@ function numericClaim(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function groupsClaim(value: unknown): readonly string[] | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string")
+  ) {
+    throw new SsoProtocolError("id-token-groups-invalid");
+  }
+  // 保留 Casdoor 原始路径，不在这里裁剪或改写大小写。
+  return [...value] as string[];
 }
 
 function stringClaim(value: unknown): string | undefined {

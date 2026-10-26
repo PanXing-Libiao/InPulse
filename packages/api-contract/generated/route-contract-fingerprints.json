@@ -187,6 +187,10 @@
     {
       "version": "1.0.0",
       "fingerprint": "3afb444c505644d6ff022e1725fd35c5b443670d4acaeb4cf2e868e150f3c8cd"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "3aa16fb2e1914b177835665c2362e0b106fa3a7a9501fdee31abd1eefcfe6b2c"
     }
   ],
   "createProject": [
@@ -265,6 +269,10 @@
     {
       "version": "1.3.0",
       "fingerprint": "908eb6eb4472b9ccf044b841ead1156177c4e93b21e8190faf19ef678647bfd5"
+    },
+    {
+      "version": "1.4.0",
+      "fingerprint": "e8af4a54ee731aac82d4adfa34ff986e73493e1b0ce33be896a8fae9ec009958"
     }
   ],
   "deleteFeature": [
@@ -619,6 +627,10 @@
     {
       "version": "1.0.0",
       "fingerprint": "8799722d5c7857caefc2da2f101a8a98950cf05215700020e94e35aefbfe1f56"
+    },
+    {
+      "version": "2.0.0",
+      "fingerprint": "00a145bb67fe1a77246b9963a0c9977395f6654136bf56716ee3cf3b07019763"
     }
   ],
   "updateProject": [
@@ -705,6 +717,10 @@
     {
       "version": "1.3.0",
       "fingerprint": "b998785f0d50cb04808b2590d5b315ce899e2db2b04e54527f6aaaf721d44783"
+    },
+    {
+      "version": "1.4.0",
+      "fingerprint": "70497921fda5d0c4a9f0efe153c9e8ead78015a2d70c33f64fe0b017a7176f1f"
     }
   ],
   "updateWecomRobotConfig": [

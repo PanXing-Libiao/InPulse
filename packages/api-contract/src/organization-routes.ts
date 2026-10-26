@@ -18,6 +18,9 @@ const errors = {
 const organizationSafeFields = [
   "id",
   "name",
+  "source",
+  "groupPath",
+  "parentId",
   "rowVersion",
   "createdAt",
   "updatedAt",
@@ -34,7 +37,7 @@ const actorOnlyReplayAuthorization = {
 } as const;
 
 const createReplayPolicy = {
-  version: "1.0.0",
+  version: "2.0.0",
   success: {
     "200": {
       body: {
@@ -46,7 +49,7 @@ const createReplayPolicy = {
 } as const;
 
 const updateReplayPolicy = {
-  version: "1.0.0",
+  version: "2.0.0",
   success: {
     "200": {
       body: {
@@ -76,7 +79,7 @@ const assignReplayPolicy = {
 
 const createWritePolicy = {
   idempotencyExceptionAdr: "none",
-  idempotencyContractVersion: "1.0.0",
+  idempotencyContractVersion: "2.0.0",
   idempotencyFingerprintVersion: "1.0.0",
   idempotencyReplayPolicy: createReplayPolicy,
   replayAuthorizationPolicy: actorOnlyReplayAuthorization,
@@ -95,7 +98,7 @@ const createWritePolicy = {
 
 const updateWritePolicy = {
   idempotencyExceptionAdr: "none",
-  idempotencyContractVersion: "1.0.0",
+  idempotencyContractVersion: "2.0.0",
   idempotencyFingerprintVersion: "1.0.0",
   idempotencyReplayPolicy: updateReplayPolicy,
   replayAuthorizationPolicy: actorOnlyReplayAuthorization,
@@ -157,7 +160,7 @@ export const organizationRoutes: readonly RouteDefinition[] = [
     path: "/admin/organizations",
     operationId: "listOrganizations",
     summary:
-      "系统管理员读取全部组织（id、名称、行版本与时间戳），用于成员与设置页的组织管理；按 id 升序，响应 no-store。",
+      "系统管理员读取全部 LOCAL 与 CASDOOR 组织（含来源、群组完整路径、父级、行版本与时间戳）；按 id 升序，响应 no-store。",
     request: {
       path: "none",
       query: "none",
@@ -184,7 +187,7 @@ export const organizationRoutes: readonly RouteDefinition[] = [
     path: "/admin/organizations",
     operationId: "createOrganization",
     summary:
-      "系统管理员新建组织；名称 btrim 后 1～100 字符，按 lower(btrim(name)) 唯一去重，重名 409 ORGANIZATION_NAME_CONFLICT；同一事务写审计。",
+      "系统管理员新建 LOCAL 组织；名称 btrim 后 1～100 字符，LOCAL 名称按 lower(btrim(name)) 唯一去重，重名 409 ORGANIZATION_NAME_CONFLICT；同一事务写审计。",
     request: {
       path: "none",
       query: "none",
@@ -211,7 +214,7 @@ export const organizationRoutes: readonly RouteDefinition[] = [
     path: "/admin/organizations/{organizationId}",
     operationId: "updateOrganization",
     summary:
-      "系统管理员修改组织名称；If-Match 乐观锁，版本冲突 409 ORGANIZATION_VERSION_CONFLICT、重名 409 ORGANIZATION_NAME_CONFLICT；同一事务写审计。",
+      "系统管理员修改 LOCAL 组织名称；CASDOOR 组织返回 409 ORGANIZATION_SSO_MANAGED；If-Match 乐观锁，版本冲突 409 ORGANIZATION_VERSION_CONFLICT、重名 409 ORGANIZATION_NAME_CONFLICT；同一事务写审计。",
     request: {
       path: "OrganizationPath",
       query: "none",
@@ -238,7 +241,7 @@ export const organizationRoutes: readonly RouteDefinition[] = [
     path: "/admin/organizations/{organizationId}",
     operationId: "deleteOrganization",
     summary:
-      "系统管理员删除组织（物理删除）：组织内成员自动回到未分配（ON DELETE SET NULL），不级联删除用户数据；If-Match 乐观锁；204 无正文；审计记录成员数。",
+      "系统管理员删除 LOCAL 组织（物理删除）：成员关系级联清理，不删除用户；CASDOOR 组织返回 409 ORGANIZATION_SSO_MANAGED；If-Match 乐观锁；204 无正文；审计记录成员数。",
     request: {
       path: "OrganizationPath",
       query: "none",
@@ -267,7 +270,7 @@ export const organizationRoutes: readonly RouteDefinition[] = [
     path: "/admin/users/organization",
     operationId: "assignUsersOrganization",
     summary:
-      "系统管理员批量调整成员组织归属：userIds 1～200 去重、按 id 升序 FOR UPDATE；organizationId 为 null 表示移出组织；只更新实际变化的行并返回 updatedCount；组织不存在 422 ORGANIZATION_NOT_FOUND。",
+      "系统管理员批量调整本地账号的 LOCAL 组织归属：userIds 1～200 去重、按 id 升序 FOR UPDATE；organizationId 为 null 表示移出组织；SSO 用户或 CASDOOR 目标组织返回 409 ORGANIZATION_SSO_MANAGED；只统计实际变化的用户并返回 updatedCount；组织不存在 422 ORGANIZATION_NOT_FOUND。",
     request: {
       path: "none",
       query: "none",
@@ -294,7 +297,7 @@ export const organizationRoutes: readonly RouteDefinition[] = [
     path: "/organizations/me/members",
     operationId: "getMyOrganizationMembers",
     summary:
-      "当前登录用户读取自己所属组织与同组织 ACTIVE 成员（脱敏字段：id、姓名、头像、是否管理员；未分配返回空列表）；响应 no-store。",
+      "当前登录用户读取自己所属全部组织与去重后的同组织 ACTIVE 成员（脱敏字段：id、姓名、头像、是否管理员、organizationIds；未分配返回空数组）；响应 no-store。",
     request: {
       path: "none",
       query: "none",

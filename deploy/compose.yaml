@@ -169,6 +169,10 @@ services:
       # 文件读取，禁止任何环境变量或明文兜底；未启用在线配置时可放空占位。
       AI_ASSIST_ENCRYPTION_KEY_FILE: /run/secrets/ai_assist_encryption_key
       AI_ASSIST_ENCRYPTION_KEY_VERSION: "${AI_ASSIST_ENCRYPTION_KEY_VERSION:-1}"
+      # ADR-070 企业微信机器人 Secret 信封加密主密钥：API 保存配置时加密，
+      # 正式桥接用同一只读 Secret 解密；未配置机器人时文件仍须存在且格式合法。
+      WECOM_ROBOT_ENCRYPTION_KEY_FILE: /run/secrets/wecom_robot_encryption_key
+      WECOM_ROBOT_ENCRYPTION_KEY_VERSION: "${WECOM_ROBOT_ENCRYPTION_KEY_VERSION:-1}"
     depends_on:
       db:
         condition: service_healthy
@@ -212,6 +216,11 @@ services:
         mode: "0400"
       - source: ai_assist_encryption_key
         target: /run/secrets/ai_assist_encryption_key
+        uid: "10001"
+        gid: "10001"
+        mode: "0400"
+      - source: wecom_robot_encryption_key
+        target: /run/secrets/wecom_robot_encryption_key
         uid: "10001"
         gid: "10001"
         mode: "0400"
@@ -423,6 +432,9 @@ secrets:
   # ADR-068：管理员在线配置的主密钥（一行 `version:hex`）；未启用时可放空占位文件。
   ai_assist_encryption_key:
     file: ./secrets/ai_assist_encryption_key
+  # ADR-070：企业微信机器人 Secret 信封加密主密钥；API 与桥接共用同一版本。
+  wecom_robot_encryption_key:
+    file: ./secrets/wecom_robot_encryption_key
   audit_worm_credentials:
     file: ./secrets/audit_worm_credentials
   audit_archive_signing_key:

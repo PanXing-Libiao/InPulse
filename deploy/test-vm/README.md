@@ -3,7 +3,8 @@
 本目录的 `update.ps1` 用于把仓库当前代码更新到测试 VM。它面向单机 Docker
 Compose + 本地 registry 的测试环境，不是生产发布流程：生产镜像 Tag/digest 绑定
 与签名发布仍按技术设计第 12 章由人工完成，生产升级与回滚口径见
-`docs/runbooks/upgrade-rollback.md`。
+`docs/runbooks/upgrade-rollback.md`。正式机必须从 [正式环境部署入口](../prod/README.md)
+进入，不要让测试脚本默认指向正式环境。
 
 ## 测试环境现状
 
@@ -33,21 +34,21 @@ Compose + 本地 registry 的测试环境，不是生产发布流程：生产镜
    powershell -NoProfile -ExecutionPolicy Bypass -File deploy/test-vm/update.ps1 -SetupKey
    ```
 
-   不配置也能更新，只是上传镜像、执行远端脚本会分别提示输入 VM 密码（约 4 次）。
+   不配置也能更新，只是上传源码包与执行远端脚本会分别提示输入 VM 密码（约 3 次）。
    脚本不会覆盖你已有的密钥；想用自己的密钥就加 `-SshKey <私钥路径>`。
 
 2. 让脚本能自动应答远端 sudo：在当前 PowerShell 会话里把 VM 登录密码放进环境变量
    `INPULSE_VM_PASSWORD`（脚本只通过 stdin 把它交给远端 `sudo -S`，不写入文件、
    不出现在命令行）。不设置也可以，远端 sudo 会在终端交互提示密码。
 
-3. 确认 Docker Desktop 已启动，且本机能连通 VM 的 22 端口。
+3. 本机只需 Node.js 24、Git、ssh、scp，并能连通 VM 的 22 端口；不需要 Docker Desktop，也不在本机构建镜像。源码打包脚本会自动使用 Git for Windows 自带的 GNU tar/gzip，避免 Windows 自带 bsdtar 处理中文文件清单失败。
 
 4. 本机执行策略是 `Restricted` 时，`powershell -File` 会被拦下；统一按上面的
    `-NoProfile -ExecutionPolicy Bypass` 形式调用即可（只对本次调用生效，不改系统设置）。
 
 ## 日常更新
 
-在仓库根目录执行，默认构建并更新全部 5 个镜像：
+在仓库根目录执行，默认上传当前源码并在 VM 上构建、更新全部 5 个镜像：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/test-vm/update.ps1
@@ -60,10 +61,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy/test-vm/update.ps1 -T
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/test-vm/update.ps1 -Targets api,migrate
 ```
 
-脚本依次完成：构建镜像 → 导出 tar → 上传 → VM 上 load/tag/push 到
-`127.0.0.1:5000` → 以 `tag@sha256` 更新 `.env.deploy` 的 `*_IMAGE_REF` →
-`docker compose up -d`（`migrate` 先执行数据库迁移）→ 健康检查 → 清理 tar。
-构建日志留在本机 `%TEMP%\inpulse-update-<tag>\build-<target>.log`。
+脚本依次完成：按 Git 文件清单打包源码（含未提交但未忽略改动）→ scp 上传 → VM 解压到隔离构建目录 →
+VM 按需补齐基础镜像并 `docker build` → tag/push 到 `127.0.0.1:5000` → 以 `tag@sha256` 更新
+`.env.deploy` 的 `*_IMAGE_REF` → `docker compose up -d`（`migrate` 先执行数据库迁移）→ 健康检查 → 清理源码包与构建目录。
+构建日志在 VM 的构建目录 `build-<target>.log`；失败时目录会保留，成功时可用 `-KeepTar` 保留。
 2026-10-15 已分三次实测跑通整条链路（`-Targets web`、`-Targets api,web,migrate -FixEol`、
 `-Targets ops`、`-Targets db-bootstrap`），5 个镜像统一到 `0.1.0-20261015-277fb89`：
 migrate 报 `0 applied, 42 already present`，api/web/db 全部 healthy，`/health/ready` 与
@@ -98,21 +99,23 @@ api 容器内访问 Casdoor discovery 返回 200（`egress` 生效）。
 | `-SetupKey`                                       | 一次性配置免密部署密钥后退出                                  |
 | `-SshKey`                                         | 指定 SSH 私钥；留空时自动挑第一把能免密登录的候选密钥         |
 | `-VmPassword`                                     | VM 密码，只喂给远端 `sudo -S`；推荐改用 `INPULSE_VM_PASSWORD` |
-| `-Mirror`                                         | 基础镜像源，默认 `docker.1ms.run`                            |
-| `-NoMirror`                                       | 不走镜像源，直接用 Dockerfile 里的原始地址                    |
+| `-Mirror`                                         | VM 上拉取基础镜像的源，默认 `docker.1ms.run`               |
+| `-NoMirror`                                       | VM 不走镜像源；缺缓存时由 build 按原始地址解析                |
 | `-FixEol`                                         | 构建 migrate 前把漂移成 CRLF 的迁移文件按字节转回 LF          |
-| `-SkipBuild`                                      | 跳过构建与上传，用 VM 上已有 tar 重跑远端更新                 |
-| `-KeepTar`                                        | 保留两端 tar（默认清理）                                      |
+| `-SkipBuild`                                      | 不上传/不构建，用 VM 上已有 `inpulse/<target>:<Tag>` 重推  |
+| `-KeepTar`                                        | 保留本机源码包、VM 源码包与构建目录（默认清理）               |
+| `-PublicHost`                                     | 回环探针 Host 与完成提示域名，默认测试域名                    |
+| `-RequireClean`                                   | 工作区有未提交改动时立即失败；正式发布固定启用                |
 | `-VmHost`/`-VmUser`/`-RemoteDir`/`-ImageDir`        | 覆盖默认连接信息与目录                                        |
 
 ## 基础镜像与镜像源
 
-公司网络直连不了 Docker Hub，`docker build` 会卡在 `FROM` 阶段。脚本默认先用镜像源
-`docker.1ms.run` 把 Dockerfile 里 `FROM` 与 `# syntax=` 引用的基础镜像拉到本地、重打回
-原始名字，然后才开始构建：
+公司网络直连不了 Docker Hub，VM 上的 `docker build` 会卡在 `FROM` 阶段。脚本默认先在 VM 上用镜像源
+`docker.1ms.run` 把 Dockerfile 里 `FROM` 与 `# syntax=` 引用的基础镜像拉到 VM 本地、重打回原始名字，
+然后才开始构建：
 
 - 带 `@sha256:...` 的引用会在拉取后逐个校验 digest，不匹配立即失败，避免镜像源掉包；
-- 本地已缓存全部基础镜像时加 `-NoMirror` 跳过这一步，更快；
+- VM 已缓存全部基础镜像时加 `-NoMirror` 跳过这一步，更快；
 - 换源用 `-Mirror <host>`。`docker.1ms.run` 于 2026-10-15 实测可拉取 `node`、`postgres`；
   `docker.m.daocloud.io` 对 `library/*` 返回 502。
 
@@ -136,7 +139,7 @@ api 容器内访问 Casdoor discovery 返回 200（`egress` 生效）。
 
 ## compose.yaml / .env.deploy 改动怎么同步
 
-脚本只改 `.env.deploy` 里的 `*_IMAGE_REF` 与 `BACKUP_GIT_SHA`，**不会**覆盖 VM 上的
+脚本只改 `.env.deploy` 里的 `*_IMAGE_REF` 与 `BACKUP_GIT_SHA`；其中 `BACKUP_GIT_SHA` 写完整 40 位提交 SHA，镜像 Tag 仍用短 SHA。脚本**不会**覆盖 VM 上的
 `compose.yaml`：VM 侧有测试环境专属适配，直接覆盖会打断服务。改了仓库里的
 `deploy/compose.yaml` 后按下面三步手工同步。
 
@@ -434,7 +437,7 @@ curl.exe -k -I https://test-inpulse.libiaorobot.com/api/v1/auth/sso/start
 ## 磁盘与清理
 
 - VM 根分区 40G；每次更新会在 registry 里新增一个 Tag，旧 Tag 保留用于回滚。
-- 脚本默认删除两端 tar 并执行 `docker image prune -f`。
+- 脚本成功后默认删除本机临时源码包、VM 源码包/构建目录，并执行 `docker image prune -f`；构建失败时保留 VM 目录供排查，`-KeepTar` 可强制保留。
 - 确认不再需要回滚后，可手工清理旧镜像：
 
   ```powershell
@@ -448,7 +451,7 @@ curl.exe -k -I https://test-inpulse.libiaorobot.com/api/v1/auth/sso/start
 ## 常见问题
 
 - 构建时 OOM（Out Of Memory，进程因内存不足被系统杀掉）：关掉占内存的程序，或用
-  `-Targets` 只构建需要的镜像；Docker Desktop 的内存上限在 Settings → Resources 调整。
+  构建发生在 VM，先释放 VM 内存；或用 `-Targets` 分批构建。本机不运行 Docker，其内存设置与构建无关。
 - 反复提示 `libiao@10.1.104.45's password`：说明没有可用的免密密钥（旧密钥可能带
   passphrase）。执行一次 `-SetupKey` 生成 `~/.ssh/inpulse_deploy_ed25519` 即可；
   脚本会按 `inpulse_deploy_ed25519` → `inpulse_test_deploy` → `id_ed25519` 的顺序

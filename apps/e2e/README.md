@@ -11,10 +11,12 @@ F-13 功能档案、F-14 功能级任务创建/分配/编辑、F-08 `/audit` 审
 ## 前置条件
 
 1. 已执行 `pnpm install --frozen-lockfile`。
-2. 已准备 PostgreSQL 18 + PGroonga 实例，并完成 `000_roles.sql`、
-   `020_pgroonga.sql`，并执行 `pnpm db:migrate` 到当前 HEAD。
+2. 本机安装 PostgreSQL 18 + PGroonga（不需要 Docker Desktop）。推荐直接用
+   `pnpm test:e2e:local`：它会自动检测安装、必要时启动 `.data/pg-dev`、创建
+   `app_ci` 并执行 bootstrap 与迁移。手工运行 `pnpm test:e2e` 时，
+   目标实例仍需完成 `000_roles.sql`、`020_pgroonga.sql` 与 `pnpm db:migrate`。
 3. 已执行 `pnpm build`，使 `apps/api/dist/main.js` 可用。
-4. 设置可写测试数据的 bootstrap URL，例如：
+4. 手工运行时设置可写测试数据的 bootstrap URL，例如：
 
 ```powershell
 $env:E2E_DATABASE_URL = "postgresql://cluster_bootstrap@127.0.0.1:55432/app_ci"
@@ -31,7 +33,8 @@ pnpm --filter @inpulse/e2e exec playwright install chromium
 ## 运行
 
 ```powershell
-pnpm test:e2e
+pnpm test:e2e:local    # 推荐：自动准备原生 PostgreSQL 与 app_ci
+pnpm test:e2e          # 已自行准备好测试库与迁移时直接运行
 ```
 
 Playwright `webServer` 先启动已构建的 API（`node dist/main.js`，使用

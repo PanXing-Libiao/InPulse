@@ -26,6 +26,14 @@ import {
   parseCookieHeader,
   type CsrfSetCookie,
 } from "../csrf.http.js";
+import {
+  InvalidCasdoorGroupPathError,
+  normalizeCasdoorGroupPaths,
+} from "../../organizations/casdoor-group-path.js";
+import type {
+  OrganizationSyncPort,
+  SsoOrganizationSyncResult,
+} from "../../organizations/organization-sync.port.js";
 import { PostgresSsoLoginAttemptRepository } from "./sso-login-attempt.repository.js";
 import type { SsoIdTokenClaims, SsoOidcClient } from "./sso-oidc.client.js";
 import {
@@ -70,6 +78,7 @@ export class SsoLoginService extends SsoGateway {
     private readonly unitOfWork: PostgresUnitOfWork,
     private readonly attempts: PostgresSsoLoginAttemptRepository,
     private readonly users: PostgresSsoUserRepository,
+    private readonly organizationSync: OrganizationSyncPort,
     private readonly credentials: PostgresUserCredentialRepository,
     private readonly sessions: PostgresUserSessionRepository,
     private readonly csrfTokens: PostgresSessionCsrfTokenRepository,
@@ -254,6 +263,16 @@ export class SsoLoginService extends SsoGateway {
     if (!fitsLocalColumns(claims)) {
       throw new SsoLoginError("token-invalid");
     }
+    if (claims.groups !== null) {
+      try {
+        normalizeCasdoorGroupPaths(claims.groups);
+      } catch (error) {
+        if (error instanceof InvalidCasdoorGroupPathError) {
+          throw new SsoLoginError("token-invalid", error);
+        }
+        throw error;
+      }
+    }
     return claims;
   }
 
@@ -270,6 +289,13 @@ export class SsoLoginService extends SsoGateway {
       if (user.status !== "ACTIVE" || user.disabledAt !== null) {
         throw new SsoLoginError("account-disabled");
       }
+      const organizationSync = await this.organizationSync.syncSsoMemberships({
+        tx,
+        userId: user.id,
+        groups: claims.groups,
+      });
+      await this.appendAccountAudit(tx, user, mapping.outcome, input);
+      await this.appendOrganizationSyncAudit(tx, user, organizationSync, input);
       const snapshot = await this.credentials.lockForSessionIssue(
         tx,
         user.id,
@@ -292,12 +318,43 @@ export class SsoLoginService extends SsoGateway {
           absoluteMaxAgeSeconds: this.ttl.absoluteMaxAgeSeconds,
         },
       );
-      await this.appendLoginAudit(tx, user, mapping.outcome, input);
+      await this.appendLoginAudit(
+        tx,
+        user,
+        mapping.outcome,
+        organizationSync,
+        input,
+      );
       return issued;
     });
   }
 
-  private async appendLoginAudit(
+  private async appendOrganizationSyncAudit(
+    tx: TransactionContext,
+    user: SsoUserRecord,
+    result: SsoOrganizationSyncResult,
+    input: SsoCompleteInput,
+  ): Promise<void> {
+    await this.audit.append(tx, {
+      projectId: null,
+      actorType: "USER",
+      actorId: user.id,
+      action: "auth.sso_organizations_synced",
+      targetType: "USER",
+      targetId: String(user.id),
+      eventPayload: {
+        groupsClaimPresent: result.groupsClaimPresent,
+        groupCount: result.groupCount,
+        createdOrganizationCount: result.createdOrganizationCount,
+        membershipCount: result.membershipCount,
+      },
+      requestId: input.requestId,
+      ipAddress: input.clientIp,
+      userAgent: input.userAgent,
+    });
+  }
+
+  private async appendAccountAudit(
     tx: TransactionContext,
     user: SsoUserRecord,
     outcome: string,
@@ -328,10 +385,30 @@ export class SsoLoginService extends SsoGateway {
         eventPayload: {},
       });
     }
+  }
+
+  private async appendLoginAudit(
+    tx: TransactionContext,
+    user: SsoUserRecord,
+    outcome: string,
+    organizationSync: SsoOrganizationSyncResult,
+    input: SsoCompleteInput,
+  ): Promise<void> {
     await this.audit.append(tx, {
-      ...meta,
+      projectId: null,
+      actorType: "USER",
+      actorId: user.id,
       action: "auth.sso_login",
-      eventPayload: { outcome },
+      targetType: "USER",
+      targetId: String(user.id),
+      eventPayload: {
+        outcome,
+        groupsClaimPresent: organizationSync.groupsClaimPresent,
+        groupCount: organizationSync.groupCount,
+      },
+      requestId: input.requestId,
+      ipAddress: input.clientIp,
+      userAgent: input.userAgent,
     });
   }
 

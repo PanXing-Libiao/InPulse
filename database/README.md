@@ -49,6 +49,8 @@ PGroonga 迁移合并在同一迁移中。
 `DB_HOST`、`DB_PORT`、`DB_NAME`、`DB_SSLMODE`。完整键名见
 `.env.example`。
 
+日常本地开发、集成测试与 E2E 不需要 Docker Desktop：`node scripts/dev-start.mjs`、`pnpm test:integration:local` 与 `pnpm test:e2e:local` 会检测本机 PostgreSQL 18 + PGroonga，必要时初始化并启动 `.data/pg-dev`（127.0.0.1:55432），并自动创建 `app` / `app_ci`、执行 bootstrap 与迁移。可用 `POSTGRES_BIN` 指定 `bin` 目录，`INPULSE_LOCAL_PG_PORT` / `INPULSE_LOCAL_PG_DATA` 覆盖端口和数据目录。VM 上的 Docker 部署不受影响。
+
 本地已有安装 PGroonga 的 PostgreSQL 18 时，可一次性创建隔离集群、迁移、
 测试并停止：
 
@@ -58,7 +60,8 @@ pnpm db:test:local
 ```
 
 该脚本先检查 `pg_available_extensions`，执行 `020_pgroonga.sql`；若本机
-未安装 PGroonga，会明确失败并提示改用 Docker 的一体化 PoC。脚本只在系统
+未安装 PGroonga，会明确失败。请安装匹配版本的 PGroonga，或在 CI/VM 上使用探针镜像；
+日常本地开发与测试不需要 Docker。脚本只在系统
 临时目录创建 `InPulse-PgTest-<uuid>`，只监听
 `127.0.0.1`，使用仅限该临时实例的 trust 认证，并将
 `max_connections` 设为 150 以执行 100 并发审计门禁。成功后自动停止并
@@ -139,7 +142,7 @@ pnpm db:seed:check
 
 ## 阶段 0 搜索 PoC
 
-PostgreSQL 18.6 PGroonga V1 PoC（需要 Docker）：
+PostgreSQL 18.6 PGroonga V1 PoC（可选；需要 Docker，仅用于 CI/VM 探针复现，不是本地日常开发前置）：
 
 ```powershell
 docker build `
@@ -206,3 +209,14 @@ pnpm db:poc:search:local
 应用 Repository 不得使用数据库级级联删除清理业务历史，也不得绕过
 Workflow 的锁序与父级 ACTIVE 检查。当前数据库触发器负责最终结构防线，
 授权、归档可写性、JCS/HMAC 密钥和跨域命令语义仍由应用层按技术设计执行。
+
+## ADR-097 SSO 群组组织数据
+
+迁移 `migrations/0061_contract_sso_casdoor_organizations.sql` 将组织来源与 SSO 群组路径纳入数据库：
+
+- `app.organizations` 增加 `source`（`LOCAL` / `CASDOOR`）、`sso_owner`、`sso_group_path`、`sso_parent_path` 与自引用 `parent_id`。LOCAL 组织保留原名称唯一与管理员 CRUD；CASDOOR 组织以 `(sso_owner, sso_group_path)` 唯一，完整路径是同步身份。
+- 新增 `app.user_organizations` 多对多成员表，主键为 `(user_id, organization_id)`，`source` 只允许 `MANUAL` / `CASDOOR`。本地账号旧的 `app.users.organization_id` 值迁移为 `MANUAL` 关系后删除该列；SSO 账号的旧归属不迁移，由下一次成功 SSO 登录按 `groups` 全量重建。
+- 触发器保证 CASDOOR 组织本地只读、组织来源不可改写、成员关系来源与用户 / 组织来源一致；用户或组织删除时成员关系级联清理。`app_runtime` 获得成员表所需 DML 权限，`app_backup` 只读。
+- `database/bootstrap/000_roles.sql` 把 `app_migrator` 的数据库级 `search_path` 设为 `RESET search_path`。迁移名均已用 `app.` 限定；若 `app` 可见，`pg_get_triggerdef()` 会省略函数 schema，令历史迁移 `0047_user_deletion_tombstone.sql` 的只读部署断言误判。该修改未触碰任何历史迁移。
+
+本地验证：在全新数据库从 `000_roles.sql`、`020_pgroonga.sql` 开始由 `app_migrator` 执行迁移，全部迁移成功；`database/test/integration/database.test.ts` 覆盖多成员关系、CASDOOR 形状、来源错配、只读触发器与最小授权。

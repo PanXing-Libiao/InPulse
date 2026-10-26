@@ -146,7 +146,6 @@ async function userState(userId: number) {
            email,
            password_hash IS NULL AS "passwordCleared",
            is_admin AS "isAdmin",
-           organization_id AS "organizationId",
            status,
            disabled_at AS "disabledAt",
            deleted_at AS "deletedAt",
@@ -162,7 +161,6 @@ async function userState(userId: number) {
     readonly email: string | null;
     readonly passwordCleared: boolean;
     readonly isAdmin: boolean;
-    readonly organizationId: number | null;
     readonly status: string;
     readonly disabledAt: string | null;
     readonly deletedAt: string | null;

@@ -1,22 +1,26 @@
 ﻿<#
 .SYNOPSIS
-    InPulse 测试 VM 一键更新：本机构建镜像 -> 上传 -> 推入 VM 本地 registry -> 更新 Compose 栈。
+    InPulse 单机 VM 一键更新：本机上传源码 -> VM 构建镜像 -> 推入 VM 本地 registry -> 更新 Compose 栈。
 
 .DESCRIPTION
-    适用于单机 Docker Compose + 本地 registry 的测试 VM，不是生产发布流程。
-    生产镜像 Tag/digest 绑定与签名发布仍按技术设计第 12 章由人工完成。
+    适用于单机 Docker Compose + 本地 registry 的测试 VM 与受控正式机。正式发布必须
+    通过 deploy/prod/update.ps1 进入；镜像签名、发布清单审批和上线备份门禁仍按
+    技术设计第 12 章由人工完成。
+
+    本机不要求安装或启动 Docker Desktop；打包使用 Node.js 与 Git，上传使用 ssh 与 scp。
 
     执行顺序：
-      1. docker build 构建选中的镜像（context = 仓库根）；
-      2. docker save 导出 tar，scp 上传到 VM 镜像目录；
-      3. VM 上 docker load / tag / push 到 127.0.0.1:5000；
-      4. 以 tag@sha256 形式更新 .env.deploy 的 *_IMAGE_REF（先备份，便于回滚）；
-      5. docker compose up -d（migrate 服务先执行数据库迁移）；
-      6. 健康检查：api healthy 且 /health/ready 返回 200；
-      7. 清理两端 tar 与悬空镜像（-KeepTar 可保留）。
+      1. 用 git 文件清单打包当前源码（包含未提交但未被忽略的改动）；
+      2. scp 上传源码包，VM 上解压到隔离构建目录；
+      3. 按需从镜像源补齐基础镜像，在 VM 上 docker build；
+      4. tag / push 到 VM 本地 127.0.0.1:5000；
+      5. 以 tag@sha256 形式更新 .env.deploy 的 *_IMAGE_REF（先备份，便于回滚）；
+      6. docker compose up -d（migrate 服务先执行数据库迁移）；
+      7. 健康检查：api healthy 且 /health/ready 返回 200；
+      8. 清理本机临时文件与 VM 源码包（-KeepTar 可保留源码包和构建目录）。
 
 .PARAMETER Repo
-    要构建的仓库工作区，默认取脚本所在仓库根目录。
+    要打包的仓库工作区，默认取脚本所在仓库根目录。
 
 .PARAMETER Targets
     要更新的镜像：api、web、migrate、db-bootstrap、ops，或 all（默认）。
@@ -25,6 +29,13 @@
 
 .PARAMETER Tag
     镜像 Tag，默认为 Version-yyyyMMdd-git 短 sha。
+
+.PARAMETER PublicHost
+    本机回环探针使用的 Host 与完成后展示的公开域名，默认测试域名。
+    正式环境由 deploy/prod/update.ps1 固定为 inpulse.libiaorobot.com。
+
+.PARAMETER RequireClean
+    Git 工作区有未提交改动时直接失败；正式发布固定启用。
 
 .PARAMETER SetupKey
     一次性生成无 passphrase 的部署密钥（默认 ~/.ssh/inpulse_deploy_ed25519）并把公钥装到 VM，
@@ -38,16 +49,18 @@
     VM 密码，只用于远端 sudo；也可用环境变量 INPULSE_VM_PASSWORD。留空则在终端交互输入。
 
 .PARAMETER Mirror
-    拉取基础镜像用的 Docker 镜像源，默认 docker.1ms.run（公司网络无法直连 Docker Hub）。
+    VM 拉取基础镜像用的 Docker 镜像源，默认 docker.1ms.run（公司网络无法直连 Docker Hub）。
+    镜像源只在 VM 上使用，不要求本机 Docker。
 
 .PARAMETER NoMirror
-    跳过镜像源，直接按 Dockerfile 里的原始地址拉取基础镜像（本地已缓存全部基础镜像时更快）。
+    跳过镜像源；若有基础镜像缓存则直接使用，否则由 VM 上的 docker build 按原始地址解析。
 
 .PARAMETER SkipBuild
-    跳过构建与上传，直接用 VM 上已有的 tar 执行远端更新（配合 -Tag）。
+    不上传源码、不构建，直接使用 VM 上已有的 inpulse/<target>:<Tag> 重新推送并更新 Compose。
+    必须同时提供 -Tag；VM 上不存在对应本地镜像时立即失败。
 
 .PARAMETER KeepTar
-    保留本机构建的 tar 与 VM 上的 tar（默认两端都清理以省磁盘）。
+    保留本机源码包、VM 源码包与构建目录（默认在成功后清理源码包和构建目录以省磁盘）。
 
 .PARAMETER FixEol
     构建 migrate 前，把 database/migrations 下行尾漂移成 CRLF 的文件按字节转回 LF。
@@ -77,13 +90,15 @@ param(
   [switch]$NoMirror,
   [string]$Version = '0.1.0',
   [string]$Tag,
+  [string]$PublicHost,
   [string[]]$Targets = @('all'),
   [string]$RemoteDir,
   [string]$ImageDir,
   [switch]$SkipBuild,
   [switch]$SetupKey,
   [switch]$KeepTar,
-  [switch]$FixEol
+  [switch]$FixEol,
+  [switch]$RequireClean
 )
 
 Set-StrictMode -Version Latest
@@ -110,11 +125,18 @@ $VmHost = Get-Default $VmHost 'INPULSE_VM_HOST' '10.1.104.45'
 $VmUser = Get-Default $VmUser 'INPULSE_VM_USER' 'libiao'
 $RemoteDir = Get-Default $RemoteDir 'INPULSE_VM_REMOTE_DIR' "/home/$VmUser/inpulse-deploy"
 $ImageDir = Get-Default $ImageDir 'INPULSE_VM_IMAGE_DIR' "/home/$VmUser/inpulse-images"
+$PublicHost = Get-Default $PublicHost 'INPULSE_PUBLIC_HOST' 'test-inpulse.libiaorobot.com'
+if ($PublicHost -notmatch '^[A-Za-z0-9.-]+$') { throw "公开域名不合法：$PublicHost" }
 if ([string]::IsNullOrWhiteSpace($VmPassword)) {
   $VmPassword = [Environment]::GetEnvironmentVariable('INPULSE_VM_PASSWORD')
 }
 $Mirror = Get-Default $Mirror 'INPULSE_DOCKER_MIRROR' 'docker.1ms.run'
 $CorepackRegistry = Get-Default $CorepackRegistry 'INPULSE_COREPACK_REGISTRY' 'https://registry.npmjs.org'
+
+if ($RemoteDir -notmatch "^/[A-Za-z0-9._/-]+$") { throw "远端部署目录不合法：$RemoteDir" }
+if ($ImageDir -notmatch "^/[A-Za-z0-9._/-]+$") { throw "远端镜像目录不合法：$ImageDir" }
+if ($Mirror -notmatch "^[A-Za-z0-9._:/-]+$") { throw "镜像源不合法：$Mirror" }
+if ($CorepackRegistry -notmatch "^https?://[A-Za-z0-9._:/-]+$") { throw "Corepack registry 不合法：$CorepackRegistry" }
 
 $imageMap = [ordered]@{
   'api'          = @{ Dockerfile = 'deploy/docker/api.Dockerfile';          Image = 'inpulse/api';          EnvKey = 'API_IMAGE_REF' }
@@ -149,52 +171,6 @@ if ($explicitSshKey) {
   $keyCandidates = @($SshKey)
 } else {
   $keyCandidates = @($deployKeyDefault, (Join-Path $HOME '.ssh\inpulse_test_deploy'), (Join-Path $HOME '.ssh\id_ed25519'))
-}
-
-function Get-DockerfileFromRefs {
-  param([string]$Repo)
-  $pattern = Join-Path $Repo 'deploy\docker\*.Dockerfile'
-  return @(Select-String -Path $pattern -Pattern '^\s*FROM\s+(\S+)' |
-    ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique)
-}
-
-function Invoke-MirrorPull {
-  param([string]$Reference, [string]$Mirror)
-  $name = ($Reference -split '@')[0]
-  $pinnedDigest = ''
-  if ($Reference -match '@(sha256:[0-9a-f]{64})$') { $pinnedDigest = $Matches[1] }
-  if ($name -match '/') { $remote = "$Mirror/$name" } else { $remote = "$Mirror/library/$name" }
-  if ($pinnedDigest) { $remote = "$remote@$pinnedDigest" }
-  Write-Host "本地缺少 $Reference，从 $remote 拉取" -ForegroundColor Yellow
-  & docker pull $remote 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { [string]$_ } } | Select-Object -Last 2
-  if ($LASTEXITCODE -ne 0) { throw "拉取失败：$remote（换一个 -Mirror，或恢复 docker.io 直连后加 -NoMirror）" }
-  & docker tag $remote $name
-  if ($LASTEXITCODE -ne 0) { throw "打 tag 失败：$remote -> $name" }
-  if ($pinnedDigest) {
-    $got = @((& docker image inspect $remote --format '{{ range .RepoDigests }}{{ . }}|{{ end }}') -split '\|') |
-      Where-Object { $_ } | ForEach-Object { ($_ -split '@')[-1] }
-    if ($got -notcontains $pinnedDigest) {
-      throw "digest 不匹配：$name 期望 $pinnedDigest，实际 $($got -join ', ')；已停止，请人工确认镜像来源"
-    }
-    Write-Host "已就绪并校验 digest：$name" -ForegroundColor Green
-  } else {
-    Write-Host "已就绪：$name" -ForegroundColor Green
-  }
-}
-
-function Ensure-BaseImages {
-  param([string]$Repo, [string]$Mirror)
-  foreach ($ref in (Get-DockerfileFromRefs -Repo $Repo)) {
-    & docker image inspect $ref *> $null
-    if ($LASTEXITCODE -ne 0) { Invoke-MirrorPull -Reference $ref -Mirror $Mirror }
-  }
-  $pattern = Join-Path $Repo 'deploy\docker\*.Dockerfile'
-  $frontends = @(Select-String -Path $pattern -Pattern '^#\s*syntax=(\S+)' |
-    ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique)
-  foreach ($frontend in $frontends) {
-    & docker image inspect $frontend *> $null
-    if ($LASTEXITCODE -ne 0) { Invoke-MirrorPull -Reference $frontend -Mirror $Mirror }
-  }
 }
 
 function Test-SshKeyAuth {
@@ -243,7 +219,7 @@ if ($SetupKey) {
 }
 
 Write-Host "仓库      : $Repo" -ForegroundColor Cyan
-Write-Host "测试 VM   : $sshTarget" -ForegroundColor Cyan
+Write-Host "目标主机  : $sshTarget" -ForegroundColor Cyan
 Write-Host "部署目录  : $RemoteDir" -ForegroundColor Cyan
 $keyAuthReady = $false
 foreach ($candidate in $keyCandidates) {
@@ -258,21 +234,30 @@ foreach ($candidate in $keyCandidates) {
   Write-Warning "密钥 $candidate 无法免密登录（可能带 passphrase 或未装到 VM），改用密码认证。"
 }
 if (-not $keyAuthReady) {
-  Write-Warning '本次没有可用的免密密钥：上传镜像与远端执行会多次要求输入 VM 密码。'
-  Write-Warning '想全程免密，先执行一次：powershell -NoProfile -ExecutionPolicy Bypass -File deploy/test-vm/update.ps1 -SetupKey'
+  Write-Warning "本次没有可用的免密密钥：源码上传与远端执行会多次要求输入 VM 密码。"
+  Write-Warning "想全程免密，先执行一次：powershell -NoProfile -ExecutionPolicy Bypass -File deploy/test-vm/update.ps1 -SetupKey"
 }
 
 if (-not (Test-Path (Join-Path $Repo 'deploy\compose.yaml'))) {
   throw '找不到 deploy/compose.yaml；请确认 -Repo 指向仓库工作区'
 }
-foreach ($c in @('docker', 'ssh', 'scp', 'git')) {
+if ($SkipBuild -and [string]::IsNullOrWhiteSpace($Tag)) {
+  throw "SkipBuild 必须同时提供 -Tag，以便引用 VM 上已有的镜像"
+}
+$localCommands = @("ssh", "scp", "git")
+if (-not $SkipBuild) { $localCommands += "node" }
+foreach ($c in $localCommands) {
   if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { throw "缺少命令：$c" }
 }
-& docker info *> $null
-if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop 不可用，请先启动它' }
+$toolText = "Git / ssh / scp"
+if (-not $SkipBuild) { $toolText = "Node.js / $toolText" }
+Write-Host "本机工具  : $toolText（不调用本机 Docker）" -ForegroundColor Cyan
 
 $gitSha = (& git -C $Repo rev-parse --short HEAD).Trim()
-Test-ExitCode $LASTEXITCODE 'git rev-parse'
+Test-ExitCode $LASTEXITCODE 'git rev-parse --short HEAD'
+$gitShaFull = (& git -C $Repo rev-parse HEAD).Trim()
+Test-ExitCode $LASTEXITCODE 'git rev-parse HEAD'
+if ($gitShaFull -notmatch '^[0-9a-f]{40}$') { throw "完整 Git SHA 不合法：$gitShaFull" }
 if ([string]::IsNullOrWhiteSpace($Tag)) {
   $Tag = '{0}-{1}-{2}' -f $Version, (Get-Date -Format 'yyyyMMdd'), $gitSha
 }
@@ -280,7 +265,10 @@ if ($Tag -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') { throw "镜像 Tag 不
 
 $dirty = & git -C $Repo status --porcelain
 if ($dirty) {
-  Write-Warning "工作区有未提交改动：镜像会包含这些改动，但 Tag 里的 $gitSha 只对应最后一次提交"
+  if ($RequireClean) {
+    throw "工作区有未提交改动；正式发布要求先用提交固定版本。"
+  }
+  Write-Warning "工作区有未提交改动：VM 构建会包含这些改动，但 Tag 里的 $gitSha 只对应最后一次提交"
 }
 
 if (($targetList -contains 'migrate') -and (-not $SkipBuild)) {
@@ -322,33 +310,40 @@ Write-Host "更新范围  : $($targetList -join ', ')" -ForegroundColor Cyan
 $workDir = Join-Path $env:TEMP "inpulse-update-$Tag"
 New-Item -ItemType Directory -Force -Path $workDir | Out-Null
 
-if (-not $SkipBuild) {
-  & ssh @sshOptions $sshTarget "mkdir -p '$ImageDir'"
-  Test-ExitCode $LASTEXITCODE "在 VM 上创建 $ImageDir"
-  if (-not $NoMirror) {
-    Write-Host ''
-    Write-Host "=== 检查基础镜像（镜像源：$Mirror）===" -ForegroundColor Cyan
-    Ensure-BaseImages -Repo $Repo -Mirror $Mirror
+$sourceTarName = "inpulse-source-$Tag.tar.gz"
+$sourceTar = Join-Path $workDir $sourceTarName
+$sourceFileList = "$sourceTar.files"
+$remoteSourceTar = "$ImageDir/$sourceTarName"
+$remoteSourceDir = "$RemoteDir/.source-$Tag"
+
+if ($SkipBuild) {
+  Write-Host "源码包    : 跳过（-SkipBuild，使用 VM 上已有 inpulse/<target>:$Tag）" -ForegroundColor Cyan
+} else {
+  & ssh @sshOptions $sshTarget "mkdir -p '$RemoteDir' '$ImageDir'"
+  Test-ExitCode $LASTEXITCODE "在 VM 上创建 $RemoteDir 与 $ImageDir"
+
+  $sourceArchiveScript = Join-Path $Repo "scripts\pack-source.mjs"
+  if (-not (Test-Path $sourceArchiveScript)) { throw "找不到源码打包助手：$sourceArchiveScript" }
+
+  Write-Host ""
+  Write-Host "=== 打包源码（包含未提交但未忽略改动）===" -ForegroundColor Cyan
+  $archiveJson = & node $sourceArchiveScript --repo $Repo --output $sourceTar
+  Test-ExitCode $LASTEXITCODE "打包源码"
+  try {
+    $archiveInfo = $archiveJson | ConvertFrom-Json
+  } catch {
+    throw "源码打包助手返回了无法解析的结果：$archiveJson"
   }
-  foreach ($t in $targetList) {
-    $m = $imageMap[$t]
-    $localImage = '{0}:{1}' -f $m.Image, $Tag
-    $tarPath = Join-Path $workDir "$t.tar"
-    $logPath = Join-Path $workDir "build-$t.log"
-    Write-Host ''
-    Write-Host "=== 构建 $localImage ===" -ForegroundColor Cyan
-    & docker build --progress plain --build-arg "COREPACK_NPM_REGISTRY=$CorepackRegistry" -f (Join-Path $Repo $m.Dockerfile) -t $localImage $Repo 2>&1 |
-      ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { [string]$_ } } | Tee-Object -FilePath $logPath
-    Test-ExitCode $LASTEXITCODE "构建 $t（完整日志：$logPath）"
-    Write-Host "=== 导出 $t.tar ===" -ForegroundColor Cyan
-    & docker save -o $tarPath $localImage
-    Test-ExitCode $LASTEXITCODE "导出 $t"
-    $sizeMb = [math]::Round((Get-Item $tarPath).Length / 1MB, 1)
-    Write-Host "=== 上传 $t.tar（$sizeMb MB）===" -ForegroundColor Cyan
-    & scp -q @sshOptions $tarPath "${sshTarget}:$ImageDir/$t.tar"
-    Test-ExitCode $LASTEXITCODE "上传 $t"
-    if (-not $KeepTar) { Remove-Item -LiteralPath $tarPath -Force }
+  if ($null -eq $archiveInfo -or $archiveInfo.fileCount -lt 1) { throw "源码包文件清单为空，拒绝上传空包" }
+  if (-not (Test-Path $sourceTar)) { throw "源码包未生成：$sourceTar" }
+  if ($archiveInfo.skippedMissing -gt 0) {
+    Write-Warning "打包时跳过了 $($archiveInfo.skippedMissing) 个工作区已删除的跟踪文件"
   }
+  Write-Host "包含 $($archiveInfo.fileCount) 个文件" -ForegroundColor Cyan
+  $sizeMb = [math]::Round((Get-Item $sourceTar).Length / 1MB, 1)
+  Write-Host "=== 上传源码包（$sizeMb MB）===" -ForegroundColor Cyan
+  & scp -q @sshOptions $sourceTar "${sshTarget}:$remoteSourceTar"
+  Test-ExitCode $LASTEXITCODE "上传源码包"
 }
 
 $remoteTemplate = @'
@@ -358,8 +353,15 @@ set -euo pipefail
 TAG="__TAG__"
 REMOTE_DIR="__REMOTE_DIR__"
 IMAGE_DIR="__IMAGE_DIR__"
+SOURCE_TAR="__SOURCE_TAR__"
+SOURCE_DIR="__SOURCE_DIR__"
 GIT_SHA="__GIT_SHA__"
+PUBLIC_HOST="__PUBLIC_HOST__"
 KEEP_TAR="__KEEP_TAR__"
+BUILD="__BUILD__"
+MIRROR="__MIRROR__"
+NO_MIRROR="__NO_MIRROR__"
+COREPACK_REGISTRY="__COREPACK_REGISTRY__"
 REGISTRY="127.0.0.1:5000"
 
 cd "$REMOTE_DIR"
@@ -367,34 +369,125 @@ COMPOSE="docker compose --env-file .env.deploy -f compose.yaml"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 cp -p .env.deploy ".env.deploy.bak-$STAMP"
+chmod 600 .env.deploy
 echo "[env] 已备份 .env.deploy -> .env.deploy.bak-$STAMP"
 
-load_push() {
-  local name="$1" envkey="$2"
-  local tar_path="$IMAGE_DIR/$name.tar"
-  if [ ! -f "$tar_path" ]; then
-    echo "[skip] $name：$tar_path 不存在"
-    return 0
+mirror_pull() {
+  local reference="$1"
+  local name remote pinned got
+  name="$(printf "%s" "$reference" | sed "s/@.*//")"
+  pinned=""
+  if printf "%s" "$reference" | grep -Eq "@sha256:[0-9a-f]{64}$"; then
+    pinned="$(printf "%s" "$reference" | sed "s/.*@//")"
   fi
-  echo "[load] $name"
-  docker load -i "$tar_path" > /dev/null
-  docker tag "inpulse/$name:$TAG" "$REGISTRY/inpulse/$name:$TAG"
-  echo "[push] $name:$TAG"
-  docker push "$REGISTRY/inpulse/$name:$TAG" > /dev/null
-  local digest ref
-  digest="$(docker inspect --format '{{ index .RepoDigests 0 }}' "$REGISTRY/inpulse/$name:$TAG" | sed 's/.*@//')"
-  ref="$REGISTRY/inpulse/$name:$TAG@$digest"
-  sed -i "s|^B{envkey}=.*|B{envkey}=B{ref}|" .env.deploy
-  echo "[env] B{envkey}=B{ref}"
+  if printf "%s" "$name" | grep -q "/"; then
+    remote="$MIRROR/$name"
+  else
+    remote="$MIRROR/library/$name"
+  fi
+  if [ -n "$pinned" ]; then remote="$remote@$pinned"; fi
+  echo "[base] 拉取 $remote"
+  docker pull "$remote"
+  if [ -n "$pinned" ]; then
+    got="$(docker image inspect "$remote" --format "{{range .RepoDigests}}{{println .}}{{end}}" | sed -n "s/.*@//p" | sort -u)"
+    if ! printf "%s\n" "$got" | grep -qx "$pinned"; then
+      echo "[FAIL] digest 不匹配：$name 期望 $pinned，实际 $got"
+      exit 1
+    fi
+  fi
+  docker tag "$remote" "$name"
+  echo "[base] 已就绪：$name"
+}
+
+ensure_base_images() {
+  local reference frontend
+  for reference in $(grep -hE "^[[:space:]]*FROM[[:space:]]+" "$SOURCE_DIR"/deploy/docker/*.Dockerfile | sed -E "s/^[[:space:]]*FROM[[:space:]]+([^[:space:]]+).*/\1/" | sort -u); do
+    if docker image inspect "$reference" >/dev/null 2>&1; then continue; fi
+    if [ "$NO_MIRROR" = "1" ]; then
+      echo "[base] 未缓存 $reference；-NoMirror 下交由 docker build 直接解析"
+    else
+      mirror_pull "$reference"
+    fi
+  done
+  for frontend in $(grep -hE "^#[[:space:]]*syntax=" "$SOURCE_DIR"/deploy/docker/*.Dockerfile | sed -E "s/^#[[:space:]]*syntax=([^[:space:]]+).*/\1/" | sort -u); do
+    if docker image inspect "$frontend" >/dev/null 2>&1; then continue; fi
+    if [ "$NO_MIRROR" = "1" ]; then
+      echo "[base] 未缓存 $frontend；-NoMirror 下交由 docker build 直接解析"
+    else
+      mirror_pull "$frontend"
+    fi
+  done
+}
+
+dockerfile_for() {
+  case "$1" in
+    api) echo "deploy/docker/api.Dockerfile" ;;
+    web) echo "deploy/docker/web.Dockerfile" ;;
+    migrate) echo "deploy/docker/migration.Dockerfile" ;;
+    db-bootstrap) echo "deploy/docker/db-bootstrap.Dockerfile" ;;
+    ops) echo "deploy/docker/ops.Dockerfile" ;;
+    *) echo "[FAIL] 未知镜像：$1" >&2; return 1 ;;
+  esac
+}
+
+if [ "$BUILD" = "1" ]; then
+  case "$SOURCE_DIR" in
+    "$REMOTE_DIR"/.source-*) ;;
+    *) echo "[FAIL] 拒绝清理非预期源码目录：$SOURCE_DIR"; exit 1 ;;
+  esac
+  if [ ! -f "$SOURCE_TAR" ]; then echo "[FAIL] 源码包不存在：$SOURCE_TAR"; exit 1; fi
+  rm -rf "$SOURCE_DIR"
+  mkdir -p "$SOURCE_DIR"
+  echo "[source] 解压 $SOURCE_TAR -> $SOURCE_DIR"
+  tar -xzf "$SOURCE_TAR" -C "$SOURCE_DIR"
+  for required in deploy/compose.yaml deploy/docker/api.Dockerfile pnpm-lock.yaml package.json; do
+    if [ ! -f "$SOURCE_DIR/$required" ]; then echo "[FAIL] 源码包缺少 $required"; exit 1; fi
+  done
+  ensure_base_images
+fi
+
+update_image() {
+  local name="$1" envkey="$2" dockerfile local_image registry_image digest ref log
+  local_image="inpulse/$name:$TAG"
+  registry_image="$REGISTRY/inpulse/$name:$TAG"
+  if [ "$BUILD" = "1" ]; then
+    dockerfile="$(dockerfile_for "$name")"
+    log="$SOURCE_DIR/build-$name.log"
+    echo "[build] $local_image <- $dockerfile"
+    docker build --progress plain --build-arg "COREPACK_NPM_REGISTRY=$COREPACK_REGISTRY" -f "$SOURCE_DIR/$dockerfile" -t "$local_image" "$SOURCE_DIR" 2>&1 | tee "$log"
+  else
+    if ! docker image inspect "$local_image" >/dev/null 2>&1; then
+      echo "[FAIL] -SkipBuild 需要 VM 上已有 $local_image"
+      exit 1
+    fi
+    echo "[image] 复用 VM 本地镜像 $local_image"
+  fi
+  docker tag "$local_image" "$registry_image"
+  echo "[push] $registry_image"
+  docker push "$registry_image" >/dev/null
+  digest="$(docker inspect --format "{{ index .RepoDigests 0 }}" "$registry_image" | sed "s/.*@//")"
+  if ! printf "%s" "$digest" | grep -Eq "^sha256:[0-9a-f]{64}$"; then
+    echo "[FAIL] $registry_image 的 RepoDigest 不合法：$digest"
+    exit 1
+  fi
+  ref="$registry_image@$digest"
+  sed -i "s|^$envkey=.*|$envkey=$ref|" .env.deploy
+  echo "[env] $envkey=$ref"
 }
 
 for pair in "$@"; do
-  load_push "B{pair%%:*}" "B{pair##*:}"
+  name="$(printf "%s" "$pair" | cut -d: -f1)"
+  envkey="$(printf "%s" "$pair" | cut -d: -f2)"
+  update_image "$name" "$envkey"
 done
 
-if grep -q '^BACKUP_GIT_SHA=' .env.deploy; then
-  sed -i "s|^BACKUP_GIT_SHA=.*|BACKUP_GIT_SHA=B{GIT_SHA}|" .env.deploy
-  echo "[env] BACKUP_GIT_SHA=B{GIT_SHA}"
+if grep -q "^BACKUP_GIT_SHA=" .env.deploy; then
+  sed -i "s|^BACKUP_GIT_SHA=.*|BACKUP_GIT_SHA=$GIT_SHA|" .env.deploy
+  echo "[env] BACKUP_GIT_SHA=$GIT_SHA"
+fi
+
+if [ "$BUILD" = "1" ]; then
+  echo "[logs] 构建日志：$SOURCE_DIR/build-*.log"
 fi
 
 echo "[up] docker compose up -d（migrate 会先执行数据库迁移）"
@@ -402,20 +495,20 @@ $COMPOSE up -d
 
 mig_id="$($COMPOSE ps -q migrate 2>/dev/null || true)"
 if [ -n "$mig_id" ]; then
-  echo "[migrate] $(docker inspect -f '{{.State.Status}} exit={{.State.ExitCode}}' "$mig_id")"
+  echo "[migrate] $(docker inspect -f "{{.State.Status}} exit={{.State.ExitCode}}" "$mig_id")"
 fi
 
 api_id="$($COMPOSE ps -q api)"
 status="unknown"
 for _ in $(seq 1 60); do
-  status="$(docker inspect -f '{{.State.Health.Status}}' "$api_id" 2>/dev/null || echo unknown)"
+  status="$(docker inspect -f "{{.State.Health.Status}}" "$api_id" 2>/dev/null || echo unknown)"
   if [ "$status" = "healthy" ]; then break; fi
   sleep 3
 done
 echo "[health] api=$status"
-$COMPOSE ps --format '{{.Name}} | {{.Status}}'
-curl -sk -H 'Host: test-inpulse.libiaorobot.com' -o /dev/null -w '[probe] /health/ready -> %{http_code}\n' https://127.0.0.1/health/ready
-curl -sk -H 'Host: test-inpulse.libiaorobot.com' -o /dev/null -w '[probe] / -> %{http_code}\n' https://127.0.0.1/
+$COMPOSE ps --format "{{.Name}} | {{.Status}}"
+curl -sk -H "Host: $PUBLIC_HOST" -o /dev/null -w "[probe] /health/ready -> %{http_code}\n" https://127.0.0.1/health/ready
+curl -sk -H "Host: $PUBLIC_HOST" -o /dev/null -w "[probe] / -> %{http_code}\n" https://127.0.0.1/
 
 if [ "$status" != "healthy" ]; then
   echo "[FAIL] api 未达到 healthy，最近日志："
@@ -424,9 +517,15 @@ if [ "$status" != "healthy" ]; then
 fi
 
 if [ "$KEEP_TAR" != "1" ]; then
-  rm -f "$IMAGE_DIR"/*.tar
-  docker image prune -f > /dev/null
-  echo "[prune] 已清理 $IMAGE_DIR/*.tar 与悬空镜像"
+  if [ "$BUILD" = "1" ]; then
+    rm -f "$SOURCE_TAR"
+    rm -rf "$SOURCE_DIR"
+    echo "[clean] 已清理 VM 源码包与构建目录"
+  fi
+  docker image prune -f >/dev/null || true
+else
+  echo "[keep] 保留 VM 源码包：$SOURCE_TAR"
+  if [ "$BUILD" = "1" ]; then echo "[keep] 构建目录：$SOURCE_DIR"; fi
 fi
 
 rm -f "$REMOTE_DIR/.update-$TAG.sh"
@@ -436,9 +535,26 @@ echo "[done] TAG=$TAG"
 $pairs = ($targetList | ForEach-Object { '{0}:{1}' -f $_, $imageMap[$_].EnvKey }) -join ' '
 $lf = [string][char]10
 $crlf = [string][char]13 + [string][char]10
-$keepTarFlag = '0'
-if ($KeepTar) { $keepTarFlag = '1' }
-$remoteScript = $remoteTemplate.Replace('__TAG__', $Tag).Replace('__REMOTE_DIR__', $RemoteDir).Replace('__IMAGE_DIR__', $ImageDir).Replace('__GIT_SHA__', $gitSha).Replace('__KEEP_TAR__', $keepTarFlag).Replace('B{', '${').Replace($crlf, $lf)
+$keepTarFlag = "0"
+if ($KeepTar) { $keepTarFlag = "1" }
+$buildFlag = "1"
+if ($SkipBuild) { $buildFlag = "0" }
+$noMirrorFlag = "0"
+if ($NoMirror) { $noMirrorFlag = "1" }
+$remoteScript = $remoteTemplate
+$remoteScript = $remoteScript.Replace("__TAG__", $Tag)
+$remoteScript = $remoteScript.Replace("__REMOTE_DIR__", $RemoteDir)
+$remoteScript = $remoteScript.Replace("__IMAGE_DIR__", $ImageDir)
+$remoteScript = $remoteScript.Replace("__SOURCE_TAR__", $remoteSourceTar)
+$remoteScript = $remoteScript.Replace("__SOURCE_DIR__", $remoteSourceDir)
+$remoteScript = $remoteScript.Replace("__GIT_SHA__", $gitShaFull)
+$remoteScript = $remoteScript.Replace("__PUBLIC_HOST__", $PublicHost)
+$remoteScript = $remoteScript.Replace("__KEEP_TAR__", $keepTarFlag)
+$remoteScript = $remoteScript.Replace("__BUILD__", $buildFlag)
+$remoteScript = $remoteScript.Replace("__MIRROR__", $Mirror)
+$remoteScript = $remoteScript.Replace("__NO_MIRROR__", $noMirrorFlag)
+$remoteScript = $remoteScript.Replace("__COREPACK_REGISTRY__", $CorepackRegistry)
+$remoteScript = $remoteScript.Replace($crlf, $lf)
 $localSh = Join-Path $workDir 'remote-update.sh'
 [System.IO.File]::WriteAllText($localSh, $remoteScript, (New-Object System.Text.UTF8Encoding($false)))
 $remoteSh = "$RemoteDir/.update-$Tag.sh"
@@ -457,8 +573,20 @@ if (-not [string]::IsNullOrWhiteSpace($VmPassword)) {
 $remoteExit = $LASTEXITCODE
 Test-ExitCode $remoteExit 'VM 侧更新'
 
-Write-Host ''
+if (-not $KeepTar) {
+  foreach ($tempFile in @($sourceTar, $sourceFileList, $localSh)) {
+    if (Test-Path $tempFile) { Remove-Item -LiteralPath $tempFile -Force }
+  }
+  Remove-Item -LiteralPath $workDir -Force -ErrorAction SilentlyContinue
+} elseif (-not $SkipBuild) {
+  Write-Host "  本机包  : $sourceTar" -ForegroundColor Green
+  Write-Host "  VM 包   : $remoteSourceTar" -ForegroundColor Green
+  Write-Host "  VM 构建 : $remoteSourceDir" -ForegroundColor Green
+}
+
+Write-Host ""
 Write-Host "更新完成：$Tag" -ForegroundColor Green
-Write-Host '  站点    : https://test-inpulse.libiaorobot.com/' -ForegroundColor Green
+Write-Host "  站点    : https://$PublicHost/" -ForegroundColor Green
+Write-Host "  构建机  : $sshTarget（Docker 只在 VM 运行）" -ForegroundColor Green
 Write-Host "  回滚    : 把 $RemoteDir/.env.deploy 恢复为同目录最新的 .env.deploy.bak-*，" -ForegroundColor Green
-Write-Host '            再执行 sudo docker compose --env-file .env.deploy -f compose.yaml up -d' -ForegroundColor Green
+Write-Host "            再执行 sudo docker compose --env-file .env.deploy -f compose.yaml up -d" -ForegroundColor Green

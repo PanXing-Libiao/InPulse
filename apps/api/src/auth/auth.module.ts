@@ -8,6 +8,9 @@ import { AuditWritePort } from "../audit/audit.port.js";
 import { PostgresUnitOfWork } from "../database/unit-of-work.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { IdempotencyModule } from "../idempotency/idempotency.module.js";
+import { OrganizationSyncModule } from "../organizations/organization-sync.module.js";
+import { ORGANIZATION_SYNC_PORT } from "../organizations/organization-sync.port.js";
+import type { OrganizationSyncPort } from "../organizations/organization-sync.port.js";
 import { SESSION_HMAC_KEYRING } from "./auth.constants.js";
 import { LoginRateLimitService } from "./auth-rate-limit.service.js";
 import { PostgresAuthRateLimitRepository } from "./auth-rate-limit.repository.js";
@@ -65,7 +68,12 @@ import {
  * 避免匿名健康探针启动时被未配置的 Secret 阻断。
  */
 @Module({
-  imports: [DatabaseModule, AuditModule, IdempotencyModule],
+  imports: [
+    DatabaseModule,
+    AuditModule,
+    IdempotencyModule,
+    OrganizationSyncModule,
+  ],
   providers: [
     {
       provide: SESSION_HMAC_KEYRING,
@@ -110,6 +118,7 @@ import {
         PostgresUnitOfWork,
         PostgresSsoLoginAttemptRepository,
         PostgresSsoUserRepository,
+        ORGANIZATION_SYNC_PORT,
         PostgresUserCredentialRepository,
         PostgresUserSessionRepository,
         PostgresSessionCsrfTokenRepository,
@@ -124,6 +133,7 @@ import {
         unitOfWork: PostgresUnitOfWork,
         attempts: PostgresSsoLoginAttemptRepository,
         ssoUsers: PostgresSsoUserRepository,
+        organizationSync: OrganizationSyncPort,
         credentials: PostgresUserCredentialRepository,
         sessions: PostgresUserSessionRepository,
         csrfTokens: PostgresSessionCsrfTokenRepository,
@@ -145,6 +155,7 @@ import {
           unitOfWork,
           attempts,
           ssoUsers,
+          organizationSync,
           credentials,
           sessions,
           csrfTokens,

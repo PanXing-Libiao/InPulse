@@ -16,6 +16,8 @@ export interface StubIdpClaims {
   readonly loginName: string;
   readonly displayName?: string;
   readonly email?: string | null;
+  /** undefined 表示 id_token 不包含 groups；空数组表示明确无群组。 */
+  readonly groups?: readonly string[];
 }
 
 export interface StubIdp {
@@ -106,6 +108,9 @@ export function createStubIdp(options: StubIdpOptions): StubIdp {
       }
       if (current.email !== undefined && current.email !== null) {
         payload["email"] = current.email;
+      }
+      if (current.groups !== undefined) {
+        payload["groups"] = [...current.groups];
       }
       const headerPart = base64Url({ alg: "RS256", typ: "JWT", kid: "key-1" });
       const payloadPart = base64Url(payload);

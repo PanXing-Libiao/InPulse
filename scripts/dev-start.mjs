@@ -24,7 +24,6 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  readdirSync,
   writeFileSync,
 } from "node:fs";
 import { request } from "node:http";
@@ -34,14 +33,16 @@ import { hostname, networkInterfaces } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { domainToASCII, fileURLToPath } from "node:url";
+import {
+  localDatabaseUrl,
+  prepareManagedLocalDatabase,
+  resolveLocalPostgresPort,
+} from "./local-postgres.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DATA_DIR = path.join(ROOT, ".data");
 const LOG_DIR = path.join(DATA_DIR, "dev");
 const KEYRING_DIR = path.join(DATA_DIR, "keyrings");
-const DB_CONTAINER = "inpulse-pg";
-const DB_PORT = 55432;
-const DB_ADMIN_USER = "cluster_bootstrap";
 const API_PORT = 3000;
 const WEB_PORT = 5173;
 const WEB_HOST = "127.0.0.1";
@@ -352,26 +353,78 @@ function relativeToRoot(target) {
   return path.relative(ROOT, target).split(path.sep).join("/");
 }
 
-async function ensureDatabase(databaseUrl) {
-  console.log("[1/4] 检查本地 PostgreSQL 容器 ...");
-  const started = capture("docker", ["start", DB_CONTAINER]);
-  if (started.status !== 0) {
-    throw new Error(
-      `容器 ${DB_CONTAINER} 不可用：请先启动 Docker，并按 database/README.md 初始化本地 PostgreSQL 18 + PGroonga 实例（容器名 ${DB_CONTAINER}，端口 ${DB_PORT}）。`,
-    );
+function readConfiguredValue(fileValues, key, fallback) {
+  const fromProcess = process.env[key]?.trim();
+  if (fromProcess) {
+    return fromProcess;
   }
-  const deadline = Date.now() + 90_000;
-  while (Date.now() < deadline) {
-    if (capture("docker", ["exec", DB_CONTAINER, "pg_isready"]).status === 0) {
-      console.log(`  就绪：127.0.0.1:${DB_PORT}（容器 ${DB_CONTAINER}）`);
-      assertMigrationsUpToDate(databaseUrl);
-      return;
-    }
-    await delay(1000);
+  const fromFile = fileValues[key]?.trim();
+  if (fromFile) {
+    return fromFile;
   }
-  throw new Error(
-    `容器 ${DB_CONTAINER} 未在 90 秒内就绪，请检查 docker logs ${DB_CONTAINER}。`,
+  return fallback;
+}
+
+function resolveDefaultDatabaseUrl(fileValues, role) {
+  return localDatabaseUrl(
+    "app",
+    resolveLocalPostgresPort(process.env, fileValues),
+    role,
   );
+}
+
+function resolveRuntimeDatabaseUrl(fileValues) {
+  return readConfiguredValue(
+    fileValues,
+    "DATABASE_URL",
+    resolveDefaultDatabaseUrl(fileValues, "app_runtime"),
+  );
+}
+
+async function ensureDatabase(fileValues) {
+  console.log("[1/4] 准备本地原生 PostgreSQL ...");
+  const databaseUrl = resolveRuntimeDatabaseUrl(fileValues);
+  const managed = await prepareManagedLocalDatabase({
+    root: ROOT,
+    databaseUrl,
+    fileValues,
+    environment: process.env,
+    migrate: true,
+  });
+  if (managed !== null) {
+    console.log(
+      "  就绪：127.0.0.1:" +
+        managed.port +
+        "（原生数据目录 " +
+        relativeToRoot(managed.dataDir) +
+        "）",
+    );
+    console.log("  迁移：" + managed.database + " 已是最新");
+    return {
+      port: managed.port,
+      summary:
+        "原生 PostgreSQL 18 / PGroonga（127.0.0.1:" + managed.port + "）",
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(databaseUrl);
+  } catch {
+    throw new Error("DATABASE_URL 不是合法 URL；无法启动 API。");
+  }
+  const database = parsed.pathname.replace(/^\//, "") || "app";
+  console.log(
+    "  使用外部数据库：" +
+      parsed.host +
+      "/" +
+      database +
+      "（不启动本机集群，迁移由外部环境负责）",
+  );
+  return {
+    port: parsed.port || "5432",
+    summary: "外部 " + parsed.host + "/" + database,
+  };
 }
 
 function buildApi(skipBuild) {
@@ -446,91 +499,17 @@ async function waitForPort(port, name, logFile, timeoutMs = 90_000) {
   );
 }
 
-function resolveRuntimeDatabaseUrl(fileValues) {
-  return (
-    fileValues["DATABASE_URL"] ??
-    `postgresql://app_runtime@127.0.0.1:${DB_PORT}/app`
-  );
-}
-
-/** 迁移版本校验 + ensureDatabase 用同一个 URL，避免两处各自拼装后不一致。 */
-function assertMigrationsUpToDate(databaseUrl) {
-  let parsed;
-  try {
-    parsed = new URL(databaseUrl);
-  } catch {
-    console.log("  迁移校验：跳过（DATABASE_URL 不是合法 URL）");
-    return;
-  }
-  const host = parsed.hostname;
-  if (
-    (host !== "127.0.0.1" && host !== "localhost") ||
-    parsed.port !== String(DB_PORT)
-  ) {
-    console.log(
-      `  迁移校验：跳过（DATABASE_URL 指向 ${parsed.host}，不是本地默认库）`,
-    );
-    return;
-  }
-  const database = parsed.pathname.replace(/^\//, "") || "app";
-  const expected = readdirSync(path.join(ROOT, "database", "migrations"))
-    .filter((name) => name.endsWith(".sql"))
-    .sort();
-  const result = capture("docker", [
-    "exec",
-    DB_CONTAINER,
-    "psql",
-    "-U",
-    DB_ADMIN_USER,
-    "-d",
-    database,
-    "-tAc",
-    "SELECT name FROM app.schema_migrations",
-  ]);
-  if (result.status !== 0) {
-    throw new Error(
-      `无法读取 ${database} 的 app.schema_migrations：请先按 database/README.md 初始化本地 PostgreSQL 18 + PGroonga 实例与角色。`,
-    );
-  }
-  const appliedNames = new Set(
-    result.stdout
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0),
-  );
-  // 落后会让 API 的读路径直接 500（例如 ADR-049 起需要 app.projects.deleted_at），
-  // 且报错是「服务器无法完成…」这类兜底文案，很难反查到库版本，因此这里 fail fast。
-  const pending = expected.filter((name) => !appliedNames.has(name));
-  if (pending.length > 0) {
-    const preview = pending.slice(0, 3).join(" / ");
-    const more = pending.length > 3 ? " 等" : "";
-    throw new Error(
-      `本地库 ${database} 落后 ${String(pending.length)} 个迁移（缺 ${preview}${more}），当前代码会让项目级接口一律 500。\n` +
-        `    请先执行：$env:MIGRATION_DATABASE_URL='postgresql://${DB_ADMIN_USER}@127.0.0.1:${String(DB_PORT)}/${database}'; pnpm db:migrate\n` +
-        `    （随后重新运行 node scripts/dev-start.mjs）`,
-    );
-  }
-  const unknown = [...appliedNames].filter((name) => !expected.includes(name));
-  if (unknown.length > 0) {
-    console.log(
-      `  迁移校验：${database} 已是最新（${String(expected.length)} 个迁移），但库里有 ${String(unknown.length)} 个本地不存在的迁移记录：${unknown.slice(0, 3).join(" / ")}（当前代码可能落后于库）`,
-    );
-    return;
-  }
-  console.log(
-    `  迁移校验：${database} 已是最新（${String(expected.length)} 个迁移）`,
-  );
-}
-
 function buildApiEnvironment(fileValues, sso, runtime) {
   const env = {
     ...process.env,
     NODE_ENV: "test",
     PORT: String(API_PORT),
     DATABASE_URL: resolveRuntimeDatabaseUrl(fileValues),
-    AUDIT_DATABASE_URL:
-      fileValues["AUDIT_DATABASE_URL"] ??
-      `postgresql://audit_reader@127.0.0.1:${DB_PORT}/app`,
+    AUDIT_DATABASE_URL: readConfiguredValue(
+      fileValues,
+      "AUDIT_DATABASE_URL",
+      resolveDefaultDatabaseUrl(fileValues, "audit_reader"),
+    ),
     SESSION_HASH_KEYRING_FILE: path.join(KEYRING_DIR, "session.keyring"),
     SESSION_HASH_KEYRING_TEST_PATH: "1",
     SESSION_HASH_KEY_VERSION: "1",
@@ -711,7 +690,7 @@ async function main() {
     );
   }
 
-  await ensureDatabase(resolveRuntimeDatabaseUrl(fileValues));
+  const database = await ensureDatabase(fileValues);
   buildApi(options.skipBuild);
 
   console.log("[3/4] 启动 API ...");
@@ -784,9 +763,7 @@ async function main() {
   console.log(
     "  健康检查:    http://127.0.0.1:" + API_PORT + "/api/v1/health/ready",
   );
-  console.log(
-    "  数据库:      127.0.0.1:" + DB_PORT + "（容器 " + DB_CONTAINER + "）",
-  );
+  console.log("  数据库:      " + database.summary);
   console.log("  登录方式:    " + ssoSummary);
   console.log("  本地应急入口: " + webOrigin + "/login?local=1");
   console.log("  日志:        " + relativeToRoot(LOG_DIR));

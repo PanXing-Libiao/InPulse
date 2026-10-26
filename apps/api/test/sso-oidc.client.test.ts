@@ -269,7 +269,7 @@ describe("SsoOidcClient id_token 验签", () => {
     return new SsoOidcClient(config, stub.fetchImpl);
   }
 
-  test("签名有效时只提取四类业务 claim", async () => {
+  test("签名有效时只提取身份字段与已验签 groups", async () => {
     const stub = createStubFetch({ keys: [key.jwk] });
     const result = await client(stub).verifyIdToken(
       signIdToken(claims({ isAdmin: true, roles: ["admin"] }), key),
@@ -281,8 +281,42 @@ describe("SsoOidcClient id_token 验签", () => {
       loginName: "shaochenyu",
       displayName: "邵晨宇",
       email: "shaochenyu@libiaorobot.com",
+      groups: null,
     });
     expect(Object.keys(result)).not.toContain("isAdmin");
+  });
+
+  test("groups 保留 Casdoor 原始路径，区分缺失与空数组并拒绝非法形状", async () => {
+    const stub = createStubFetch({ keys: [key.jwk] });
+    const verifier = client(stub);
+
+    const empty = await verifier.verifyIdToken(
+      signIdToken(claims({ groups: [] }), key),
+      { nonce: "expected-nonce" },
+    );
+    expect(empty.groups).toEqual([]);
+
+    const paths = [
+      "libiaorobot.com/总部/测试部",
+      "libiaorobot.com/研发/平台组",
+    ];
+    const grouped = await verifier.verifyIdToken(
+      signIdToken(claims({ groups: paths }), key),
+      { nonce: "expected-nonce" },
+    );
+    expect(grouped.groups).toEqual(paths);
+
+    await expect(
+      verifier.verifyIdToken(
+        signIdToken(claims({ groups: "libiaorobot.com/测试部" }), key),
+        { nonce: "expected-nonce" },
+      ),
+    ).rejects.toThrow(/id-token-groups-invalid/);
+    await expect(
+      verifier.verifyIdToken(signIdToken(claims({ groups: [1] }), key), {
+        nonce: "expected-nonce",
+      }),
+    ).rejects.toThrow(/id-token-groups-invalid/);
   });
 
   test("缺少 displayName/email 时回落到 loginName 与 null", async () => {

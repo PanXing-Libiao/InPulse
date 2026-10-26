@@ -19,6 +19,48 @@ import { appSchema, bytea } from "./shared.js";
 const timestamptz = (name: string) =>
   timestamp(name, { mode: "date", withTimezone: true });
 
+export const organizations = appSchema.table(
+  "organizations",
+  {
+    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
+    name: text("name").notNull(),
+    source: text("source").notNull().default("LOCAL"),
+    ssoOwner: text("sso_owner"),
+    ssoGroupPath: text("sso_group_path"),
+    ssoParentPath: text("sso_parent_path"),
+    parentId: integer("parent_id"),
+    rowVersion: integer("row_version").notNull().default(1),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("organizations_name_key")
+      .on(sql.raw("lower(btrim(name))"))
+      .where(sql.raw("source = 'LOCAL'")),
+    uniqueIndex("organizations_casdoor_path_key")
+      .on(table.ssoOwner, table.ssoGroupPath)
+      .where(sql.raw("source = 'CASDOOR'")),
+    index("organizations_parent_id_idx")
+      .on(table.parentId)
+      .where(sql.raw("parent_id IS NOT NULL")),
+    check(
+      "organizations_name_length_check",
+      sql.raw("length(btrim(name)) BETWEEN 1 AND 100"),
+    ),
+    check("organizations_row_version_check", sql.raw("row_version >= 1")),
+    check(
+      "organizations_source_check",
+      sql.raw("source IN ('LOCAL', 'CASDOOR')"),
+    ),
+    check(
+      "organizations_casdoor_shape_check",
+      sql.raw(
+        "(source = 'LOCAL' AND sso_owner IS NULL AND sso_group_path IS NULL AND sso_parent_path IS NULL AND parent_id IS NULL) OR (source = 'CASDOOR' AND sso_owner IS NOT NULL AND sso_group_path IS NOT NULL AND char_length(sso_group_path) <= 512 AND cardinality(string_to_array(sso_group_path, '/')) BETWEEN 2 AND 20)",
+      ),
+    ),
+  ],
+);
+
 export const users = appSchema.table(
   "users",
   {
@@ -97,8 +139,36 @@ export const users = appSchema.table(
     check(
       "users_deleted_state_check",
       sql.raw(
-        "deleted_at IS NULL OR (status = 'DISABLED' AND disabled_at IS NOT NULL AND login_name = 'deleted-user-' || id::text AND name = '删除用户' AND email IS NULL AND avatar_url IS NULL AND password_hash IS NULL AND organization_id IS NULL AND is_admin = false)",
+        "deleted_at IS NULL OR (status = 'DISABLED' AND disabled_at IS NOT NULL AND login_name = 'deleted-user-' || id::text AND name = '删除用户' AND email IS NULL AND avatar_url IS NULL AND password_hash IS NULL AND is_admin = false)",
       ),
+    ),
+  ],
+);
+
+export const userOrganizations = appSchema.table(
+  "user_organizations",
+  {
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      name: "user_organizations_pk",
+      columns: [table.userId, table.organizationId],
+    }),
+    index("user_organizations_organization_idx").on(
+      table.organizationId,
+      table.userId,
+    ),
+    check(
+      "user_organizations_source_check",
+      sql.raw("source IN ('MANUAL', 'CASDOOR')"),
     ),
   ],
 );

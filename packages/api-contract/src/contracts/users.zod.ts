@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { organizationMembershipSummarySchema } from "./organization.zod.js";
 import { projectCodeSchema } from "./projects.zod.js";
 
 /** 成员选择接口一次读取的最大活跃用户数；阶段 0 面向 10～300 人规模。 */
@@ -7,7 +8,7 @@ export const USER_DIRECTORY_LIMIT = 300;
 
 /**
  * 用户目录条目。只暴露创建项目成员选择所需的公开字段，不返回
- * `loginName`、`email`、`passwordHash` 或停用状态等敏感/内部字段；组织归属（ADR-081）用于选择器按组织分组与整组选择，未分配为 null。
+ * `loginName`、`email`、`passwordHash` 或停用状态等敏感/内部字段；组织归属（ADR-097）用于选择器按全部所属组织分组与整组选择；未分配为空数组。
  */
 export const userDirectoryItemSchema = z
   .object({
@@ -15,8 +16,7 @@ export const userDirectoryItemSchema = z
     name: z.string().min(1).max(200),
     avatarUrl: z.string().min(1).max(2048).nullable(),
     isAdmin: z.boolean(),
-    organizationId: z.number().int().positive().max(2147483647).nullable(),
-    organizationName: z.string().min(1).max(100).nullable(),
+    organizations: z.array(organizationMembershipSummarySchema),
   })
   .strict()
   .meta({ id: "UserDirectoryItem" });
@@ -59,7 +59,9 @@ export const adminUserItemSchema = z
     email: z.string().min(3).max(320).nullable(),
     avatarUrl: z.string().min(1).max(2048).nullable(),
     isAdmin: z.boolean(),
-    organizationId: z.number().int().positive().max(2147483647).nullable(),
+    organizations: z.array(organizationMembershipSummarySchema),
+    /** true 表示账号由 Casdoor SSO 开通；组织归属由登录同步，管理员不可手工调整。 */
+    managedBySso: z.boolean(),
     status: z.enum(["ACTIVE", "DISABLED"]),
     openTaskCount: z.number().int().min(0),
     rowVersion: z.number().int().positive(),

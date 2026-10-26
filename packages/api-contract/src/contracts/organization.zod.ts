@@ -2,6 +2,24 @@ import { z } from "zod";
 
 const id = z.number().int().positive().max(2147483647);
 
+/** 组织来源：LOCAL 由管理员维护，CASDOOR 由 SSO 群组同步且本地只读。 */
+export const organizationSourceSchema = z.enum(["LOCAL", "CASDOOR"]);
+
+/** 用户所属组织的最小摘要；同一用户可同时属于多个 Casdoor 群组。 */
+export const organizationMembershipSummarySchema = z
+  .object({
+    id,
+    name: z.string().min(1).max(100),
+    source: organizationSourceSchema,
+    groupPath: z.string().min(3).max(512).nullable(),
+  })
+  .strict()
+  .meta({ id: "OrganizationMembershipSummary" });
+
+export type OrganizationMembershipSummary = z.infer<
+  typeof organizationMembershipSummarySchema
+>;
+
 /**
  * ADR-081 组织条目：全局平铺列表的一条。名称为 btrim 后 1～100 字符，
  * 数据库按 lower(btrim(name)) 函数唯一索引去重（同名不同大小写 / 前后空白视为冲突）。
@@ -10,6 +28,9 @@ export const organizationItemSchema = z
   .object({
     id,
     name: z.string().min(1).max(100),
+    source: organizationSourceSchema,
+    groupPath: z.string().min(3).max(512).nullable(),
+    parentId: id.nullable(),
     rowVersion: id,
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
@@ -130,6 +151,7 @@ export const myOrganizationMemberItemSchema = z
     name: z.string().min(1).max(200),
     avatarUrl: z.string().min(1).max(2048).nullable(),
     isAdmin: z.boolean(),
+    organizationIds: z.array(id),
   })
   .strict()
   .meta({ id: "MyOrganizationMemberItem" });
@@ -138,13 +160,10 @@ export type MyOrganizationMemberItem = z.infer<
   typeof myOrganizationMemberItemSchema
 >;
 
-/** 当前用户所属组织（未分配为 null）与同组织 ACTIVE 成员列表。 */
+/** 当前用户所属全部组织与去重后的同组织 ACTIVE 成员列表。 */
 export const myOrganizationMembersResponseSchema = z
   .object({
-    organization: z
-      .object({ id, name: z.string().min(1).max(100) })
-      .strict()
-      .nullable(),
+    organizations: z.array(organizationMembershipSummarySchema),
     items: z.array(myOrganizationMemberItemSchema),
   })
   .strict()
@@ -165,9 +184,14 @@ export const organizationPathSchema = z
 export type OrganizationPath = z.infer<typeof organizationPathSchema>;
 
 export const organizationSchemas = {
+  OrganizationMembershipSummary: {
+    schema: organizationMembershipSummarySchema,
+    summary: "用户所属组织摘要；包含来源与 Casdoor 完整群组路径",
+    sensitiveFieldPaths: [],
+  },
   OrganizationItem: {
     schema: organizationItemSchema,
-    summary: "组织条目：名称、行版本与时间戳",
+    summary: "组织条目：名称、来源、群组路径、父级、行版本与时间戳",
     sensitiveFieldPaths: [],
   },
   OrganizationPath: {
@@ -222,12 +246,13 @@ export const organizationSchemas = {
   },
   MyOrganizationMemberItem: {
     schema: myOrganizationMemberItemSchema,
-    summary: "同组织成员条目；脱敏字段（id / name / avatarUrl / isAdmin）",
+    summary:
+      "同组织成员条目；脱敏字段（id / name / avatarUrl / isAdmin / organizationIds）",
     sensitiveFieldPaths: [],
   },
   MyOrganizationMembersResponse: {
     schema: myOrganizationMembersResponseSchema,
-    summary: "当前用户所属组织与同组织成员列表；响应 no-store",
+    summary: "当前用户所属全部组织与去重后的同组织成员列表；响应 no-store",
     sensitiveFieldPaths: [],
   },
 } satisfies Record<

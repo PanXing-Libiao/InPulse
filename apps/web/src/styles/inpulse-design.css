@@ -3600,7 +3600,25 @@
   margin-top: 0;
 }
 
+.settings-members-panel .admin-member-list .member-org-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.settings-members-panel .admin-member-list .member-org-tags .badge {
+  display: inline-flex;
+  max-width: 100%;
+  margin-top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .settings-members-panel .admin-member-list .member-meta > .badge,
+.settings-members-panel .admin-member-list .member-meta > .member-org-tags,
 .settings-members-panel .admin-member-list .member-meta > .member-status,
 .settings-members-panel .admin-member-list .member-meta > .member-task-count {
   justify-self: start;

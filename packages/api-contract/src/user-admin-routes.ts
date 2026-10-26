@@ -22,7 +22,11 @@ const safeUserFields = [
   "email",
   "avatarUrl",
   "isAdmin",
-  "organizationId",
+  "organizations[].id",
+  "organizations[].name",
+  "organizations[].source",
+  "organizations[].groupPath",
+  "managedBySso",
   "status",
   "openTaskCount",
   "rowVersion",
@@ -92,14 +96,14 @@ const disableWritePolicy = {
 } as const;
 
 /**
- * createUser / updateUser 的响应为 AdminUserItem：ADR-081 新增
- * organizationId 与 openTaskCount，ADR-082 新增 deletedAt，响应 Schema 因此变化。
- * origin/test 已发布 deletedAt 版本的 1.2.0，合并后的 Schema 与两者都不同，
- * 按契约要求把这两条路由的幂等契约版本升级到 1.3.0（旧 Key 在新契约下返回 409）。
+ * createUser / updateUser 的响应为 AdminUserItem：ADR-081 新增 openTaskCount，
+ * ADR-082 新增 deletedAt，ADR-097 将单一 organizationId 改为 organizations 数组
+ * 并新增 managedBySso。响应 Schema 与可重放叶子字段都已变化，因此把这两条路由的
+ * 幂等契约版本升级到 1.4.0（旧 Key 在新契约下返回 409）。
  */
 const userBodyWritePolicy = {
   ...writePolicy,
-  idempotencyContractVersion: "1.3.0",
+  idempotencyContractVersion: "1.4.0",
 } as const;
 
 const versionedWritePolicy = {

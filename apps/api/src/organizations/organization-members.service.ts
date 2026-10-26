@@ -6,8 +6,8 @@ import { PostgresUnitOfWork } from "../database/unit-of-work.js";
 import { OrganizationRepository } from "./organization.repository.js";
 
 /**
- * ADR-081 同组织可见：身份解析与成员查询共用同一个事务；
- * 匿名、停用或无效 Session 返回 undefined（401）。未分配组织返回空列表。
+ * ADR-097 同组织可见：身份解析与成员查询共用同一个事务；
+ * 匿名、停用或无效 Session 返回 undefined（401）。
  */
 @Injectable()
 export class OrganizationMembersService {
@@ -28,20 +28,21 @@ export class OrganizationMembersService {
       if (actor === undefined) {
         return undefined;
       }
-      const organizationId = await this.repository.findUserOrganizationId(
+      const memberships = await this.repository.listForUser(tx, actor.userId);
+      if (memberships.length === 0) {
+        return { organizations: [], items: [] };
+      }
+      const items = await this.repository.listActiveMembers(
         tx,
-        actor.userId,
+        memberships.map((organization) => organization.id),
       );
-      if (organizationId === null) {
-        return { organization: null, items: [] };
-      }
-      const organization = await this.repository.find(tx, organizationId);
-      if (organization === undefined) {
-        return { organization: null, items: [] };
-      }
-      const items = await this.repository.listActiveMembers(tx, organizationId);
       return {
-        organization: { id: organization.id, name: organization.name },
+        organizations: memberships.map((organization) => ({
+          id: organization.id,
+          name: organization.name,
+          source: organization.source,
+          groupPath: organization.groupPath,
+        })),
         items,
       };
     });

@@ -100,7 +100,8 @@ export type AdminUserItem = {
   readonly email: (string | null);
   readonly avatarUrl: (string | null);
   readonly isAdmin: boolean;
-  readonly organizationId: (number | null);
+  readonly organizations: readonly OrganizationMembershipSummary[];
+  readonly managedBySso: boolean;
   readonly status: ("ACTIVE" | "DISABLED");
   readonly openTaskCount: number;
   readonly rowVersion: number;
@@ -893,13 +894,11 @@ export type MyOrganizationMemberItem = {
   readonly name: string;
   readonly avatarUrl: (string | null);
   readonly isAdmin: boolean;
+  readonly organizationIds: readonly number[];
 };
 
 export type MyOrganizationMembersResponse = {
-  readonly organization: ({
-    readonly id: number;
-    readonly name: string;
-  } | null);
+  readonly organizations: readonly OrganizationMembershipSummary[];
   readonly items: readonly MyOrganizationMemberItem[];
 };
 
@@ -1064,6 +1063,9 @@ export type OrganizationCreateRequest = {
 export type OrganizationItem = {
   readonly id: number;
   readonly name: string;
+  readonly source: ("LOCAL" | "CASDOOR");
+  readonly groupPath: (string | null);
+  readonly parentId: (number | null);
   readonly rowVersion: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -1071,6 +1073,13 @@ export type OrganizationItem = {
 
 export type OrganizationListResponse = {
   readonly items: readonly OrganizationItem[];
+};
+
+export type OrganizationMembershipSummary = {
+  readonly id: number;
+  readonly name: string;
+  readonly source: ("LOCAL" | "CASDOOR");
+  readonly groupPath: (string | null);
 };
 
 export type OrganizationMutationHeaders = {
@@ -2270,8 +2279,7 @@ export type UserDirectoryItem = {
   readonly name: string;
   readonly avatarUrl: (string | null);
   readonly isAdmin: boolean;
-  readonly organizationId: (number | null);
-  readonly organizationName: (string | null);
+  readonly organizations: readonly OrganizationMembershipSummary[];
 };
 
 export type UserDirectoryResponse = {

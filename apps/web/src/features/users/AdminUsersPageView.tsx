@@ -9,6 +9,8 @@ import {
   type AdminUserDisableRequest,
   type AdminUserItem,
   type InpulseApiClient,
+  type OrganizationItem,
+  type OrganizationMembershipSummary,
 } from "@generated/api";
 import {
   CalmBadge,
@@ -312,7 +314,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     const rank = (user: AdminUserItem) => {
       if (user.status !== "ACTIVE") return 100;
       if (currentUserId !== undefined && user.id === currentUserId) return 0;
-      const organizationRank = (user.organizationId ?? null) === null ? 0 : 1;
+      const organizationRank = user.organizations.length === 0 ? 0 : 1;
       return 10 + organizationRank * 10 + (user.isAdmin ? 0 : 1);
     };
     return [...items].sort((left, right) => rank(left) - rank(right));
@@ -343,26 +345,36 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   const baseMembers =
     orgMode === "join"
       ? manageableMembers.filter(
-          (user) => (user.organizationId ?? null) === null,
+          (user) => user.organizations.length === 0 && !user.managedBySso,
         )
       : orgView === "admins"
         ? manageableMembers.filter((user) => user.isAdmin)
         : typeof orgView === "number"
-          ? manageableMembers.filter((user) => user.organizationId === orgView)
+          ? manageableMembers.filter((user) =>
+              user.organizations.some(
+                (organization) => organization.id === orgView,
+              ),
+            )
           : manageableMembers;
   const visibleMembers = baseMembers.filter(matchesKeyword);
 
-  const countByOrganization = (organizationId: number | null) =>
-    scopedMembers.filter(
-      (user) => (user.organizationId ?? null) === organizationId,
+  const countByOrganization = (organizationId: number) =>
+    scopedMembers.filter((user) =>
+      user.organizations.some(
+        (organization) => organization.id === organizationId,
+      ),
     ).length;
   const joinOrganizationOptions = useMemo(
     () => [
       ...(organizations.data?.items ?? [])
-        .filter((organization) =>
-          scopedMembers.some(
-            (user) => (user.organizationId ?? null) === organization.id,
-          ),
+        .filter(
+          (organization) =>
+            organization.source === "LOCAL" &&
+            scopedMembers.some((user) =>
+              user.organizations.some(
+                (membership) => membership.id === organization.id,
+              ),
+            ),
         )
         .map((organization) => ({
           value: String(organization.id),
@@ -377,8 +389,13 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 
   const canSelectMember = (user: AdminUserItem) =>
     user.status === "ACTIVE" &&
-    ((orgMode === "join" && (user.organizationId ?? null) === null) ||
-      (orgMode === "manage" && user.organizationId === orgTarget));
+    !user.managedBySso &&
+    ((orgMode === "join" && user.organizations.length === 0) ||
+      (orgMode === "manage" &&
+        orgTarget !== null &&
+        user.organizations.some(
+          (organization) => organization.id === orgTarget,
+        )));
 
   const toggleUserSelection = (userId: number, checked: boolean) => {
     setSelectedUserIds((current) =>
@@ -412,6 +429,18 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         ?.name ?? "组织 " + organizationId
     );
   };
+
+  const organizationDisplayLabel = (
+    organization: OrganizationItem | OrganizationMembershipSummary,
+  ) =>
+    organization.source === "CASDOOR"
+      ? (organization.groupPath ?? organization.name)
+      : organization.name;
+
+  const selectedOrganization =
+    typeof orgView === "number"
+      ? organizations.data?.items.find((item) => item.id === orgView)
+      : undefined;
 
   const prefetchSettingsTab = (tab: SettingsTab) => {
     if ((tab === "aiAssist" || tab === "wecomRobot") && !isAdmin) return;
@@ -484,6 +513,10 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       return;
     }
     if (typeof orgView === "number") {
+      if (selectedOrganization?.source === "CASDOOR") {
+        showWarning("Casdoor 组织由 SSO 群组自动同步，本地只读。");
+        return;
+      }
       openManage(orgView);
       return;
     }
@@ -498,7 +531,13 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   // 避免停在一个没有任何标签可返回的空列表上。
   useEffect(() => {
     if (typeof orgView !== "number" || organizations.data === undefined) return;
-    if (scopedMembers.some((user) => user.organizationId === orgView)) return;
+    if (
+      scopedMembers.some((user) =>
+        user.organizations.some((organization) => organization.id === orgView),
+      )
+    ) {
+      return;
+    }
     setOrgView("all");
     setOrgMode("browse");
     setOrgTarget(null);
@@ -626,7 +665,12 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   };
 
   let orgActionLabel = "加入组织";
-  if (typeof orgView === "number") orgActionLabel = "编辑组织";
+  if (typeof orgView === "number") {
+    orgActionLabel =
+      selectedOrganization?.source === "CASDOOR"
+        ? "SSO 群组 · 只读"
+        : "编辑组织";
+  }
   if (orgMode !== "browse") orgActionLabel = "退出调整";
 
   return (
@@ -823,6 +867,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                         key={organization.id}
                         type="button"
                         role="tab"
+                        title={organization.groupPath ?? organization.name}
                         aria-selected={orgView === organization.id}
                         className={
                           "member-org-tab" +
@@ -830,7 +875,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                         }
                         onClick={() => switchOrgView(organization.id)}
                       >
-                        {organization.name}{" "}
+                        {organizationDisplayLabel(organization)}{" "}
                         <b>{countByOrganization(organization.id)}</b>
                       </button>
                     ))}
@@ -838,7 +883,10 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
               </div>
             ) : null}
 
-            {orgMode === "manage" && typeof orgTarget === "number" ? (
+            {orgMode === "manage" &&
+            typeof orgTarget === "number" &&
+            organizations.data?.items.find((item) => item.id === orgTarget)
+              ?.source === "LOCAL" ? (
               <div className="member-rename-bar">
                 <label htmlFor="member-org-rename">组织名称</label>
                 <input
@@ -1020,16 +1068,28 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       <CalmBadge tone={user.isAdmin ? "blue" : "gray"}>
                         {user.isAdmin ? "系统管理员" : "项目成员"}
                       </CalmBadge>
-                      <CalmBadge
-                        tone={
-                          user.organizationId === null ||
-                          user.organizationId === undefined
-                            ? "gray"
-                            : "cyan"
-                        }
-                      >
-                        {organizationName(user.organizationId)}
-                      </CalmBadge>
+                      <span className="member-org-tags">
+                        {user.organizations.length === 0 ? (
+                          <CalmBadge tone="gray">未分配</CalmBadge>
+                        ) : (
+                          user.organizations.map((organization) => (
+                            <CalmBadge
+                              key={organization.id}
+                              title={organizationDisplayLabel(organization)}
+                              tone={
+                                organization.source === "CASDOOR"
+                                  ? "cyan"
+                                  : "gray"
+                              }
+                            >
+                              {organizationDisplayLabel(organization)}
+                            </CalmBadge>
+                          ))
+                        )}
+                        {user.managedBySso ? (
+                          <CalmBadge tone="violet">统一身份</CalmBadge>
+                        ) : null}
+                      </span>
                       <span
                         className={
                           "member-status" +

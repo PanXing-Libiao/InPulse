@@ -120,7 +120,7 @@ try {
     ''
   }
   if ($pgroongaProbeExit -ne 0 -or $pgroongaAvailable -ne '1') {
-    throw 'The PostgreSQL 18 installation must provide the PGroonga extension; use pnpm db:poc:search:pgroonga:local or install the matching PGDG PGroonga package.'
+    throw 'The PostgreSQL 18 installation must provide the PGroonga extension; install the matching PGDG PGroonga package, or run the probe in CI/VM. Local development does not require Docker Desktop.'
   }
 
   $pgroongaArguments = @(

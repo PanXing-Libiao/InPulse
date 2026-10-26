@@ -132,13 +132,51 @@ async function seedUser(options: { readonly admin: boolean }): Promise<Actor> {
   };
 }
 
-async function organizationIdFor(userId: number): Promise<number | null> {
-  const rows = (await client.sql`
-    SELECT organization_id AS "organizationId"
-      FROM app.users
+async function markAsSso(userId: number): Promise<void> {
+  await client.sql`
+    UPDATE app.users
+       SET sso_subject = ${"subject_" + randomUUID().replaceAll("-", "")},
+           password_hash = NULL,
+           row_version = row_version + 1,
+           updated_at = now()
      WHERE id = ${userId}
-  `) as unknown as readonly { organizationId: number | null }[];
-  return rows[0]?.organizationId ?? null;
+  `;
+}
+
+async function createCasdoorOrganization(): Promise<{
+  readonly id: number;
+  readonly name: string;
+  readonly groupPath: string;
+  readonly rowVersion: number;
+}> {
+  const owner = "owner_" + randomUUID().replaceAll("-", "").slice(0, 10);
+  const path = owner + "/测试部";
+  const rows = (await client.sql`
+    INSERT INTO app.organizations (
+      name,
+      source,
+      sso_owner,
+      sso_group_path,
+      sso_parent_path,
+      parent_id
+    )
+    VALUES (${"测试部"}, 'CASDOOR', ${owner}, ${path}, NULL, NULL)
+    RETURNING id, name, row_version AS "rowVersion"
+  `) as unknown as readonly {
+    readonly id: number;
+    readonly name: string;
+    readonly rowVersion: number;
+  }[];
+  return { ...rows[0]!, groupPath: path };
+}
+
+async function organizationIdsFor(userId: number): Promise<number[]> {
+  const rows = (await client.sql`
+    SELECT array_agg(organization_id ORDER BY organization_id) AS "organizationIds"
+      FROM app.user_organizations
+     WHERE user_id = ${userId}
+  `) as unknown as readonly { organizationIds: number[] | null }[];
+  return rows[0]?.organizationIds ?? [];
 }
 
 async function createOrganization(actor: Actor, name: string) {
@@ -292,8 +330,8 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
     );
     expect(assignReplay.status).toBe(200);
     expect(await assignReplay.json()).toEqual({ updatedCount: 2 });
-    expect(await organizationIdFor(memberA.userId)).toBe(created.id);
-    expect(await organizationIdFor(memberB.userId)).toBe(created.id);
+    expect(await organizationIdsFor(memberA.userId)).toEqual([created.id]);
+    expect(await organizationIdsFor(memberB.userId)).toEqual([created.id]);
 
     const repeat = await request("/admin/users/organization", "POST", actor, {
       body: assignBody,
@@ -334,7 +372,7 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
     expect(
       await assignOrganization(actor, [memberA.userId, memberB.userId], null),
     ).toBe(2);
-    expect(await organizationIdFor(memberA.userId)).toBeNull();
+    expect(await organizationIdsFor(memberA.userId)).toEqual([]);
 
     expect(await assignOrganization(actor, [memberA.userId], created.id)).toBe(
       1,
@@ -347,7 +385,7 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
       { version: updated.rowVersion, key: randomUUID() },
     );
     expect(deleteResponse.status).toBe(204);
-    expect(await organizationIdFor(memberA.userId)).toBeNull();
+    expect(await organizationIdsFor(memberA.userId)).toEqual([]);
     const listAfter = organizationListResponseSchema.parse(
       await (await request("/admin/organizations", "GET", actor)).json(),
     );
@@ -392,10 +430,14 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
     const aliceParsed = myOrganizationMembersResponseSchema.parse(
       await aliceView.json(),
     );
-    expect(aliceParsed.organization).toEqual({
-      id: orgA.id,
-      name: orgA.name,
-    });
+    expect(aliceParsed.organizations).toEqual([
+      {
+        id: orgA.id,
+        name: orgA.name,
+        source: "LOCAL",
+        groupPath: null,
+      },
+    ]);
     const aliceIds = aliceParsed.items.map((item) => item.id);
     expect(aliceIds).toContain(alice.userId);
     expect(aliceIds).toContain(bob.userId);
@@ -407,6 +449,7 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
         "id",
         "isAdmin",
         "name",
+        "organizationIds",
       ]);
     }
     expect(JSON.stringify(aliceParsed)).not.toContain("@");
@@ -414,7 +457,7 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
     const carolView = myOrganizationMembersResponseSchema.parse(
       await (await request("/organizations/me/members", "GET", carol)).json(),
     );
-    expect(carolView.organization?.id).toBe(orgB.id);
+    expect(carolView.organizations[0]?.id).toBe(orgB.id);
     const carolIds = carolView.items.map((item) => item.id);
     expect(carolIds).toContain(carol.userId);
     expect(carolIds).not.toContain(alice.userId);
@@ -422,7 +465,7 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
     const daveView = myOrganizationMembersResponseSchema.parse(
       await (await request("/organizations/me/members", "GET", dave)).json(),
     );
-    expect(daveView.organization).toBeNull();
+    expect(daveView.organizations).toEqual([]);
     expect(daveView.items).toEqual([]);
 
     expect((await request("/admin/organizations", "GET", alice)).status).toBe(
@@ -435,6 +478,95 @@ describe("ADR-081 组织管理与批量归属（真实 PostgreSQL + HTTP）", ()
     expect(anonymousMembers.status).toBe(401);
     const anonymousAdmin = await fetch(`${base}/api/v1/admin/organizations`);
     expect(anonymousAdmin.status).toBe(401);
+  });
+
+  it("CASDOOR 组织只读，SSO 用户与 CASDOOR 目标均拒绝手工组织调整", async () => {
+    const actor = await seedUser({ admin: true });
+    const ssoUser = await seedUser({ admin: false });
+    await markAsSso(ssoUser.userId);
+    const localUser = await seedUser({ admin: false });
+    const localOrganization = await createOrganization(
+      actor,
+      `F097 local ${randomUUID().slice(0, 8)}`,
+    );
+    const casdoorOrganization = await createCasdoorOrganization();
+
+    const list = organizationListResponseSchema.parse(
+      await (await request("/admin/organizations", "GET", actor)).json(),
+    );
+    expect(
+      list.items.find((item) => item.id === casdoorOrganization.id),
+    ).toMatchObject({
+      id: casdoorOrganization.id,
+      name: casdoorOrganization.name,
+      source: "CASDOOR",
+      groupPath: casdoorOrganization.groupPath,
+      parentId: null,
+      rowVersion: casdoorOrganization.rowVersion,
+    });
+
+    const ssoToLocal = await request(
+      "/admin/users/organization",
+      "POST",
+      actor,
+      {
+        body: {
+          userIds: [ssoUser.userId],
+          organizationId: localOrganization.id,
+        },
+        key: randomUUID(),
+      },
+    );
+    expect(ssoToLocal.status).toBe(409);
+    expect(((await ssoToLocal.json()) as { code: string }).code).toBe(
+      "ORGANIZATION_SSO_MANAGED",
+    );
+
+    const localToCasdoor = await request(
+      "/admin/users/organization",
+      "POST",
+      actor,
+      {
+        body: {
+          userIds: [localUser.userId],
+          organizationId: casdoorOrganization.id,
+        },
+        key: randomUUID(),
+      },
+    );
+    expect(localToCasdoor.status).toBe(409);
+    expect(((await localToCasdoor.json()) as { code: string }).code).toBe(
+      "ORGANIZATION_SSO_MANAGED",
+    );
+
+    const rename = await request(
+      `/admin/organizations/${casdoorOrganization.id}`,
+      "PATCH",
+      actor,
+      {
+        body: { name: `F097 renamed ${randomUUID().slice(0, 8)}` },
+        version: casdoorOrganization.rowVersion,
+        key: randomUUID(),
+      },
+    );
+    expect(rename.status).toBe(409);
+    expect(((await rename.json()) as { code: string }).code).toBe(
+      "ORGANIZATION_SSO_MANAGED",
+    );
+
+    const remove = await request(
+      `/admin/organizations/${casdoorOrganization.id}`,
+      "DELETE",
+      actor,
+      { version: casdoorOrganization.rowVersion, key: randomUUID() },
+    );
+    expect(remove.status).toBe(409);
+    expect(((await remove.json()) as { code: string }).code).toBe(
+      "ORGANIZATION_SSO_MANAGED",
+    );
+
+    expect(await organizationIdsFor(ssoUser.userId)).toEqual([]);
+    expect(await organizationIdsFor(localUser.userId)).toEqual([]);
   });
 
   it("拒绝越权、越界输入与不存在资源，不泄露数据库细节", async () => {

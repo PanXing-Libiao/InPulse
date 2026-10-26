@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import type { Sql } from "postgres";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -268,6 +268,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       "app.mfa_recovery_codes",
       "app.notifications",
       "app.user_notification_suppressions",
+      "app.user_organizations",
       "app.user_sessions",
       "app.user_totp_factors",
       "app.user_wecom_bindings",
@@ -283,6 +284,369 @@ describe("PostgreSQL schema, invariants, and roles", () => {
     `) as unknown as readonly { readonly enabled: string }[];
     expect(trigger?.enabled).toBe("O");
     expect(firstUser.name).not.toBe("");
+  });
+
+  test("ADR-097 组织多成员关系、CASDOOR 形状与授权约束已落库", async () => {
+    const [legacyColumn] = (await bootstrap`
+      SELECT count(*)::INTEGER AS "count"
+        FROM pg_attribute AS a
+        JOIN pg_class AS c ON c.oid = a.attrelid
+        JOIN pg_namespace AS n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'app'
+         AND c.relname = 'users'
+         AND a.attname = 'organization_id'
+         AND a.attnum > 0
+         AND NOT a.attisdropped
+    `) as unknown as readonly { readonly count: number }[];
+    expect(legacyColumn?.count).toBe(0);
+
+    const [primaryKey] = (await bootstrap`
+      SELECT pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+       WHERE conrelid = 'app.user_organizations'::regclass
+         AND conname = 'user_organizations_pk'
+         AND contype = 'p'
+    `) as unknown as readonly { readonly definition: string }[];
+    expect(primaryKey?.definition).toBe(
+      "PRIMARY KEY (user_id, organization_id)",
+    );
+
+    const foreignKeys = (await bootstrap`
+      SELECT conname, pg_get_constraintdef(oid) AS definition
+        FROM pg_constraint
+       WHERE conrelid = 'app.user_organizations'::regclass
+         AND contype = 'f'
+       ORDER BY conname
+    `) as unknown as readonly {
+      readonly conname: string;
+      readonly definition: string;
+    }[];
+    expect(foreignKeys.map((row) => row.conname)).toEqual([
+      "user_organizations_organization_fk",
+      "user_organizations_user_fk",
+    ]);
+    expect(
+      foreignKeys.every((row) => /ON DELETE CASCADE/.test(row.definition)),
+    ).toBe(true);
+
+    const indexes = (await bootstrap`
+      SELECT indexname, indexdef
+        FROM pg_indexes
+       WHERE schemaname = 'app'
+         AND indexname IN (
+           'organizations_name_key',
+           'organizations_casdoor_path_key',
+           'organizations_parent_id_idx',
+           'user_organizations_organization_idx'
+         )
+       ORDER BY indexname
+    `) as unknown as readonly {
+      readonly indexname: string;
+      readonly indexdef: string;
+    }[];
+    const indexByName = new Map(
+      indexes.map((row) => [row.indexname, row.indexdef] as const),
+    );
+    expect(indexByName.get("organizations_name_key")).toMatch(/LOCAL/);
+    expect(indexByName.get("organizations_casdoor_path_key")).toMatch(
+      /CASDOOR/,
+    );
+    expect(indexByName.get("organizations_parent_id_idx")).toMatch(/parent_id/);
+    expect(indexByName.get("user_organizations_organization_idx")).toMatch(
+      /organization_id/,
+    );
+
+    const triggers = (await bootstrap`
+      SELECT c.relname AS "tableName", t.tgname, t.tgenabled::text AS enabled
+        FROM pg_trigger AS t
+        JOIN pg_class AS c ON c.oid = t.tgrelid
+       WHERE t.tgrelid IN (
+           'app.organizations'::regclass,
+           'app.user_organizations'::regclass
+         )
+         AND NOT t.tgisinternal
+       ORDER BY c.relname, t.tgname
+    `) as unknown as readonly {
+      readonly tableName: string;
+      readonly tgname: string;
+      readonly enabled: string;
+    }[];
+    expect(triggers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tableName: "organizations",
+          tgname: "organizations_guard_casdoor",
+          enabled: "O",
+        }),
+        expect.objectContaining({
+          tableName: "user_organizations",
+          tgname: "user_organizations_guard_source",
+          enabled: "O",
+        }),
+      ]),
+    );
+
+    const [privileges] = (await bootstrap`
+      SELECT has_table_privilege(
+               'app_runtime', 'app.user_organizations', 'SELECT'
+             )
+             AND has_table_privilege(
+               'app_runtime', 'app.user_organizations', 'INSERT'
+             )
+             AND has_table_privilege(
+               'app_runtime', 'app.user_organizations', 'UPDATE'
+             )
+             AND has_table_privilege(
+               'app_runtime', 'app.user_organizations', 'DELETE'
+             )
+             AND has_table_privilege(
+               'app_backup', 'app.user_organizations', 'SELECT'
+             ) AS "runtimeRwBackupRead"
+    `) as unknown as readonly {
+      readonly runtimeRwBackupRead: boolean;
+    }[];
+    expect(privileges?.runtimeRwBackupRead).toBe(true);
+  });
+
+  test("ADR-097 拒绝组织来源改写、CASDOOR 只读与用户/组织来源错配", async () => {
+    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+    const localName = "F097 Local " + suffix;
+    const owner = "owner_" + suffix;
+    const localOrganization = (await runtime`
+      INSERT INTO app.organizations (name, source)
+      VALUES (${localName}, ${"LOCAL"})
+      RETURNING id
+    `) as unknown as readonly { readonly id: number }[];
+    const localOrganizationId = localOrganization[0]!.id;
+
+    await expectPostgresError(
+      runtime`
+        INSERT INTO app.organizations (name, source)
+        VALUES (${"  " + localName.toUpperCase() + "  "}, ${"LOCAL"})
+      `,
+      "23505",
+    );
+
+    const parentPath = owner + "/总部";
+    const childPath = parentPath + "/测试部";
+    const casdoorParent = (await runtime`
+      INSERT INTO app.organizations (
+        name,
+        source,
+        sso_owner,
+        sso_group_path,
+        sso_parent_path,
+        parent_id
+      )
+      VALUES (${localName}, ${"CASDOOR"}, ${owner}, ${parentPath}, NULL, NULL)
+      RETURNING id
+    `) as unknown as readonly { readonly id: number }[];
+    const casdoorParentId = casdoorParent[0]!.id;
+    await runtime`
+      INSERT INTO app.organizations (
+        name,
+        source,
+        sso_owner,
+        sso_group_path,
+        sso_parent_path,
+        parent_id
+      )
+      VALUES (
+        ${"测试部"},
+        ${"CASDOOR"},
+        ${owner},
+        ${childPath},
+        ${parentPath},
+        ${casdoorParentId}
+      )
+    `;
+
+    await expectPostgresError(
+      runtime`
+        INSERT INTO app.organizations (
+          name,
+          source,
+          sso_owner,
+          sso_group_path,
+          sso_parent_path,
+          parent_id
+        )
+        VALUES (
+          ${"平台组"},
+          ${"CASDOOR"},
+          ${owner},
+          ${owner + "/研发/平台组"},
+          ${owner + "/研发"},
+          NULL
+        )
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        INSERT INTO app.organizations (
+          name,
+          source,
+          sso_owner,
+          sso_group_path,
+          sso_parent_path,
+          parent_id
+        )
+        VALUES (
+          ${"错误父级"},
+          ${"CASDOOR"},
+          ${owner},
+          ${owner + "/其它/错误父级"},
+          ${owner + "/其它"},
+          ${localOrganizationId}
+        )
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        UPDATE app.organizations SET name = ${"改名"} WHERE id = ${casdoorParentId}
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        DELETE FROM app.organizations WHERE id = ${casdoorParentId}
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        UPDATE app.organizations
+           SET source = ${"CASDOOR"},
+               sso_owner = ${owner},
+               sso_group_path = ${owner + "/本地伪群组"},
+               sso_parent_path = NULL,
+               parent_id = NULL
+         WHERE id = ${localOrganizationId}
+      `,
+      "23514",
+    );
+
+    const localUser = await createUser(runtime);
+    const ssoUserRows = (await runtime`
+      INSERT INTO app.users (login_name, name, sso_subject, password_hash)
+      VALUES (
+        ${("sso_" + suffix).toLowerCase()},
+        ${"SSO 用户"},
+        ${"subject_" + suffix},
+        NULL
+      )
+      RETURNING id
+    `) as unknown as readonly { readonly id: number }[];
+    const ssoUserId = ssoUserRows[0]!.id;
+
+    await runtime`
+      INSERT INTO app.user_organizations (user_id, organization_id, source)
+      VALUES (${localUser}, ${localOrganizationId}, ${"MANUAL"})
+    `;
+    await expectPostgresError(
+      runtime`
+        UPDATE app.user_organizations
+           SET source = ${"CASDOOR"}
+         WHERE user_id = ${localUser}
+           AND organization_id = ${localOrganizationId}
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        INSERT INTO app.user_organizations (user_id, organization_id, source)
+        VALUES (${ssoUserId}, ${localOrganizationId}, ${"MANUAL"})
+      `,
+      "23514",
+    );
+    await expectPostgresError(
+      runtime`
+        INSERT INTO app.user_organizations (user_id, organization_id, source)
+        VALUES (${localUser}, ${casdoorParentId}, ${"CASDOOR"})
+      `,
+      "23514",
+    );
+    await runtime`
+      INSERT INTO app.user_organizations (user_id, organization_id, source)
+      VALUES (${ssoUserId}, ${casdoorParentId}, ${"CASDOOR"})
+    `;
+    const secondCasdoor = (await runtime`
+      INSERT INTO app.organizations (
+        name,
+        source,
+        sso_owner,
+        sso_group_path,
+        sso_parent_path,
+        parent_id
+      )
+      VALUES (
+        ${"测试部二"},
+        ${"CASDOOR"},
+        ${owner},
+        ${owner + "/测试部二"},
+        NULL,
+        NULL
+      )
+      RETURNING id
+    `) as unknown as readonly { readonly id: number }[];
+    await expectPostgresError(
+      runtime`
+        INSERT INTO app.user_organizations (user_id, organization_id, source)
+        VALUES (${ssoUserId}, ${secondCasdoor[0]!.id}, ${"MANUAL"})
+      `,
+      "23514",
+    );
+
+    const cascadeOrganization = (await runtime`
+      INSERT INTO app.organizations (name, source)
+      VALUES (${"F097 Cascade " + suffix}, ${"LOCAL"})
+      RETURNING id
+    `) as unknown as readonly { readonly id: number }[];
+    const cascadeOrganizationId = cascadeOrganization[0]!.id;
+    await runtime`
+      INSERT INTO app.user_organizations (user_id, organization_id, source)
+      VALUES (${localUser}, ${cascadeOrganizationId}, ${"MANUAL"})
+    `;
+    await runtime`
+      DELETE FROM app.organizations WHERE id = ${cascadeOrganizationId}
+    `;
+    expect(
+      (
+        await runtime`
+          SELECT 1
+            FROM app.user_organizations
+           WHERE user_id = ${localUser}
+             AND organization_id = ${cascadeOrganizationId}
+        `
+      ).length,
+    ).toBe(0);
+
+    await runtime`
+      UPDATE app.users
+         SET status = ${"DISABLED"},
+             disabled_at = now(),
+             row_version = row_version + 1,
+             updated_at = now()
+       WHERE id = ${ssoUserId}
+    `;
+    const [ssoVersion] = (await runtime`
+      SELECT row_version AS "rowVersion"
+        FROM app.users
+       WHERE id = ${ssoUserId}
+    `) as unknown as readonly { readonly rowVersion: number }[];
+    const [deleted] = (await runtime`
+      SELECT app.delete_user_account(${ssoUserId}, ${ssoVersion!.rowVersion}) AS deleted
+    `) as unknown as readonly { readonly deleted: boolean }[];
+    expect(deleted?.deleted).toBe(true);
+    expect(
+      (
+        await runtime`
+          SELECT 1 FROM app.user_organizations WHERE user_id = ${ssoUserId}
+        `
+      ).length,
+    ).toBe(0);
   });
 
   test("project bootstrap requires creator history and allows an empty module list", async () => {

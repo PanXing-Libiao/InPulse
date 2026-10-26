@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "pg": "^8.23.0",
+    "ws": "^8.21.3",
+    "@napi-rs/canvas": "1.0.11"
+  },
+  "scripts": {
+    "test": "node --test notification-categories.test.mjs wrap-poster.test.mjs group-message.test.mjs"
+  }
+}

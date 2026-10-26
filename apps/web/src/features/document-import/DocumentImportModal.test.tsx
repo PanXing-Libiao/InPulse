@@ -120,16 +120,14 @@ const DIRECTORY: readonly UserDirectoryItem[] = [
     name: "林雨",
     avatarUrl: null,
     isAdmin: false,
-    organizationId: null,
-    organizationName: null,
+    organizations: [],
   },
   {
     id: 2,
     name: "陈昊",
     avatarUrl: null,
     isAdmin: false,
-    organizationId: null,
-    organizationName: null,
+    organizations: [],
   },
 ];
 
@@ -1912,16 +1910,14 @@ describe("创建者是固定成员（ADR-073，2026-10-14）", () => {
       name: "林雨",
       avatarUrl: null,
       isAdmin: false,
-      organizationId: null,
-      organizationName: null,
+      organizations: [],
     },
     {
       id: 9,
       name: "林雨妍",
       avatarUrl: null,
       isAdmin: false,
-      organizationId: null,
-      organizationName: null,
+      organizations: [],
     },
   ];
   const CREATOR_DOCUMENT = [
@@ -2004,32 +2000,28 @@ describe("成员字段的账号搜索建议（2026-10-14）", () => {
       name: "林雨",
       avatarUrl: null,
       isAdmin: false,
-      organizationId: null,
-      organizationName: null,
+      organizations: [],
     },
     {
       id: 2,
       name: "小潘",
       avatarUrl: null,
       isAdmin: false,
-      organizationId: null,
-      organizationName: null,
+      organizations: [],
     },
     {
       id: 3,
       name: "小邵",
       avatarUrl: null,
       isAdmin: true,
-      organizationId: null,
-      organizationName: null,
+      organizations: [],
     },
     {
       id: 4,
       name: "王小二",
       avatarUrl: null,
       isAdmin: false,
-      organizationId: null,
-      organizationName: null,
+      organizations: [],
     },
     // 文档里「项目成员」本就写着陈昊：目录里也有他，点开就只是一个标签，不再出现在候选里。
     {
@@ -2037,8 +2029,7 @@ describe("成员字段的账号搜索建议（2026-10-14）", () => {
       name: "陈昊",
       avatarUrl: null,
       isAdmin: false,
-      organizationId: null,
-      organizationName: null,
+      organizations: [],
     },
   ];
 

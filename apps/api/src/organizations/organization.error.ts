@@ -1,5 +1,5 @@
 export type OrganizationErrorReason =
-  "not-found" | "version-conflict" | "name-conflict";
+  "not-found" | "version-conflict" | "name-conflict" | "sso-managed";
 
 /** ADR-081 组织管理业务错误；HTTP 层按 status / code 映射统一错误体。 */
 export class OrganizationError extends Error {
@@ -32,6 +32,15 @@ export function organizationVersionConflict(): OrganizationError {
     "ORGANIZATION_VERSION_CONFLICT",
     "组织已在其他窗口被修改，请重新加载后再操作",
     "version-conflict",
+  );
+}
+
+export function organizationSsoManaged(): OrganizationError {
+  return new OrganizationError(
+    409,
+    "ORGANIZATION_SSO_MANAGED",
+    "Casdoor 组织与 SSO 用户的组织归属由统一身份自动同步，不能手工调整",
+    "sso-managed",
   );
 }
 

@@ -24,10 +24,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  localDatabaseUrl,
+  prepareManagedLocalDatabase,
+  resolveLocalPostgresPort,
+} from "./local-postgres.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DEFAULT_DATABASE_URL =
-  "postgresql://cluster_bootstrap@127.0.0.1:55432/app_ci";
 /** AGENTS.md §8：E2E 夹具会直接写进数据库，禁止指向演示库 `app`。 */
 const FORBIDDEN_DATABASE_NAME = "app";
 const API_ENTRY = path.join(ROOT, "apps", "api", "dist", "main.js");
@@ -176,11 +179,15 @@ async function main() {
   }
 
   const fileValues = readEnvFile(options.envFile);
+  const defaultDatabaseUrl = localDatabaseUrl(
+    "app_ci",
+    resolveLocalPostgresPort(process.env, fileValues),
+  );
   const e2eDatabaseUrl = pick(
     process.env,
     fileValues,
     "E2E_DATABASE_URL",
-    pick(process.env, fileValues, "TEST_DATABASE_URL", DEFAULT_DATABASE_URL),
+    pick(process.env, fileValues, "TEST_DATABASE_URL", defaultDatabaseUrl),
   );
   const databaseName = resolveDatabaseName(e2eDatabaseUrl);
 
@@ -202,20 +209,45 @@ async function main() {
   console.log(`E2E 测试库：${e2eDatabaseUrl}（库名 ${databaseName}）`);
   console.log("（E2E 夹具会写进该库，禁止指向演示库 app）");
 
-  const probe = await probeDatabase(e2eDatabaseUrl);
-  if (!probe.reachable) {
-    throw new Error(
-      `连不上测试库 ${probe.host}:${probe.port}；请先启动本地 PostgreSQL（docker 容器 inpulse-pg 映射 55432），` +
-        "并按 AGENTS.md 的一次性准备创建 app_ci。",
+  const managed = await prepareManagedLocalDatabase({
+    root: ROOT,
+    databaseUrl: e2eDatabaseUrl,
+    fileValues,
+    environment: process.env,
+    migrate: !options.skipMigrate,
+  });
+  if (managed !== null) {
+    console.log(
+      "本地原生 PostgreSQL 就绪：" +
+        managed.dataDir +
+        "（" +
+        (managed.started ? "本次启动" : "复用已有实例") +
+        "，库 " +
+        managed.database +
+        "）",
     );
-  }
-
-  if (!options.skipMigrate) {
-    console.log("\n== 补齐测试库迁移 ==");
-    const migrateStatus = runCommand("pnpm db:migrate", environment);
-    if (migrateStatus !== 0) {
-      process.exitCode = migrateStatus;
-      return;
+    if (options.skipMigrate) {
+      console.log("（--skip-migrate：未检查该库迁移是否已到 HEAD）");
+    }
+  } else {
+    const probe = await probeDatabase(e2eDatabaseUrl);
+    if (!probe.reachable) {
+      throw new Error(
+        "连不上测试库 " +
+          probe.host +
+          ":" +
+          probe.port +
+          "；请启动 PostgreSQL 18 + PGroonga（可用 POSTGRES_BIN 指向本机安装），" +
+          "或设置 E2E_DATABASE_URL 指向独立测试库。",
+      );
+    }
+    if (!options.skipMigrate) {
+      console.log("\n== 补齐测试库迁移 ==");
+      const migrateStatus = runCommand("pnpm db:migrate", environment);
+      if (migrateStatus !== 0) {
+        process.exitCode = migrateStatus;
+        return;
+      }
     }
   }
 

@@ -65,7 +65,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const mutation = useCreateProject({ client });
   const formId = React.useId();
   const directory = useUserDirectoryQuery({ client, enabled: open });
-  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
+  const [manualMemberIds, setManualMemberIds] = useState<number[]>([]);
   // 用户手动填过编码就不再被名称推导覆盖；清空编码视为交回自动推导。
   const codeManuallyEditedRef = useRef(false);
   const code = watch("code") ?? "";
@@ -75,28 +76,64 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     [creatorUserId, directory.data],
   );
 
-  /** ADR-081：候选成员按组织聚组（未分配归「未分配」），用于整组选择。 */
+  /** ADR-097：候选成员按全部所属组织聚组；多群组账号会出现在每个小组。 */
   const organizationGroups = useMemo(() => {
     const order: string[] = [];
     const buckets = new Map<string, number[]>();
+    const labels = new Map<string, string>();
     for (const user of candidates) {
-      const name = user.organizationName ?? "未分配";
-      if (!buckets.has(name)) {
-        buckets.set(name, []);
-        order.push(name);
+      for (const organization of user.organizations) {
+        const key = String(organization.id);
+        if (!buckets.has(key)) {
+          buckets.set(key, []);
+          order.push(key);
+          labels.set(
+            key,
+            organization.source === "CASDOOR"
+              ? (organization.groupPath ?? organization.name)
+              : organization.name,
+          );
+        }
+        buckets.get(key)?.push(user.id);
       }
-      buckets.get(name)?.push(user.id);
     }
-    return order.map((name) => ({
-      name,
-      memberIds: buckets.get(name) ?? [],
+    return order.map((key) => ({
+      key,
+      name: labels.get(key) ?? key,
+      memberIds: buckets.get(key) ?? [],
     }));
   }, [candidates]);
 
+  const selectedMemberIds = useMemo(() => {
+    const selected = new Set(manualMemberIds);
+    for (const group of organizationGroups) {
+      if (!selectedGroupKeys.includes(group.key)) continue;
+      for (const memberId of group.memberIds) selected.add(memberId);
+    }
+    return candidates
+      .filter((user) => selected.has(user.id))
+      .map((user) => user.id);
+  }, [candidates, manualMemberIds, organizationGroups, selectedGroupKeys]);
+
+  const userGroupLabel = (
+    organizations: readonly {
+      readonly name: string;
+      readonly source: "LOCAL" | "CASDOOR";
+      readonly groupPath: string | null;
+    }[],
+  ) =>
+    organizations.length === 0
+      ? "未分配"
+      : organizations
+          .map((organization) =>
+            organization.source === "CASDOOR"
+              ? (organization.groupPath ?? organization.name)
+              : organization.name,
+          )
+          .join("、");
+
   // 整组选择只列真实组织：未分配不是小组，逐人挑选仍走下方搜索框。
-  const assignedOrganizationGroups = organizationGroups.filter(
-    (group) => group.name !== "未分配",
-  );
+  const assignedOrganizationGroups = organizationGroups;
   const hasOrganizationGroups = assignedOrganizationGroups.length > 0;
 
   /** 创建者固定出现在「选择成员」里：值排第一位，选项标 disabled 后 rc-select 不渲染移除按钮。 */
@@ -110,7 +147,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           value: creatorUserId,
           label: creatorName,
           avatarUrl: creatorEntry?.avatarUrl ?? null,
-          group: creatorEntry?.organizationName ?? "未分配",
+          group: userGroupLabel(creatorEntry?.organizations ?? []),
           description: "创建者",
           disabled: true,
         };
@@ -120,9 +157,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       value: user.id,
       label: user.name,
       avatarUrl: user.avatarUrl ?? null,
-      group: user.organizationName ?? "未分配",
+      group: userGroupLabel(user.organizations),
       description:
-        (user.organizationName ?? "未分配") +
+        userGroupLabel(user.organizations) +
         (user.isAdmin ? " · 系统管理员" : ""),
     })),
   ];
@@ -136,7 +173,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   useEffect(() => {
     if (open) {
       reset(defaultValues);
-      setSelectedMemberIds([]);
+      setManualMemberIds([]);
+      setSelectedGroupKeys([]);
       codeManuallyEditedRef.current = false;
       mutation.reset();
     }
@@ -165,22 +203,12 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }
   };
 
-  const toggleOrganization = (memberIds: readonly number[]) => {
-    setSelectedMemberIds((current) => {
-      const selected = new Set(current);
-      const allSelected = memberIds.every((id) => selected.has(id));
-      for (const id of memberIds) {
-        if (allSelected) {
-          selected.delete(id);
-        } else {
-          selected.add(id);
-        }
-      }
-      // 保持与目录一致的稳定顺序，提交的 memberIds 不随点击顺序抖动。
-      return candidates
-        .filter((user) => selected.has(user.id))
-        .map((user) => user.id);
-    });
+  const toggleOrganization = (groupKey: string) => {
+    setSelectedGroupKeys((current) =>
+      current.includes(groupKey)
+        ? current.filter((key) => key !== groupKey)
+        : [...current, groupKey],
+    );
   };
 
   const handleCancel = () => {
@@ -309,9 +337,15 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         const allSelected =
                           group.memberIds.length > 0 &&
                           selectedCount === group.memberIds.length;
+                        const active = selectedGroupKeys.includes(group.key);
+                        const action = active
+                          ? "取消全选组织 "
+                          : allSelected
+                            ? "组织已全选 "
+                            : "全选组织 ";
                         return (
                           <button
-                            key={group.name}
+                            key={group.key}
                             type="button"
                             className={
                               "member-org-pick" +
@@ -321,9 +355,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                                   ? " is-partial"
                                   : "")
                             }
-                            aria-pressed={allSelected}
+                            aria-pressed={active}
                             aria-label={
-                              (allSelected ? "取消全选组织 " : "全选组织 ") +
+                              action +
                               group.name +
                               "（已选 " +
                               selectedCount +
@@ -332,7 +366,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                               " 人）"
                             }
                             disabled={mutation.isPending}
-                            onClick={() => toggleOrganization(group.memberIds)}
+                            onClick={() => toggleOrganization(group.key)}
                           >
                             <span className="member-org-pick-name">
                               {group.name}
@@ -357,11 +391,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       multiple
                       maxTagCount="responsive"
                       value={memberSelectValues}
-                      onChange={(next) =>
-                        setSelectedMemberIds(
+                      onChange={(next) => {
+                        setManualMemberIds(
                           next.map(Number).filter((id) => id !== creatorUserId),
-                        )
-                      }
+                        );
+                        // 直接编辑成员即把整组选择降级为手工快照，避免隐藏的组织开关
+                        // 在之后覆盖用户刚刚取消的成员。
+                        setSelectedGroupKeys([]);
+                      }}
                       placeholder="输入姓名或组织搜索，可一次选择多位启用用户"
                       disabled={mutation.isPending}
                       options={memberOptions}

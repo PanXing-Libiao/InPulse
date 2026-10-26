@@ -149,8 +149,11 @@ ALTER DEFAULT PRIVILEGES FOR ROLE audit_writer
 ALTER DEFAULT PRIVILEGES FOR ROLE audit_writer
   REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 
+-- app_migrator 必须保留数据库默认 search_path：迁移名均以 app. 限定；
+-- 若 app 可见，pg_get_triggerdef() 会省略函数 schema，使 0047 的历史部署
+-- 断言误判为不符合预期。
 SELECT format(
-  'ALTER ROLE app_migrator IN DATABASE %I SET search_path = app, pg_catalog',
+  'ALTER ROLE app_migrator IN DATABASE %I RESET search_path',
   current_database()
 )
 \gexec

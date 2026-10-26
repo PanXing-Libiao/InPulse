@@ -4,16 +4,110 @@
 // 用法: node scripts/purge-test-data.mjs [--dry-run] [--no-backup]
 // 约定: 每次跑完集成测试、Playwright E2E 或手工冒烟后都必须执行本脚本清理测试数据。
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  localDatabaseUrl,
+  prepareManagedLocalDatabase,
+  resolveLocalPostgresPort,
+  resolvePostgresBin,
+} from "./local-postgres.mjs";
 
-const CONTAINER = process.env.INPULSE_PG_CONTAINER ?? "inpulse-pg";
-const DB_USER = process.env.INPULSE_PG_USER ?? "cluster_bootstrap";
-const DB_NAME = process.env.INPULSE_PG_DB ?? "app";
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const CONTAINER = (process.env.INPULSE_PG_CONTAINER ?? "").trim();
+const LEGACY_DB_USER = process.env.INPULSE_PG_USER ?? "cluster_bootstrap";
+const LEGACY_DB_NAME = process.env.INPULSE_PG_DB ?? "app";
+const DEFAULT_DATABASE_URL = localDatabaseUrl(
+  "app",
+  resolveLocalPostgresPort(process.env),
+);
+const PURGE_DATABASE_URL =
+  process.env.INPULSE_PURGE_DATABASE_URL ?? DEFAULT_DATABASE_URL;
 const DRY = process.argv.includes("--dry-run");
 const NO_BACKUP = process.argv.includes("--no-backup");
 
-function sh(cmd, argv) {
+let DATABASE;
+if (CONTAINER.length > 0) {
+  DATABASE = {
+    mode: "docker",
+    container: CONTAINER,
+    user: LEGACY_DB_USER,
+    database: LEGACY_DB_NAME,
+  };
+  console.log(
+    "使用显式指定的 Docker 容器 " +
+      CONTAINER +
+      "（兼容模式；默认已改为原生 PostgreSQL）",
+  );
+} else {
+  const managed = await prepareManagedLocalDatabase({
+    root: ROOT,
+    databaseUrl: PURGE_DATABASE_URL,
+    environment: process.env,
+    migrate: false,
+  });
+  let parsed;
+  try {
+    parsed = new URL(PURGE_DATABASE_URL);
+  } catch {
+    throw new Error("INPULSE_PURGE_DATABASE_URL 不是合法 URL");
+  }
+  if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:") {
+    throw new Error("清理连接串必须是 postgresql://");
+  }
+  const database = decodeURIComponent(parsed.pathname.slice(1));
+  if (database.length === 0) {
+    throw new Error("清理连接串缺少数据库名");
+  }
+  const user = decodeURIComponent(parsed.username);
+  if (user.length === 0) {
+    throw new Error("清理连接串缺少数据库角色");
+  }
+  const bin = managed?.bin ?? resolvePostgresBin(process.env, {});
+  DATABASE = {
+    mode: "native",
+    bin,
+    host: parsed.hostname,
+    port: managed?.port ?? Number.parseInt(parsed.port || "5432", 10),
+    user,
+    database,
+    password: decodeURIComponent(parsed.password),
+  };
+  console.log(
+    "使用原生 PostgreSQL " +
+      DATABASE.host +
+      ":" +
+      DATABASE.port +
+      "/" +
+      database,
+  );
+}
+
+function executableName(name) {
+  return process.platform === "win32" ? name + ".exe" : name;
+}
+
+const psqlPath =
+  DATABASE.mode === "native"
+    ? path.join(DATABASE.bin, executableName("psql"))
+    : "";
+const pgDumpPath =
+  DATABASE.mode === "native"
+    ? path.join(DATABASE.bin, executableName("pg_dump"))
+    : "";
+
+function connectionEnvironment() {
+  if (DATABASE.mode !== "native" || !DATABASE.password) {
+    return process.env;
+  }
+  return { ...process.env, PGPASSWORD: DATABASE.password };
+}
+
+function sh(cmd, argv, options = {}) {
   const res = spawnSync(cmd, argv, {
     encoding: "utf8",
+    env: options.env ?? process.env,
     maxBuffer: 64 * 1024 * 1024,
   });
   if (res.error) throw res.error;
@@ -26,23 +120,47 @@ function sh(cmd, argv) {
 }
 
 function psql(sql) {
-  return sh("docker", [
-    "exec",
-    CONTAINER,
-    "psql",
-    "-X",
-    "-q",
-    "-v",
-    "ON_ERROR_STOP=1",
-    "-U",
-    DB_USER,
-    "-d",
-    DB_NAME,
-    "-t",
-    "-A",
-    "-c",
-    sql,
-  ]);
+  if (DATABASE.mode === "docker") {
+    return sh("docker", [
+      "exec",
+      DATABASE.container,
+      "psql",
+      "-X",
+      "-q",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      DATABASE.user,
+      "-d",
+      DATABASE.database,
+      "-t",
+      "-A",
+      "-c",
+      sql,
+    ]);
+  }
+  return sh(
+    psqlPath,
+    [
+      "-X",
+      "-q",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-h",
+      DATABASE.host,
+      "-p",
+      String(DATABASE.port),
+      "-U",
+      DATABASE.user,
+      "-d",
+      DATABASE.database,
+      "-t",
+      "-A",
+      "-c",
+      sql,
+    ],
+    { env: connectionEnvironment() },
+  );
 }
 
 function parseCounts(out) {
@@ -208,20 +326,45 @@ statements.push(DRY ? "rollback;" : "commit;");
 
 if (!DRY && !NO_BACKUP) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const dumpPath = "/tmp/purge-backup-" + stamp + ".dump";
-  sh("docker", [
-    "exec",
-    CONTAINER,
-    "pg_dump",
-    "-U",
-    DB_USER,
-    "-d",
-    DB_NAME,
-    "-Fc",
-    "-f",
-    dumpPath,
-  ]);
-  console.log("已备份到容器内 " + dumpPath);
+  if (DATABASE.mode === "docker") {
+    const dumpPath = "/tmp/purge-backup-" + stamp + ".dump";
+    sh("docker", [
+      "exec",
+      DATABASE.container,
+      "pg_dump",
+      "-U",
+      DATABASE.user,
+      "-d",
+      DATABASE.database,
+      "-Fc",
+      "-f",
+      dumpPath,
+    ]);
+    console.log("已备份到容器内 " + dumpPath);
+  } else {
+    const dumpPath = path.join(
+      tmpdir(),
+      "inpulse-purge-backup-" + stamp + ".dump",
+    );
+    sh(
+      pgDumpPath,
+      [
+        "-h",
+        DATABASE.host,
+        "-p",
+        String(DATABASE.port),
+        "-U",
+        DATABASE.user,
+        "-d",
+        DATABASE.database,
+        "-Fc",
+        "-f",
+        dumpPath,
+      ],
+      { env: connectionEnvironment() },
+    );
+    console.log("已备份到本机 " + dumpPath);
+  }
 }
 
 console.log("== 清理" + (DRY ? " (dry-run, 结束后回滚)" : "") + " ==");

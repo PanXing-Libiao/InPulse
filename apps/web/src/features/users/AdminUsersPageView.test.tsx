@@ -17,6 +17,13 @@ import {
 import { AuthStateProvider } from "@features/auth/auth-context";
 import { AdminUsersPageView } from "./AdminUsersPageView";
 
+const membership = (id: number, name: string) => ({
+  id,
+  name,
+  source: "LOCAL" as const,
+  groupPath: null,
+});
+
 const admin: AdminUserItem = {
   id: 1,
   loginName: "alice",
@@ -24,7 +31,8 @@ const admin: AdminUserItem = {
   email: "alice@example.com",
   avatarUrl: null,
   isAdmin: true,
-  organizationId: null,
+  organizations: [],
+  managedBySso: false,
   status: "ACTIVE",
   openTaskCount: 0,
   rowVersion: 1,
@@ -87,7 +95,14 @@ async function pickOrganizationOption(optionTitle: string) {
     throw new Error("organization select trigger not found");
   }
   fireEvent.mouseDown(trigger);
-  fireEvent.click(await screen.findByTitle(optionTitle));
+  const options = await screen.findAllByTitle(optionTitle);
+  const option = options.find(
+    (candidate) => candidate.getAttribute("role") === "option",
+  );
+  if (!option) {
+    throw new Error(`organization option not found: ${optionTitle}`);
+  }
+  fireEvent.click(option);
 }
 
 describe("F-03 admin users page", () => {
@@ -218,6 +233,32 @@ describe("F-03 admin users page", () => {
     expect(
       userCard("Bob").querySelector(".member-meta")?.firstElementChild,
     ).toHaveTextContent("项目成员");
+  });
+
+  it("groups optional organization badges before the status column", async () => {
+    const ssoUser: AdminUserItem = {
+      ...member,
+      organizations: [membership(7, "研发一组"), membership(8, "产品组")],
+      managedBySso: true,
+    };
+    mount(
+      {
+        listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, ssoUser] }),
+      } as unknown as InpulseApiClient,
+      admin.id,
+    );
+    await screen.findByText("Bob");
+
+    const meta = userCard("Bob").querySelector(".member-meta");
+    expect(meta?.children[0]).toHaveTextContent("项目成员");
+    expect(meta?.children[1]).toHaveClass("member-org-tags");
+    expect(meta?.children[1]).toHaveTextContent("研发一组");
+    expect(meta?.children[1]).toHaveTextContent("统一身份");
+    expect(meta?.children[2]).toHaveClass("member-status");
+    expect(meta?.children[1]?.querySelectorAll(".badge")).toHaveLength(3);
+    expect(
+      meta?.children[1]?.querySelector(".badge")?.getAttribute("title"),
+    ).toBe("研发一组");
   });
 
   it("edits a user and sends row version via If-Match", async () => {
@@ -476,6 +517,9 @@ describe("F-03 admin users page", () => {
       id: 7,
       name: "研发一组",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
@@ -486,7 +530,7 @@ describe("F-03 admin users page", () => {
       name: "离职成员",
       status: "DISABLED",
       disabledAt: "2026-10-18T00:00:00.000Z",
-      organizationId: 7,
+      organizations: [membership(7, "研发一组")],
     };
     const deleted: AdminUserItem = {
       ...member,
@@ -497,11 +541,16 @@ describe("F-03 admin users page", () => {
       status: "DISABLED",
       disabledAt: "2026-10-18T00:00:00.000Z",
       deletedAt: "2026-10-19T00:00:00.000Z",
-      organizationId: 7,
+      organizations: [membership(7, "研发一组")],
     };
     mount({
       listAdminUsers: vi.fn().mockResolvedValue({
-        items: [{ ...member, organizationId: 7 }, admin, disabled, deleted],
+        items: [
+          { ...member, organizations: [membership(7, "研发一组")] },
+          admin,
+          disabled,
+          deleted,
+        ],
       }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [organization] }),
     } as unknown as InpulseApiClient);
@@ -650,7 +699,7 @@ describe("F-03 settings sections", () => {
       .mockResolvedValue({ items: [admin, member] });
     const getMyOrganizationMembers = vi
       .fn()
-      .mockResolvedValue({ organization: null, items: [] });
+      .mockResolvedValue({ organizations: [], items: [] });
     mount(
       {
         listAdminUsers,
@@ -670,10 +719,22 @@ describe("F-03 settings sections", () => {
 describe("ADR-081 organizations", () => {
   it("renders the read-only same-organization view for regular members", async () => {
     const getMyOrganizationMembers = vi.fn().mockResolvedValue({
-      organization: { id: 7, name: "研发一组" },
+      organizations: [membership(7, "研发一组")],
       items: [
-        { id: 2, name: "Bob", avatarUrl: null, isAdmin: false },
-        { id: 9, name: "Alice", avatarUrl: null, isAdmin: false },
+        {
+          id: 2,
+          name: "Bob",
+          avatarUrl: null,
+          isAdmin: false,
+          organizationIds: [7],
+        },
+        {
+          id: 9,
+          name: "Alice",
+          avatarUrl: null,
+          isAdmin: false,
+          organizationIds: [7],
+        },
       ],
     });
     const listAdminUsers = vi.fn();
@@ -700,7 +761,7 @@ describe("ADR-081 organizations", () => {
   it("shows the unassigned hint when the member has no organization", async () => {
     const getMyOrganizationMembers = vi
       .fn()
-      .mockResolvedValue({ organization: null, items: [] });
+      .mockResolvedValue({ organizations: [], items: [] });
     mount({ getMyOrganizationMembers } as unknown as InpulseApiClient, 2, {
       isAdmin: false,
     });
@@ -724,6 +785,9 @@ describe("ADR-081 organizations", () => {
       id: 9,
       name: "空组织",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
@@ -751,6 +815,9 @@ describe("ADR-081 organizations", () => {
       id: 7,
       name: "研发一组",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
@@ -758,7 +825,10 @@ describe("ADR-081 organizations", () => {
       listAdminUsers: vi
         .fn()
         .mockResolvedValueOnce({
-          items: [{ ...member, organizationId: 7 }, admin],
+          items: [
+            { ...member, organizations: [membership(7, "研发一组")] },
+            admin,
+          ],
         })
         .mockResolvedValue({ items: [member, admin] }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
@@ -787,6 +857,9 @@ describe("ADR-081 organizations", () => {
       id: 7,
       name: "研发一组",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
@@ -795,7 +868,10 @@ describe("ADR-081 organizations", () => {
       .mockResolvedValue({ updatedCount: 1 });
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({
-        items: [{ ...admin, organizationId: 7 }, member],
+        items: [
+          { ...admin, organizations: [membership(7, "研发一组")] },
+          member,
+        ],
       }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [organization] }),
       issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
@@ -1003,6 +1079,9 @@ describe("ADR-081 organizations", () => {
       id: 3,
       name: "先建部门",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
@@ -1010,21 +1089,24 @@ describe("ADR-081 organizations", () => {
       id: 7,
       name: "研发一组",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({
         items: [
-          { ...admin, organizationId: 7 },
+          { ...admin, organizations: [membership(7, "研发一组")] },
           {
             ...member,
             id: 3,
             loginName: "carol",
             name: "Carol",
-            organizationId: 3,
+            organizations: [membership(3, "先建部门")],
           },
-          { ...member, organizationId: null },
+          { ...member, organizations: [] },
         ],
       }),
       listOrganizations: vi
@@ -1054,6 +1136,9 @@ describe("ADR-081 organizations", () => {
       id: 8,
       name: "研发二组",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     });
@@ -1103,12 +1188,18 @@ describe("ADR-081 organizations", () => {
       id: 7,
       name: "研发一组",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({
-        items: [{ ...member, organizationId: 7 }, admin],
+        items: [
+          { ...member, organizations: [membership(7, "研发一组")] },
+          admin,
+        ],
       }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
     } as unknown as InpulseApiClient;
@@ -1128,6 +1219,9 @@ describe("ADR-081 organizations", () => {
       id: 7,
       name: "研发一组",
       rowVersion: 3,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
@@ -1138,7 +1232,10 @@ describe("ADR-081 organizations", () => {
     });
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({
-        items: [{ ...admin, organizationId: 7 }, member],
+        items: [
+          { ...admin, organizations: [membership(7, "研发一组")] },
+          member,
+        ],
       }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
       issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
@@ -1170,6 +1267,9 @@ describe("ADR-081 organizations", () => {
       id: 7,
       name: "研发一组",
       rowVersion: 1,
+      source: "LOCAL",
+      groupPath: null,
+      parentId: null,
       createdAt: "2026-10-16T00:00:00.000Z",
       updatedAt: "2026-10-16T00:00:00.000Z",
     };
@@ -1178,7 +1278,10 @@ describe("ADR-081 organizations", () => {
       .mockResolvedValue({ updatedCount: 1 });
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({
-        items: [{ ...member, organizationId: 7 }, admin],
+        items: [
+          { ...member, organizations: [membership(7, "研发一组")] },
+          admin,
+        ],
       }),
       listOrganizations: vi.fn().mockResolvedValue({ items: [assignment] }),
       issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),

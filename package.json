@@ -18,6 +18,7 @@
     "check:frontend:boundaries": "pnpm --filter @inpulse/web check:boundaries",
     "check:deploy": "node scripts/check_deploy_refs.mjs --env deploy/.env.deploy",
     "check:deploy:test": "node scripts/check_deploy_refs.mjs --env deploy/.env.deploy.test",
+    "check:deploy:static": "node scripts/check_deploy_refs.mjs --static --env deploy/.env.deploy.test",
     "db:migrate": "pnpm --filter @inpulse/database migrate",
     "db:migrations:check": "pnpm --filter @inpulse/database migrations:check",
     "db:seed:demo": "node apps/api/scripts/seed-demo-data.mjs",
@@ -42,7 +43,7 @@
     "test:search:db": "pnpm --filter @inpulse/api test:search:db",
     "lint": "eslint .",
     "build": "pnpm -r build",
-    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:unit && pnpm db:migrations:check && pnpm db:seed:check && pnpm contract:drift && pnpm contract:validate && pnpm build && pnpm check:deploy:test && pnpm check:deps && pnpm check:frontend:boundaries && pnpm permissions:check && pnpm deps:audit && pnpm check:secrets && pnpm check:docs"
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:unit && pnpm db:migrations:check && pnpm db:seed:check && pnpm contract:drift && pnpm contract:validate && pnpm build && pnpm check:deploy:static && pnpm check:deps && pnpm check:frontend:boundaries && pnpm permissions:check && pnpm deps:audit && pnpm check:secrets && pnpm check:docs"
   },
   "devDependencies": {
     "@inpulse/eslint-config": "workspace:*",
