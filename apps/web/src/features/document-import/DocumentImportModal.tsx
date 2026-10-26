@@ -700,6 +700,11 @@ export interface DocumentImportModalProps {
   /** 固定上下文；allowModeSwitch 打开时作为工作台的初始导入方式。 */
   readonly mode: DocumentImportMode;
   readonly projectId?: number | undefined;
+  /**
+   * 模块页等固定项目入口传入当前项目名：工具条先标出「在哪个项目下导入」，
+   * 项目本身不可切换，只能继续选所属模块与功能。
+   */
+  readonly projectName?: string | undefined;
   /** 项目列表入口允许在工作台内切换新建整项目 / 导入已有项目。 */
   readonly allowModeSwitch?: boolean | undefined;
   /** allowModeSwitch 时提供完整项目列表；模块页等固定上下文入口不需要。 */
@@ -720,6 +725,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
   open,
   mode,
   projectId,
+  projectName,
   allowModeSwitch = false,
   projects = [],
   client,
@@ -1970,6 +1976,10 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
       activeMode === "PROJECT" && activeProjectId !== undefined;
     if (!showModeSwitch && !showTarget) return null;
 
+    // 固定项目入口（模块页）：项目不可切换，只把名称摆出来作为导入上下文。
+    const fixedProjectName =
+      !showModeSwitch && showTarget ? (projectName?.trim() ?? "") : "";
+
     const switchDisabled = busy || assistBusy;
     const noProjects = projects.length === 0;
     const moduleValue =
@@ -2062,6 +2072,29 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
               className="import-target-group"
               data-testid="document-import-target"
             >
+              {fixedProjectName !== "" ? (
+                <>
+                  <span
+                    className="import-target-project"
+                    data-testid="document-import-project"
+                    title={fixedProjectName}
+                  >
+                    <span
+                      className="import-target-project-icon"
+                      aria-hidden="true"
+                      style={{ background: avatarColorOf(fixedProjectName) }}
+                    >
+                      {fixedProjectName.slice(0, 1)}
+                    </span>
+                    <span className="import-target-project-name">
+                      {fixedProjectName}
+                    </span>
+                  </span>
+                  <span className="import-target-crumb" aria-hidden="true">
+                    /
+                  </span>
+                </>
+              ) : null}
               {showModeSwitch ? (
                 <>
                   <CalmSelect
@@ -2087,7 +2120,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
               ) : null}
               <CalmSelect
                 className="import-target-select"
-                ariaLabel="导入位置"
+                ariaLabel="所属模块"
                 value={moduleValue}
                 appearance="notion"
                 width={140}
@@ -2103,7 +2136,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
                   </span>
                   <CalmSelect
                     className="import-target-select"
-                    ariaLabel="细化到"
+                    ariaLabel="所属功能"
                     value={
                       targetFeatureId === null
                         ? "module"

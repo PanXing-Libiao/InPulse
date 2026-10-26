@@ -283,6 +283,7 @@ interface MountOptions {
   readonly mode?: DocumentImportMode | undefined;
   readonly allowModeSwitch?: boolean | undefined;
   readonly projects?: readonly ProjectListItem[] | undefined;
+  readonly projectName?: string | undefined;
   readonly admin?: boolean | undefined;
   /** 登录用户；未指定时只有 admin: true 才注入管理员，其余保持未登录。 */
   readonly user?: CurrentUserResponse | null | undefined;
@@ -352,6 +353,7 @@ function mount(options: MountOptions = {}) {
               projectId={options.mode === "NEW_PROJECT" ? undefined : 2}
               allowModeSwitch={options.allowModeSwitch}
               projects={options.projects}
+              projectName={options.projectName}
               client={client}
               onClose={onClose}
               onImported={onImported}
@@ -1012,6 +1014,7 @@ describe("ADR-071 左右分栏工作台", () => {
 
   it("项目内导入可选模块与功能，目标随补充说明保持一致", async () => {
     const { assistDocumentImport, listFeatures } = mount({
+      projectName: "商城结算系统",
       directory: DIRECTORY,
       modules: [TARGET_MODULE],
       features: [TARGET_FEATURE],
@@ -1019,9 +1022,16 @@ describe("ADR-071 左右分栏工作台", () => {
     expect(screen.getByTestId("document-import-target")).toBeTruthy();
     expect(screen.queryByTestId("document-import-mode")).toBeNull();
 
-    await pickCalmSelectOption("导入位置", "支付");
+    // 固定项目入口：项目名只作上下文展示，不能在这里切换项目。
+    const projectContext = screen.getByTestId("document-import-project");
+    expect(projectContext.textContent).toContain("商城结算系统");
+    expect(projectContext.getAttribute("title")).toBe("商城结算系统");
+    expect(projectContext.querySelector("[role=combobox]")).toBeNull();
+    expect(projectContext.closest("button, [role=button]")).toBeNull();
+
+    await pickCalmSelectOption("所属模块", "支付");
     await waitFor(() => expect(listFeatures).toHaveBeenCalled());
-    await pickCalmSelectOption("细化到", "退款回调");
+    await pickCalmSelectOption("所属功能", "退款回调");
 
     expect(
       screen.getByTestId("document-import-target-summary").textContent,

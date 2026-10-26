@@ -7043,6 +7043,40 @@ td.due-overdue {
   font-weight: 400;
   line-height: 1;
 }
+/* 2026-10-26：模块页固定项目入口，先标出当前项目，再接「所属模块 / 所属功能」。 */
+.import-target-project {
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 220px;
+  padding: 3px 9px 3px 4px;
+  border: 1px solid #dbe7f2;
+  border-radius: 8px;
+  background: #fff;
+}
+.import-target-project-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+.import-target-project-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #1f3b54;
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .import-target-info {
   flex: none;
   display: grid;
