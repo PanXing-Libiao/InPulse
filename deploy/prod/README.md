@@ -130,4 +130,3 @@ sudo docker exec -it inpulse-deploy-db-1 psql -U cluster_bootstrap -d app -c "se
 - AI 辅助与企业微信桥接的部署骨架已就绪，但正式 AI Key、正式机器人凭据和真实收件人端到端验证仍未完成：AI 当前 fail closed，桥接当前 waiting_config。
 
 完成上述门禁前，可把当前状态描述为“正式环境已部署并通过基础可用性验证”，不要描述为“生产备份与恢复已验收”。
-

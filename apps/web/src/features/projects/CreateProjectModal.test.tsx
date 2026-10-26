@@ -334,7 +334,12 @@ describe("CreateProjectModal", () => {
           isAdmin: false,
           organizations: [
             { id: 7, name: "研发一组", source: "LOCAL", groupPath: null },
-            { id: 8, name: "研发二组", source: "LOCAL", groupPath: null },
+            {
+              id: 8,
+              name: "测试部",
+              source: "CASDOOR",
+              groupPath: "libiaorobot.com/测试部",
+            },
           ],
         },
         {
@@ -343,7 +348,12 @@ describe("CreateProjectModal", () => {
           avatarUrl: null,
           isAdmin: false,
           organizations: [
-            { id: 8, name: "研发二组", source: "LOCAL", groupPath: null },
+            {
+              id: 8,
+              name: "测试部",
+              source: "CASDOOR",
+              groupPath: "libiaorobot.com/测试部",
+            },
           ],
         },
       ],
@@ -364,9 +374,15 @@ describe("CreateProjectModal", () => {
         name: /全选组织 研发一组/,
       }),
     );
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /全选组织 研发二组/ }),
+    const casdoorGroupButton = within(dialog).getByRole("button", {
+      name: /全选组织 测试部/,
+    });
+    expect(casdoorGroupButton).toHaveAttribute(
+      "title",
+      "libiaorobot.com/测试部",
     );
+    expect(casdoorGroupButton).not.toHaveTextContent("libiaorobot.com/测试部");
+    fireEvent.click(casdoorGroupButton);
     await expect(
       within(dialog).findByText(/共 3 人/),
     ).resolves.toBeInTheDocument();

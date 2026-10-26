@@ -110,7 +110,9 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await expect(currentCard.locator(".member-org-tags")).toContainText(
       "未分配",
     );
-    await expect(card.locator(".member-org-tags")).toContainText("统一身份");
+    await expect(card.locator(".member-org-tags")).not.toContainText(
+      "统一身份",
+    );
     const editButton = card.getByRole("button", { name: /编\s*辑/ });
     const stopButton = card.getByRole("button", { name: /停\s*用/ });
     const statusBox = await card.locator(".member-status").boundingBox();

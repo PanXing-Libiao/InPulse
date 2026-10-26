@@ -274,5 +274,6 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
 - Casdoor application 必须使用 `JWT-Custom` Token format，Token fields 至少包含 `Groups`，Token group format 为 `Path`；不满足时 `groups` 可能缺失或不是完整路径，InPulse 会分别表现为跳过同步或拒绝非法路径。
 - 每次成功 SSO 登录在同一事务内全量对账：缺失 `groups` 不修改组织，`groups: []` 清空组织，合法数组替换全部直接群组关系；任何组织写入失败都会回滚 Session。
 - CASDOOR 组织在 InPulse 中只读，管理员手工改名、删除或调整 SSO 用户组织会返回 409 `ORGANIZATION_SSO_MANAGED`；已消失的群组只移除成员关系，不自动删除本地组织行。
+- 页面展示 Casdoor 群组的末级名称（如「测试部」），完整路径（如 `libiaorobot.com/测试部`）保留为悬停提示，并继续作为同步唯一身份。
 - `groups`、Casdoor `isAdmin`、roles 与 permissions 不授予任何 InPulse 权限。本地口令账号仍由管理员维护单个 LOCAL 组织。
 - 迁移 `0061_contract_sso_casdoor_organizations.sql` 新增 `app.user_organizations` 等结构；部署前按既有顺序执行 bootstrap 与迁移。真实 Casdoor 生产联调尚未在本轮执行。

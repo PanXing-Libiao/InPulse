@@ -81,18 +81,15 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     const order: string[] = [];
     const buckets = new Map<string, number[]>();
     const labels = new Map<string, string>();
+    const fullPaths = new Map<string, string>();
     for (const user of candidates) {
       for (const organization of user.organizations) {
         const key = String(organization.id);
         if (!buckets.has(key)) {
           buckets.set(key, []);
           order.push(key);
-          labels.set(
-            key,
-            organization.source === "CASDOOR"
-              ? (organization.groupPath ?? organization.name)
-              : organization.name,
-          );
+          labels.set(key, organization.name);
+          fullPaths.set(key, organization.groupPath ?? organization.name);
         }
         buckets.get(key)?.push(user.id);
       }
@@ -100,6 +97,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     return order.map((key) => ({
       key,
       name: labels.get(key) ?? key,
+      fullPath: fullPaths.get(key) ?? labels.get(key) ?? key,
       memberIds: buckets.get(key) ?? [],
     }));
   }, [candidates]);
@@ -124,13 +122,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   ) =>
     organizations.length === 0
       ? "未分配"
-      : organizations
-          .map((organization) =>
-            organization.source === "CASDOOR"
-              ? (organization.groupPath ?? organization.name)
-              : organization.name,
-          )
-          .join("、");
+      : organizations.map((organization) => organization.name).join("、");
 
   // 整组选择只列真实组织：未分配不是小组，逐人挑选仍走下方搜索框。
   const assignedOrganizationGroups = organizationGroups;
@@ -365,6 +357,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                               group.memberIds.length +
                               " 人）"
                             }
+                            title={group.fullPath}
                             disabled={mutation.isPending}
                             onClick={() => toggleOrganization(group.key)}
                           >

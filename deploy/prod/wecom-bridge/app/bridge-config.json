@@ -1,9 +1,7 @@
 {
   "databaseUrl": "",
   "recipients": {},
-  "forwardTypes": [
-    "*"
-  ],
+  "forwardTypes": ["*"],
   "commandFile": "/state/commands.txt",
   "stateFile": "/state/bridge-state.json",
   "pollIntervalMs": 3000,

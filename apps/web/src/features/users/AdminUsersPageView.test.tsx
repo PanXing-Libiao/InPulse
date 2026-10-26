@@ -238,7 +238,15 @@ describe("F-03 admin users page", () => {
   it("groups optional organization badges before the status column", async () => {
     const ssoUser: AdminUserItem = {
       ...member,
-      organizations: [membership(7, "研发一组"), membership(8, "产品组")],
+      organizations: [
+        membership(7, "研发一组"),
+        {
+          id: 8,
+          name: "测试部",
+          source: "CASDOOR" as const,
+          groupPath: "libiaorobot.com/测试部",
+        },
+      ],
       managedBySso: true,
     };
     mount(
@@ -253,12 +261,16 @@ describe("F-03 admin users page", () => {
     expect(meta?.children[0]).toHaveTextContent("项目成员");
     expect(meta?.children[1]).toHaveClass("member-org-tags");
     expect(meta?.children[1]).toHaveTextContent("研发一组");
-    expect(meta?.children[1]).toHaveTextContent("统一身份");
+    expect(meta?.children[1]).toHaveTextContent("测试部");
+    expect(meta?.children[1]).not.toHaveTextContent("libiaorobot.com/测试部");
+    expect(meta?.children[1]).not.toHaveTextContent("统一身份");
     expect(meta?.children[2]).toHaveClass("member-status");
-    expect(meta?.children[1]?.querySelectorAll(".badge")).toHaveLength(3);
-    expect(
-      meta?.children[1]?.querySelector(".badge")?.getAttribute("title"),
-    ).toBe("研发一组");
+    const organizationBadges = meta?.children[1]?.querySelectorAll(".badge");
+    expect(organizationBadges).toHaveLength(2);
+    expect(organizationBadges?.[0]?.getAttribute("title")).toBe("研发一组");
+    expect(organizationBadges?.[1]?.getAttribute("title")).toBe(
+      "libiaorobot.com/测试部",
+    );
   });
 
   it("edits a user and sends row version via If-Match", async () => {

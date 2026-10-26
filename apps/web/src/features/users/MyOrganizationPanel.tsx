@@ -90,11 +90,10 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
         {organizations.map((organization) => (
           <CalmBadge
             key={organization.id}
+            title={organization.groupPath ?? organization.name}
             tone={organization.source === "CASDOOR" ? "cyan" : "gray"}
           >
-            {organization.source === "CASDOOR"
-              ? (organization.groupPath ?? organization.name)
-              : organization.name}
+            {organization.name}
           </CalmBadge>
         ))}
       </div>

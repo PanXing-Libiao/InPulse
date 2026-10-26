@@ -432,10 +432,11 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 
   const organizationDisplayLabel = (
     organization: OrganizationItem | OrganizationMembershipSummary,
-  ) =>
-    organization.source === "CASDOOR"
-      ? (organization.groupPath ?? organization.name)
-      : organization.name;
+  ) => organization.name;
+
+  const organizationFullPath = (
+    organization: OrganizationItem | OrganizationMembershipSummary,
+  ) => organization.groupPath ?? organization.name;
 
   const selectedOrganization =
     typeof orgView === "number"
@@ -867,7 +868,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                         key={organization.id}
                         type="button"
                         role="tab"
-                        title={organization.groupPath ?? organization.name}
+                        title={organizationFullPath(organization)}
                         aria-selected={orgView === organization.id}
                         className={
                           "member-org-tab" +
@@ -1075,7 +1076,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                           user.organizations.map((organization) => (
                             <CalmBadge
                               key={organization.id}
-                              title={organizationDisplayLabel(organization)}
+                              title={organizationFullPath(organization)}
                               tone={
                                 organization.source === "CASDOOR"
                                   ? "cyan"
@@ -1086,9 +1087,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                             </CalmBadge>
                           ))
                         )}
-                        {user.managedBySso ? (
-                          <CalmBadge tone="violet">统一身份</CalmBadge>
-                        ) : null}
                       </span>
                       <span
                         className={

@@ -7138,8 +7138,8 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR097-API-004 | API 集成（真实 PostgreSQL + HTTP） | CASDOOR 只读与手工调整拒绝 | `organizations-api.integration.test.ts`：CASDOOR 组织改名 / 删除 409 `ORGANIZATION_SSO_MANAGED`；管理员不能把 SSO 用户手工加入或移出组织，也不能把本地账号加入 CASDOOR 组织；LOCAL 组织 CRUD、批量归属与幂等重放不回归 | 本地通过（2026-10-26） |
 | ADR097-DB-001 | 真实 PostgreSQL | 结构与授权 | `database.test.ts`：`app.user_organizations` 复合主键、级联 FK、来源 CHECK、CASDOOR 完整路径唯一与 LOCAL 名称唯一、来源一致性触发器、CASDOOR 只读触发器、运行时 / 备份最小授权和部署断言存在 | 本地通过（2026-10-26） |
 | ADR097-DB-002 | 真实 PostgreSQL | 非法来源与只读防线 | 拒绝组织来源改写、CASDOOR 组织本地修改 / 删除、用户与组织来源错配、SSO 用户挂 MANUAL 关系、本地用户挂 CASDOOR 关系；不改写历史迁移 | 本地通过（2026-10-26） |
-| ADR097-WEB-001 | Web 单元 | 多组织展示与选择器 | `AdminUsersPageView` 展示多组织并禁用 SSO 用户组织操作；`MyOrganizationPanel` 展示全部所属组织与去重成员；`CreateProjectModal` 按全部组织分组、整组选择按并集去重且仍受 1～20 人限制；文档导入成员匹配兼容数组结构 | 本地通过（2026-10-26） |
-| ADR097-E2E-001 | Playwright 浏览器 | 管理员用户页 SSO 徽章与列对齐 | `admin-users.spec.ts` 在管理员与预置 SSO 账号同列表时验证组织区与「统一身份」徽章处于同一容器，状态列和操作列 x 坐标差不超过 2px；全量 Playwright 89/89 本地通过 | 本地通过（2026-10-26） |
+| ADR097-WEB-001 | Web 单元 | 多组织展示与选择器 | `AdminUsersPageView` 展示多组织并禁用 SSO 用户组织操作；CASDOOR 组织按末级名称展示、完整路径仅作为悬停提示；`MyOrganizationPanel` 展示全部所属组织与去重成员；`CreateProjectModal` 按全部组织分组、整组选择按并集去重且仍受 1～20 人限制；文档导入成员匹配兼容数组结构 | 本地通过（2026-10-26） |
+| ADR097-E2E-001 | Playwright 浏览器 | 管理员用户页组织区与列对齐 | `admin-users.spec.ts` 在管理员与预置 SSO 账号同列表时验证组织区内部徽章位于同一容器且不再显示「统一身份」标签，状态列和操作列 x 坐标差不超过 2px；全量 Playwright 89/89 本地通过 | 本地通过（2026-10-26） |
 | ADR097-CONTRACT-001 | 契约静态门禁 | Schema、重放与权限 | Route Registry 129 条；`contract:validate` 与 `contract:drift` 通过；组织契约幂等 2.0.0、`createUser` / `updateUser` 为 1.4.0；`AdminUserItem` 重放叶子完整覆盖 `organizations[]` 与 `managedBySso`；`permissions:check` 129 条操作 / 129 条路由通过 | 本地通过（2026-10-26） |
 | ADR097-MIGRATION-001 | 真实 PostgreSQL 全新库 | bootstrap 与全量迁移 | 新库先执行 `000_roles.sql`、`020_pgroonga.sql`，再由 `app_migrator` 执行 `pnpm db:migrate`；全部迁移应用成功；`app_migrator` 使用数据库默认 `search_path`，历史迁移 `0047` 的 `pg_get_triggerdef()` 部署断言不再误判 | 本地通过（2026-10-26） |
 

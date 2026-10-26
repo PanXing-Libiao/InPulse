@@ -57,7 +57,12 @@ describe("MyOrganizationPanel", () => {
     );
     expect(organizationBadges).toHaveLength(2);
     expect(organizationBadges[0]).toHaveTextContent("第一小组");
-    expect(organizationBadges[1]).toHaveTextContent(
+    expect(organizationBadges[1]).toHaveTextContent("平台组");
+    expect(organizationBadges[1]).not.toHaveTextContent(
+      "libiaorobot.com/研发/平台组",
+    );
+    expect(organizationBadges[1]).toHaveAttribute(
+      "title",
       "libiaorobot.com/研发/平台组",
     );
 
