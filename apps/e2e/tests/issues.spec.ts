@@ -175,3 +175,99 @@ test("F-20 遗留问题页未处理展示与页内转为任务", async ({ browse
     await context.close();
   }
 });
+
+test("F-20 长遗留问题正文截两行后可展开，卡片与操作列保持对齐", async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const runtime = await loadRuntime();
+  const { context, page } = await createAuthenticatedContext(browser, runtime);
+  try {
+    const suffix = Date.now().toString(16).toUpperCase();
+    const taskTitle = "遗留页长文来源-" + suffix;
+    const longLeftover =
+      "遗留页长文 " +
+      suffix +
+      "：跨系统时钟漂移在弱网与离线补传场景下会放大到分钟级，当前只在服务端做一次校正，" +
+      "缺少客户端时间源探测、漂移告警与回退策略，需要在下一版把时间同步、离线队列重放与账期归属一起重新评估，" +
+      "避免同一笔用量在两个账期被重复计入。";
+    const shortLeftover = "遗留页短文 " + suffix + "：补充默认值校验。";
+
+    await page.goto("/projects/" + runtime.projectId + "/modules");
+    await page.locator(".module-card").first().click();
+    await page.getByRole("tab", { name: /模块级任务/ }).click();
+    await page.getByRole("button", { name: "新建任务", exact: true }).click();
+    const form = page.getByRole("dialog", { name: "新建任务" });
+    await form.getByLabel("任务标题").fill(taskTitle);
+    await pickCalmSelectOption(form, "负责人", runtime.user.name);
+    await form.getByRole("button", { name: /创建任务/ }).click();
+    await expect(form).toBeHidden();
+    const task = page.getByRole("dialog", { name: "任务详情" });
+    await task.getByRole("button", { name: "完成任务", exact: true }).click();
+    const completion = page.getByRole("dialog", {
+      name: "完成任务",
+      exact: true,
+    });
+    await completion.getByRole("button", { name: /有，填写迭代记录/ }).click();
+    for (const label of ["改动原因", "具体改动", "改动效果"])
+      await completion.getByLabel(label).fill("F-20 长文 E2E " + suffix);
+    await fillLeftovers(completion, [longLeftover, shortLeftover]);
+    await completion
+      .getByRole("button", { name: "发布并完成任务", exact: true })
+      .click();
+    await expect(completion).toBeHidden();
+
+    await page.goto("/issues");
+    const row = page
+      .getByTestId(/^leftover-item-/)
+      .filter({ hasText: "遗留页长文 " + suffix });
+    await expect(row).toBeVisible();
+    const shortRow = page
+      .getByTestId(/^leftover-item-/)
+      .filter({ hasText: "遗留页短文 " + suffix });
+    await expect(shortRow).toBeVisible();
+    await expect(
+      shortRow.getByRole("button", { name: "展开", exact: true }),
+    ).toHaveCount(0);
+    const content = row.locator(".issue-content");
+    await expect(content).toHaveClass(/issue-content/);
+    await expect(content).not.toHaveClass(/is-expanded/);
+
+    // 长正文默认截 2 行，并出现「展开」入口。
+    const expand = row.getByRole("button", { name: "展开", exact: true });
+    await expect(expand).toBeVisible();
+
+    // 2026-10-27 用户反馈：未展开时所有卡片等高，右侧操作列从同一处开始。
+    const heights = await page
+      .locator(".issues-page > .issue-list .issue-row")
+      .evaluateAll((elements) =>
+        elements.map((element) =>
+          Math.round(element.getBoundingClientRect().height),
+        ),
+      );
+    expect(heights.length).toBeGreaterThan(1);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(1);
+    const rights = await page
+      .locator(".issues-page > .issue-list .issue-actions")
+      .evaluateAll((elements) =>
+        elements.map((element) =>
+          Math.round(element.getBoundingClientRect().right),
+        ),
+      );
+    expect(Math.max(...rights) - Math.min(...rights)).toBeLessThanOrEqual(1);
+
+    const clampedHeight = await content.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    await expand.click();
+    await expect(content).toHaveClass(/is-expanded/);
+    const expandedHeight = await content.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(expandedHeight).toBeGreaterThan(clampedHeight);
+    await row.getByRole("button", { name: "收起", exact: true }).click();
+    await expect(content).not.toHaveClass(/is-expanded/);
+  } finally {
+    await context.close();
+  }
+});
