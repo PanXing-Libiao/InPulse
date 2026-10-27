@@ -9,6 +9,7 @@ export type SsoLoginReason =
   | "missing-code"
   | "token-exchange-failed"
   | "token-invalid"
+  | "group-metadata-failed"
   | "account-conflict"
   | "account-disabled"
   | "account-unavailable"

@@ -17,6 +17,7 @@ import { SessionTokenService } from "../src/auth/session-token.service.js";
 import { SsoLoginService } from "../src/auth/sso/sso-login.service.js";
 import { PostgresSsoLoginAttemptRepository } from "../src/auth/sso/sso-login-attempt.repository.js";
 import { PostgresSsoUserRepository } from "../src/auth/sso/sso-user.repository.js";
+import { SsoCasdoorGroupClient } from "../src/auth/sso/sso-casdoor-group.client.js";
 import { SsoOidcClient } from "../src/auth/sso/sso-oidc.client.js";
 import type { SsoConfig } from "../src/auth/sso/sso.config.js";
 import { PostgresUserCredentialRepository } from "../src/auth/user-credential.repository.js";
@@ -125,6 +126,7 @@ function buildService(
     }),
     config,
     new SsoOidcClient(config, idp.fetchImpl),
+    new SsoCasdoorGroupClient(config, idp.fetchImpl),
     {
       idleMaxAgeSeconds: IDLE_MAX_AGE_SECONDS,
       absoluteMaxAgeSeconds: ABSOLUTE_MAX_AGE_SECONDS,
@@ -182,6 +184,7 @@ async function withTempDatabase<T>(
     const idp = createStubIdp({
       issuer: ISSUER,
       clientId: config.clientId,
+      clientSecret: config.clientSecret,
       fallbackSubject: uniqueSubject,
     });
     const service = buildService(runtime, keyring, tokens, idp);

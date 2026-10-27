@@ -36,6 +36,7 @@ describe("describeSsoError", () => {
     expect(describeSsoError("state-expired")).toContain("超时");
     expect(describeSsoError("account-disabled")).toContain("停用");
     expect(describeSsoError("rate-limited")).toContain("频繁");
+    expect(describeSsoError("group-metadata-failed")).toContain("群组类型");
   });
 
   it("未识别的取值只回通用文案，不回显原文", () => {

@@ -224,11 +224,18 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
   （compose 以只读 Secret 挂载到 `/run/secrets/sso_client_secret`，禁止用环境变量代替）；
 - 在 Casdoor 应用中登记 `SSO_REDIRECT_URI` 指向的正式回调地址；
 - 把 Casdoor application 的 Token format 设为 `JWT-Custom`、Token fields 至少包含 `Groups`、Token group format 设为 `Path`，确保 id_token 提供完整路径形式的 `groups` claim。
+- 确认同一 Casdoor application 的 `clientId`/`clientSecret` 可通过 HTTP Basic 读取 claim 中群组的 `GET /api/get-group?id=owner/name` 元数据；InPulse 只会逐组读取并保留启用的 `Physical` 组，Virtual 或停用组会被过滤，元数据读取失败则拒绝登录（ADR-099）。
 
 配置非法或缺失时 API 按 fail closed 以本地登录模式启动，访问登录页回落到 `/login?local=1&sso=disabled`；`/login?local=1` 仍作为管理员应急口令入口可用。
 决策与回滚边界见[单点登录 ADR](./docs/adr/ADR-032.md)、[登录入口 ADR](./docs/adr/ADR-036.md)与[直达登录 ADR](./docs/adr/ADR-080.md)。
 
 测试环境（单机 Docker Compose + 本地 registry）的一键更新、迁移与回滚步骤见[测试 VM 更新手册](./deploy/test-vm/README.md)。正式环境固定走 `deploy/prod/update.ps1 -ConfirmProduction`，基座、发布门禁与当前上线缺口见[正式环境部署入口](./deploy/prod/README.md)。
+
+### 2026-10-27 SSO 只同步 Casdoor 实体组（ADR-099）
+
+Casdoor 的 id_token `groups` claim 只携带群组路径，不包含 `Physical` / `Virtual` 类型。InPulse 现于验签后、数据库事务外用同一 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 逐组读取 `GET /api/get-group`，严格校验路径与父级后只保留启用的 `Physical` 组；Virtual 和停用组不会进入组织成员关系，仍无实体组的账号归入“未分类”。
+
+元数据读取失败、未知类型或 Basic 认证失败时按 `group-metadata-failed` 拒绝登录，不回退猜测。本次不新增路由、契约、迁移或权限条目；真实 Casdoor 鉴权联调尚未完成，生产启用前需执行 Physical 与 Virtual 并存 smoke test。详见 [ADR-099](docs/adr/ADR-099.md)。
 
 ## 文档导航
 

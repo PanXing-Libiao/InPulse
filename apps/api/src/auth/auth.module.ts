@@ -48,6 +48,7 @@ import {
 } from "./session-ttl.policy.js";
 import { PostgresSsoLoginAttemptRepository } from "./sso/sso-login-attempt.repository.js";
 import { PostgresSsoUserRepository } from "./sso/sso-user.repository.js";
+import { SsoCasdoorGroupClient } from "./sso/sso-casdoor-group.client.js";
 import { SsoOidcClient } from "./sso/sso-oidc.client.js";
 import { SsoController } from "./sso/sso.controller.js";
 import { SsoLoginService } from "./sso/sso-login.service.js";
@@ -164,6 +165,7 @@ import {
           audit,
           config.config,
           new SsoOidcClient(config.config),
+          new SsoCasdoorGroupClient(config.config),
           ttl,
           keyring,
         );

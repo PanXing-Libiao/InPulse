@@ -17,6 +17,7 @@ import { SessionTokenService } from "../src/auth/session-token.service.js";
 import { SsoLoginService } from "../src/auth/sso/sso-login.service.js";
 import { PostgresSsoLoginAttemptRepository } from "../src/auth/sso/sso-login-attempt.repository.js";
 import { PostgresSsoUserRepository } from "../src/auth/sso/sso-user.repository.js";
+import { SsoCasdoorGroupClient } from "../src/auth/sso/sso-casdoor-group.client.js";
 import { SsoOidcClient } from "../src/auth/sso/sso-oidc.client.js";
 import type { SsoConfig } from "../src/auth/sso/sso.config.js";
 import { PostgresUserCredentialRepository } from "../src/auth/user-credential.repository.js";
@@ -54,6 +55,8 @@ let keyring: VersionedHmacKeyring;
 let tokens: SessionTokenService;
 let service: SsoLoginService;
 let idp: StubIdp;
+let activeTransactionCount = 0;
+let groupLookupInsideTransaction = false;
 
 /** nonce 由服务端从 state 派生，测试用同一 keyring 复算，证明明文材料不落库。 */
 function deriveNonce(state: string): string {
@@ -301,7 +304,19 @@ beforeAll(async () => {
   reader = createDatabaseClient(testUrls().auditReader, {
     applicationName: "inpulse-sso-login-audit-reader",
   });
-  unitOfWork = new PostgresUnitOfWork(client);
+  const postgresUnitOfWork = new PostgresUnitOfWork(client);
+  unitOfWork = {
+    run: async <T>(
+      callback: Parameters<PostgresUnitOfWork["run"]>[0],
+    ): Promise<T> => {
+      activeTransactionCount += 1;
+      try {
+        return (await postgresUnitOfWork.run(callback)) as T;
+      } finally {
+        activeTransactionCount -= 1;
+      }
+    },
+  } as PostgresUnitOfWork;
   keyring = VersionedHmacKeyring.fromEntries(
     [{ version: 1, key: randomBytes(32) }],
     1,
@@ -310,7 +325,13 @@ beforeAll(async () => {
   idp = createStubIdp({
     issuer: ISSUER,
     clientId: config.clientId,
+    clientSecret: config.clientSecret,
     fallbackSubject: uniqueSubject,
+  });
+  idp.setGroupLookupObserver(() => {
+    if (activeTransactionCount > 0) {
+      groupLookupInsideTransaction = true;
+    }
   });
   service = new SsoLoginService(
     unitOfWork,
@@ -332,6 +353,7 @@ beforeAll(async () => {
     }),
     config,
     new SsoOidcClient(config, idp.fetchImpl),
+    new SsoCasdoorGroupClient(config, idp.fetchImpl),
     {
       idleMaxAgeSeconds: IDLE_MAX_AGE_SECONDS,
       absoluteMaxAgeSeconds: ABSOLUTE_MAX_AGE_SECONDS,
@@ -546,6 +568,127 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
     ]);
   });
 
+  test("Physical 与 Virtual 同时存在时只同步 Physical", async () => {
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const physicalPath = owner + "/测试部";
+    const virtualPath = owner + "/Virtual Group3";
+    const loginName = uniqueLoginName("sso_group_types");
+    const { state } = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(state),
+      subject: uniqueSubject(),
+      loginName,
+      displayName: "实体组用户",
+      email: uniqueEmail(),
+      groups: [physicalPath, virtualPath],
+      groupMetadata: [
+        { path: physicalPath, type: "Physical" },
+        { path: virtualPath, type: "Virtual" },
+      ],
+    });
+    const callsBefore = idp.groupCalls().length;
+    groupLookupInsideTransaction = false;
+
+    const result = await service.complete(completeInput(state, "203.0.113.44"));
+
+    expect(result.location).toBe("/projects");
+    expect(groupLookupInsideTransaction).toBe(false);
+    const user = (await usersByLoginName(loginName))[0]!;
+    expect(
+      (await directCasdoorMemberships(user.id)).map((row) => row.groupPath),
+    ).toEqual([physicalPath]);
+    expect(await organizationsByOwner(owner)).toHaveLength(1);
+    expect(await latestOrganizationSyncPayload(user.id)).toMatchObject({
+      groupsClaimPresent: true,
+      groupCount: 1,
+      membershipCount: 1,
+    });
+    const calls = idp.groupCalls().slice(callsBefore);
+    expect(new Set(calls.map((call) => call.id))).toEqual(
+      new Set([owner + "/测试部", owner + "/Virtual Group3"]),
+    );
+    expect(
+      calls.every(
+        (call) =>
+          call.authorization ===
+          "Basic " +
+            Buffer.from(
+              config.clientId + ":" + config.clientSecret,
+              "utf8",
+            ).toString("base64"),
+      ),
+    ).toBe(true);
+  });
+
+  test("只有 Virtual 组时清空已有实体组织关系并归入未分类", async () => {
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const physicalPath = owner + "/测试部";
+    const virtualPath = owner + "/Virtual Group3";
+    const loginName = uniqueLoginName("sso_virtual_only");
+    const subject = uniqueSubject();
+    const first = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(first.state),
+      subject,
+      loginName,
+      displayName: "虚拟组用户",
+      email: uniqueEmail(),
+      groups: [physicalPath],
+      groupMetadata: [{ path: physicalPath, type: "Physical" }],
+    });
+    await service.complete(completeInput(first.state, "203.0.113.45"));
+    const user = (await usersByLoginName(loginName))[0]!;
+    expect(
+      (await directCasdoorMemberships(user.id)).map((row) => row.groupPath),
+    ).toEqual([physicalPath]);
+
+    const second = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(second.state),
+      subject,
+      loginName,
+      displayName: "虚拟组用户",
+      email: uniqueEmail(),
+      groups: [virtualPath],
+      groupMetadata: [{ path: virtualPath, type: "Virtual" }],
+    });
+
+    const result = await service.complete(
+      completeInput(second.state, "203.0.113.45"),
+    );
+
+    expect(result.location).toBe("/projects");
+    expect(await directCasdoorMemberships(user.id)).toEqual([]);
+    expect(await organizationsByOwner(owner)).toHaveLength(1);
+    expect(await latestOrganizationSyncPayload(user.id)).toMatchObject({
+      groupsClaimPresent: true,
+      groupCount: 0,
+      membershipCount: 0,
+    });
+  });
+
+  test("群组元数据读取失败时拒绝登录且不签发 Session", async () => {
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const loginName = uniqueLoginName("sso_group_lookup_failed");
+    const { state } = await startLogin("/projects");
+    idp.setClaims({
+      nonce: deriveNonce(state),
+      subject: uniqueSubject(),
+      loginName,
+      displayName: "元数据失败",
+      email: uniqueEmail(),
+      groups: [owner + "/测试部"],
+      groupLookupStatus: 403,
+    });
+
+    const result = await service.complete(completeInput(state, "203.0.113.46"));
+
+    expect(result.location).toBe("/login?sso_error=group-metadata-failed");
+    expect(await usersByLoginName(loginName)).toHaveLength(0);
+    expect(await organizationsByOwner(owner)).toHaveLength(0);
+    expect(await lastFailureReason()).toBe("group-metadata-failed");
+  });
+
   test("groups 缺失不修改、空数组清空、再次提供时全量替换", async () => {
     const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
     const loginName = uniqueLoginName("sso_groups_replace");
@@ -570,6 +713,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
       ),
     ).toEqual(new Set([firstGroup, secondGroup]));
 
+    const callsBeforeMissing = idp.groupCalls().length;
     const missing = await startLogin("/projects");
     idp.setClaims({
       nonce: deriveNonce(missing.state),
@@ -588,7 +732,9 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
       groupsClaimPresent: false,
       groupCount: 0,
     });
+    expect(idp.groupCalls()).toHaveLength(callsBeforeMissing);
 
+    const callsBeforeEmpty = idp.groupCalls().length;
     const empty = await startLogin("/projects");
     idp.setClaims({
       nonce: deriveNonce(empty.state),
@@ -605,6 +751,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
       groupCount: 0,
       membershipCount: 0,
     });
+    expect(idp.groupCalls()).toHaveLength(callsBeforeEmpty);
 
     const replacement = await startLogin("/projects");
     idp.setClaims({

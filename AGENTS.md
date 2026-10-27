@@ -97,7 +97,7 @@
 - 成员关系不得缓存到 Session 或长生命周期对象；搜索和动态查询必须先取得服务端生成的 `AuthorizedProjectScope`，并在 SQL 层过滤。
 - 资源不存在和无权访问统一返回 404，避免泄露资源存在性；已登录但缺少全局权限时返回 403。
 - Session、CSRF 和预认证 Token 在数据库中只保存 Hash；Cookie、CSRF 和安全响应头必须遵守技术设计。
-- 单点登录（[ADR-032](./docs/adr/ADR-032.md)，前端入口经 [ADR-036](./docs/adr/ADR-036.md)、[ADR-080](./docs/adr/ADR-080.md) 修订）是默认登录入口：匿名访问 `/login`（含 `?from=`）即刻整页跳转 `GET /api/v1/auth/sso/start`，不再默认呈现本地口令表单；该路由只保存 state 的 HMAC 并下发 `__Host-sso-state`，`GET /api/v1/auth/sso/callback` 必须同时匹配 URL `state` 与该 Cookie 后才一次性消费；nonce 与 PKCE verifier 由服务端从 state 派生、不落库；token 交换与 JWKS 验签禁止放进数据库事务；只允许用 `sub`/`Name`/`DisplayName`/`Email` 映射本地账号；`groups` 仅用于 ADR-097 / ADR-098 的组织同步，Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`；Casdoor 的 `isAdmin`、roles、permissions 等 claim 一律不得影响 InPulse 权限。
+- 单点登录（[ADR-032](./docs/adr/ADR-032.md)，前端入口经 [ADR-036](./docs/adr/ADR-036.md)、[ADR-080](./docs/adr/ADR-080.md) 修订）是默认登录入口：匿名访问 `/login`（含 `?from=`）即刻整页跳转 `GET /api/v1/auth/sso/start`，不再默认呈现本地口令表单；该路由只保存 state 的 HMAC 并下发 `__Host-sso-state`，`GET /api/v1/auth/sso/callback` 必须同时匹配 URL `state` 与该 Cookie 后才一次性消费；nonce 与 PKCE verifier 由服务端从 state 派生、不落库；token 交换、JWKS 验签与逐组群组元数据读取禁止放进数据库事务；只允许用 `sub`/`Name`/`DisplayName`/`Email` 映射本地账号；`groups` 仅用于 ADR-097 / ADR-098 / ADR-099 的组织同步，Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`；非空 `groups` 必须使用同次 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 逐组读取 `GET /api/get-group?id=owner/name`，只保留启用的 `Physical` 组，读取失败按 `group-metadata-failed` fail closed；Client Secret 只进入服务端请求头，不落库、不写日志；Casdoor 的 `isAdmin`、roles、permissions 等 claim 一律不得影响 InPulse 权限。
 - SSO 首次登录 JIT 开通 `password_hash=NULL`、无任何项目成员关系的账号：平台已有账号时 `is_admin=false`；平台此前没有任何账号（`app.users` 无行，含停用账号也算有）时，第一个完成 SSO 登录的账号自动授予 `is_admin=true`（[ADR-075](./docs/adr/ADR-075.md)，判定与 INSERT 用固定键 `pg_advisory_xact_lock` 在同一事务内串行化，审计 payload 记 `grantedAdmin`）；映射优先级固定为 `sso_subject` 命中 → 登录名命中且未绑定且邮箱一致时绑定 → JIT；邮箱不一致或 subject 已绑定其它账号必须按冲突拒绝，禁止静默接管同名账号。无口令账号在本地入口必须干净地返回 401，不得抛错或 500。
 - `SSO_ENABLED` 非真值即整体关闭；配置非法时 fail closed：访问登录页后由服务端 302 回 `/login?local=1&sso=disabled`，登录页提示未启用并展示本地口令表单（不自动跳转）；`/login?local=1` 是管理员应急口令入口（隐藏、不自动跳转）；`?sso_error=` 回落只显示错误与手动「重新登录」。SSO start/callback 是 302-only 路由，不参与生成客户端；前端只做同源整页跳转，不得为此新增裸 `fetch`/`axios`，也不得新增 SSO 状态查询接口。
 - 登录只接受匿名预认证 Session 及其 CSRF Token；已有普通、受限或完整认证 Session 必须先登出，再签发新的预认证 CSRF。停用用户的旧 Session 按无效处理；受保护或业务接口返回 401，但 `issueCsrfToken` 与无效 Session 的同源 `logout` 可按匿名安全语义执行且不得恢复身份。
@@ -1197,3 +1197,13 @@
 - **展示与审计**：祖先组织仍保留为层级数据，但管理员组织标签只显示有成员的组织；审计 `groupCount` / `membershipCount` 记录收敛后的实体群组数，`createdOrganizationCount` 仍记录实际新建的祖先及实体组织数。
 - **边界**：不新增路由、契约、迁移或权限变化；已存在的父级成员关系在下一次成功 SSO 登录时全量替换，不调用 Casdoor Admin API，不记录 Token 或原始 claim。
 - **本地验证**：API 单元 84 文件 548 例、`sso-login.integration.test.ts` 真实 PostgreSQL 19 例、Web 全量 121 文件 1037 例、生产构建与 `admin-users.spec.ts` Playwright 2/2 均本地通过；未连接真实 Casdoor 生产实例，不声称 CI、生产镜像或真实 IdP 联调已通过。
+
+## 2026-10-27 ADR-099 SSO 群组类型过滤说明
+
+用户反馈 InPulse 在 Casdoor 页面只有一个实体组时仍展示两个组。经 [ADR-099](./docs/adr/ADR-099.md)（Accepted，2026-10-27）修订 [ADR-097](./docs/adr/ADR-097.md) 与 [ADR-098](./docs/adr/ADR-098.md)：
+
+- **根因**：JWT 的 `groups` claim 只包含 `owner/path`，不含 Casdoor group 的 `Physical` / `Virtual` 类型；ADR-098 的父子路径收敛无法过滤互不为祖先的 Virtual 组。
+- **元数据读取**：验签后在数据库事务外使用本次 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 对已验签 claim 中每个群组调用 `GET /api/get-group?id=owner/name`；不保留用户 access_token，不拉全量目录，不查询 claim 外群组，不缓存，不在事务内发网络请求。Client Secret 只进入服务端请求头，不写日志、不进入审计。
+- **严格过滤**：响应必须为 `status=ok` 且 `owner` / `name` / `type` / `isEnabled` / `isTopGroup` / `parentId` 与 claim 路径一致；顶层 `parentId` 必须为空，子级 `parentId` 必须等于直接父组名称。只保留启用中的 `Physical` 组。未知类型、字段缺失、HTTP 失败、超时、父级不匹配或 Basic 认证失败均按 `group-metadata-failed` 拒绝登录，不创建账号、组织或 Session。
+- **未分类与审计**：过滤后再按 ADR-098 收敛最深实体组；没有 Physical 组时传空数组并清空成员关系，页面归入“未分类”。已验签 claim 仍是成员关系唯一真相，元数据只能过滤、不能增加成员。
+- **边界与验证**：不新增路由、OpenAPI、迁移、权限条目或数据模型；真实 Casdoor 的 `/api/get-group` 鉴权尚未联调，生产启用前必须完成 Physical + Virtual 并存 smoke test，不得以桩 IdP 结果替代。2026-10-27 本地 API/Web 类型检查、API 全量单测 85 文件 563 例、Web 全量单测 121 文件 1037 例、真实 PostgreSQL SSO 定向集成 25 例与 Web 回跳提示 6 例通过；未声称 CI、生产镜像或真实 IdP 联调通过。

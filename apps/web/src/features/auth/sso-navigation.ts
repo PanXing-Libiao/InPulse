@@ -30,6 +30,8 @@ const SSO_ERROR_MESSAGES: Readonly<Record<string, string>> = {
     "无法完成身份令牌交换，请重新登录；若持续失败请联系系统管理员。",
   "token-invalid":
     "身份令牌校验未通过，请重新登录；若持续失败请联系系统管理员。",
+  "group-metadata-failed":
+    "无法读取统一身份认证的群组类型，请重新登录；若持续失败请联系系统管理员。",
   "account-conflict": "该统一身份账号与现有账号冲突，请联系系统管理员处理。",
   "account-disabled": "账号已停用，请联系系统管理员。",
   "account-unavailable": "账号当前不可用，请联系系统管理员。",

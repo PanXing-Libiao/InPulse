@@ -36,6 +36,7 @@ import type {
 } from "../../organizations/organization-sync.port.js";
 import { PostgresSsoLoginAttemptRepository } from "./sso-login-attempt.repository.js";
 import type { SsoIdTokenClaims, SsoOidcClient } from "./sso-oidc.client.js";
+import { SsoCasdoorGroupClient } from "./sso-casdoor-group.client.js";
 import {
   PostgresSsoUserRepository,
   type SsoUserRecord,
@@ -87,6 +88,7 @@ export class SsoLoginService extends SsoGateway {
     private readonly audit: AuditWritePort,
     private readonly config: SsoConfig,
     private readonly oidc: SsoOidcClient,
+    private readonly groupDirectory: SsoCasdoorGroupClient,
     private readonly ttl: SessionTtlPolicy,
     private readonly keyring: VersionedHmacKeyring,
   ) {
@@ -186,7 +188,10 @@ export class SsoLoginService extends SsoGateway {
       state,
       attempt.stateHashKeyVersion,
     );
-    const issued = await this.issueSession(claims, input);
+    const organizationGroups = await this.resolveOrganizationGroups(
+      claims.groups,
+    );
+    const issued = await this.issueSession(claims, organizationGroups, input);
     return {
       location: attempt.returnTo ?? DEFAULT_SSO_RETURN_TO,
       cookies: [
@@ -276,8 +281,25 @@ export class SsoLoginService extends SsoGateway {
     return claims;
   }
 
+  private async resolveOrganizationGroups(
+    groups: readonly string[] | null,
+  ): Promise<readonly string[] | null> {
+    if (groups === null) {
+      return null;
+    }
+    if (groups.length === 0) {
+      return [];
+    }
+    try {
+      return await this.groupDirectory.resolvePhysicalGroups(groups);
+    } catch (error) {
+      throw new SsoLoginError("group-metadata-failed", error);
+    }
+  }
+
   private async issueSession(
     claims: SsoIdTokenClaims,
+    organizationGroups: readonly string[] | null,
     input: SsoCompleteInput,
   ): Promise<IssuedAuthenticatedSession> {
     return this.unitOfWork.run(async (tx) => {
@@ -292,7 +314,7 @@ export class SsoLoginService extends SsoGateway {
       const organizationSync = await this.organizationSync.syncSsoMemberships({
         tx,
         userId: user.id,
-        groups: claims.groups,
+        groups: organizationGroups,
       });
       await this.appendAccountAudit(tx, user, mapping.outcome, input);
       await this.appendOrganizationSyncAudit(tx, user, organizationSync, input);
