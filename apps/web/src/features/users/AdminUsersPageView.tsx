@@ -9,8 +9,6 @@ import {
   type AdminUserDisableRequest,
   type AdminUserItem,
   type InpulseApiClient,
-  type OrganizationItem,
-  type OrganizationMembershipSummary,
 } from "@generated/api";
 import {
   CalmBadge,
@@ -28,8 +26,13 @@ import { WECOM_ROBOT_QUERY_KEY } from "@features/settings/wecom-robot-query";
 import { NotificationPolicyPanel } from "@features/settings/NotificationPolicyPanel";
 import { PermissionMatrixPanel } from "@features/settings/PermissionMatrixPanel";
 import { ProjectMemberOverviewPanel } from "@features/projects/ProjectMemberOverviewPanel";
+import {
+  organizationDisplayName,
+  organizationDisplayPath,
+} from "@shared/organizations/organization-display";
 import { adminUserErrorMessage, useAdminUsers } from "./admin-user-query";
 import { DisableAccountModal } from "./DisableAccountModal";
+import { CasdoorImportModal } from "./CasdoorImportModal";
 import { MyOrganizationPanel } from "./MyOrganizationPanel";
 import {
   organizationErrorMessage,
@@ -112,6 +115,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     null,
   );
   const [notice, setNotice] = useState<FeedbackNotice | null>(null);
+  const [casdoorImportOpen, setCasdoorImportOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [reloading, setReloading] = useState(false);
@@ -380,7 +384,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         )
         .map((organization) => ({
           value: String(organization.id),
-          label: organization.name,
+          label: organizationDisplayName(organization),
         })),
       { value: "new", label: "＋ 新建组织" },
     ],
@@ -429,19 +433,13 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
     if (organizationId === null || organizationId === undefined) {
       return "未分类";
     }
-    return (
-      organizations.data?.items.find((item) => item.id === organizationId)
-        ?.name ?? "组织 " + organizationId
+    const organization = organizations.data?.items.find(
+      (item) => item.id === organizationId,
     );
+    return organization === undefined
+      ? "组织 " + organizationId
+      : organizationDisplayName(organization);
   };
-
-  const organizationDisplayLabel = (
-    organization: OrganizationItem | OrganizationMembershipSummary,
-  ) => organization.name;
-
-  const organizationFullPath = (
-    organization: OrganizationItem | OrganizationMembershipSummary,
-  ) => organization.groupPath ?? organization.name;
 
   const selectedOrganization =
     typeof orgView === "number"
@@ -822,6 +820,17 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 {memberScope === "active" ? (
                   <Button
                     className="secondary-button"
+                    onClick={() => {
+                      clearNotice();
+                      setCasdoorImportOpen(true);
+                    }}
+                  >
+                    从 Casdoor 导入
+                  </Button>
+                ) : null}
+                {memberScope === "active" ? (
+                  <Button
+                    className="secondary-button"
                     aria-expanded={orgMode !== "browse"}
                     onClick={handleOrgAction}
                   >
@@ -887,7 +896,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                         key={organization.id}
                         type="button"
                         role="tab"
-                        title={organizationFullPath(organization)}
+                        title={organizationDisplayPath(organization)}
                         aria-selected={orgView === organization.id}
                         className={
                           "member-org-tab" +
@@ -895,7 +904,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                         }
                         onClick={() => switchOrgView(organization.id)}
                       >
-                        {organizationDisplayLabel(organization)}{" "}
+                        {organizationDisplayName(organization)}{" "}
                         <b>{countByOrganization(organization.id)}</b>
                       </button>
                     ))}
@@ -1095,14 +1104,14 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                           user.organizations.map((organization) => (
                             <CalmBadge
                               key={organization.id}
-                              title={organizationFullPath(organization)}
+                              title={organizationDisplayPath(organization)}
                               tone={
                                 organization.source === "CASDOOR"
                                   ? "cyan"
                                   : "gray"
                               }
                             >
-                              {organizationDisplayLabel(organization)}
+                              {organizationDisplayName(organization)}
                             </CalmBadge>
                           ))
                         )}
@@ -1314,6 +1323,27 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
           </div>
         </form>
       </Modal>
+
+      <CasdoorImportModal
+        open={casdoorImportOpen}
+        {...(client ? { client } : {})}
+        onClose={() => setCasdoorImportOpen(false)}
+        onImported={(result) => {
+          setCasdoorImportOpen(false);
+          showSuccess(
+            "Casdoor 导入完成：新建 " +
+              result.created +
+              "，绑定 " +
+              result.linked +
+              "，刷新 " +
+              result.refreshed +
+              "，跳过 " +
+              result.skipped +
+              "，新建组织 " +
+              result.createdOrganizationCount,
+          );
+        }}
+      />
 
       <DisableAccountModal
         open={disableTarget !== null}

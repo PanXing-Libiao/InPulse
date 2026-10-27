@@ -1,6 +1,7 @@
 import { Controller, Get, Inject, Patch, Post, Req, Res } from "@nestjs/common";
 
 import { Operation } from "../http/contract.decorators.js";
+import { AdminCasdoorImportHttpService } from "./admin-casdoor-import-http.service.js";
 import {
   AdminUsersHttpService,
   type AdminUsersHttpRequest,
@@ -17,6 +18,8 @@ export class AdminUsersController {
   constructor(
     @Inject(AdminUsersHttpService)
     private readonly service: AdminUsersHttpService,
+    @Inject(AdminCasdoorImportHttpService)
+    private readonly casdoorImport: AdminCasdoorImportHttpService,
   ) {}
 
   @Get()
@@ -28,6 +31,15 @@ export class AdminUsersController {
     return this.respond("listAdminUsers", request, response);
   }
 
+  @Get("casdoor-import/preview")
+  @Operation("previewCasdoorUserImport")
+  async casdoorImportPreview(
+    @Req() request: AdminUsersHttpRequest,
+    @Res({ passthrough: true }) response: AdminUsersControllerResponse,
+  ) {
+    return this.respondCasdoor("preview", request, response);
+  }
+
   @Get(":userId/offboarding")
   @Operation("getAdminUserOffboarding")
   async offboarding(
@@ -35,6 +47,15 @@ export class AdminUsersController {
     @Res({ passthrough: true }) response: AdminUsersControllerResponse,
   ) {
     return this.respond("getAdminUserOffboarding", request, response);
+  }
+
+  @Post("casdoor-import")
+  @Operation("importCasdoorUsers")
+  async casdoorImportUsers(
+    @Req() request: AdminUsersHttpRequest,
+    @Res({ passthrough: true }) response: AdminUsersControllerResponse,
+  ) {
+    return this.respondCasdoor("import", request, response);
   }
 
   @Post()
@@ -88,6 +109,17 @@ export class AdminUsersController {
     response: AdminUsersControllerResponse,
   ) {
     const result = await this.service.handle(operation, request);
+    response.status(result.status);
+    response.setHeader("Cache-Control", "no-store");
+    return result.body;
+  }
+
+  private async respondCasdoor(
+    operation: "preview" | "import",
+    request: AdminUsersHttpRequest,
+    response: AdminUsersControllerResponse,
+  ) {
+    const result = await this.casdoorImport[operation](request);
     response.status(result.status);
     response.setHeader("Cache-Control", "no-store");
     return result.body;

@@ -49,6 +49,15 @@ import {
 import { PostgresSsoLoginAttemptRepository } from "./sso/sso-login-attempt.repository.js";
 import { PostgresSsoUserRepository } from "./sso/sso-user.repository.js";
 import { SsoCasdoorGroupClient } from "./sso/sso-casdoor-group.client.js";
+import { SsoCasdoorDirectoryClient } from "./sso/sso-casdoor-directory.client.js";
+import {
+  CASDOOR_IMPORT_PORT,
+  type CasdoorImportPort,
+} from "./sso/casdoor-import.port.js";
+import {
+  DisabledCasdoorImportService,
+  PostgresCasdoorImportService,
+} from "./sso/casdoor-import.service.js";
 import { SsoOidcClient } from "./sso/sso-oidc.client.js";
 import { SsoController } from "./sso/sso.controller.js";
 import { SsoLoginService } from "./sso/sso-login.service.js";
@@ -112,6 +121,28 @@ import {
     },
     PostgresSsoLoginAttemptRepository,
     PostgresSsoUserRepository,
+    {
+      provide: CASDOOR_IMPORT_PORT,
+      inject: [SSO_CONFIG, PostgresSsoUserRepository, ORGANIZATION_SYNC_PORT],
+      useFactory: (
+        config: SsoConfigLoadResult,
+        users: PostgresSsoUserRepository,
+        organizationSync: OrganizationSyncPort,
+      ): CasdoorImportPort => {
+        if (config.config === undefined) {
+          return new DisabledCasdoorImportService();
+        }
+        return new PostgresCasdoorImportService(
+          users,
+          organizationSync,
+          new SsoCasdoorGroupClient(config.config),
+          new SsoCasdoorDirectoryClient(
+            config.config,
+            config.config.importOrganization,
+          ),
+        );
+      },
+    },
     {
       provide: SsoGateway,
       inject: [
@@ -201,6 +232,7 @@ import {
     AuthenticatedMutationService,
     UserAuthInvalidationService,
     AdminHighRiskAuthService,
+    CASDOOR_IMPORT_PORT,
   ],
 })
 export class AuthModule {}

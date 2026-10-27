@@ -6,6 +6,8 @@ import {
   type AdminUserDisableRequest,
   type AdminUserItem,
   type AdminUserUpdateRequest,
+  type CasdoorImportPreviewResponse,
+  type CasdoorImportResult,
   type InpulseApiClient,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
@@ -161,4 +163,84 @@ export function useAdminUsers(
   });
 
   return { query, mutation };
+}
+
+export function casdoorImportErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
+    if (error.status === 403) return "你没有导入 Casdoor 账号的权限。";
+    if (error.status === 503) {
+      if (error.code === "CASDOOR_IMPORT_NOT_CONFIGURED")
+        return "Casdoor 导入尚未配置，请联系系统管理员。";
+      return "Casdoor 或群组服务暂时不可用，请稍后重试。";
+    }
+    if (error.status === 409) {
+      if (error.code === "CASDOOR_IMPORT_PREVIEW_STALE")
+        return "Casdoor 目录已变化，请刷新预览并重新勾选。";
+      if (error.code === "IDEMPOTENCY_IN_PROGRESS")
+        return "同一批导入正在处理中，请稍后重试。";
+      if (error.code === "IDEMPOTENCY_REQUEST_MISMATCH")
+        return "导入内容与上次请求不一致，请关闭后重新预览。";
+      return "Casdoor 目录或平台账号已变化，请刷新预览后重试。";
+    }
+    if (error.status === 422) return "Casdoor 导入参数无效，请重新预览后勾选。";
+    if (error.status === 429) return "请求过于频繁，请稍后重试。";
+  }
+  return "Casdoor 账号导入暂时失败，请重试。";
+}
+
+export function useCasdoorImportPreview(
+  client?: InpulseApiClient,
+  options: { readonly enabled?: boolean } = {},
+) {
+  const api = useMemo(() => client ?? createApiClient(), [client]);
+  return useQuery({
+    queryKey: ["casdoor-import-preview"],
+    queryFn: ({ signal }): Promise<CasdoorImportPreviewResponse> =>
+      api.previewCasdoorUserImport({ signal }),
+    retry: false,
+    enabled: options.enabled ?? true,
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+export function useCasdoorImport(
+  client?: InpulseApiClient,
+  onSuccess?: (result: CasdoorImportResult) => void,
+) {
+  const api = useMemo(() => client ?? createApiClient(), [client]);
+  const cache = useQueryClient();
+  const retryKey = useRef<{ signature: string; key: string } | null>(null);
+  return useMutation({
+    retry: false,
+    mutationFn: async (casdoorUserIds: readonly string[]) => {
+      const signature = JSON.stringify(casdoorUserIds);
+      if (retryKey.current?.signature !== signature) {
+        retryKey.current = {
+          signature,
+          key: createIdempotencyKey("casdoor-import"),
+        };
+      }
+      const csrf = await api.issueCsrfToken();
+      return api.importCasdoorUsers(
+        { casdoorUserIds: [...casdoorUserIds] },
+        {
+          headers: {
+            "x-csrf-token": csrf.csrfToken,
+            "Idempotency-Key": retryKey.current.key,
+          },
+        },
+      );
+    },
+    onSuccess: async (result) => {
+      retryKey.current = null;
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ["admin-users"] }),
+        cache.invalidateQueries({ queryKey: ["organizations"] }),
+        cache.invalidateQueries({ queryKey: ["my-organization-members"] }),
+      ]);
+      onSuccess?.(result);
+    },
+  });
 }

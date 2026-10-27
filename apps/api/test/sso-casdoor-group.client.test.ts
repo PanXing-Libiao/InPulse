@@ -249,6 +249,122 @@ describe("SsoCasdoorGroupClient", () => {
     ).rejects.toBeInstanceOf(SsoGroupMetadataError);
   });
 
+  test("管理员导入按群组目录还原子组完整路径，并过滤 Virtual 与停用组", async () => {
+    const organization = "libiaorobot.com";
+    const requests: string[] = [];
+    const fetchImpl = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url = new URL(String(input));
+      expect(url.origin + url.pathname).toBe(ISSUER + "/api/get-groups");
+      expect(url.searchParams.get("owner")).toBe(organization);
+      expect(url.searchParams.get("pageSize")).toBe("100");
+      requests.push(url.searchParams.get("p") ?? "");
+      expect(new Headers(init?.headers).get("authorization")).toBe(
+        GROUP_AUTHORIZATION,
+      );
+      return jsonResponse({
+        status: "ok",
+        msg: "",
+        data: [
+          {
+            owner: organization,
+            name: "总部",
+            type: "Physical",
+            parentId: organization,
+            isTopGroup: true,
+            isEnabled: true,
+          },
+          {
+            owner: organization,
+            name: "测试部",
+            type: "Physical",
+            parentId: "总部",
+            isTopGroup: false,
+            isEnabled: true,
+          },
+          {
+            owner: organization,
+            name: "Virtual Group3",
+            type: "Virtual",
+            parentId: organization,
+            isTopGroup: true,
+            isEnabled: true,
+          },
+          {
+            owner: organization,
+            name: "停用部",
+            type: "Physical",
+            parentId: organization,
+            isTopGroup: true,
+            isEnabled: false,
+          },
+        ],
+      });
+    }) as typeof fetch;
+
+    const groups = await new SsoCasdoorGroupClient(
+      config,
+      fetchImpl,
+    ).resolvePhysicalImportGroups(organization, [
+      organization + "/总部",
+      organization + "/测试部",
+      organization + "/Virtual Group3",
+      organization + "/停用部",
+      organization + "/已消失群组",
+    ]);
+
+    expect([...groups.entries()]).toEqual([
+      [organization + "/总部", organization + "/总部"],
+      [organization + "/测试部", organization + "/总部/测试部"],
+    ]);
+    expect(requests).toEqual(["1"]);
+  });
+
+  test("管理员导入遇到缺失父组时 fail closed", async () => {
+    const organization = "libiaorobot.com";
+    const fetchImpl = (async (): Promise<Response> =>
+      jsonResponse({
+        status: "ok",
+        msg: "",
+        data: [
+          {
+            owner: organization,
+            name: "测试部",
+            type: "Physical",
+            parentId: "不存在",
+            isTopGroup: false,
+            isEnabled: true,
+          },
+        ],
+      })) as typeof fetch;
+
+    await expect(
+      new SsoCasdoorGroupClient(config, fetchImpl).resolvePhysicalImportGroups(
+        organization,
+        [organization + "/测试部"],
+      ),
+    ).rejects.toMatchObject({
+      reason: "group-parent-missing",
+    });
+  });
+
+  test("管理员导入目录读取失败时 fail closed", async () => {
+    const organization = "libiaorobot.com";
+    const fetchImpl = (async (): Promise<Response> =>
+      new Response("bad", { status: 200 })) as typeof fetch;
+
+    await expect(
+      new SsoCasdoorGroupClient(config, fetchImpl).resolvePhysicalImportGroups(
+        organization,
+        [organization + "/测试部"],
+      ),
+    ).rejects.toMatchObject({
+      reason: "malformed-response",
+    });
+  });
+
   test("网络失败时按元数据失败拒绝", async () => {
     const path = "libiaorobot.com/测试部";
     const failing = new SsoCasdoorGroupClient(config, (async () => {

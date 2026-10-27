@@ -7176,3 +7176,19 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR099-CASDOOR-001 | 真实 Casdoor smoke test              | get-group 鉴权与返回结构 | 使用真实 Casdoor 账号同时加入一个 Physical 与一个 Virtual 组，完成 SSO 后只显示 Physical 组织；确认同一 SSO application 的 clientId/clientSecret 可通过 HTTP Basic 读取 get-group，返回字段满足严格校验                              | 通过（2026-10-27）：真实 SSO 后只显示 Physical “测试部”，Virtual Group3 未出现 |
 
 已用真实 Casdoor 完成 ADR099-CASDOOR-001：测试账号同时属于 Physical 与 Virtual 组，Basic 鉴权和返回结构通过严格校验，SSO 后只显示“测试部”，无实体组成员保持“未分类”。若上游未来返回 401/403 或字段变化，登录仍按 `group-metadata-failed` fail closed。本次验证不等于 CI、生产镜像或全量 Playwright 通过。
+
+## 2026-10-27 Casdoor 管理员批量导入与实体组归类（ADR-100）
+
+用户要求管理员不等待逐人 SSO 登录，直接把 Casdoor 目录中的可导入账号一次性带入平台，并按实体组自动建立组织、归类人员。验证必须把配置 organization 的启用账号读取、Physical 组路径还原、身份映射、组织同步、CSRF/幂等/审计和“未分类”展示分别覆盖；不得把本地桩目录测试描述成真实 Casdoor 批量导入已通过。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR100-UNIT-001 | API 单元 | 目录读取与字段白名单 | `sso-casdoor-directory.client.test.ts` 覆盖 application Basic 认证、分页与 1000 账号上限、只保留脱敏身份字段、配置组织内的组、启停/删除/墓碑过滤、重复 ID 与大小写等价登录名拒绝、未配置组织 fail closed | 本地通过（2026-10-27） |
+| ADR100-UNIT-002 | API 单元 | 群组目录与实体路径 | `sso-casdoor-group.client.test.ts` 覆盖 `get-groups` 分页、owner/name/type/isEnabled/isTopGroup/parentId 严格校验、parentId 还原祖先路径、Virtual 与停用组过滤、缺失父组/父级环/非法字段/网络失败 fail closed | 本地通过（2026-10-27） |
+| ADR100-UNIT-003 | API 单元 | 导入编排与 HTTP 门禁 | `casdoor-import.service.test.ts`、`casdoor-import-http.test.ts` 与 `sso.config.test.ts` 覆盖创建/绑定/刷新/跳过分类、目录读取在事务外、预览只读、单一幂等事务、预览后目录变化 409、同源失败不读上游、503 脱敏及可选组织配置校验；API 定向单测 5 文件 50 例通过 | 本地通过（2026-10-27） |
+| ADR100-API-001 | 真实 PostgreSQL | 预览零写入与导入事务 | `casdoor-import.integration.test.ts` 覆盖预览不写账号/组织/审计、新账号无口令且非管理员、同名邮箱一致绑定、邮箱冲突跳过、Physical 组织与无实体组未分类、重复导入不重复建号、Casdoor 移除组后下一次导入清空成员关系、单条批次审计不含登录名/邮箱/密码哈希 | 本地通过（2026-10-27，2 例） |
+| ADR100-API-002 | 真实 PostgreSQL + HTTP | 授权、CSRF、幂等与审计 | `casdoor-import-api.integration.test.ts` 覆盖匿名 401、普通成员 403、管理员预览 200 且 `no-store`、缺少 Idempotency-Key 400、无效 CSRF 拒绝、确认导入 200、同 Key 重放不重复建号或写审计、同 Key 不同摘要 409；与上条合计 2 文件 4 例通过 | 本地通过（2026-10-27） |
+| ADR100-WEB-001 | Web 单元 | 管理员导入弹窗 | `CasdoorImportModal.test.tsx` 与 `AdminUsersPageView.test.tsx` 覆盖默认全选、逐项取消、冲突原因、实体组末级名称、未分类提示、重新打开刷新目录、确认请求同时携带 CSRF 与 Idempotency-Key、成功后刷新管理员用户/组织/同组织成员查询；定向 2 文件 38 例通过 | 本地通过（2026-10-27） |
+| ADR100-GATE-001 | 静态与回归门禁 | 路由、类型与回归 | 全工作区 `pnpm lint`、`format:check`、`typecheck`、`build` 通过；`contract:drift` 6 个产物一致，`contract:validate` 131 条路由，`permissions:check` 131 / 131；全量单测 API 88 文件 589 例、Web 122 文件 1039 例、契约 17 文件 106 例、database 15 例、ops 9 文件 60 例全部通过；相关真实 PostgreSQL 回归 5 文件 40 例通过；`check:deploy:test`、`check:frontend:boundaries` 391 模块 / 2040 依赖、`check:deps` 928 源文件、`check:secrets` 1475 文件、`check:docs` 153 个 Markdown 与 `git diff --check` 通过 | 本地通过（2026-10-27） |
+
+**未执行与已知边界**：尚未连接真实 Casdoor 执行 `get-users` + `get-groups` + 批量导入 smoke，因此不能声称真实目录联调或生产环境已通过；未重跑 Playwright、生产镜像、Trivy 与 GitHub Actions。候选口径是配置 organization 下启用且未删除的账号，不评估 Casdoor application 的 roles / permissions / `isAdmin` / 登录策略，最终由管理员在预览中勾选。导入不会后台定时同步，也不会自动停用、删除或重新启用平台账号；Casdoor 移除组归属后，只有下一次重复导入所选用户时才清空旧成员关系。

@@ -17,6 +17,7 @@ import { AdminHighRiskAuthService } from "../src/auth/admin-high-risk.service.js
 import { AdminUserRepository } from "../src/admin-users/admin-user.repository.js";
 import { AdminUsersHttpService } from "../src/admin-users/admin-user-http.service.js";
 import { AdminUsersController } from "../src/admin-users/admin-user.controller.js";
+import { AdminCasdoorImportHttpService } from "../src/admin-users/admin-casdoor-import-http.service.js";
 import { AdminUserService } from "../src/admin-users/admin-user.service.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { AuthenticatedMutationService } from "../src/auth/authenticated-mutation.service.js";
@@ -479,7 +480,10 @@ beforeAll(async () => {
   class TestModule {}
   Module({
     controllers: [AdminUsersController],
-    providers: [{ provide: AdminUsersHttpService, useValue: http }],
+    providers: [
+      { provide: AdminUsersHttpService, useValue: http },
+      { provide: AdminCasdoorImportHttpService, useValue: {} },
+    ],
   })(TestModule);
   app = await NestFactory.create(TestModule, { logger: false });
   app.useGlobalFilters(new ApiExceptionFilter());

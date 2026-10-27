@@ -4,6 +4,10 @@ import { Controller, useForm } from "react-hook-form";
 import type { CreateProjectResponse, InpulseApiClient } from "@generated/api";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import {
+  organizationDisplayName,
+  organizationDisplayPath,
+} from "@shared/organizations/organization-display";
+import {
   CalmSelect,
   type CalmSelectOption,
 } from "@features/common/components/CalmSelect";
@@ -88,8 +92,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         if (!buckets.has(key)) {
           buckets.set(key, []);
           order.push(key);
-          labels.set(key, organization.name);
-          fullPaths.set(key, organization.groupPath ?? organization.name);
+          labels.set(key, organizationDisplayName(organization));
+          fullPaths.set(key, organizationDisplayPath(organization));
         }
         buckets.get(key)?.push(user.id);
       }
@@ -122,7 +126,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   ) =>
     organizations.length === 0
       ? "未分类"
-      : organizations.map((organization) => organization.name).join("、");
+      : organizations
+          .map((organization) => organizationDisplayName(organization))
+          .join("、");
 
   // 整组选择只列真实组织：未分类不是真实组织，逐人挑选仍走下方搜索框。
   const assignedOrganizationGroups = organizationGroups;

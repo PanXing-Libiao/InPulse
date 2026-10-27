@@ -8,6 +8,10 @@ import {
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import type { InpulseApiClient } from "@generated/api";
 import {
+  organizationDisplayName,
+  organizationDisplayPath,
+} from "@shared/organizations/organization-display";
+import {
   organizationErrorMessage,
   useMyOrganizationMembers,
 } from "./organization-query";
@@ -59,7 +63,10 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
   const organizations = query.data.organizations;
   const items = query.data.items;
   const organizationNames = new Map(
-    organizations.map((organization) => [organization.id, organization.name]),
+    organizations.map((organization) => [
+      organization.id,
+      organizationDisplayName(organization),
+    ]),
   );
 
   if (organizations.length === 0) {
@@ -90,10 +97,10 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
         {organizations.map((organization) => (
           <CalmBadge
             key={organization.id}
-            title={organization.groupPath ?? organization.name}
+            title={organizationDisplayPath(organization)}
             tone={organization.source === "CASDOOR" ? "cyan" : "gray"}
           >
-            {organization.name}
+            {organizationDisplayName(organization)}
           </CalmBadge>
         ))}
       </div>

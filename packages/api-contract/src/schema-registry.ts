@@ -5,6 +5,13 @@ import { adminAiAssistSchemas } from "./contracts/admin-ai-assist.zod.js";
 import { wecomRobotSchemas } from "./contracts/wecom-robot.zod.js";
 import { projectWecomGroupSchemas } from "./contracts/project-wecom-group.zod.js";
 import { organizationSchemas } from "./contracts/organization.zod.js";
+import {
+  casdoorImportCountsSchema,
+  casdoorImportPreviewItemSchema,
+  casdoorImportPreviewResponseSchema,
+  casdoorImportRequestSchema,
+  casdoorImportResultSchema,
+} from "./contracts/casdoor-import.zod.js";
 import { documentImportSchemas } from "./contracts/document-import.zod.js";
 import {
   auditLogItemSchema,
@@ -745,6 +752,34 @@ export const schemaRegistry = {
   UserDirectoryResponse: {
     schema: userDirectoryResponseSchema,
     summary: "全部启用用户的轻量目录；响应 no-store",
+    sensitiveFieldPaths: [],
+  },
+  CasdoorImportRequest: {
+    schema: casdoorImportRequestSchema,
+    summary:
+      "Casdoor 批量导入确认请求；只接受预览后勾选的 Casdoor 账号稳定标识",
+    sensitiveFieldPaths: [],
+  },
+  CasdoorImportCounts: {
+    schema: casdoorImportCountsSchema,
+    summary: "Casdoor 目录预览按创建、绑定、刷新、跳过分类的计数",
+    sensitiveFieldPaths: [],
+  },
+  CasdoorImportPreviewItem: {
+    schema: casdoorImportPreviewItemSchema,
+    summary: "Casdoor 导入预览条目；仅含脱敏身份、Physical 组路径与动作分类",
+    sensitiveFieldPaths: [],
+  },
+  CasdoorImportPreviewResponse: {
+    schema: casdoorImportPreviewResponseSchema,
+    summary:
+      "Casdoor 导入预览；管理员实时读取配置组织，响应 no-store 且不含凭据",
+    sensitiveFieldPaths: [],
+  },
+  CasdoorImportResult: {
+    schema: casdoorImportResultSchema,
+    summary:
+      "Casdoor 批量导入结果计数；不返回账号邮箱、Casdoor 标识或原始目录响应",
     sensitiveFieldPaths: [],
   },
   AdminUserPath: {

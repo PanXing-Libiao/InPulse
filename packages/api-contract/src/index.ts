@@ -21,6 +21,7 @@ export * from "./personal-notification-settings.js";
 export * from "./project-notification-categories.js";
 export * from "./contracts/projects.zod.js";
 export * from "./contracts/users.zod.js";
+export * from "./contracts/casdoor-import.zod.js";
 export * from "./contracts/auth.zod.js";
 export * from "./contracts/sso.zod.js";
 

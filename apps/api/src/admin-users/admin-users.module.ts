@@ -12,6 +12,8 @@ import { AdminUserOffboardingRepository } from "./admin-user-offboarding.reposit
 import { AdminUserRepository } from "./admin-user.repository.js";
 import { AdminUserService } from "./admin-user.service.js";
 import { AdminUsersHttpService } from "./admin-user-http.service.js";
+import { AdminCasdoorImportHttpService } from "./admin-casdoor-import-http.service.js";
+import { AdminCasdoorImportService } from "./admin-casdoor-import.service.js";
 
 /** F-03 用户管理支柱；所有写命令只创建一个 UnitOfWork。 */
 @Module({
@@ -29,6 +31,8 @@ import { AdminUsersHttpService } from "./admin-user-http.service.js";
     AdminUserOffboardingRepository,
     AdminUserService,
     AdminUsersHttpService,
+    AdminCasdoorImportService,
+    AdminCasdoorImportHttpService,
   ],
   controllers: [AdminUsersController],
 })

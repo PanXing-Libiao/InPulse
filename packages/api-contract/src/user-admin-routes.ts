@@ -62,6 +62,44 @@ const noBodyReplayPolicy = {
   success: { "204": { noBody: true as const } },
 } as const;
 
+const upstreamErrors = {
+  ...errors,
+  "503": json("ErrorResponse"),
+} as const;
+
+/** Casdoor 导入结果只含计数，不含目录 PII；重放只要求原操作人仍是完整管理员。 */
+const casdoorImportReplayPolicy = {
+  version: "1.0.0",
+  success: {
+    "200": {
+      body: {
+        responseSchemaRef: "CasdoorImportResult" as const,
+        safeBodyFieldPaths: [
+          "scannedUserCount",
+          "created",
+          "linked",
+          "refreshed",
+          "skipped",
+          "createdOrganizationCount",
+          "membershipCount",
+        ],
+      },
+    },
+  },
+} as const;
+
+const casdoorImportWritePolicy = {
+  idempotencyExceptionAdr: "none",
+  idempotencyContractVersion: "1.0.0",
+  idempotencyFingerprintVersion: "1.0.0",
+  idempotencyReplayPolicy: casdoorImportReplayPolicy,
+  replayAuthorizationPolicy: {
+    version: "1.0.0",
+    actorOnly: true as const,
+  },
+  securityFlowPolicy: "none",
+} as const;
+
 const writePolicy = {
   idempotencyExceptionAdr: "none",
   idempotencyContractVersion: "1.0.0",
@@ -187,6 +225,74 @@ export const adminUserRoutes: readonly RouteDefinition[] = [
     versionPolicy: "none",
     concurrencyPolicy: "none",
     auditAction: "none",
+  },
+  {
+    method: "GET",
+    path: "/admin/users/casdoor-import/preview",
+    operationId: "previewCasdoorUserImport",
+    summary:
+      "系统管理员实时读取配置 Casdoor 组织的启用账号，过滤 Virtual 与停用组，并按平台身份映射给出创建、绑定、刷新或跳过预览；不写数据库。",
+    request: {
+      path: "none",
+      query: "none",
+      headers: "none",
+      body: { noBody: true },
+    },
+    responses: {
+      "200": json("CasdoorImportPreviewResponse"),
+      ...upstreamErrors,
+    },
+    authPolicy: "adminSession",
+    csrfPolicy: "none",
+    idempotencyPolicy: "none",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "none",
+    idempotencyFingerprintVersion: "none",
+    behaviorHeaders: "none",
+    idempotencyReplayPolicy: "none",
+    replayAuthorizationPolicy: "none",
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "none",
+  },
+  {
+    method: "POST",
+    path: "/admin/users/casdoor-import",
+    operationId: "importCasdoorUsers",
+    summary:
+      "系统管理员按预览勾选一次性批量导入 Casdoor 账号：新建账号无本地口令且非管理员，按既有规则绑定同名账号，并在同一事务内同步 Physical 组织与成员关系；不自动停用或删除平台账号。",
+    request: {
+      path: "none",
+      query: "none",
+      headers: "AdminUserMutationHeaders",
+      body: {
+        contentTypes: [
+          {
+            contentType: "application/json",
+            schemaRef: "CasdoorImportRequest",
+          },
+        ],
+      },
+    },
+    responses: { "200": json("CasdoorImportResult"), ...upstreamErrors },
+    authPolicy: "adminSession",
+    csrfPolicy: "required",
+    idempotencyPolicy: "idempotencyRequired",
+    behaviorHeaders: [],
+    ...casdoorImportWritePolicy,
+    versionPolicy: {
+      apiVersion: "v1",
+      schemaVersion: "1.0.0",
+      ifMatch: "none",
+    },
+    concurrencyPolicy: {
+      rowVersion: "none",
+      lockOrder: "none",
+      retry:
+        "单事务按 Casdoor 账号标识逐项锁定平台用户；目录在事务外读取，身份冲突跳过该账号，目录在预览后缺失所选账号时整批 409 并要求重新预览",
+    },
+    auditAction: "admin.user.casdoorImport",
   },
   {
     method: "POST",

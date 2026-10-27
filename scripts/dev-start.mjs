@@ -54,6 +54,7 @@ const SSO_KEYS = [
   "SSO_CLIENT_SECRET_FILE",
   "SSO_REDIRECT_URI",
 ];
+const SSO_OPTIONAL_KEYS = ["CASDOOR_IMPORT_ORGANIZATION"];
 
 const USAGE = `InPulse 本地开发启动
 
@@ -137,6 +138,9 @@ function resolveSso(options, fileValues) {
     if (value.length === 0) {
       missing.push(key);
     }
+  }
+  for (const key of SSO_OPTIONAL_KEYS) {
+    values[key] = (process.env[key] ?? fileValues[key] ?? "").trim();
   }
   if (missing.length > 0) {
     return { enabled: false, reason: `${missing.join("、")} 未配置` };
@@ -541,6 +545,7 @@ function buildApiEnvironment(fileValues, sso, runtime) {
   // 清掉继承来的 SSO 变量，避免与本次解析结果混用。
   for (const key of [
     ...SSO_KEYS,
+    ...SSO_OPTIONAL_KEYS,
     "SSO_ENABLED",
     "SSO_CLIENT_SECRET_TEST_PATH",
   ]) {
@@ -556,6 +561,10 @@ function buildApiEnvironment(fileValues, sso, runtime) {
   env["SSO_REDIRECT_URI"] =
     sso.values["SSO_REDIRECT_URI"] ||
     runtime.webOrigin + "/api/v1/auth/sso/callback";
+  if (sso.values["CASDOOR_IMPORT_ORGANIZATION"].length > 0) {
+    env["CASDOOR_IMPORT_ORGANIZATION"] =
+      sso.values["CASDOOR_IMPORT_ORGANIZATION"];
+  }
   // 本地 Secret 位于 /run/secrets 之外，按仓库规则只允许 NODE_ENV=test 加该开关读取（技术设计 §7）。
   env["SSO_CLIENT_SECRET_TEST_PATH"] = "1";
   return env;

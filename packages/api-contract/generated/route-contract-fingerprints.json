@@ -379,6 +379,12 @@
       "fingerprint": "c159a7ec6eb02013e211b7ffd0d57ed9c98f160c3063aa291a218822905c90a1"
     }
   ],
+  "importCasdoorUsers": [
+    {
+      "version": "1.0.0",
+      "fingerprint": "ae2d35b596e6d89b0c8eef7e102f862541dd99dfab0fe79835f4c314008f6121"
+    }
+  ],
   "importProject": [
     {
       "version": "1.0.0",

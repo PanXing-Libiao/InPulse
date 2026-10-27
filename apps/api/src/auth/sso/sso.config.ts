@@ -15,6 +15,8 @@ export interface SsoConfig {
   readonly stateTtlSeconds: number;
   readonly discoveryTtlSeconds: number;
   readonly requestTimeoutMs: number;
+  /** Casdoor 目录导入使用的组织 owner；未配置时仅关闭主动导入。 */
+  readonly importOrganization?: string | undefined;
 }
 
 export interface SsoConfigLoadResult {
@@ -61,6 +63,9 @@ export function loadSsoConfig(
         stateTtlSeconds: SSO_STATE_TTL_SECONDS,
         discoveryTtlSeconds: SSO_DISCOVERY_TTL_SECONDS,
         requestTimeoutMs: SSO_REQUEST_TIMEOUT_MS,
+        importOrganization: optionalImportOrganization(
+          env["CASDOOR_IMPORT_ORGANIZATION"],
+        ),
       },
       invalidReason: undefined,
     };
@@ -79,6 +84,19 @@ function required(
   const value = env[name]?.trim();
   if (value === undefined || value.length === 0) {
     throw new Error(`${name} is required when SSO is enabled`);
+  }
+  return value;
+}
+
+function optionalImportOrganization(
+  raw: string | undefined,
+): string | undefined {
+  const value = raw?.trim() ?? "";
+  if (value.length === 0) return undefined;
+  if (value.length > 100 || value.includes("/") || value !== value.trim()) {
+    throw new Error(
+      "CASDOOR_IMPORT_ORGANIZATION must be a single Casdoor organization owner",
+    );
   }
   return value;
 }

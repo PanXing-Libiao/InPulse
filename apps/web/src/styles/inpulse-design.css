@@ -3580,12 +3580,14 @@
 
 .settings-members-panel .admin-member-list .member-meta {
   display: grid;
-  grid-template-columns: 96px 78px 52px 104px;
+  --admin-member-org-column: clamp(78px, 12vw, 168px);
+  --admin-member-meta-width: calc(279px + var(--admin-member-org-column));
+  grid-template-columns: 96px var(--admin-member-org-column) 52px 104px;
   align-items: center;
   justify-content: start;
   column-gap: 9px;
-  flex: 0 0 357px;
-  width: 357px;
+  flex: 0 0 var(--admin-member-meta-width);
+  width: var(--admin-member-meta-width);
   min-width: 0;
 }
 
@@ -3606,8 +3608,8 @@
   display: inline-flex;
   max-width: 100%;
   margin-top: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .settings-members-panel .admin-member-list .member-meta > .badge,
@@ -4852,5 +4854,160 @@
   .audit-log-page .audit-log-row,
   .audit-snapshot-button {
     transition: none;
+  }
+}
+
+/* Casdoor 管理员导入：预览、逐项选择与实体组展示。 */
+.casdoor-import {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.casdoor-import-intro {
+  margin: 0;
+  color: #586d83;
+  font-size: var(--text-md);
+  line-height: 1.75;
+}
+
+.casdoor-import-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fbfe;
+  color: #60778d;
+  font-size: var(--text-md);
+}
+
+.casdoor-import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.casdoor-import-summary span {
+  padding: 4px 9px;
+  border: 1px solid #dfeaf6;
+  border-radius: 999px;
+  background: #f4f9fe;
+  color: #4e6880;
+  font-size: var(--text-sm);
+}
+
+.casdoor-import-selectbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid #d7e6f7;
+  border-radius: 10px;
+  background: #f3f8fe;
+  color: #4b657c;
+  font-size: var(--text-md);
+}
+
+.casdoor-import-selectbar .ant-btn {
+  margin-left: auto;
+}
+
+.casdoor-import-list {
+  overflow: auto;
+  max-height: min(54vh, 560px);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.casdoor-import-row {
+  display: grid;
+  grid-template-columns: 20px minmax(180px, 1.2fr) minmax(160px, 1fr) minmax(
+      180px,
+      1fr
+    );
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf2f7;
+  color: #263b4f;
+  font-size: var(--text-md);
+}
+
+.casdoor-import-row:last-child {
+  border-bottom: 0;
+}
+
+.casdoor-import-row.is-skipped {
+  background: #fafbfd;
+  color: #7a8b9b;
+}
+
+.casdoor-import-identity,
+.casdoor-import-action {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+
+.casdoor-import-identity strong {
+  overflow: hidden;
+  color: #1d3348;
+  font-size: var(--text-lg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.casdoor-import-row.is-skipped .casdoor-import-identity strong {
+  color: #607383;
+}
+
+.casdoor-import-identity span,
+.casdoor-import-action span {
+  overflow-wrap: anywhere;
+  color: #74879a;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.casdoor-import-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.casdoor-import-groups .ant-tag {
+  max-width: 100%;
+  margin-inline-end: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.casdoor-import-unclassified {
+  color: #9a6a28;
+  font-size: var(--text-sm);
+}
+
+.casdoor-import-action .ant-tag {
+  align-self: flex-start;
+  margin-inline-end: 0;
+}
+
+@media (max-width: 900px) {
+  .casdoor-import-row {
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .casdoor-import-groups,
+  .casdoor-import-action {
+    grid-column: 2;
   }
 }

@@ -333,7 +333,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | `assignUsersOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（2.0.0）；`userIds` 1～200 去重、`organizationId` 为正整数或 `null`；按用户 ID 升序 `FOR UPDATE`；只允许本地账号与 LOCAL 目标组织，SSO 用户或 CASDOOR 目标返回 409 `ORGANIZATION_SSO_MANAGED`；本地账号使用单组织替换语义，重复调用 `updatedCount = 0`；目标组织不存在 422 `ORGANIZATION_NOT_FOUND`；审计 `admin.user.organizations.assign` |
 | `getMyOrganizationMembers` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效会话：返回当前用户全部 `organizations` 与去重后的同组织 ACTIVE 成员；成员含 `id` / `name` / `avatarUrl` / `isAdmin` / `organizationIds`（最多 300 条；不返回登录名、邮箱与停用状态）；未分配返回空数组；只读，响应 `no-store` |
 
-六条路由承载 ADR-081 的组织（部门）能力。2026-10-16 历史口径为「一名成员至多归属一个组织、未分配为 `NULL`」，该口径自 [ADR-097](adr/ADR-097.md) 起只继续适用于本地口令账号；SSO 用户可同时属于多个 CASDOOR 群组。组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。ADR-081 落库时新增迁移 `0046_organizations.sql`、路由总数 119 → 125；ADR-097 未新增业务路由，当前仍为 129 条操作 / 129 条路由。2026-10-16 第二批与修正保留：① `getUserDirectory` 增加只读组织字段，新建项目「初始项目成员」选择器按组织分组并支持「全选组织」；② 修正 `/settings` 前端路由守卫为登录守卫，普通成员进入后只渲染只读同组织视图；③ 真实 PostgreSQL 集成覆盖组织归属空数组与非空数组。
+六条路由承载 ADR-081 的组织（部门）能力。2026-10-16 历史口径为「一名成员至多归属一个组织、未分配为 `NULL`」，该口径自 [ADR-097](adr/ADR-097.md) 起只继续适用于本地口令账号；SSO 用户可同时属于多个 CASDOOR 群组。组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。ADR-081 落库时新增迁移 `0046_organizations.sql`、路由总数 119 → 125；ADR-097 未新增业务路由；ADR-099 结束时为 129 条操作 / 129 条路由，ADR-100 新增两条管理员导入路由后当前为 131 条操作 / 131 条路由。2026-10-16 第二批与修正保留：① `getUserDirectory` 增加只读组织字段，新建项目「初始项目成员」选择器按组织分组并支持「全选组织」；② 修正 `/settings` 前端路由守卫为登录守卫，普通成员进入后只渲染只读同组织视图；③ 真实 PostgreSQL 集成覆盖组织归属空数组与非空数组。
 
 ## ADR-088 离职账号物理删除（2026-10-20）
 
@@ -389,10 +389,27 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 ## ADR-098 / ADR-099 SSO 实体组与群组类型过滤（2026-10-27）
 
-本节按 [ADR-098](adr/ADR-098.md) 与 [ADR-099](adr/ADR-099.md) 修订 SSO 组织同步口径。六条组织路由、授权等级、CSRF、幂等与 `If-Match` 要求均不变，路由总数保持 129；不新增操作、权限或生成客户端条目。
+本节按 [ADR-098](adr/ADR-098.md) 与 [ADR-099](adr/ADR-099.md) 修订 SSO 组织同步口径。六条组织路由、授权等级、CSRF、幂等与 `If-Match` 要求均不变；在本节所述时点路由总数保持 129，ADR-100 之后另新增两条管理员导入路由。
 
 **登录同步边界**：只有绑定 `sso_subject` 的账号由 SSO 管理组织。Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`。验签后，服务端必须在数据库事务外使用同一 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 对已验签 claim 中每个群组调用 `GET /api/get-group?id=owner/name`；响应必须通过 owner、name、type、isEnabled、isTopGroup 与 parentId 严格校验，顶层 parentId 必须等于群组所属组织 ID（Casdoor 的 owner）、子级 parentId 必须等于直接父组名称。只保留启用的 `Physical` 组，再按 ADR-098 收敛同一路径族的最深实体组；Virtual、停用组和祖先路径不写用户直接成员关系。
 
 **失败与未分类**：`groups` 缺失时登录成功但不改组织；`groups: []`、过滤后无 Physical 组或 claim 合法但无实体组时清空成员关系并归入“未分类”；非法路径按 `token-invalid` 拒绝。Basic 认证失败，或元数据接口出现网络错误、超时、非 2xx、malformed/unknown type/路径或父级不匹配时，按 `group-metadata-failed` fail closed，不签发 Session、不创建账号或组织。已验签 claim 仍是成员集合的唯一真相，元数据只能过滤、不能增加成员。Client Secret 只进入服务端请求头，不落库、不写日志，也不进入审计。
 
 **验证边界**：2026-10-27 本地真实 PostgreSQL + 桩 IdP 覆盖 Physical/Virtual 混合、仅 Virtual 清空、元数据失败拒绝、缺失/空数组不调用元数据接口，以及群组查询发生在事务外；`permissions:check` 未因本批新增路由或权限条目。真实 Casdoor smoke test 亦已通过：Physical 与 Virtual 并存账号登录后只显示实体组“测试部”，Virtual 组未出现，无实体组成员归入“未分类”。
+
+## ADR-100 Casdoor 管理员批量导入（2026-10-27）
+
+本节按 [ADR-100](adr/ADR-100.md)（Accepted）新增两条系统管理员路由，路由总数 129 → 131。导入只扩展管理员用户目录，不改变 SSO 登录组织同步、项目成员或项目权限。
+
+| operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `previewCasdoorUserImport` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；实时读取 `CASDOOR_IMPORT_ORGANIZATION` 下启用、未删除账号，只返回脱敏身份与 Physical 组预览；只读、无 CSRF、无幂等，响应 `no-store`；SSO 关闭、组织未配置或目录不可用时 503 |
+| `importCasdoorUsers` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + 同源 + 同步 CSRF + 数据库级幂等（1.0.0）；`casdoorUserIds` 1～1000 去重；确认时重新读取当前目录，所选账号在预览后消失、停用或改组时 409；身份冲突逐账号跳过；单事务写入账号、Physical 组织成员关系与一条 `admin.user.casdoorImport` 审计，网络读取在事务外 |
+
+**目录与实体组口径**：账号候选范围是配置 Casdoor organization 下启用且未删除的账号，不评估 application roles、permissions、`isAdmin` 或登录策略；管理员在预览中最终勾选后才导入。`/api/get-users` 的 `groups` 仅视为 `owner/name` 组引用；确认前分页读取同一组织的 `GET /api/get-groups`，按 `parentId` 还原完整路径并严格校验 owner、name、type、isEnabled、isTopGroup 与父级。只把启用中的 `Physical` 组写入 CASDOOR 成员关系；Virtual、停用组和目录中已不存在的陈旧引用忽略。互不为祖先的真实 Physical 组全部保留，同一路径族仍只直接归属最深实体组；无实体组不建立组织关系，页面归入“未分类”。
+
+**身份与事务**：`sso_subject` 命中则刷新；登录名命中、未绑定且邮箱一致时绑定；其余 JIT 新建。新账号固定 `password_hash=NULL`、`is_admin=false`，无项目成员关系；导入路径显式关闭 ADR-075 首管理员授予。目录读取、身份写入、组织创建、成员关系替换与审计共享同一事务；导入不自动停用、删除或重新启用平台账号。组目录读取失败、字段非法、父级缺失或成环时整批 503 fail closed。
+
+**重放与审计**：确认导入的响应只含计数，重放只要求原操作人当前仍是完整管理员并继续通过 CSRF 门禁；同 Key、同摘要、同契约版本重放不重复建号或写审计，同 Key 不同请求体 409。审计 target 为 Casdoor organization，payload 仅含组织名与扫描、新建、绑定、刷新、跳过、组织与成员关系计数，不写登录名、邮箱、Casdoor ID、组路径明细或任何凭据。
+
+**验证边界**：本地真实 PostgreSQL 与 HTTP 集成覆盖预览零写入、无口令非管理员新账号、同邮箱绑定、冲突跳过、Physical 组织与无实体组未分类、重复导入、组移除后清空关系、管理员授权、CSRF、幂等重放及单条审计；真实 Casdoor 批量导入 smoke 尚未执行。当前 `permissions:check` 应与 Route Registry 同步为 131 条操作 / 131 条路由。

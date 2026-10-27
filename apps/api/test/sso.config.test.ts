@@ -127,3 +127,24 @@ describe("loadSsoConfig（fail closed）", () => {
     expect(JSON.stringify(result)).not.toContain("test-client-secret");
   });
 });
+
+describe("CASDOOR_IMPORT_ORGANIZATION", () => {
+  test("可选配置只接受单个 Casdoor 组织 owner", () => {
+    expect(
+      loadSsoConfig(enabledEnv()).config?.importOrganization,
+    ).toBeUndefined();
+    expect(
+      loadSsoConfig(
+        enabledEnv({ CASDOOR_IMPORT_ORGANIZATION: " libiaorobot.com " }),
+      ).config?.importOrganization,
+    ).toBe("libiaorobot.com");
+  });
+
+  test("带路径的非法组织配置按 fail closed 拒绝", () => {
+    const result = loadSsoConfig(
+      enabledEnv({ CASDOOR_IMPORT_ORGANIZATION: "libiaorobot.com/测试部" }),
+    );
+    expect(result.config).toBeUndefined();
+    expect(result.invalidReason).toContain("CASDOOR_IMPORT_ORGANIZATION");
+  });
+});

@@ -268,6 +268,49 @@ export type AuditLogQueryRequest = {
   readonly limit?: number;
 };
 
+export type CasdoorImportAction = ("create" | "link" | "refresh" | "skip");
+
+export type CasdoorImportCounts = {
+  readonly create: number;
+  readonly link: number;
+  readonly refresh: number;
+  readonly skip: number;
+};
+
+export type CasdoorImportPreviewItem = {
+  readonly casdoorId: string;
+  readonly loginName: string;
+  readonly displayName: string;
+  readonly email: (string | null);
+  readonly groups: readonly string[];
+  readonly action: CasdoorImportAction;
+  readonly reason: (CasdoorImportSkipReason | null);
+};
+
+export type CasdoorImportPreviewResponse = {
+  readonly organization: string;
+  readonly fetchedAt: string;
+  readonly scannedUserCount: number;
+  readonly items: readonly CasdoorImportPreviewItem[];
+  readonly counts: CasdoorImportCounts;
+};
+
+export type CasdoorImportRequest = {
+  readonly casdoorUserIds: readonly string[];
+};
+
+export type CasdoorImportResult = {
+  readonly scannedUserCount: number;
+  readonly created: number;
+  readonly linked: number;
+  readonly refreshed: number;
+  readonly skipped: number;
+  readonly createdOrganizationCount: number;
+  readonly membershipCount: number;
+};
+
+export type CasdoorImportSkipReason = ("account-disabled" | "account-deleted" | "subject-bound-to-other-account" | "email-mismatch" | "email-taken");
+
 export type ChangeRecordVersion = {
   readonly title: string;
   readonly contextProblem: string;

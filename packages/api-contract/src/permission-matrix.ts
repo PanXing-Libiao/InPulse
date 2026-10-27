@@ -347,6 +347,38 @@ export const permissionMatrix = [
     },
   },
   {
+    operationId: "previewCasdoorUserImport",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: { kind: "deny", status: 403 },
+      其他项目成员: { kind: "deny", status: 403 },
+      已移除成员: { kind: "deny", status: 403 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: {
+        kind: "conditional",
+        allowedWhen:
+          "完整管理员 Session；实时读取配置的 Casdoor 组织目录，只返回脱敏身份与 Physical 组预览；响应 no-store，不需要 CSRF 或幂等键",
+        deniedWith: 403,
+      },
+    },
+  },
+  {
+    operationId: "importCasdoorUsers",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: { kind: "deny", status: 403 },
+      其他项目成员: { kind: "deny", status: 403 },
+      已移除成员: { kind: "deny", status: 403 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: {
+        kind: "conditional",
+        allowedWhen:
+          "完整管理员 Session；CSRF 与 Idempotency-Key 必填；按所选 Casdoor 标识重新读取当前目录，只创建无口令非管理员账号或按既有身份规则绑定，并同步 Physical 组织；不自动停用、删除或重新启用平台账号；目录故障 503，预览后目录变化 409，身份冲突逐账号跳过并写单条批次审计",
+        deniedWith: 403,
+      },
+    },
+  },
+  {
     operationId: "listAdminUsers",
     outcomes: {
       匿名: { kind: "deny", status: 401 },

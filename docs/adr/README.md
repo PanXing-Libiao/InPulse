@@ -113,6 +113,7 @@
 | [ADR-097](ADR-097.md) | Accepted | SSO 用户组织归属对齐 Casdoor 群组：application 配置 `JWT-Custom` + Token fields `Groups` + Token group format `Path`，使用 groups claim 的 owner/path 完整路径，支持一人多群组与层级；新增 app.user_organizations，迁移 users.organization_id 后删除该列；CASDOOR 组织自动建立、SSO 用户组织归属每次登录全量对账并禁止本地手工调整；本地账号保留原有管理员组织管理；新增迁移 0061，未新增业务路由 |
 | [ADR-098](ADR-098.md) | Accepted | SSO 实体群组收敛与未分类展示（修订 ADR-097）：同一 owner 的父级与子级路径同时出现在 claim 时，父级只建立层级，用户只直接归属最深实体群组；独立真实群组仍全部保留；管理员成员页新增“未分类”标签，无组织徽章、普通成员空态、批量移出和项目成员选择器统一使用“未分类”，但不把该虚拟分类落库为组织；无路由、契约、迁移与权限变化 |
 | [ADR-099](ADR-099.md) | Accepted   | SSO 按 Casdoor 群组类型过滤虚拟组（修订 ADR-097/098）：token 交换后在数据库事务外使用同一 SSO application 的 clientId/clientSecret 通过 HTTP Basic 逐组调用 `GET /api/get-group`，校验 owner/name、Physical/Virtual、启用与父级，只保留启用的 Physical 组并继续按最深祖先收敛；元数据缺失、未知类型或读取失败一律 `group-metadata-failed` 拒绝登录；无实体组清空成员并归入未分类；不新增路由、迁移与权限条目                                                                                                                                                                                                                                                     |
+| [ADR-100](ADR-100.md) | Accepted | Casdoor 管理员批量导入与实体组归类：新增预览与确认导入两条系统管理员路由（129 → 131）；读取配置 organization 下启用账号，用群组目录的 parentId 还原完整路径，只写入启用中的 Physical 组，无实体组归入“未分类”；新账号无本地口令且非管理员，导入路径不触发首管理员授予；目录网络读取在事务外，身份写入、组织同步与单条批次审计同事务，确认导入要求 CSRF、数据库级幂等与仅计数审计；不自动停用、删除或重新启用平台账号，不传播 Casdoor roles / permissions / isAdmin |
 
 ## 关联基线
 

@@ -31,12 +31,33 @@ export type SsoIdentityConflict =
   | "subject-bound-to-other-account"
   | "concurrent-bind";
 
+/** 批量目录预览的跳过原因；不新增任何权限含义。 */
+export type SsoIdentityPreviewSkipReason =
+  | "email-mismatch"
+  | "email-taken"
+  | "subject-bound-to-other-account"
+  | "account-disabled"
+  | "account-deleted";
+
+/** 批量导入预览只分类，不写用户、组织或审计。 */
+export type SsoIdentityPreview =
+  | {
+      readonly kind: "eligible";
+      readonly action: "create" | "link" | "refresh";
+    }
+  | { readonly kind: "skip"; readonly reason: SsoIdentityPreviewSkipReason };
+
 /** 只保留业务需要的 claim；Casdoor 的 isAdmin 等其余字段不得进入本结构。 */
 export interface SsoIdentityClaims {
   readonly subject: string;
   readonly loginName: string;
   readonly displayName: string;
   readonly email: string | null;
+}
+
+/** 批量导入必须显式关闭 ADR-075 的首账号管理员授予。 */
+export interface SsoIdentityMapOptions {
+  readonly allowFirstAdmin?: boolean;
 }
 
 interface SsoUserRow {
@@ -79,12 +100,13 @@ export class PostgresSsoUserRepository {
   async mapIdentity(
     tx: TransactionContext,
     claims: SsoIdentityClaims,
+    options: SsoIdentityMapOptions = {},
   ): Promise<SsoIdentityMapping> {
     const bySubject = await this.findBySubject(tx, claims.subject);
     if (bySubject !== undefined) {
-      // 墓碑账号不可再写资料；登录编排会按 DISABLED 干净拒绝，不能先 syncProfile
-      // 触发 users 不可变触发器并误报 500。
-      if (bySubject.deletedAt !== null) {
+      // 墓碑与停用账号都不可再写资料；登录编排会按 DISABLED 干净拒绝，
+      // 不能先 syncProfile 触发 users 不可变触发器或意外改写停用账号。
+      if (bySubject.deletedAt !== null || bySubject.status !== "ACTIVE") {
         return { kind: "mapped", user: bySubject, outcome: "subject" };
       }
       const synced = await this.syncProfile(tx, bySubject, claims);
@@ -93,6 +115,10 @@ export class PostgresSsoUserRepository {
 
     const byLoginName = await this.lockByLoginName(tx, claims.loginName);
     if (byLoginName !== undefined) {
+      // 停用/墓碑账号不参与自动绑定，避免一次被拒绝的登录改变账号归属。
+      if (byLoginName.deletedAt !== null || byLoginName.status !== "ACTIVE") {
+        return { kind: "mapped", user: byLoginName, outcome: "subject" };
+      }
       if (byLoginName.ssoSubject === claims.subject) {
         return { kind: "mapped", user: byLoginName, outcome: "subject" };
       }
@@ -123,8 +149,102 @@ export class PostgresSsoUserRepository {
         return { kind: "conflict", reason: "email-taken" };
       }
     }
-    const created = await this.provision(tx, claims);
+    const created = await this.provision(
+      tx,
+      claims,
+      options.allowFirstAdmin ?? true,
+    );
     return { kind: "mapped", user: created, outcome: "provisioned" };
+  }
+
+  /**
+   * 管理员目录预览的批量分类：只读取身份映射所需字段，不申请行锁、不写库。
+   * 确认导入时会重新按当前数据库事实执行同一映射规则。
+   */
+  async previewIdentities(
+    tx: TransactionContext,
+    claims: readonly SsoIdentityClaims[],
+  ): Promise<readonly SsoIdentityPreview[]> {
+    if (claims.length === 0) return [];
+    const subjects = [...new Set(claims.map((claim) => claim.subject))];
+    const loginKeys = [
+      ...new Set(claims.map((claim) => normalize(claim.loginName))),
+    ].filter((value): value is string => value !== undefined);
+    const emailKeys = [
+      ...new Set(claims.map((claim) => normalize(claim.email))),
+    ].filter((value): value is string => value !== undefined);
+    const rows = (await tx.sql`
+      SELECT id,
+             login_name AS "loginName",
+             name,
+             email,
+             sso_subject AS "ssoSubject",
+             status,
+             is_admin AS "isAdmin",
+             auth_version AS "authVersion",
+             disabled_at AS "disabledAt",
+             deleted_at AS "deletedAt"
+        FROM app.users
+       WHERE sso_subject = ANY(${subjects}::text[])
+          OR lower(btrim(login_name)) = ANY(${loginKeys}::text[])
+          OR (
+            email IS NOT NULL
+            AND lower(btrim(email)) = ANY(${emailKeys}::text[])
+          )
+    `) as unknown as readonly SsoUserRow[];
+    const records = rows.map(toRecord);
+    const bySubject = new Map(
+      records
+        .filter((record) => record.ssoSubject !== null)
+        .map((record) => [record.ssoSubject!, record] as const),
+    );
+    const byLogin = new Map(
+      records.map((record) => [normalize(record.loginName)!, record] as const),
+    );
+    const byEmail = new Map(
+      records
+        .filter((record) => normalize(record.email) !== undefined)
+        .map((record) => [normalize(record.email)!, record] as const),
+    );
+
+    return claims.map((claim) => {
+      const bySubjectMatch = bySubject.get(claim.subject);
+      if (bySubjectMatch !== undefined) {
+        if (bySubjectMatch.deletedAt !== null) {
+          return { kind: "skip", reason: "account-deleted" };
+        }
+        if (bySubjectMatch.status !== "ACTIVE") {
+          return { kind: "skip", reason: "account-disabled" };
+        }
+        return { kind: "eligible", action: "refresh" };
+      }
+
+      const byLoginMatch = byLogin.get(normalize(claim.loginName)!);
+      if (byLoginMatch !== undefined) {
+        if (byLoginMatch.deletedAt !== null) {
+          return { kind: "skip", reason: "account-deleted" };
+        }
+        if (byLoginMatch.status !== "ACTIVE") {
+          return { kind: "skip", reason: "account-disabled" };
+        }
+        if (byLoginMatch.ssoSubject !== null) {
+          return {
+            kind: "skip",
+            reason: "subject-bound-to-other-account",
+          };
+        }
+        if (normalize(claim.email) !== normalize(byLoginMatch.email)) {
+          return { kind: "skip", reason: "email-mismatch" };
+        }
+        return { kind: "eligible", action: "link" };
+      }
+
+      const claimEmail = normalize(claim.email);
+      if (claimEmail !== undefined && byEmail.has(claimEmail)) {
+        return { kind: "skip", reason: "email-taken" };
+      }
+      return { kind: "eligible", action: "create" };
+    });
   }
 
   private async findBySubject(
@@ -220,19 +340,23 @@ export class PostgresSsoUserRepository {
   private async provision(
     tx: TransactionContext,
     claims: SsoIdentityClaims,
+    allowFirstAdmin: boolean,
   ): Promise<SsoUserRecord> {
-    // ADR-075：先用事务级 advisory lock 串行化「空库判定 -> 开通」窗口：
-    // 并发首登只有先提交的事务能成为管理员，后到者在锁释放后重新判定。
-    await tx.sql`
-      SELECT pg_advisory_xact_lock(
-        ${FIRST_ACCOUNT_ADMIN_LOCK_CLASS}::int4,
-        ${FIRST_ACCOUNT_ADMIN_LOCK_KEY}::int4
-      )
-    `;
-    const emptiness = (await tx.sql`
-      SELECT NOT EXISTS (SELECT 1 FROM app.users) AS "firstAccount"
-    `) as unknown as readonly { readonly firstAccount: boolean }[];
-    const isFirstAccount = emptiness[0]?.firstAccount === true;
+    let isFirstAccount = false;
+    if (allowFirstAdmin) {
+      // ADR-075：先用事务级 advisory lock 串行化「空库判定 -> 开通」窗口：
+      // 并发首登只有先提交的事务能成为管理员，后到者在锁释放后重新判定。
+      await tx.sql`
+        SELECT pg_advisory_xact_lock(
+          ${FIRST_ACCOUNT_ADMIN_LOCK_CLASS}::int4,
+          ${FIRST_ACCOUNT_ADMIN_LOCK_KEY}::int4
+        )
+      `;
+      const emptiness = (await tx.sql`
+        SELECT NOT EXISTS (SELECT 1 FROM app.users) AS "firstAccount"
+      `) as unknown as readonly { readonly firstAccount: boolean }[];
+      isFirstAccount = emptiness[0]?.firstAccount === true;
+    }
     const rows = (await tx.sql`
       INSERT INTO app.users (
         login_name,
