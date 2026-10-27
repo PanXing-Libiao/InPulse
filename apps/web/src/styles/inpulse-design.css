@@ -4858,9 +4858,27 @@
 }
 
 /* Casdoor 管理员导入：预览、逐项选择与实体组展示。 */
+.surface-modal.casdoor-import-modal > .drawer-header {
+  padding: 24px 28px 18px;
+  border-bottom: 1px solid #e8eef5;
+  flex-shrink: 0;
+}
+
+.surface-modal.casdoor-import-modal > .drawer-header > div {
+  min-width: 0;
+}
+
+.surface-modal.casdoor-import-modal > .modal-body {
+  display: flex;
+  overflow: hidden;
+}
+
 .casdoor-import {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-height: 0;
+  width: 100%;
   gap: 14px;
 }
 
@@ -4899,6 +4917,56 @@
   font-size: var(--text-sm);
 }
 
+.casdoor-import-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.casdoor-import-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 4px 11px;
+  border: 1px solid #dbe7f4;
+  border-radius: 999px;
+  background: #f8fbfe;
+  color: #4e6880;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.casdoor-import-filter strong {
+  color: #2874bf;
+  font-size: var(--text-sm);
+}
+
+.casdoor-import-filter:hover {
+  border-color: #b9d5f0;
+  background: #f1f7fd;
+}
+
+.casdoor-import-filter[aria-pressed="true"] {
+  border-color: #2f78bf;
+  background: #eaf3fd;
+  color: #1f5f9e;
+}
+
+.casdoor-import-filter[aria-pressed="true"] strong {
+  color: #1f5f9e;
+}
+
+.casdoor-import-filter:focus-visible {
+  outline: 2px solid #8ab8e4;
+  outline-offset: 2px;
+}
+
 .casdoor-import-selectbar {
   display: flex;
   align-items: center;
@@ -4917,8 +4985,9 @@
 }
 
 .casdoor-import-list {
+  flex: 1;
+  min-height: 180px;
   overflow: auto;
-  max-height: min(54vh, 560px);
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--card);
@@ -4945,6 +5014,14 @@
 .casdoor-import-row.is-skipped {
   background: #fafbfd;
   color: #7a8b9b;
+}
+
+.casdoor-import-row.is-unchanged {
+  background: #fcfdff;
+}
+
+.casdoor-import-row.is-unchanged .casdoor-import-identity strong {
+  color: #4e6579;
 }
 
 .casdoor-import-identity,
@@ -5001,6 +5078,10 @@
 }
 
 @media (max-width: 900px) {
+  .surface-modal.casdoor-import-modal > .drawer-header {
+    padding: 20px 20px 14px;
+  }
+
   .casdoor-import-row {
     grid-template-columns: 20px minmax(0, 1fr);
     align-items: start;

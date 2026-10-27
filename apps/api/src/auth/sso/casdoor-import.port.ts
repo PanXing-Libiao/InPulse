@@ -15,7 +15,7 @@ export type CasdoorImportPreviewSkipReason = SsoIdentityPreviewSkipReason;
 
 export interface CasdoorImportPreviewEntry {
   readonly user: CasdoorDirectoryUser;
-  readonly action: "create" | "link" | "refresh" | "skip";
+  readonly action: "create" | "link" | "refresh" | "unchanged" | "skip";
   readonly reason: CasdoorImportPreviewSkipReason | null;
 }
 
@@ -81,9 +81,10 @@ export function countPreview(preview: readonly SsoIdentityPreview[]): {
   create: number;
   link: number;
   refresh: number;
+  unchanged: number;
   skip: number;
 } {
-  const counts = { create: 0, link: 0, refresh: 0, skip: 0 };
+  const counts = { create: 0, link: 0, refresh: 0, unchanged: 0, skip: 0 };
   for (const entry of preview) {
     if (entry.kind === "skip") counts.skip += 1;
     else counts[entry.action] += 1;

@@ -51,7 +51,7 @@ const previewBody: CasdoorImportPreviewResponse = {
       reason: null,
     },
   ],
-  counts: { create: 1, link: 0, refresh: 0, skip: 0 },
+  counts: { create: 1, link: 0, refresh: 0, unchanged: 0, skip: 0 },
 };
 
 function request() {

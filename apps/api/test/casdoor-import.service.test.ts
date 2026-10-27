@@ -244,6 +244,52 @@ describe("PostgresCasdoorImportService", () => {
     });
   });
 
+  test("已绑定账号仅在资料或实体组变化时刷新", async () => {
+    const users = [
+      directoryUser("same", "same", [ORGANIZATION + "/测试部"]),
+      directoryUser("profile", "profile", [ORGANIZATION + "/测试部"]),
+      directoryUser("group", "group", [ORGANIZATION + "/测试部"]),
+    ];
+    const previewIdentities = vi.fn().mockResolvedValue([
+      {
+        kind: "eligible",
+        action: "refresh",
+        userId: 1,
+        profileChanged: false,
+      },
+      {
+        kind: "eligible",
+        action: "refresh",
+        userId: 2,
+        profileChanged: true,
+      },
+      {
+        kind: "eligible",
+        action: "refresh",
+        userId: 3,
+        profileChanged: false,
+      },
+    ]);
+    const hasSsoMembershipChanges = vi.fn(
+      async (input: { readonly userId: number }) => input.userId === 3,
+    );
+    const service = new PostgresCasdoorImportService(
+      { previewIdentities } as unknown as PostgresSsoUserRepository,
+      { hasSsoMembershipChanges } as unknown as OrganizationSyncPort,
+      {} as SsoCasdoorGroupClient,
+      {} as SsoCasdoorDirectoryClient,
+    );
+
+    const result = await service.preview(tx, snapshot(users));
+
+    expect(result.map((entry) => entry.action)).toEqual([
+      "unchanged",
+      "refresh",
+      "refresh",
+    ]);
+    expect(hasSsoMembershipChanges).toHaveBeenCalledTimes(3);
+  });
+
   test("配置 Casdoor Permission 时只用有权限的账号参与组织解析", async () => {
     const loaded = snapshot([
       directoryUser("allowed-group", "allowed-group", [

@@ -7206,3 +7206,17 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR101-GATE-001 | 静态门禁与回归 | 相关代码质量与全量单测 | 全量 API 单测 89 文件 597 例、Web 单测 123 文件 1073 例通过；全工作区 `pnpm lint`、`format:check`、`typecheck`、API/Web 构建、`check:deploy:static`、`check:secrets`、`check:docs` 通过；未重跑全量 Playwright、生产镜像、Trivy、真实 PostgreSQL 集成或 GitHub Actions | 本地通过（2026-10-27） |
 
 **已知边界**：测试环境没有正式 Permission 配置，必须保持 `CASDOOR_IMPORT_PERMISSION` 为空；正式环境的 Permission / Role / 群组读取失败时导入 503 fail closed。本次没有用正式环境执行批量导入 smoke，不能表述为正式目录联调或发布验证已完成。
+
+## 2026-10-27 Casdoor 导入无变化分类与审计中文化（ADR-102）
+
+用户要求已导入账号在没有资料或组织变化时不要再次默认导入，并按新建、刷新等分类筛选；同时审计日志中的 Casdoor 导入、组织同步动作码与目标类型显示中文。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR102-UNIT-001 | API 单元 | 预览差异分类 | `casdoor-import.service.test.ts` 覆盖已绑定账号姓名、可安全同步邮箱、实体组集合均无差异时标记 `unchanged`；任一差异存在时标记 `refresh`；创建、绑定与冲突跳过不变 | 本地通过（2026-10-27，定向 API 2 文件 12 例） |
+| ADR102-API-001 | API 集成（真实 PostgreSQL） | 重复预览与组织变化 | `casdoor-import.integration.test.ts` 覆盖首次导入后重复预览全部为无变化，以及在 Casdoor 侧移除实体组后只有该账号进入刷新；导入事务与审计计数保持正确 | 本地通过（2026-10-27，2 例） |
+| ADR102-WEB-001 | Web 单元 | 分类筛选与默认勾选 | `CasdoorImportModal.test.tsx` 覆盖无变化和跳过不可勾选、默认只选新建 / 绑定 / 刷新、分类筛选、当前筛选全选保留其他分类选择，以及头部内边距与滚动布局回归 | 本地通过（2026-10-27，与审计定向合计 2 文件 26 例） |
+| ADR102-WEB-002 | Web 单元 | 审计中文化 | `AuditLogPageView.test.tsx` 断言 `admin.user.casdoorImport`、`auth.sso_organizations_synced` 与 `CASDOOR_ORGANIZATION` 在列表中以中文显示，原始码仍用于筛选请求 | 本地通过（2026-10-27） |
+| ADR102-GATE-001 | 静态门禁 | 契约与类型 | `pnpm contract:generate`、全工作区 `pnpm typecheck` 与相关 Prettier 通过；OpenAPI 与生成客户端已同步 `unchanged` 分类与计数 | 本地通过（2026-10-27） |
+
+**已知边界**：本次未重跑 Playwright、生产镜像、Trivy 或 GitHub Actions；测试环境已部署 `0.1.0-20261027-adr102a`（2026-10-27），正式环境待提交后同步。无变化判断只比较姓名、可安全同步的邮箱与实体组集合，不替代管理员显式勾选刷新。

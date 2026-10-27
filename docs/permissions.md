@@ -413,3 +413,11 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 **重放与审计**：确认导入的响应只含计数，重放只要求原操作人当前仍是完整管理员并继续通过 CSRF 门禁；同 Key、同摘要、同契约版本重放不重复建号或写审计，同 Key 不同请求体 409。审计 target 为 Casdoor organization，payload 仅含组织名与扫描、新建、绑定、刷新、跳过、组织与成员关系计数，不写登录名、邮箱、Casdoor ID、组路径明细或任何凭据。
 
 **验证边界**：本地真实 PostgreSQL 与 HTTP 集成覆盖预览零写入、无口令非管理员新账号、同邮箱绑定、冲突跳过、Physical 组织与无实体组未分类、重复导入、组移除后清空关系、管理员授权、CSRF、幂等重放及单条审计；真实 Casdoor 批量导入 smoke 尚未执行。当前 `permissions:check` 应与 Route Registry 同步为 131 条操作 / 131 条路由。
+
+## ADR-102 Casdoor 导入预览分类与审计展示（2026-10-27）
+
+本节按 [ADR-102](adr/ADR-102.md)（Accepted）调整管理员 Casdoor 导入预览与审计展示，不新增路由，不改变上节两条路由的授权等级、CSRF、幂等要求及 131 条路由总数。
+
+**预览分类**：`CasdoorImportAction` 固定为 `create`（新建）、`link`（绑定）、`refresh`（刷新）、`unchanged`（无变化）、`skip`（跳过）。已绑定账号仅在 Casdoor 姓名、可安全同步的邮箱或实体组集合与平台当前值存在差异时标记 `refresh`；全部一致时标记 `unchanged`。`unchanged` 与 `skip` 不可勾选，默认勾选 `create`、`link`、`refresh`；分类筛选后的全选只修改当前筛选结果，并保留其他分类已选账号。
+
+**审计展示**：列表与筛选项显示 `admin.user.casdoorImport` → “从 Casdoor 导入账号”、`auth.sso_organizations_synced` → “同步统一身份认证组织”、`CASDOOR_ORGANIZATION` → “Casdoor 组织”。请求与原始快照仍使用机器码，中文映射不改变审计真实性、哈希链或权限判断。

@@ -16,8 +16,16 @@ export interface SsoOrganizationSyncResult {
   readonly membershipCount: number;
 }
 
+export interface SsoMembershipChangeInput {
+  readonly tx: TransactionContext;
+  readonly userId: number;
+  readonly groups: readonly string[];
+}
+
 export interface OrganizationSyncPort {
   syncSsoMemberships(
     input: SsoOrganizationSyncInput,
   ): Promise<SsoOrganizationSyncResult>;
+
+  hasSsoMembershipChanges(input: SsoMembershipChangeInput): Promise<boolean>;
 }

@@ -8,6 +8,7 @@ import {
 } from "./casdoor-group-path.js";
 import type {
   OrganizationSyncPort,
+  SsoMembershipChangeInput,
   SsoOrganizationSyncInput,
   SsoOrganizationSyncResult,
 } from "./organization-sync.port.js";
@@ -123,6 +124,25 @@ export class PostgresOrganizationSyncService implements OrganizationSyncPort {
       createdOrganizationCount,
       membershipCount: groups.length,
     };
+  }
+
+  async hasSsoMembershipChanges(
+    input: SsoMembershipChangeInput,
+  ): Promise<boolean> {
+    const desired = selectCasdoorEntityGroups(
+      normalizeCasdoorGroupPaths(input.groups),
+    ).map((group) => group.path);
+    const rows = (await input.tx.sql`
+      SELECT o.sso_group_path AS "groupPath"
+        FROM app.user_organizations AS uo
+        JOIN app.organizations AS o ON o.id = uo.organization_id
+       WHERE uo.user_id = ${input.userId}
+    `) as unknown as readonly { readonly groupPath: string | null }[];
+    const current = new Set(rows.map((row) => row.groupPath));
+    return (
+      current.size !== desired.length ||
+      desired.some((groupPath) => !current.has(groupPath))
+    );
   }
 
   private async lockSsoUser(

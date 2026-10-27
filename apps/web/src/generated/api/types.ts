@@ -268,12 +268,13 @@ export type AuditLogQueryRequest = {
   readonly limit?: number;
 };
 
-export type CasdoorImportAction = ("create" | "link" | "refresh" | "skip");
+export type CasdoorImportAction = ("create" | "link" | "refresh" | "unchanged" | "skip");
 
 export type CasdoorImportCounts = {
   readonly create: number;
   readonly link: number;
   readonly refresh: number;
+  readonly unchanged: number;
   readonly skip: number;
 };
 

@@ -20,7 +20,16 @@ const actionLabel: Readonly<Record<CasdoorImportAction, string>> = {
   create: "新账号",
   link: "绑定现有账号",
   refresh: "刷新资料与组织",
+  unchanged: "无变化",
   skip: "跳过",
+};
+
+const actionColor: Readonly<Record<CasdoorImportAction, string>> = {
+  create: "green",
+  link: "cyan",
+  refresh: "blue",
+  unchanged: "default",
+  skip: "default",
 };
 
 const reasonLabel: Readonly<Record<CasdoorImportSkipReason, string>> = {
@@ -30,6 +39,14 @@ const reasonLabel: Readonly<Record<CasdoorImportSkipReason, string>> = {
   "email-mismatch": "登录名相同但邮箱不一致",
   "email-taken": "邮箱已被其他平台账号使用",
 };
+
+type ImportFilter = "all" | CasdoorImportAction;
+
+function isImportableAction(
+  action: CasdoorImportAction,
+): action is "create" | "link" | "refresh" {
+  return action === "create" || action === "link" || action === "refresh";
+}
 
 export interface CasdoorImportModalProps {
   readonly open: boolean;
@@ -47,23 +64,52 @@ export function CasdoorImportModal({
   const preview = useCasdoorImportPreview(client, { enabled: open });
   const mutation = useCasdoorImport(client, onImported);
   const [selectedIds, setSelectedIds] = useState<readonly string[]>([]);
+  const [actionFilter, setActionFilter] = useState<ImportFilter>("all");
 
   const items = preview.data?.items ?? [];
+  const filteredItems = useMemo(
+    () =>
+      actionFilter === "all"
+        ? items
+        : items.filter((item) => item.action === actionFilter),
+    [actionFilter, items],
+  );
   const selectableItems = useMemo(
-    () => items.filter((item) => item.action !== "skip"),
-    [items],
+    () => filteredItems.filter((item) => isImportableAction(item.action)),
+    [filteredItems],
   );
   const allSelected =
     selectableItems.length > 0 &&
     selectableItems.every((item) => selectedIds.includes(item.casdoorId));
-  const someSelected = selectedIds.length > 0 && !allSelected;
+  const someSelected =
+    selectableItems.some((item) => selectedIds.includes(item.casdoorId)) &&
+    !allSelected;
+  const filterOptions: readonly {
+    readonly key: ImportFilter;
+    readonly label: string;
+    readonly count: number;
+  }[] = preview.data
+    ? [
+        { key: "all", label: "全部", count: items.length },
+        { key: "create", label: "新建", count: preview.data.counts.create },
+        { key: "link", label: "绑定", count: preview.data.counts.link },
+        { key: "refresh", label: "刷新", count: preview.data.counts.refresh },
+        {
+          key: "unchanged",
+          label: "无变化",
+          count: preview.data.counts.unchanged,
+        },
+        { key: "skip", label: "跳过", count: preview.data.counts.skip },
+      ]
+    : [];
 
   useEffect(() => {
     if (!open) return;
     const next = (preview.data?.items ?? [])
-      .filter((item) => item.action !== "skip")
+      .filter((item) => isImportableAction(item.action))
       .map((item) => item.casdoorId);
     setSelectedIds(next);
+    setActionFilter("all");
   }, [open, preview.data?.fetchedAt]);
 
   useEffect(() => {
@@ -77,7 +123,7 @@ export function CasdoorImportModal({
   };
 
   const toggleUser = (item: CasdoorImportPreviewItem, checked: boolean) => {
-    if (item.action === "skip") return;
+    if (!isImportableAction(item.action)) return;
     setSelectedIds((current) =>
       checked
         ? current.includes(item.casdoorId)
@@ -88,8 +134,11 @@ export function CasdoorImportModal({
   };
 
   const toggleAll = (checked: boolean) => {
-    setSelectedIds(
-      checked ? selectableItems.map((item) => item.casdoorId) : [],
+    const visibleIds = new Set(selectableItems.map((item) => item.casdoorId));
+    setSelectedIds((current) =>
+      checked
+        ? [...new Set([...current, ...visibleIds])]
+        : current.filter((id) => !visibleIds.has(id)),
     );
   };
 
@@ -105,6 +154,7 @@ export function CasdoorImportModal({
   return (
     <Modal
       open={open}
+      className="casdoor-import-modal"
       size="xl"
       eyebrow="Casdoor 目录"
       title="从 Casdoor 导入账号"
@@ -130,7 +180,7 @@ export function CasdoorImportModal({
       <div className="casdoor-import">
         <p className="casdoor-import-intro">
           {
-            "只读取配置组织下启用中的账号；正式环境会按 InPulse 应用权限收窄候选范围，并仅保留权限内的 Casdoor Physical 实体组。没有实体组的账号会进入未分类；Virtual 组、停用账号和已删除账号不会导入。"
+            "只读取配置组织下启用中的账号；正式环境会按 InPulse 应用权限收窄候选范围，并仅保留权限内的 Casdoor Physical 实体组。没有实体组的账号会进入未分类；Virtual 组、停用账号和已删除账号不会导入。已导入账号仅在姓名、邮箱或实体组发生变化时标记刷新，无变化账号不会默认勾选。"
           }
         </p>
 
@@ -152,13 +202,28 @@ export function CasdoorImportModal({
 
         {preview.data ? (
           <>
-            <div className="casdoor-import-summary" aria-label="导入分类统计">
+            <div className="casdoor-import-summary" aria-label="导入目录信息">
               <span>组织：{preview.data.organization}</span>
               <span>扫描：{preview.data.scannedUserCount}</span>
-              <span>新建：{preview.data.counts.create}</span>
-              <span>绑定：{preview.data.counts.link}</span>
-              <span>刷新：{preview.data.counts.refresh}</span>
-              <span>跳过：{preview.data.counts.skip}</span>
+            </div>
+
+            <div
+              className="casdoor-import-filters"
+              role="group"
+              aria-label="按导入分类筛选"
+            >
+              {filterOptions.map((option) => (
+                <button
+                  type="button"
+                  className="casdoor-import-filter"
+                  aria-pressed={actionFilter === option.key}
+                  key={option.key}
+                  onClick={() => setActionFilter(option.key)}
+                >
+                  <span>{option.label}</span>
+                  <strong>{option.count}</strong>
+                </button>
+              ))}
             </div>
 
             <div className="casdoor-import-selectbar">
@@ -168,25 +233,34 @@ export function CasdoorImportModal({
                 disabled={selectableItems.length === 0 || mutation.isPending}
                 onChange={(event) => toggleAll(event.target.checked)}
               >
-                全选可导入账号
+                {actionFilter === "all" ? "全选可导入账号" : "全选当前筛选"}
               </Checkbox>
               <span>已选 {selectedIds.length} 个</span>
+              {actionFilter === "all" ? null : (
+                <span>当前 {filteredItems.length} 条</span>
+              )}
               <Button size="small" onClick={() => void preview.refetch()}>
                 刷新预览
               </Button>
             </div>
 
-            {items.length === 0 ? (
+            {filteredItems.length === 0 ? (
               <div className="casdoor-import-state">
-                当前组织没有可导入的启用账号。
+                {items.length === 0
+                  ? "当前组织没有可导入的启用账号。"
+                  : "当前筛选没有账号。"}
               </div>
             ) : (
               <div className="casdoor-import-list" role="list">
-                {items.map((item) => (
+                {filteredItems.map((item) => (
                   <div
                     className={
                       "casdoor-import-row" +
-                      (item.action === "skip" ? " is-skipped" : "")
+                      (item.action === "skip"
+                        ? " is-skipped"
+                        : item.action === "unchanged"
+                          ? " is-unchanged"
+                          : "")
                     }
                     role="listitem"
                     key={item.casdoorId}
@@ -194,7 +268,9 @@ export function CasdoorImportModal({
                     <Checkbox
                       aria-label={"选择 " + item.displayName}
                       checked={selectedIds.includes(item.casdoorId)}
-                      disabled={item.action === "skip" || mutation.isPending}
+                      disabled={
+                        !isImportableAction(item.action) || mutation.isPending
+                      }
                       onChange={(event) =>
                         toggleUser(item, event.target.checked)
                       }
@@ -224,7 +300,7 @@ export function CasdoorImportModal({
                       )}
                     </div>
                     <div className="casdoor-import-action">
-                      <Tag color={item.action === "skip" ? "default" : "blue"}>
+                      <Tag color={actionColor[item.action]}>
                         {actionLabel[item.action]}
                       </Tag>
                       {item.reason ? (

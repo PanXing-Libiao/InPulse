@@ -150,6 +150,24 @@ const documentImportItem: AuditLogItem = {
   eventPayload: { digest: "d".repeat(16), addedMemberCount: 3 },
 };
 
+const casdoorImportItem: AuditLogItem = {
+  ...systemItem,
+  sequenceNo: 25,
+  action: "admin.user.casdoorImport",
+  targetType: "CASDOOR_ORGANIZATION",
+  targetId: "libiaorobot.com",
+  eventPayload: { organization: "libiaorobot.com", scannedUserCount: 84 },
+};
+
+const ssoOrgSyncedItem: AuditLogItem = {
+  ...systemItem,
+  sequenceNo: 26,
+  action: "auth.sso_organizations_synced",
+  targetType: "USER",
+  targetId: "1",
+  eventPayload: { groupCount: 2, membershipCount: 2 },
+};
+
 // ADR-088：物理删除不可逆，审计列表仍展示删除前姓名；原始快照记录 after = null。
 const deleteUserItem: AuditLogItem = {
   ...systemItem,
@@ -507,6 +525,24 @@ describe("F-08 audit page", () => {
     expect(codes).toContain("admin.wecomRobot.update");
     expect(codes).toContain("admin.aiAssistSettings.update");
     expect(codes).toContain("project.documentImport");
+  });
+
+  it("Casdoor 导入与 SSO 组织同步动作显示中文", async () => {
+    const getAuditLogs = vi
+      .fn()
+      .mockResolvedValue(page([casdoorImportItem, ssoOrgSyncedItem]));
+    const listProjects = vi.fn().mockResolvedValue({ items: [project] });
+    mount({ getAuditLogs, listProjects } as unknown as InpulseApiClient);
+
+    expect(await screen.findByText("从 Casdoor 导入账号")).toBeInTheDocument();
+    expect(
+      screen.getByText("对象：Casdoor 组织 libiaorobot.com"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("同步统一身份认证组织")).toBeInTheDocument();
+    expect(
+      screen.queryByText("admin.user.casdoorImport"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/CASDOOR_ORGANIZATION/)).not.toBeInTheDocument();
   });
 
   it("优先使用受哈希保护的操作人快照，删除账号后仍显示当时姓名", async () => {

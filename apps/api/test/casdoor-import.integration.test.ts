@@ -72,7 +72,7 @@ function buildImportPort(): CasdoorImportPort {
   );
 }
 
-async function previewAndImport(ids: readonly string[]) {
+async function previewAndImport() {
   const port = buildImportPort();
   const adminService = new AdminCasdoorImportService(
     port,
@@ -84,14 +84,20 @@ async function previewAndImport(ids: readonly string[]) {
   service = adminService;
   const snapshot = await port.loadDirectory();
   const preview = await uow.run((tx) => adminService.preview(tx, snapshot));
-  const imported = await uow.run((tx) =>
-    adminService.import(
-      tx,
-      { actorId: adminUserId, requestId: randomUUID() },
-      snapshot,
-      ids,
-    ),
-  );
+  const actionableIds = preview.items
+    .filter((item) => item.action !== "skip" && item.action !== "unchanged")
+    .map((item) => item.casdoorId);
+  const imported =
+    actionableIds.length === 0
+      ? null
+      : await uow.run((tx) =>
+          adminService.import(
+            tx,
+            { actorId: adminUserId, requestId: randomUUID() },
+            snapshot,
+            actionableIds,
+          ),
+        );
   return { preview, imported };
 }
 
@@ -224,7 +230,13 @@ describe("ADR-100 Casdoor 管理员批量导入真实 PostgreSQL", () => {
     const snapshot = await port.loadDirectory();
     const preview = await uow.run((tx) => service.preview(tx, snapshot));
 
-    expect(preview.counts).toEqual({ create: 2, link: 1, refresh: 0, skip: 1 });
+    expect(preview.counts).toEqual({
+      create: 2,
+      link: 1,
+      refresh: 0,
+      unchanged: 0,
+      skip: 1,
+    });
     expect(
       preview.items.find((item) => item.loginName === newLogin)?.groups,
     ).toEqual([groupPath]);
@@ -301,19 +313,16 @@ describe("ADR-100 Casdoor 管理员批量导入真实 PostgreSQL", () => {
     expect(auditRows[0]?.payload).not.toContain("$argon2id");
   });
 
-  test("重复导入不重复建号，目录移除实体组后下一次导入移出组织", async () => {
-    const ids = rawSnapshot.users.map((user) => user.casdoorId);
-    const rerun = await previewAndImport(ids);
-    expect(rerun.preview.counts).toMatchObject({ create: 0, skip: 1 });
-    expect(rerun.imported).toEqual({
-      scannedUserCount: 4,
-      created: 0,
-      linked: 0,
-      refreshed: 3,
-      skipped: 1,
-      createdOrganizationCount: 0,
-      membershipCount: 2,
+  test("无差异账号无需刷新，目录移除实体组后只刷新有变化账号", async () => {
+    const rerun = await previewAndImport();
+    expect(rerun.preview.counts).toEqual({
+      create: 0,
+      link: 0,
+      refresh: 0,
+      unchanged: 3,
+      skip: 1,
     });
+    expect(rerun.imported).toBeNull();
 
     const created = await userByLogin(newLogin);
     expect(await memberships(created!.id)).toHaveLength(1);
@@ -325,13 +334,22 @@ describe("ADR-100 Casdoor 管理员批量导入真实 PostgreSQL", () => {
         user.loginName === newLogin ? { ...user, groups: [] } : user,
       ),
     };
-    const cleared = await previewAndImport(ids);
-    expect(cleared.imported).toMatchObject({
+    const cleared = await previewAndImport();
+    expect(cleared.preview.counts).toEqual({
+      create: 0,
+      link: 0,
+      refresh: 1,
+      unchanged: 2,
+      skip: 1,
+    });
+    expect(cleared.imported).toEqual({
+      scannedUserCount: 1,
       created: 0,
       linked: 0,
-      refreshed: 3,
-      skipped: 1,
-      membershipCount: 1,
+      refreshed: 1,
+      skipped: 0,
+      createdOrganizationCount: 0,
+      membershipCount: 0,
     });
     expect(await memberships(created!.id)).toEqual([]);
 
@@ -342,6 +360,6 @@ describe("ADR-100 Casdoor 管理员批量导入真实 PostgreSQL", () => {
          AND action = 'admin.user.casdoorImport'
          AND target_id = ${organization}
     `) as unknown as readonly { readonly count: number }[];
-    expect(auditCount[0]?.count).toBe(3);
+    expect(auditCount[0]?.count).toBe(2);
   });
 });

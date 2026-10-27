@@ -15,7 +15,7 @@ const casdoorIdentitySchema = z
   .strict();
 
 export const casdoorImportActionSchema = z
-  .enum(["create", "link", "refresh", "skip"])
+  .enum(["create", "link", "refresh", "unchanged", "skip"])
   .meta({ id: "CasdoorImportAction" });
 
 export type CasdoorImportAction = z.infer<typeof casdoorImportActionSchema>;
@@ -71,6 +71,7 @@ export const casdoorImportCountsSchema = z
     create: z.number().int().min(0).max(CASDOOR_IMPORT_LIMIT),
     link: z.number().int().min(0).max(CASDOOR_IMPORT_LIMIT),
     refresh: z.number().int().min(0).max(CASDOOR_IMPORT_LIMIT),
+    unchanged: z.number().int().min(0).max(CASDOOR_IMPORT_LIMIT),
     skip: z.number().int().min(0).max(CASDOOR_IMPORT_LIMIT),
   })
   .strict()

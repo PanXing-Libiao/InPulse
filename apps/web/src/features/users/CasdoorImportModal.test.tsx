@@ -35,7 +35,34 @@ const preview: CasdoorImportPreviewResponse = {
       reason: "email-mismatch",
     },
   ],
-  counts: { create: 1, link: 0, refresh: 0, skip: 1 },
+  counts: { create: 1, link: 0, refresh: 0, unchanged: 0, skip: 1 },
+};
+
+const filteredPreview: CasdoorImportPreviewResponse = {
+  ...preview,
+  scannedUserCount: 4,
+  items: [
+    ...preview.items,
+    {
+      casdoorId: "refresh-1",
+      loginName: "refresh-user",
+      displayName: "需刷新成员",
+      email: "refresh-user@libiaorobot.com",
+      groups: ["libiaorobot.com/测试部"],
+      action: "refresh",
+      reason: null,
+    },
+    {
+      casdoorId: "unchanged-1",
+      loginName: "unchanged-user",
+      displayName: "无变化成员",
+      email: "unchanged-user@libiaorobot.com",
+      groups: ["libiaorobot.com/测试部"],
+      action: "unchanged",
+      reason: null,
+    },
+  ],
+  counts: { create: 1, link: 0, refresh: 1, unchanged: 1, skip: 1 },
 };
 
 const imported: CasdoorImportResult = {
@@ -135,5 +162,32 @@ describe("CasdoorImportModal", () => {
     await waitFor(() =>
       expect(previewCasdoorUserImport).toHaveBeenCalledTimes(2),
     );
+  });
+
+  it("默认不勾选无变化账号，并可按新建、刷新分类筛选", async () => {
+    const previewCasdoorUserImport = vi.fn().mockResolvedValue(filteredPreview);
+    const client = {
+      previewCasdoorUserImport,
+      issueCsrfToken: vi.fn(),
+      importCasdoorUsers: vi.fn(),
+    } as unknown as InpulseApiClient;
+
+    render(ui(client, true, vi.fn(), vi.fn()));
+
+    expect(await screen.findByText("新成员")).toBeInTheDocument();
+    expect(screen.getByText("已选 2 个")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "选择 无变化成员" }),
+    ).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /^无变化\s*1$/ }));
+    expect(screen.getByText("当前 1 条")).toBeInTheDocument();
+    expect(screen.queryByText("新成员")).not.toBeInTheDocument();
+    expect(screen.getByText("无变化成员")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^刷新\s*1$/ }));
+    expect(screen.getByText("需刷新成员")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前筛选" }));
+    expect(screen.getByText("已选 1 个")).toBeInTheDocument();
   });
 });

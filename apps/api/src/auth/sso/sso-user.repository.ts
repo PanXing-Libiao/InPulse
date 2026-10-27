@@ -43,7 +43,13 @@ export type SsoIdentityPreviewSkipReason =
 export type SsoIdentityPreview =
   | {
       readonly kind: "eligible";
-      readonly action: "create" | "link" | "refresh";
+      readonly action: "create" | "link";
+    }
+  | {
+      readonly kind: "eligible";
+      readonly action: "refresh";
+      readonly userId: number;
+      readonly profileChanged: boolean;
     }
   | { readonly kind: "skip"; readonly reason: SsoIdentityPreviewSkipReason };
 
@@ -216,7 +222,20 @@ export class PostgresSsoUserRepository {
         if (bySubjectMatch.status !== "ACTIVE") {
           return { kind: "skip", reason: "account-disabled" };
         }
-        return { kind: "eligible", action: "refresh" };
+        const claimEmailKey = normalize(claim.email);
+        const emailOwner =
+          claimEmailKey === undefined ? undefined : byEmail.get(claimEmailKey);
+        const emailChanged =
+          claim.email !== null &&
+          claim.email !== bySubjectMatch.email &&
+          (emailOwner === undefined || emailOwner.id === bySubjectMatch.id);
+        return {
+          kind: "eligible",
+          action: "refresh",
+          userId: bySubjectMatch.id,
+          profileChanged:
+            claim.displayName !== bySubjectMatch.name || emailChanged,
+        };
       }
 
       const byLoginMatch = byLogin.get(normalize(claim.loginName)!);

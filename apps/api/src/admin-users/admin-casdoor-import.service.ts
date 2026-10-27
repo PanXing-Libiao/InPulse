@@ -31,7 +31,7 @@ export class AdminCasdoorImportService {
     snapshot: CasdoorDirectorySnapshot,
   ): Promise<CasdoorImportPreviewResponse> {
     const entries = await this.directory.preview(tx, snapshot);
-    const counts = { create: 0, link: 0, refresh: 0, skip: 0 };
+    const counts = { create: 0, link: 0, refresh: 0, unchanged: 0, skip: 0 };
     const items = entries.map((entry) => {
       counts[entry.action] += 1;
       return {

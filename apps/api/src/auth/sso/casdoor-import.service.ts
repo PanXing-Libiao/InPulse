@@ -98,23 +98,36 @@ export class PostgresCasdoorImportService implements CasdoorImportPort {
       tx,
       snapshot.users.map(toClaims),
     );
-    return snapshot.users.map((user, index) => {
+    const entries: CasdoorImportPreviewEntry[] = [];
+    for (const [index, user] of snapshot.users.entries()) {
       const classification = classifications[index];
       if (classification === undefined) {
         throw new Error("Casdoor preview classification is missing");
       }
-      return classification.kind === "skip"
-        ? {
-            user,
-            action: "skip" as const,
-            reason: classification.reason,
-          }
-        : {
-            user,
-            action: classification.action,
-            reason: null,
-          };
-    });
+      if (classification.kind === "skip") {
+        entries.push({ user, action: "skip", reason: classification.reason });
+        continue;
+      }
+      if (classification.action !== "refresh") {
+        entries.push({ user, action: classification.action, reason: null });
+        continue;
+      }
+      const organizationChanged =
+        await this.organizationSync.hasSsoMembershipChanges({
+          tx,
+          userId: classification.userId,
+          groups: user.groups,
+        });
+      entries.push({
+        user,
+        action:
+          classification.profileChanged || organizationChanged
+            ? "refresh"
+            : "unchanged",
+        reason: null,
+      });
+    }
+    return entries;
   }
 
   async importSelected(
