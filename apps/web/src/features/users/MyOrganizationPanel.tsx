@@ -19,7 +19,7 @@ export interface MyOrganizationPanelProps {
 
 /**
  * ADR-097 普通成员的只读成员视图：自己所属全部组织与去重后的同组织
- * ACTIVE 成员脱敏信息；未分配时说明原因。
+ * ACTIVE 成员脱敏信息；无组织时归入未分类并说明原因。
  */
 export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
   client,
@@ -68,8 +68,8 @@ export const MyOrganizationPanel: React.FC<MyOrganizationPanelProps> = ({
         <CalmSectionTitle title="成员与角色" />
         <CalmEmptyState
           icon="users"
-          title="尚未加入组织"
-          description="你还没有组织归属。本地账号可联系系统管理员分配，SSO 账号请检查 Casdoor 群组配置。"
+          title="当前为未分类"
+          description="你还没有组织归属，已归入未分类。本地账号可联系系统管理员分配，SSO 账号请检查 Casdoor 群组配置。"
         />
         <div className="permission-note">
           <span>

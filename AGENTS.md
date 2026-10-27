@@ -97,7 +97,7 @@
 - 成员关系不得缓存到 Session 或长生命周期对象；搜索和动态查询必须先取得服务端生成的 `AuthorizedProjectScope`，并在 SQL 层过滤。
 - 资源不存在和无权访问统一返回 404，避免泄露资源存在性；已登录但缺少全局权限时返回 403。
 - Session、CSRF 和预认证 Token 在数据库中只保存 Hash；Cookie、CSRF 和安全响应头必须遵守技术设计。
-- 单点登录（[ADR-032](./docs/adr/ADR-032.md)，前端入口经 [ADR-036](./docs/adr/ADR-036.md)、[ADR-080](./docs/adr/ADR-080.md) 修订）是默认登录入口：匿名访问 `/login`（含 `?from=`）即刻整页跳转 `GET /api/v1/auth/sso/start`，不再默认呈现本地口令表单；该路由只保存 state 的 HMAC 并下发 `__Host-sso-state`，`GET /api/v1/auth/sso/callback` 必须同时匹配 URL `state` 与该 Cookie 后才一次性消费；nonce 与 PKCE verifier 由服务端从 state 派生、不落库；token 交换与 JWKS 验签禁止放进数据库事务；只允许用 `sub`/`Name`/`DisplayName`/`Email` 映射本地账号；`groups` 仅用于 ADR-097 的组织同步，Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`；Casdoor 的 `isAdmin`、roles、permissions 等 claim 一律不得影响 InPulse 权限。
+- 单点登录（[ADR-032](./docs/adr/ADR-032.md)，前端入口经 [ADR-036](./docs/adr/ADR-036.md)、[ADR-080](./docs/adr/ADR-080.md) 修订）是默认登录入口：匿名访问 `/login`（含 `?from=`）即刻整页跳转 `GET /api/v1/auth/sso/start`，不再默认呈现本地口令表单；该路由只保存 state 的 HMAC 并下发 `__Host-sso-state`，`GET /api/v1/auth/sso/callback` 必须同时匹配 URL `state` 与该 Cookie 后才一次性消费；nonce 与 PKCE verifier 由服务端从 state 派生、不落库；token 交换与 JWKS 验签禁止放进数据库事务；只允许用 `sub`/`Name`/`DisplayName`/`Email` 映射本地账号；`groups` 仅用于 ADR-097 / ADR-098 的组织同步，Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`；Casdoor 的 `isAdmin`、roles、permissions 等 claim 一律不得影响 InPulse 权限。
 - SSO 首次登录 JIT 开通 `password_hash=NULL`、无任何项目成员关系的账号：平台已有账号时 `is_admin=false`；平台此前没有任何账号（`app.users` 无行，含停用账号也算有）时，第一个完成 SSO 登录的账号自动授予 `is_admin=true`（[ADR-075](./docs/adr/ADR-075.md)，判定与 INSERT 用固定键 `pg_advisory_xact_lock` 在同一事务内串行化，审计 payload 记 `grantedAdmin`）；映射优先级固定为 `sso_subject` 命中 → 登录名命中且未绑定且邮箱一致时绑定 → JIT；邮箱不一致或 subject 已绑定其它账号必须按冲突拒绝，禁止静默接管同名账号。无口令账号在本地入口必须干净地返回 401，不得抛错或 500。
 - `SSO_ENABLED` 非真值即整体关闭；配置非法时 fail closed：访问登录页后由服务端 302 回 `/login?local=1&sso=disabled`，登录页提示未启用并展示本地口令表单（不自动跳转）；`/login?local=1` 是管理员应急口令入口（隐藏、不自动跳转）；`?sso_error=` 回落只显示错误与手动「重新登录」。SSO start/callback 是 302-only 路由，不参与生成客户端；前端只做同源整页跳转，不得为此新增裸 `fetch`/`axios`，也不得新增 SSO 状态查询接口。
 - 登录只接受匿名预认证 Session 及其 CSRF Token；已有普通、受限或完整认证 Session 必须先登出，再签发新的预认证 CSRF。停用用户的旧 Session 按无效处理；受保护或业务接口返回 401，但 `issueCsrfToken` 与无效 Session 的同源 `logout` 可按匿名安全语义执行且不得恢复身份。
@@ -1187,3 +1187,13 @@
 - **契约与前端**：`OrganizationItem` 增加 `source` / `groupPath` / `parentId`；用户目录和管理员用户改为 `organizations` 数组，管理员条目增加 `managedBySso`；CASDOOR 组织按末级名称展示，完整路径作为悬停提示并继续作为同步唯一身份；同组织成员接口返回全部所属组织及去重成员，项目成员选择器按全部组织分组并按并集整组选择。路由总数保持 129，`permissions:check` 129 条操作 / 129 条路由通过；组织契约幂等升至 2.0.0，用户创建 / 编辑重放契约升至 1.4.0。
 - **迁移基础设施**：`database/bootstrap/000_roles.sql` 将 `app_migrator` 的数据库级 `search_path` 改为 `RESET search_path`，避免 `app` 可见时 `pg_get_triggerdef()` 省略函数 schema 导致历史迁移 `0047` 的部署断言误判；未修改任何历史迁移。
 - **本地验证**：SSO 与组织真实 PostgreSQL 集成 `sso-login.integration.test.ts`、`organizations-api.integration.test.ts` 共 23 例通过；空库首管理员 `sso-first-admin.integration.test.ts` 3 例通过；全新库从 `000_roles.sql` / `020_pgroonga.sql` 起应用 60 条迁移全部成功；Web 用户页单测 35 例与 Web 类型检查通过；全量 Playwright 89/89 本地通过（含管理员用户页组织区与状态列对齐）。未连接真实 Casdoor 生产实例，不声称生产联调或 CI 已通过。
+
+## 2026-10-27 ADR-098 SSO 实体群组收敛与未分类说明
+
+用户补充要求：Casdoor 账号只有一个实体群组，但 claim 可能同时返回父级与实体路径；InPulse 只应识别、展示实际实体群组，没有任何实体群组的账号归入“未分类”。经 [ADR-098](./docs/adr/ADR-098.md)（Accepted，2026-10-27）修订 [ADR-097](./docs/adr/ADR-097.md)：
+
+- **实体群组口径**：同一 owner 下同时出现完整路径祖先 A 与更深路径 B 时，A 只建立 `app.organizations` 层级，不写用户直接成员关系；只把最深的 B 写入 `app.user_organizations`。按 `/` 分段判断祖先，不能把 `acme/研发` 与 `acme/研发组` 误判为同一路径族。互不为祖先的多个真实群组仍全部保留；InPulse 不自行猜测主群组，若要只有一个实体群组应在 Casdoor 只配置一个实际归属。
+- **未分类**：`groups` 缺失仍不修改组织；`groups: []` 或 claim 没有可保留实体群组时清空成员关系，页面归入“未分类”。管理员成员页新增“未分类”筛选标签，无组织徽章、批量移出提示、普通成员空态与新建项目成员选择器统一文案；未分类是虚拟分类，不落库为组织、不能通过组织接口加入，也不授予任何权限。
+- **展示与审计**：祖先组织仍保留为层级数据，但管理员组织标签只显示有成员的组织；审计 `groupCount` / `membershipCount` 记录收敛后的实体群组数，`createdOrganizationCount` 仍记录实际新建的祖先及实体组织数。
+- **边界**：不新增路由、契约、迁移或权限变化；已存在的父级成员关系在下一次成功 SSO 登录时全量替换，不调用 Casdoor Admin API，不记录 Token 或原始 claim。
+- **本地验证**：API 单元 84 文件 548 例、`sso-login.integration.test.ts` 真实 PostgreSQL 19 例、Web 全量 121 文件 1037 例、生产构建与 `admin-users.spec.ts` Playwright 2/2 均本地通过；未连接真实 Casdoor 生产实例，不声称 CI、生产镜像或真实 IdP 联调已通过。

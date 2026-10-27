@@ -112,8 +112,9 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     const card = page.locator(".member-row").filter({ hasText: loginName });
     await expect(card.getByText(name, { exact: true })).toBeVisible();
     await expect(currentCard.locator(".member-org-tags")).toContainText(
-      "未分配",
+      "未分类",
     );
+    await expect(page.getByRole("tab", { name: /未分类/ })).toBeVisible();
     await expect(card.locator(".member-org-tags")).not.toContainText(
       "统一身份",
     );

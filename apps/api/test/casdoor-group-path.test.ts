@@ -4,6 +4,7 @@ import {
   InvalidCasdoorGroupPathError,
   expandCasdoorGroupAncestors,
   normalizeCasdoorGroupPaths,
+  selectCasdoorEntityGroups,
 } from "../src/organizations/casdoor-group-path.js";
 
 describe("Casdoor groups claim 路径", () => {
@@ -27,6 +28,28 @@ describe("Casdoor groups claim 路径", () => {
       parentPath: "acme/研发",
       depth: 3,
     });
+  });
+
+  test("同一路径族只保留最深实体群组，独立群组仍保留", () => {
+    const groups = selectCasdoorEntityGroups(
+      normalizeCasdoorGroupPaths([
+        "acme/总部",
+        "acme/总部/测试部",
+        "acme/研发",
+        "acme/研发/平台组",
+        "acme/研发组",
+        "other/总部",
+      ]),
+    );
+
+    expect(new Set(groups.map((group) => group.path))).toEqual(
+      new Set([
+        "other/总部",
+        "acme/总部/测试部",
+        "acme/研发/平台组",
+        "acme/研发组",
+      ]),
+    );
   });
 
   test("展开所有祖先且不创建 owner 虚拟组织", () => {

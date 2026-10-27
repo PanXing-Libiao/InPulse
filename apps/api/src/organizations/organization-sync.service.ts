@@ -4,6 +4,7 @@ import type { TransactionContext } from "../database/transaction-context.js";
 import {
   expandCasdoorGroupAncestors,
   normalizeCasdoorGroupPaths,
+  selectCasdoorEntityGroups,
 } from "./casdoor-group-path.js";
 import type {
   OrganizationSyncPort,
@@ -16,8 +17,9 @@ interface LockedSsoUser {
 }
 
 /**
- * ADR-097：SSO 用户组织归属的全量对账。调用方必须传入已验签 claims 所在
- * 的同一个 UnitOfWork；本服务不发网络请求，也不自行提交事务。
+ * ADR-097 / ADR-098：SSO 用户组织归属的全量对账。祖先路径只建立组织层级，
+ * 用户直接归属收敛到 claim 中的最深实体群组。调用方必须传入已验签 claims
+ * 所在的同一个 UnitOfWork；本服务不发网络请求，也不自行提交事务。
  */
 @Injectable()
 export class PostgresOrganizationSyncService implements OrganizationSyncPort {
@@ -33,7 +35,9 @@ export class PostgresOrganizationSyncService implements OrganizationSyncPort {
       };
     }
 
-    const groups = normalizeCasdoorGroupPaths(input.groups);
+    const groups = selectCasdoorEntityGroups(
+      normalizeCasdoorGroupPaths(input.groups),
+    );
     const user = await this.lockSsoUser(input.tx, input.userId);
     if (user === undefined || user.ssoSubject === null) {
       throw new Error("SSO organization sync requires an SSO-managed user");

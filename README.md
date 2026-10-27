@@ -277,3 +277,9 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
 - 页面展示 Casdoor 群组的末级名称（如「测试部」），完整路径（如 `libiaorobot.com/测试部`）保留为悬停提示，并继续作为同步唯一身份。
 - `groups`、Casdoor `isAdmin`、roles 与 permissions 不授予任何 InPulse 权限。本地口令账号仍由管理员维护单个 LOCAL 组织。
 - 迁移 `0061_contract_sso_casdoor_organizations.sql` 新增 `app.user_organizations` 等结构；部署前按既有顺序执行 bootstrap 与迁移。真实 Casdoor 生产联调尚未在本轮执行。
+
+### 2026-10-27 SSO 实体群组收敛与未分类（ADR-098）
+
+Casdoor 在层级群组场景下可能同时返回父级路径与用户实际选中的实体群组路径。InPulse 现按同一 owner 的完整路径分段判断祖先关系：路径族中只把最深实体群组写为用户的直接组织，父级仅用于建立组织层级；互不为祖先的多个真实群组仍全部保留，不会被强行截成一个。已在组织中的历史父级成员关系会在下一次成功 SSO 登录时按新口径替换。
+
+管理员“成员与角色”新增「未分类」标签；无组织账号的行内徽章、批量移出提示、普通成员空态和新建项目成员选择器统一显示「未分类」。该分类只用于页面归类，不落库为组织，也不授予任何项目或管理员权限。本次不改路由、契约、迁移与权限矩阵；详见 [ADR-098](docs/adr/ADR-098.md)。

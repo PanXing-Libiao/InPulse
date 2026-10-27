@@ -484,9 +484,11 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
     ]);
   });
 
-  test("首次 SSO 登录按 Casdoor 群组路径建立层级组织并写入直接成员关系", async () => {
+  test("首次 SSO 登录按 Casdoor 群组路径建立层级组织，仅把最深实体群组写为直接成员关系", async () => {
     const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
-    const groups = [owner + "/总部/测试部", owner + "/研发/平台组"];
+    const directGroups = [owner + "/总部/测试部", owner + "/研发/平台组"];
+    // Casdoor 可能同时返回父级路径与用户选中的实体群组；父级只用于建层级。
+    const groups = [owner + "/总部", owner + "/研发", ...directGroups];
     const loginName = uniqueLoginName("sso_groups");
     const { state } = await startLogin("/projects");
     idp.setClaims({
@@ -525,7 +527,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
 
     const memberships = await directCasdoorMemberships(user.id);
     expect(new Set(memberships.map((row) => row.groupPath))).toEqual(
-      new Set(groups),
+      new Set(directGroups),
     );
     expect(memberships.every((row) => row.membershipSource === "CASDOOR")).toBe(
       true,

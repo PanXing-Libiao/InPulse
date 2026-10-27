@@ -79,6 +79,25 @@ export function normalizeCasdoorGroupPaths(
   });
 }
 
+/**
+ * ADR-098：同一 owner 的路径族只保留最深实体群组。Casdoor 可能同时把
+ * 父级路径与用户实际选中的子群组放进 groups claim；父级只用于建立层级，
+ * 不能成为用户的直接组织。互不为祖先的多个群组仍全部保留，避免丢失真实
+ * 的多群组归属。
+ */
+export function selectCasdoorEntityGroups(
+  groups: readonly CasdoorGroupPath[],
+): readonly CasdoorGroupPath[] {
+  const ancestorPaths = new Set<string>();
+  for (const group of groups) {
+    const segments = group.path.split("/");
+    for (let depth = 2; depth < segments.length; depth += 1) {
+      ancestorPaths.add(segments.slice(0, depth).join("/"));
+    }
+  }
+  return groups.filter((group) => !ancestorPaths.has(group.path));
+}
+
 /** 展开每个直接群的祖先群组；owner 本身不是组织。 */
 export function expandCasdoorGroupAncestors(
   groups: readonly CasdoorGroupPath[],

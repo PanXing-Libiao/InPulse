@@ -121,10 +121,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }[],
   ) =>
     organizations.length === 0
-      ? "未分配"
+      ? "未分类"
       : organizations.map((organization) => organization.name).join("、");
 
-  // 整组选择只列真实组织：未分配不是小组，逐人挑选仍走下方搜索框。
+  // 整组选择只列真实组织：未分类不是真实组织，逐人挑选仍走下方搜索框。
   const assignedOrganizationGroups = organizationGroups;
   const hasOrganizationGroups = assignedOrganizationGroups.length > 0;
 

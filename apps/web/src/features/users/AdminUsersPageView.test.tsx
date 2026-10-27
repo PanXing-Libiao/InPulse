@@ -720,7 +720,7 @@ describe("F-03 settings sections", () => {
       member.id,
       { isAdmin: false },
     );
-    await screen.findByText("尚未加入组织");
+    await screen.findByText("当前为未分类");
     const rail = screen.getByRole("navigation", { name: "成员与设置导航" });
     expect(
       within(rail).queryByRole("button", { name: "AI 辅助转换" }),
@@ -777,7 +777,7 @@ describe("ADR-081 organizations", () => {
     mount({ getMyOrganizationMembers } as unknown as InpulseApiClient, 2, {
       isAdmin: false,
     });
-    await screen.findByText("尚未加入组织");
+    await screen.findByText("当前为未分类");
   });
 
   it("filters the member list to system administrators", async () => {
@@ -790,6 +790,45 @@ describe("ADR-081 organizations", () => {
     expect(screen.queryByText("Bob")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: /全部/ }));
     expect(screen.getByText("Bob")).toBeInTheDocument();
+  });
+
+  it("filters members without an organization into the unclassified tab", async () => {
+    const organization = {
+      id: 7,
+      name: "研发一组",
+      rowVersion: 1,
+      source: "LOCAL" as const,
+      groupPath: null,
+      parentId: null,
+      createdAt: "2026-10-16T00:00:00.000Z",
+      updatedAt: "2026-10-16T00:00:00.000Z",
+    };
+    const classified: AdminUserItem = {
+      ...member,
+      id: 3,
+      loginName: "carol",
+      name: "Carol",
+      organizations: [membership(7, "研发一组")],
+    };
+    mount({
+      listAdminUsers: vi
+        .fn()
+        .mockResolvedValue({ items: [admin, member, classified] }),
+      listOrganizations: vi.fn().mockResolvedValue({ items: [organization] }),
+    } as unknown as InpulseApiClient);
+    await screen.findByText("Carol");
+
+    const unclassifiedTab = await screen.findByRole("tab", {
+      name: /未分类/,
+    });
+    expect(unclassifiedTab).toHaveTextContent("2");
+    fireEvent.click(unclassifiedTab);
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+    expect(screen.queryByText("Carol")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /全部/ }));
+    expect(screen.getByText("Carol")).toBeInTheDocument();
   });
 
   it("hides filters with no members", async () => {
@@ -852,7 +891,7 @@ describe("ADR-081 organizations", () => {
     fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
     fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
     fireEvent.click(screen.getByLabelText("选择 Bob"));
-    fireEvent.click(screen.getByRole("button", { name: "移出到未分配" }));
+    fireEvent.click(screen.getByRole("button", { name: "移出到未分类" }));
     await waitFor(() =>
       expect(
         screen.queryByRole("tab", { name: /研发一组/ }),
@@ -891,7 +930,7 @@ describe("ADR-081 organizations", () => {
     } as unknown as InpulseApiClient;
     mount(client);
     await screen.findByText("Bob");
-    expect(within(userCard("Bob")).getByText("未分配")).toBeInTheDocument();
+    expect(within(userCard("Bob")).getByText("未分类")).toBeInTheDocument();
     expect(screen.queryByLabelText("选择 Bob")).not.toBeInTheDocument();
 
     expect(
@@ -1138,7 +1177,7 @@ describe("ADR-081 organizations", () => {
     );
     expect(rendered).toEqual([
       ["Alice", "研发一组"],
-      ["Bob", "未分配"],
+      ["Bob", "未分类"],
       ["Carol", "先建部门"],
     ]);
   });
@@ -1304,7 +1343,7 @@ describe("ADR-081 organizations", () => {
     fireEvent.click(screen.getByRole("tab", { name: /研发一组/ }));
     fireEvent.click(screen.getByRole("button", { name: "编辑组织" }));
     fireEvent.click(screen.getByLabelText("选择 Bob"));
-    fireEvent.click(screen.getByRole("button", { name: "移出到未分配" }));
+    fireEvent.click(screen.getByRole("button", { name: "移出到未分类" }));
     await waitFor(() =>
       expect(assignUsersOrganization).toHaveBeenCalledTimes(1),
     );
@@ -1316,7 +1355,7 @@ describe("ADR-081 organizations", () => {
         }),
       }),
     );
-    await screen.findByText(/已把 1 名成员移出，变为未分配/);
+    await screen.findByText(/已把 1 名成员移出，变为未分类/);
   });
 
   it("keeps sole-owner tasks unresolved until a handover member or deletion is chosen", async () => {

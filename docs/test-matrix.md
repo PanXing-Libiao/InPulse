@@ -7147,3 +7147,15 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR097-MIGRATION-001 | 真实 PostgreSQL 全新库 | bootstrap 与全量迁移 | 新库先执行 `000_roles.sql`、`020_pgroonga.sql`，再由 `app_migrator` 执行 `pnpm db:migrate`；全部迁移应用成功；`app_migrator` 使用数据库默认 `search_path`，历史迁移 `0047` 的 `pg_get_triggerdef()` 部署断言不再误判 | 本地通过（2026-10-26） |
 
 已知边界：未连接真实 Casdoor 生产实例，未验证实际 IdP 的 `JWT-Custom` 配置结果；全量 Playwright 89/89 已在本地通过（2026-10-26），但不替代真实 Casdoor 联调；不声称 CI、生产镜像或 Trivy 已通过。Casdoor Group 没有不可变数字 ID，路径改名或移动会表现为旧成员关系消失、新组织出现；本轮不自动删除已消失群组的本地组织行。
+
+## 2026-10-27 SSO 实体群组收敛与未分类（ADR-098）
+
+用户补充：Casdoor 实体群组只有一个，但 claim 可能同时返回父级和实体路径；InPulse 只应识别、展示实体群组，没有任何实体群组的账号归入“未分类”。本批修订 ADR-097 的直接成员口径，不改数据模型与权限。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR098-UNIT-001 | API 单元 | 实体群组选择 | `casdoor-group-path.test.ts`：同一 owner 的父级与子级同时出现时只保留最深实体群组；不同 owner 的同名路径与互不为祖先的独立群组均保留；分段边界正确 | 本地通过（2026-10-27，13 例） |
+| ADR098-API-001 | API 集成（真实 PostgreSQL + 桩 IdP） | claim 收敛与未分类 | `sso-login.integration.test.ts`：父级路径仍建立组织层级但不写直接成员关系；只写最深实体群组；独立多群组保留；空数组清空后成员关系为零；缺失 claim 不修改 | 本地通过（2026-10-27，19 例） |
+| ADR098-WEB-001 | Web 单元 | 管理员未分类视图 | `AdminUsersPageView.test.tsx`：无组织成员显示“未分类”徽章；新增“未分类”标签及数量，点击后只显示无组织成员；“移出到未分类”提示与文案一致 | 本地通过（2026-10-27，全量 Web 121 文件 1037 例） |
+| ADR098-WEB-002 | Web 单元 | 普通成员与项目选择器 | `MyOrganizationPanel` 无组织时显示“当前为未分类”；`CreateProjectModal` 的成员分组显示“未分类”，但不把虚拟分类列为真实组织整组按钮 | 本地通过（2026-10-27，全量 Web 121 文件 1037 例） |
+| ADR098-E2E-001 | Playwright 浏览器 | 管理员用户页 | `admin-users.spec.ts`：无组织账号显示“未分类”徽章与筛选标签，状态列与操作列对齐不回归 | 本地通过（2026-10-27，2/2） |

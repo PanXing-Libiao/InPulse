@@ -56,7 +56,7 @@ type EditorValues = {
   readonly isAdmin: boolean;
 };
 
-type OrgView = "all" | "admins" | number;
+type OrgView = "all" | "admins" | "unclassified" | number;
 
 type OrgMode = "browse" | "join" | "manage";
 
@@ -305,7 +305,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
       ? "members"
       : activeTab;
 
-  // 成员排序：当前账号置顶，其后未分配组织、已分配组织；是否停用由上方
+  // 成员排序：当前账号置顶，其后未分类成员、已分类成员；是否停用由上方
   // 「启用中 / 已停用」筛选分桶，不再把两类账号混排在同一列表。
   const members = useMemo(() => {
     const items = (query.data?.items ?? []).filter(
@@ -349,13 +349,15 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         )
       : orgView === "admins"
         ? manageableMembers.filter((user) => user.isAdmin)
-        : typeof orgView === "number"
-          ? manageableMembers.filter((user) =>
-              user.organizations.some(
-                (organization) => organization.id === orgView,
-              ),
-            )
-          : manageableMembers;
+        : orgView === "unclassified"
+          ? manageableMembers.filter((user) => user.organizations.length === 0)
+          : typeof orgView === "number"
+            ? manageableMembers.filter((user) =>
+                user.organizations.some(
+                  (organization) => organization.id === orgView,
+                ),
+              )
+            : manageableMembers;
   const visibleMembers = baseMembers.filter(matchesKeyword);
 
   const countByOrganization = (organizationId: number) =>
@@ -386,6 +388,9 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   );
 
   const adminCount = scopedMembers.filter((user) => user.isAdmin).length;
+  const unclassifiedCount = scopedMembers.filter(
+    (user) => user.organizations.length === 0,
+  ).length;
 
   const canSelectMember = (user: AdminUserItem) =>
     user.status === "ACTIVE" &&
@@ -422,7 +427,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 
   const organizationName = (organizationId: number | null | undefined) => {
     if (organizationId === null || organizationId === undefined) {
-      return "未分配";
+      return "未分类";
     }
     return (
       organizations.data?.items.find((item) => item.id === organizationId)
@@ -566,7 +571,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
 
   const joinSelected = async () => {
     if (selectedUserIds.length === 0) {
-      showWarning("请先勾选未分配的成员。");
+      showWarning("请先勾选未分类的成员。");
       return;
     }
     try {
@@ -624,7 +629,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         organizationId: null,
       });
       showSuccess(
-        "已把 " + selectedUserIds.length + " 名成员移出，变为未分配。",
+        "已把 " + selectedUserIds.length + " 名成员移出，变为未分类。",
       );
       resetOrgMode();
       await refreshMemberData();
@@ -858,6 +863,20 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       系统管理员 <b>{adminCount}</b>
                     </button>
                   ) : null}
+                  {unclassifiedCount > 0 ? (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={orgView === "unclassified"}
+                      className={
+                        "member-org-tab" +
+                        (orgView === "unclassified" ? " is-active" : "")
+                      }
+                      onClick={() => switchOrgView("unclassified")}
+                    >
+                      未分类 <b>{unclassifiedCount}</b>
+                    </button>
+                  ) : null}
                   {(organizations.data?.items ?? [])
                     .filter(
                       (organization) =>
@@ -965,7 +984,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                         loading={organizationMutation.isPending}
                         onClick={() => void leaveSelected()}
                       >
-                        移出到未分配
+                        移出到未分类
                       </Button>
                       <Button onClick={resetOrgMode}>取消</Button>
                     </span>
@@ -1013,7 +1032,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 title="没有匹配的成员"
                 description={
                   orgMode === "join"
-                    ? "当前没有未分配的启用账号。"
+                    ? "当前没有未分类的启用账号。"
                     : orgMode === "manage"
                       ? "该组织没有可管理的启用成员。"
                       : memberScope === "departed"
@@ -1071,7 +1090,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       </CalmBadge>
                       <span className="member-org-tags">
                         {user.organizations.length === 0 ? (
-                          <CalmBadge tone="gray">未分配</CalmBadge>
+                          <CalmBadge tone="gray">未分类</CalmBadge>
                         ) : (
                           user.organizations.map((organization) => (
                             <CalmBadge

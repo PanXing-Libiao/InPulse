@@ -282,9 +282,9 @@ describe("CreateProjectModal", () => {
     });
     // 创建者被排除：研发一组的候选只剩 2、3 两人。
     expect(within(groupButton).getByText("0/2")).toBeInTheDocument();
-    // 未分配不是小组，整组选择只列真实组织。
+    // 未分类不是真实组织，整组选择只列真实组织。
     expect(
-      within(dialog).queryByRole("button", { name: /全选组织 未分配/ }),
+      within(dialog).queryByRole("button", { name: /全选组织 未分类/ }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(groupButton);
@@ -408,6 +408,40 @@ describe("CreateProjectModal", () => {
       expect.objectContaining({ memberIds: [2, 3] }),
       expect.any(Object),
     );
+  });
+
+  it("把无组织成员归入未分类，但不提供虚拟组织整组按钮", async () => {
+    const getUserDirectory = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+        {
+          id: 2,
+          name: "无组织成员",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+      ],
+    });
+    const client = { getUserDirectory } as unknown as InpulseApiClient;
+    renderModal(client);
+
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    const trigger = (
+      await within(dialog).findByLabelText("选择项目成员")
+    ).closest(".ant-select");
+    expect(trigger).not.toBeNull();
+    fireEvent.mouseDown(trigger as HTMLElement);
+    expect((await screen.findAllByText("未分类")).length).toBeGreaterThan(0);
+    expect(
+      within(dialog).queryByRole("button", { name: /全选组织 未分类/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("组内可单独挑选：单人勾选后组织按钮显示已选进度", async () => {
