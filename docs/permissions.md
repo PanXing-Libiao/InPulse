@@ -391,7 +391,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 本节按 [ADR-098](adr/ADR-098.md) 与 [ADR-099](adr/ADR-099.md) 修订 SSO 组织同步口径。六条组织路由、授权等级、CSRF、幂等与 `If-Match` 要求均不变，路由总数保持 129；不新增操作、权限或生成客户端条目。
 
-**登录同步边界**：只有绑定 `sso_subject` 的账号由 SSO 管理组织。Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`。验签后，服务端必须在数据库事务外使用同一 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 对已验签 claim 中每个群组调用 `GET /api/get-group?id=owner/name`；响应必须通过 owner、name、type、isEnabled、isTopGroup 与 parentId 严格校验，顶层 parentId 必须为空、子级 parentId 必须等于直接父组名称。只保留启用的 `Physical` 组，再按 ADR-098 收敛同一路径族的最深实体组；Virtual、停用组和祖先路径不写用户直接成员关系。
+**登录同步边界**：只有绑定 `sso_subject` 的账号由 SSO 管理组织。Casdoor application 必须配置 `JWT-Custom` Token format、Token fields 包含 `Groups`、Token group format 为 `Path`。验签后，服务端必须在数据库事务外使用同一 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 对已验签 claim 中每个群组调用 `GET /api/get-group?id=owner/name`；响应必须通过 owner、name、type、isEnabled、isTopGroup 与 parentId 严格校验，顶层 parentId 必须等于群组所属组织 ID（Casdoor 的 owner）、子级 parentId 必须等于直接父组名称。只保留启用的 `Physical` 组，再按 ADR-098 收敛同一路径族的最深实体组；Virtual、停用组和祖先路径不写用户直接成员关系。
 
 **失败与未分类**：`groups` 缺失时登录成功但不改组织；`groups: []`、过滤后无 Physical 组或 claim 合法但无实体组时清空成员关系并归入“未分类”；非法路径按 `token-invalid` 拒绝。Basic 认证失败，或元数据接口出现网络错误、超时、非 2xx、malformed/unknown type/路径或父级不匹配时，按 `group-metadata-failed` fail closed，不签发 Session、不创建账号或组织。已验签 claim 仍是成员集合的唯一真相，元数据只能过滤、不能增加成员。Client Secret 只进入服务端请求头，不落库、不写日志，也不进入审计。
 

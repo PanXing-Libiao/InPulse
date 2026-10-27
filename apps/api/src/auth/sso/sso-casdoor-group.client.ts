@@ -110,7 +110,7 @@ function validateRecord(
     throw new SsoGroupMetadataError("group-parent-mismatch");
   }
   if (
-    (expectedTopGroup && parentId !== "") ||
+    (expectedTopGroup && parentId !== group.owner) ||
     (!expectedTopGroup && parentId !== group.parentPath!.split("/").at(-1))
   ) {
     throw new SsoGroupMetadataError("group-parent-mismatch");

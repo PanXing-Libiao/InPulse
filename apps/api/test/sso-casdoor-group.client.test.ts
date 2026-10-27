@@ -80,7 +80,8 @@ function physical(path: string): GroupRecord {
     owner: segments[0]!,
     name: segments.at(-1)!,
     type: "Physical",
-    parentId: segments.length === 2 ? "" : segments[segments.length - 2]!,
+    parentId:
+      segments.length === 2 ? segments[0]! : segments[segments.length - 2]!,
     isTopGroup: segments.length === 2,
     isEnabled: true,
   };
@@ -226,7 +227,7 @@ describe("SsoCasdoorGroupClient", () => {
       { ...physical("libiaorobot.com/总部/测试部"), isTopGroup: true },
     ],
     [
-      "顶层父级非空",
+      "顶层父级不是组织 ID",
       "libiaorobot.com/测试部",
       "libiaorobot.com/测试部",
       { ...physical("libiaorobot.com/测试部"), parentId: "总部" },

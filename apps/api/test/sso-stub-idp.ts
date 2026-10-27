@@ -217,7 +217,7 @@ function buildGroupRecord(
     isTopGroup,
     parentId:
       metadata?.parentId ??
-      (segments.length === 2 ? "" : segments[segments.length - 2]!),
+      (segments.length === 2 ? owner : segments[segments.length - 2]!),
     isEnabled: metadata?.isEnabled ?? true,
     users: ["stub-user"],
   };

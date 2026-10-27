@@ -1204,6 +1204,6 @@
 
 - **根因**：JWT 的 `groups` claim 只包含 `owner/path`，不含 Casdoor group 的 `Physical` / `Virtual` 类型；ADR-098 的父子路径收敛无法过滤互不为祖先的 Virtual 组。
 - **元数据读取**：验签后在数据库事务外使用本次 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 对已验签 claim 中每个群组调用 `GET /api/get-group?id=owner/name`；不保留用户 access_token，不拉全量目录，不查询 claim 外群组，不缓存，不在事务内发网络请求。Client Secret 只进入服务端请求头，不写日志、不进入审计。
-- **严格过滤**：响应必须为 `status=ok` 且 `owner` / `name` / `type` / `isEnabled` / `isTopGroup` / `parentId` 与 claim 路径一致；顶层 `parentId` 必须为空，子级 `parentId` 必须等于直接父组名称。只保留启用中的 `Physical` 组。未知类型、字段缺失、HTTP 失败、超时、父级不匹配或 Basic 认证失败均按 `group-metadata-failed` 拒绝登录，不创建账号、组织或 Session。
+- **严格过滤**：响应必须为 `status=ok` 且 `owner` / `name` / `type` / `isEnabled` / `isTopGroup` / `parentId` 与 claim 路径一致；顶层 `parentId` 必须等于群组所属组织 ID（Casdoor 的 owner），子级 `parentId` 必须等于直接父组名称。只保留启用中的 `Physical` 组。未知类型、字段缺失、HTTP 失败、超时、父级不匹配或 Basic 认证失败均按 `group-metadata-failed` 拒绝登录，不创建账号、组织或 Session。
 - **未分类与审计**：过滤后再按 ADR-098 收敛最深实体组；没有 Physical 组时传空数组并清空成员关系，页面归入“未分类”。已验签 claim 仍是成员关系唯一真相，元数据只能过滤、不能增加成员。
 - **边界与验证**：不新增路由、OpenAPI、迁移、权限条目或数据模型；真实 Casdoor 的 `/api/get-group` 鉴权尚未联调，生产启用前必须完成 Physical + Virtual 并存 smoke test，不得以桩 IdP 结果替代。2026-10-27 本地 API/Web 类型检查、API 全量单测 85 文件 563 例、Web 全量单测 121 文件 1037 例、真实 PostgreSQL SSO 定向集成 25 例与 Web 回跳提示 6 例通过；未声称 CI、生产镜像或真实 IdP 联调通过。
