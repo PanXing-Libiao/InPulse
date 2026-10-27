@@ -395,4 +395,4 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 **失败与未分类**：`groups` 缺失时登录成功但不改组织；`groups: []`、过滤后无 Physical 组或 claim 合法但无实体组时清空成员关系并归入“未分类”；非法路径按 `token-invalid` 拒绝。Basic 认证失败，或元数据接口出现网络错误、超时、非 2xx、malformed/unknown type/路径或父级不匹配时，按 `group-metadata-failed` fail closed，不签发 Session、不创建账号或组织。已验签 claim 仍是成员集合的唯一真相，元数据只能过滤、不能增加成员。Client Secret 只进入服务端请求头，不落库、不写日志，也不进入审计。
 
-**验证边界**：2026-10-27 本地真实 PostgreSQL + 桩 IdP 覆盖 Physical/Virtual 混合、仅 Virtual 清空、元数据失败拒绝、缺失/空数组不调用元数据接口，以及群组查询发生在事务外；`permissions:check` 未因本批新增路由或权限条目。真实 Casdoor `/api/get-group` 鉴权尚未联调，生产启用前必须完成 Physical + Virtual 并存 smoke test。
+**验证边界**：2026-10-27 本地真实 PostgreSQL + 桩 IdP 覆盖 Physical/Virtual 混合、仅 Virtual 清空、元数据失败拒绝、缺失/空数组不调用元数据接口，以及群组查询发生在事务外；`permissions:check` 未因本批新增路由或权限条目。真实 Casdoor smoke test 亦已通过：Physical 与 Virtual 并存账号登录后只显示实体组“测试部”，Virtual 组未出现，无实体组成员归入“未分类”。

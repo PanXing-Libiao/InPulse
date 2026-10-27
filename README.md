@@ -235,7 +235,7 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
 
 Casdoor 的 id_token `groups` claim 只携带群组路径，不包含 `Physical` / `Virtual` 类型。InPulse 现于验签后、数据库事务外用同一 SSO application 的 `clientId`/`clientSecret` 通过 HTTP Basic 逐组读取 `GET /api/get-group`，严格校验路径与父级后只保留启用的 `Physical` 组；Virtual 和停用组不会进入组织成员关系，仍无实体组的账号归入“未分类”。
 
-元数据读取失败、未知类型或 Basic 认证失败时按 `group-metadata-failed` 拒绝登录，不回退猜测。本次不新增路由、契约、迁移或权限条目；真实 Casdoor 鉴权联调尚未完成，生产启用前需执行 Physical 与 Virtual 并存 smoke test。详见 [ADR-099](docs/adr/ADR-099.md)。
+元数据读取失败、未知类型或 Basic 认证失败时按 `group-metadata-failed` 拒绝登录，不回退猜测。本次不新增路由、契约、迁移或权限条目；2026-10-27 已在测试环境用真实 Casdoor 完成 Physical 与 Virtual 并存 smoke test：同一个 SSO application 的 Basic 凭据可读取 get-group，登录后只显示“测试部”，Virtual 组未出现，其余无实体组成员归入“未分类”。详见 [ADR-099](docs/adr/ADR-099.md)。
 
 ## 文档导航
 
@@ -283,7 +283,7 @@ Casdoor 的 id_token `groups` claim 只携带群组路径，不包含 `Physical`
 - CASDOOR 组织在 InPulse 中只读，管理员手工改名、删除或调整 SSO 用户组织会返回 409 `ORGANIZATION_SSO_MANAGED`；已消失的群组只移除成员关系，不自动删除本地组织行。
 - 页面展示 Casdoor 群组的末级名称（如「测试部」），完整路径（如 `libiaorobot.com/测试部`）保留为悬停提示，并继续作为同步唯一身份。
 - `groups`、Casdoor `isAdmin`、roles 与 permissions 不授予任何 InPulse 权限。本地口令账号仍由管理员维护单个 LOCAL 组织。
-- 迁移 `0061_contract_sso_casdoor_organizations.sql` 新增 `app.user_organizations` 等结构；部署前按既有顺序执行 bootstrap 与迁移。真实 Casdoor 生产联调尚未在本轮执行。
+- 迁移 `0061_contract_sso_casdoor_organizations.sql` 新增 `app.user_organizations` 等结构；部署前按既有顺序执行 bootstrap 与迁移。后续 ADR-099 已在测试环境完成真实 Casdoor 的群组类型联调，本段初始交付时未执行生产联调。
 
 ### 2026-10-27 SSO 实体群组收敛与未分类（ADR-098）
 
