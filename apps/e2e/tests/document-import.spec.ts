@@ -224,8 +224,9 @@ test("F-32 文档导入右栏输入行贴底：高窗口下不留悬空空隙（
   const composer = await dialog.locator(".import-composer").boundingBox();
   expect(pane, "右栏应有布局盒").not.toBeNull();
   expect(composer, "输入行应有布局盒").not.toBeNull();
-  // 右栏确实被左栏撑高，否则这条回归没有意义。
-  expect(pane!.height).toBeGreaterThan(500);
+  // 弹窗外框已固定为 min(760px, 100dvh - 56px)，右栏高度来自外框而不是被左栏
+  // 撑高；这里只要求它确实占到固定外框内的高度，后面的贴底断言才有意义。
+  expect(pane!.height).toBeGreaterThan(400);
   // 输入行底部与面板底部只差面板的下内边距（12px）量级，不再悬空。
   const gap = pane!.y + pane!.height - (composer!.y + composer!.height);
   expect(gap).toBeGreaterThanOrEqual(8);

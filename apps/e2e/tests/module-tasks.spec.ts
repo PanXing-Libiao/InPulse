@@ -139,7 +139,9 @@ test("F-15 单份模块任务影响两功能，引用计数与增删关系持久
     await edit.getByRole("button", { name: /保\s*存/ }).click();
     await expect(edit).toBeHidden();
     await page.reload();
-    await expect(page.getByText("1 个任务")).toBeVisible();
+    await expect(page.locator(".module-work-tabs")).toContainText(
+      "模块级任务 1",
+    );
     await page.goto(featureUrls[0]!);
     await expect(page.getByText(title, { exact: true })).toBeVisible();
     await expect(page.getByText("1 个任务")).toBeVisible();

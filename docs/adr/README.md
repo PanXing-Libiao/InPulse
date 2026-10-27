@@ -116,6 +116,7 @@
 | [ADR-100](ADR-100.md) | Accepted | Casdoor 管理员批量导入与实体组归类：新增预览与确认导入两条系统管理员路由（129 → 131）；读取配置 organization 下启用账号，用群组目录的 parentId 还原完整路径，只写入启用中的 Physical 组，无实体组归入“未分类”；新账号无本地口令且非管理员，导入路径不触发首管理员授予；目录网络读取在事务外，身份写入、组织同步与单条批次审计同事务，确认导入要求 CSRF、数据库级幂等与仅计数审计；不自动停用、删除或重新启用平台账号，不传播 Casdoor roles / permissions / isAdmin |
 | [ADR-101](ADR-101.md) | Accepted | Casdoor 导入按应用 Permission 收窄候选账号：新增可选 `CASDOOR_IMPORT_PERMISSION`，通过 HTTP Basic 递归读取 Permission / Role 的 groups 与 users，只让命中该权限范围且启用中的账号进入管理员导入，并只把该范围内的 Physical 群组写入组织；Permission 停用、非 Allow / Approved、跨 owner、空范围或读取失败均 503 fail closed；不把 Casdoor 权限映射为 InPulse 权限，未配置时保持 ADR-100 行为；无新路由、迁移或依赖 |
 | [ADR-102](ADR-102.md) | Accepted | Casdoor 导入预览新增“无变化”分类：已绑定账号仅在姓名、可安全同步邮箱或实体组集合与平台不同时标记刷新；默认只勾选新建、绑定、刷新，分类标签可筛选并对当前结果全选；弹窗头部与滚动布局自适应；审计日志将 Casdoor 导入、组织同步及 Casdoor 组织显示为中文；无新路由、迁移或权限变化 |
+| [ADR-103](ADR-103.md) | Accepted | 成员与角色页取消未分类筛选页签（修订 ADR-098 §2.3）：无组织成员回到“全部”平铺列表，行内徽章、批量移出与项目选择器文案保持不变；不涉及路由、契约、迁移与权限 |
 
 ## 关联基线
 

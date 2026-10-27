@@ -7,10 +7,14 @@ import {
   type ModuleEditorRequest,
 } from "@features/modules/ModuleEditorModal";
 import { useProjectDetail } from "@features/projects/project-query";
-import { TasksPanel } from "@features/tasks/TasksPanel";
+import {
+  TasksPanel,
+  taskStatusFilterOptions,
+} from "@features/tasks/TasksPanel";
 import type { TaskLocation } from "@features/tasks/task-links";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { CalmSegmented, CalmTabs } from "@features/common/components/Calm";
+import { CalmSelect } from "@features/common/components/CalmSelect";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
 /**
@@ -37,9 +41,10 @@ export default function ModuleTasksPage() {
   /** ADR-044：模块只有编辑，弹层与模块列表页共用。 */
   const [moduleRequest, setModuleRequest] =
     useState<ModuleEditorRequest | null>(null);
-  /** 页头「新增任务」打开面板内同一个模块级创建弹窗。 */
+  /** 页头「新建任务」打开面板内同一个模块级创建弹窗。 */
   const [createOpen, setCreateOpen] = useState(false);
   const [view, setView] = useState<"cards" | "list">("cards");
+  const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const [taskCount, setTaskCount] = useState(0);
   if (!validScope) return <Alert type="error" title="模块地址无效" />;
@@ -97,7 +102,7 @@ export default function ModuleTasksPage() {
             onClick={() => setCreateOpen(true)}
           >
             <InpulseIcon name="plus" size={15} />
-            新增任务
+            新建任务
           </Button>
         </div>
       </div>
@@ -121,6 +126,15 @@ export default function ModuleTasksPage() {
           ]}
         />
         <div className="feature-view-controls">
+          <CalmSelect
+            className="task-status-filter"
+            value={statusFilter}
+            onChange={(next) => setStatusFilter(String(next))}
+            options={taskStatusFilterOptions}
+            appearance="menu"
+            ariaLabel="任务状态筛选"
+            animated
+          />
           <CalmSegmented
             label="任务展示方式"
             value={view}
@@ -156,6 +170,9 @@ export default function ModuleTasksPage() {
         createOpen={createOpen}
         onCreateClose={() => setCreateOpen(false)}
         onCountChange={setTaskCount}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        suppressCreateAction
       />
       <ModuleEditorModal
         projectId={projectId}

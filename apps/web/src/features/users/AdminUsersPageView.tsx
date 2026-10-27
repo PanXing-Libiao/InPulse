@@ -59,7 +59,7 @@ type EditorValues = {
   readonly isAdmin: boolean;
 };
 
-type OrgView = "all" | "admins" | "unclassified" | number;
+type OrgView = "all" | "admins" | number;
 
 type OrgMode = "browse" | "join" | "manage";
 
@@ -353,15 +353,13 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         )
       : orgView === "admins"
         ? manageableMembers.filter((user) => user.isAdmin)
-        : orgView === "unclassified"
-          ? manageableMembers.filter((user) => user.organizations.length === 0)
-          : typeof orgView === "number"
-            ? manageableMembers.filter((user) =>
-                user.organizations.some(
-                  (organization) => organization.id === orgView,
-                ),
-              )
-            : manageableMembers;
+        : typeof orgView === "number"
+          ? manageableMembers.filter((user) =>
+              user.organizations.some(
+                (organization) => organization.id === orgView,
+              ),
+            )
+          : manageableMembers;
   const visibleMembers = baseMembers.filter(matchesKeyword);
 
   const countByOrganization = (organizationId: number) =>
@@ -392,9 +390,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
   );
 
   const adminCount = scopedMembers.filter((user) => user.isAdmin).length;
-  const unclassifiedCount = scopedMembers.filter(
-    (user) => user.organizations.length === 0,
-  ).length;
 
   const canSelectMember = (user: AdminUserItem) =>
     user.status === "ACTIVE" &&
@@ -870,20 +865,6 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                       onClick={() => switchOrgView("admins")}
                     >
                       系统管理员 <b>{adminCount}</b>
-                    </button>
-                  ) : null}
-                  {unclassifiedCount > 0 ? (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={orgView === "unclassified"}
-                      className={
-                        "member-org-tab" +
-                        (orgView === "unclassified" ? " is-active" : "")
-                      }
-                      onClick={() => switchOrgView("unclassified")}
-                    >
-                      未分类 <b>{unclassifiedCount}</b>
                     </button>
                   ) : null}
                   {(organizations.data?.items ?? [])

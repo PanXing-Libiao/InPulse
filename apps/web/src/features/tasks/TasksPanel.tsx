@@ -108,7 +108,7 @@ const statusTone = {
   DONE: "green",
   CANCELED: "gray",
 } as const;
-const statusFilterOptions: readonly CalmSelectOption[] = [
+export const taskStatusFilterOptions: readonly CalmSelectOption[] = [
   { value: "TODO", label: "未完成", dotColor: "#1467d8" },
   { value: "DONE", label: "已完成", dotColor: "#4a9278" },
   { value: "CANCELED", label: "已取消", dotColor: "#a0adb9" },
@@ -355,6 +355,7 @@ export function TasksPanel({
   statusFilter: statusFilterProp,
   onStatusFilterChange,
   showHeader = true,
+  suppressCreateAction = false,
   createOpen = false,
   onCreateClose,
   onCountChange,
@@ -389,7 +390,9 @@ export function TasksPanel({
   onStatusFilterChange?: ((status: string) => void) | undefined;
   /** 关闭面板自带的标题/筛选行，由宿主页面提供同一组控件。 */
   showHeader?: boolean | undefined;
-  /** 宿主页面点击「新增任务」后置真，复用本面板内同一个模块级创建弹窗。 */
+  /** 宿主页面已提供页头「新建任务」入口时，面板内不再重复渲染创建按钮。 */
+  suppressCreateAction?: boolean | undefined;
+  /** 宿主页面点击「新建任务」后置真，复用本面板内同一个模块级创建弹窗。 */
   createOpen?: boolean | undefined;
   onCreateClose?: (() => void) | undefined;
   /** 任务总数回传给宿主，用于标签上的计数。 */
@@ -977,7 +980,7 @@ export function TasksPanel({
                     className="task-status-filter"
                     value={statusFilter}
                     onChange={(next) => changeStatusFilter(String(next))}
-                    options={statusFilterOptions}
+                    options={taskStatusFilterOptions}
                     appearance="menu"
                     ariaLabel="任务状态筛选"
                     animated
@@ -992,7 +995,8 @@ export function TasksPanel({
                   ]}
                   onChange={changeView}
                 />
-                {query.isSuccess && !query.data?.items.length ? null : (
+                {suppressCreateAction ||
+                (query.isSuccess && !query.data?.items.length) ? null : (
                   <Button
                     className="primary-button"
                     disabled={!writable}
@@ -1043,14 +1047,16 @@ export function TasksPanel({
                   : "为当前功能创建一项具体执行工作。"
               }
             >
-              <Button
-                className="primary-button"
-                disabled={!writable}
-                onClick={startCreate}
-              >
-                <InpulseIcon name="plus" size={15} />
-                新建任务
-              </Button>
+              {suppressCreateAction ? null : (
+                <Button
+                  className="primary-button"
+                  disabled={!writable}
+                  onClick={startCreate}
+                >
+                  <InpulseIcon name="plus" size={15} />
+                  新建任务
+                </Button>
+              )}
             </CalmEmptyState>
           ) : !visibleItems.length ? (
             <CalmEmptyState
