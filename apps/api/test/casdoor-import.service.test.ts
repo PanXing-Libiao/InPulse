@@ -8,6 +8,7 @@ import {
 } from "../src/auth/sso/casdoor-import.service.js";
 import type { SsoUserRecord } from "../src/auth/sso/sso-user.repository.js";
 import type { SsoCasdoorGroupClient } from "../src/auth/sso/sso-casdoor-group.client.js";
+import type { SsoCasdoorPermissionClient } from "../src/auth/sso/sso-casdoor-permission.client.js";
 import type { SsoCasdoorDirectoryClient } from "../src/auth/sso/sso-casdoor-directory.client.js";
 import type { PostgresSsoUserRepository } from "../src/auth/sso/sso-user.repository.js";
 import type { OrganizationSyncPort } from "../src/organizations/organization-sync.port.js";
@@ -241,5 +242,68 @@ describe("PostgresCasdoorImportService", () => {
       action: "skip",
       reason: "account-disabled",
     });
+  });
+
+  test("配置 Casdoor Permission 时只用有权限的账号参与组织解析", async () => {
+    const loaded = snapshot([
+      directoryUser("allowed-group", "allowed-group", [
+        ORGANIZATION + "/Software Project 1",
+        ORGANIZATION + "/Domestic Sales Dept",
+      ]),
+      directoryUser("allowed-access", "allowed-access", [
+        ORGANIZATION + "/Inpulse Group Access",
+      ]),
+      directoryUser("allowed-direct", "allowed-direct", []),
+      directoryUser("denied", "denied", [
+        ORGANIZATION + "/Domestic Sales Dept",
+      ]),
+    ]);
+    const directory = { load: vi.fn().mockResolvedValue(loaded) };
+    const resolvePhysicalImportGroups = vi
+      .fn()
+      .mockResolvedValue(
+        new Map([
+          [
+            ORGANIZATION + "/Software Project 1",
+            ORGANIZATION + "/Software Project 1",
+          ],
+        ]),
+      );
+    const permission = {
+      resolveScope: vi.fn().mockResolvedValue({
+        groupIds: new Set([
+          ORGANIZATION + "/Inpulse Group Access",
+          ORGANIZATION + "/Software Project 1",
+        ]),
+        userIds: new Set([ORGANIZATION + "/allowed-direct"]),
+      }),
+    };
+    const service = new PostgresCasdoorImportService(
+      {} as PostgresSsoUserRepository,
+      {} as OrganizationSyncPort,
+      {
+        resolvePhysicalImportGroups,
+      } as unknown as SsoCasdoorGroupClient,
+      directory as unknown as SsoCasdoorDirectoryClient,
+      permission as unknown as SsoCasdoorPermissionClient,
+    );
+
+    const result = await service.loadDirectory();
+
+    expect(permission.resolveScope).toHaveBeenCalledWith(ORGANIZATION);
+    expect(resolvePhysicalImportGroups).toHaveBeenCalledWith(ORGANIZATION, [
+      ORGANIZATION + "/Software Project 1",
+      ORGANIZATION + "/Inpulse Group Access",
+    ]);
+    expect(result.users.map((entry) => entry.casdoorId)).toEqual([
+      "allowed-group",
+      "allowed-access",
+      "allowed-direct",
+    ]);
+    expect(result.users.map((entry) => entry.groups)).toEqual([
+      [ORGANIZATION + "/Software Project 1"],
+      [],
+      [],
+    ]);
   });
 });

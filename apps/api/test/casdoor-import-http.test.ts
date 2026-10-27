@@ -9,6 +9,7 @@ import {
   SsoCasdoorDirectoryError,
   type CasdoorDirectorySnapshot,
 } from "../src/auth/sso/sso-casdoor-directory.client.js";
+import { SsoCasdoorPermissionError } from "../src/auth/sso/sso-casdoor-permission.client.js";
 import type { TransactionContext } from "../src/database/transaction-context.js";
 import type { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import type {
@@ -197,6 +198,20 @@ describe("AdminCasdoorImportHttpService", () => {
     expect(unavailable.status).toBe(503);
     expect(unavailable.body).toMatchObject({
       code: "CASDOOR_IMPORT_UNAVAILABLE",
+    });
+  });
+
+  test("Casdoor Permission 范围不可用时映射为 503", async () => {
+    const s = setup();
+    s.loadDirectory.mockRejectedValue(
+      new SsoCasdoorPermissionError("idp-unreachable"),
+    );
+    const result = await s.service.preview(request());
+
+    expect(result.status).toBe(503);
+    expect(result.body).toMatchObject({
+      code: "CASDOOR_IMPORT_PERMISSION_UNAVAILABLE",
+      details: { reason: "idp-unreachable" },
     });
   });
 });

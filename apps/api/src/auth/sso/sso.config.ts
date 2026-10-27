@@ -17,6 +17,8 @@ export interface SsoConfig {
   readonly requestTimeoutMs: number;
   /** Casdoor 目录导入使用的组织 owner；未配置时仅关闭主动导入。 */
   readonly importOrganization?: string | undefined;
+  /** Casdoor Permission 名称；配置后只允许该权限范围进入管理员导入候选。 */
+  readonly importPermission?: string | undefined;
 }
 
 export interface SsoConfigLoadResult {
@@ -54,6 +56,13 @@ export function loadSsoConfig(
     const clientId = required(env, "SSO_CLIENT_ID");
     const clientSecret = readClientSecret(env);
     const redirectUrl = normalizeRedirectUrl(env["SSO_REDIRECT_URI"]);
+    const importOrganization = optionalImportOrganization(
+      env["CASDOOR_IMPORT_ORGANIZATION"],
+    );
+    const importPermission = optionalImportPermission(
+      env["CASDOOR_IMPORT_PERMISSION"],
+      importOrganization,
+    );
     return {
       config: {
         issuer,
@@ -63,9 +72,8 @@ export function loadSsoConfig(
         stateTtlSeconds: SSO_STATE_TTL_SECONDS,
         discoveryTtlSeconds: SSO_DISCOVERY_TTL_SECONDS,
         requestTimeoutMs: SSO_REQUEST_TIMEOUT_MS,
-        importOrganization: optionalImportOrganization(
-          env["CASDOOR_IMPORT_ORGANIZATION"],
-        ),
+        importOrganization,
+        importPermission,
       },
       invalidReason: undefined,
     };
@@ -96,6 +104,25 @@ function optionalImportOrganization(
   if (value.length > 100 || value.includes("/") || value !== value.trim()) {
     throw new Error(
       "CASDOOR_IMPORT_ORGANIZATION must be a single Casdoor organization owner",
+    );
+  }
+  return value;
+}
+
+function optionalImportPermission(
+  raw: string | undefined,
+  organization: string | undefined,
+): string | undefined {
+  const value = raw?.trim() ?? "";
+  if (value.length === 0) return undefined;
+  if (organization === undefined) {
+    throw new Error(
+      "CASDOOR_IMPORT_PERMISSION requires CASDOOR_IMPORT_ORGANIZATION",
+    );
+  }
+  if (value.length > 100 || value.includes("/") || value !== value.trim()) {
+    throw new Error(
+      "CASDOOR_IMPORT_PERMISSION must be a single Casdoor permission name",
     );
   }
   return value;

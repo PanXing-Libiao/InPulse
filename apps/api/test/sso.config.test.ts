@@ -128,6 +128,38 @@ describe("loadSsoConfig（fail closed）", () => {
   });
 });
 
+describe("CASDOOR_IMPORT_PERMISSION", () => {
+  test("配置组织后可指定单个 Casdoor Permission", () => {
+    expect(
+      loadSsoConfig(enabledEnv()).config?.importPermission,
+    ).toBeUndefined();
+    expect(
+      loadSsoConfig(
+        enabledEnv({
+          CASDOOR_IMPORT_ORGANIZATION: "libiaorobot.com",
+          CASDOOR_IMPORT_PERMISSION: " permission_inpulse ",
+        }),
+      ).config?.importPermission,
+    ).toBe("permission_inpulse");
+  });
+
+  test("没有组织或带路径的权限配置按 fail closed 拒绝", () => {
+    expect(
+      loadSsoConfig(
+        enabledEnv({ CASDOOR_IMPORT_PERMISSION: "permission_inpulse" }),
+      ).invalidReason,
+    ).toContain("CASDOOR_IMPORT_ORGANIZATION");
+    expect(
+      loadSsoConfig(
+        enabledEnv({
+          CASDOOR_IMPORT_ORGANIZATION: "libiaorobot.com",
+          CASDOOR_IMPORT_PERMISSION: "libiaorobot.com/permission_inpulse",
+        }),
+      ).invalidReason,
+    ).toContain("CASDOOR_IMPORT_PERMISSION");
+  });
+});
+
 describe("CASDOOR_IMPORT_ORGANIZATION", () => {
   test("可选配置只接受单个 Casdoor 组织 owner", () => {
     expect(

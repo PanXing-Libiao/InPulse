@@ -17,6 +17,7 @@ import {
   type SsoCasdoorDirectoryClient,
 } from "./sso-casdoor-directory.client.js";
 import type { SsoCasdoorGroupClient } from "./sso-casdoor-group.client.js";
+import type { SsoCasdoorPermissionClient } from "./sso-casdoor-permission.client.js";
 import type {
   PostgresSsoUserRepository,
   SsoIdentityClaims,
@@ -29,10 +30,36 @@ export class PostgresCasdoorImportService implements CasdoorImportPort {
     private readonly organizationSync: OrganizationSyncPort,
     private readonly groupDirectory: SsoCasdoorGroupClient,
     private readonly directory: SsoCasdoorDirectoryClient,
+    private readonly permission?: SsoCasdoorPermissionClient,
   ) {}
 
   async loadDirectory(): Promise<CasdoorDirectorySnapshot> {
-    const snapshot = await this.directory.load();
+    const loaded = await this.directory.load();
+    const scope =
+      this.permission === undefined
+        ? undefined
+        : await this.permission.resolveScope(loaded.organization);
+    const scopedUsers =
+      scope === undefined
+        ? loaded.users
+        : loaded.users
+            .filter((user) => {
+              const userResourceId = loaded.organization + "/" + user.loginName;
+              return (
+                user.groups.some((groupId) => scope.groupIds.has(groupId)) ||
+                scope.userIds.has(userResourceId)
+              );
+            })
+            .map((user) => ({
+              ...user,
+              groups: user.groups.filter((groupId) =>
+                scope.groupIds.has(groupId),
+              ),
+            }));
+    const snapshot = {
+      ...loaded,
+      users: scopedUsers,
+    };
     const groupIds = [
       ...new Set(snapshot.users.flatMap((user) => user.groups)),
     ];

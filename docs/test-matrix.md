@@ -7191,4 +7191,18 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR100-WEB-001 | Web 单元 | 管理员导入弹窗 | `CasdoorImportModal.test.tsx` 与 `AdminUsersPageView.test.tsx` 覆盖默认全选、逐项取消、冲突原因、实体组末级名称、未分类提示、重新打开刷新目录、确认请求同时携带 CSRF 与 Idempotency-Key、成功后刷新管理员用户/组织/同组织成员查询；定向 2 文件 38 例通过 | 本地通过（2026-10-27） |
 | ADR100-GATE-001 | 静态与回归门禁 | 路由、类型与回归 | 全工作区 `pnpm lint`、`format:check`、`typecheck`、`build` 通过；`contract:drift` 6 个产物一致，`contract:validate` 131 条路由，`permissions:check` 131 / 131；全量单测 API 88 文件 589 例、Web 122 文件 1039 例、契约 17 文件 106 例、database 15 例、ops 9 文件 60 例全部通过；相关真实 PostgreSQL 回归 5 文件 40 例通过；`check:deploy:test`、`check:frontend:boundaries` 391 模块 / 2040 依赖、`check:deps` 928 源文件、`check:secrets` 1475 文件、`check:docs` 153 个 Markdown 与 `git diff --check` 通过 | 本地通过（2026-10-27） |
 
-**未执行与已知边界**：尚未连接真实 Casdoor 执行 `get-users` + `get-groups` + 批量导入 smoke，因此不能声称真实目录联调或生产环境已通过；未重跑 Playwright、生产镜像、Trivy 与 GitHub Actions。候选口径是配置 organization 下启用且未删除的账号，不评估 Casdoor application 的 roles / permissions / `isAdmin` / 登录策略，最终由管理员在预览中勾选。导入不会后台定时同步，也不会自动停用、删除或重新启用平台账号；Casdoor 移除组归属后，只有下一次重复导入所选用户时才清空旧成员关系。
+**未执行与已知边界**：尚未连接真实 Casdoor 执行 `get-users` + `get-groups` + 批量导入 smoke，因此不能声称真实目录联调或生产环境已通过；未重跑 Playwright、生产镜像、Trivy 与 GitHub Actions。未配置 `CASDOOR_IMPORT_PERMISSION` 时候选范围仍是配置 organization 下启用且未删除的账号；配置后按 ADR-101 收窄账号与部门，不把 Casdoor 权限映射为 InPulse 权限，最终由管理员在预览中勾选。导入不会后台定时同步，也不会自动停用、删除或重新启用平台账号；Casdoor 移除组归属后，只有下一次重复导入所选用户时才清空旧成员关系。
+
+## 2026-10-27 Casdoor 导入按 Permission 收窄（ADR-101）
+
+用户要求正式 Casdoor 的固定部门权限成为管理员导入的边界。实现必须同时收窄候选账号与最终进入组织同步的群组，不能只过滤账号后仍保留其未授权部门。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR101-UNIT-001 | API 单元 | Permission / Role scope 解析 | `sso-casdoor-permission.client.test.ts` 覆盖 application Basic 认证、嵌套角色、直接与继承 groups/users 合并、停用/非 Allow/未批准/缺失字段/跨 owner/空范围 fail closed | 本地通过（2026-10-27，定向 API 相关 4 文件 28 例） |
+| ADR101-UNIT-002 | API 单元 | 账号与部门双重过滤 | `casdoor-import.service.test.ts` 断言未授权账号不进入候选、命中账号的未授权部门不传给 Physical 解析且不进入最终组织路径；`casdoor-import-http.test.ts` 覆盖 Permission 异常映射 503 | 本地通过（2026-10-27） |
+| ADR101-UNIT-003 | API 单元 | 配置 fail closed | `sso.config.test.ts` 覆盖 Permission 必须与 organization 同时配置、只接受单个资源名称 | 本地通过（2026-10-27） |
+| ADR101-WEB-001 | Web 单元 | 导入说明回归 | `CasdoorImportModal.test.tsx` 2 例通过，文案说明正式环境按应用权限收窄候选与部门 | 本地通过（2026-10-27） |
+| ADR101-GATE-001 | 静态门禁与回归 | 相关代码质量与全量单测 | 全量 API 单测 89 文件 597 例、Web 单测 123 文件 1073 例通过；全工作区 `pnpm lint`、`format:check`、`typecheck`、API/Web 构建、`check:deploy:static`、`check:secrets`、`check:docs` 通过；未重跑全量 Playwright、生产镜像、Trivy、真实 PostgreSQL 集成或 GitHub Actions | 本地通过（2026-10-27） |
+
+**已知边界**：测试环境没有正式 Permission 配置，必须保持 `CASDOOR_IMPORT_PERMISSION` 为空；正式环境的 Permission / Role / 群组读取失败时导入 503 fail closed。本次没有用正式环境执行批量导入 smoke，不能表述为正式目录联调或发布验证已完成。

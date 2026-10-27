@@ -226,6 +226,7 @@ node scripts/dev-start.mjs --lan          # 让同一局域网的设备以 HTTPS
 - 把 Casdoor application 的 Token format 设为 `JWT-Custom`、Token fields 至少包含 `Groups`、Token group format 设为 `Path`，确保 id_token 提供完整路径形式的 `groups` claim。
 - 确认同一 Casdoor application 的 `clientId`/`clientSecret` 可通过 HTTP Basic 读取 claim 中群组的 `GET /api/get-group?id=owner/name` 元数据；InPulse 只会逐组读取并保留启用的 `Physical` 组，Virtual 或停用组会被过滤，元数据读取失败则拒绝登录（ADR-099）。
 - 设置 `CASDOOR_IMPORT_ORGANIZATION` 为管理员批量导入所属的 Casdoor organization；留空时导入接口返回 503，不影响 SSO 登录。确认同一凭据还可读取 `GET /api/get-users?owner=...` 与 `GET /api/get-groups?owner=...`（ADR-100）。
+- 正式环境设置 `CASDOOR_IMPORT_PERMISSION=permission_inpulse` 时，管理员导入只显示该 Casdoor Permission（含角色继承）授权的账号，并只写入授权范围内的 Physical 部门；同一凭据还需可读取 `GET /api/get-permission` 与 `GET /api/get-role`。权限停用、非 `Allow` / `Approved`、空范围或读取失败时导入接口 503 fail closed（ADR-101）。
 
 配置非法或缺失时 API 按 fail closed 以本地登录模式启动，访问登录页回落到 `/login?local=1&sso=disabled`；`/login?local=1` 仍作为管理员应急口令入口可用。
 决策与回滚边界见[单点登录 ADR](./docs/adr/ADR-032.md)、[登录入口 ADR](./docs/adr/ADR-036.md)与[直达登录 ADR](./docs/adr/ADR-080.md)。
@@ -245,7 +246,7 @@ Casdoor 的 id_token `groups` claim 只携带群组路径，不包含 `Physical`
 - 新账号固定无本地口令、非管理员、无项目成员关系；已有账号继续按 `sso_subject` → 登录名且邮箱一致绑定 → 新建的既有规则处理，冲突逐账号跳过。
 - 账号实体组按 Casdoor `get-groups` 的 `parentId` 还原完整路径，只保留启用中的 `Physical` 组；Virtual 与停用组过滤。互不为祖先的真实组全部保留，同一路径族只直接归属最深实体组，无实体组显示为“未分类”。
 - Casdoor 移除组或移除用户的组归属后，下次勾选该用户重复导入会清空旧 CASDOOR 成员关系；平台没有后台定时同步，也不会因 Casdoor 变化自动删除平台账号或组织。
-- 候选范围是 `CASDOOR_IMPORT_ORGANIZATION` 下启用且未删除的账号，当前不评估 Casdoor application 的 roles、permissions、`isAdmin` 或登录策略，最终由管理员在预览中勾选。
+- 候选范围默认是 `CASDOOR_IMPORT_ORGANIZATION` 下启用且未删除的账号；设置 `CASDOOR_IMPORT_PERMISSION` 后，先按 Permission（含角色继承）收窄候选账号，并只保留授权范围内的 Physical 部门。Casdoor 权限不会映射为 InPulse 权限，最终仍由管理员在预览中勾选。
 - 已通过本地桩目录、真实 PostgreSQL 与 HTTP 集成测试；尚未用真实 Casdoor 执行全量批量导入 smoke，不能表述为真实目录生产联调已验证。
 
 ## 文档导航

@@ -50,6 +50,7 @@ import { PostgresSsoLoginAttemptRepository } from "./sso/sso-login-attempt.repos
 import { PostgresSsoUserRepository } from "./sso/sso-user.repository.js";
 import { SsoCasdoorGroupClient } from "./sso/sso-casdoor-group.client.js";
 import { SsoCasdoorDirectoryClient } from "./sso/sso-casdoor-directory.client.js";
+import { SsoCasdoorPermissionClient } from "./sso/sso-casdoor-permission.client.js";
 import {
   CASDOOR_IMPORT_PORT,
   type CasdoorImportPort,
@@ -140,6 +141,12 @@ import {
             config.config,
             config.config.importOrganization,
           ),
+          config.config.importPermission === undefined
+            ? undefined
+            : new SsoCasdoorPermissionClient(
+                config.config,
+                config.config.importPermission,
+              ),
         );
       },
     },

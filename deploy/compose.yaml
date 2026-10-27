@@ -148,6 +148,8 @@ services:
       SSO_REDIRECT_URI: "${SSO_REDIRECT_URI}"
       # ADR-100 管理员 Casdoor 批量导入所属 organization；留空时导入路由 503 fail closed。
       CASDOOR_IMPORT_ORGANIZATION: "${CASDOOR_IMPORT_ORGANIZATION:-}"
+      # ADR-101 可选的 Casdoor Permission 名称；配置后只导入该权限允许的账号。
+      CASDOOR_IMPORT_PERMISSION: "${CASDOOR_IMPORT_PERMISSION:-}"
       # 本地会话空闲有效期（秒），ADR-038 起默认 7200；口令与 SSO 两条签发路径共用。
       SESSION_IDLE_MAX_AGE_SECONDS: "${SESSION_IDLE_MAX_AGE_SECONDS}"
       # 反向代理信任链：api 接入 internal 的 backend（入站唯一来源是 web(Nginx)）

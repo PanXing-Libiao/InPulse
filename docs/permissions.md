@@ -403,10 +403,10 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `previewCasdoorUserImport` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；实时读取 `CASDOOR_IMPORT_ORGANIZATION` 下启用、未删除账号，只返回脱敏身份与 Physical 组预览；只读、无 CSRF、无幂等，响应 `no-store`；SSO 关闭、组织未配置或目录不可用时 503 |
+| `previewCasdoorUserImport` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；实时读取 `CASDOOR_IMPORT_ORGANIZATION` 下启用、未删除账号；配置 `CASDOOR_IMPORT_PERMISSION` 时先按该 Permission（含角色继承）的 groups/users 收窄候选账号，并只解析 scope 内群组。只返回脱敏身份与 Physical 组预览；只读、无 CSRF、无幂等，响应 `no-store`；SSO 关闭、组织未配置、Permission 无效或目录不可用时 503 |
 | `importCasdoorUsers` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + 同源 + 同步 CSRF + 数据库级幂等（1.0.0）；`casdoorUserIds` 1～1000 去重；确认时重新读取当前目录，所选账号在预览后消失、停用或改组时 409；身份冲突逐账号跳过；单事务写入账号、Physical 组织成员关系与一条 `admin.user.casdoorImport` 审计，网络读取在事务外 |
 
-**目录与实体组口径**：账号候选范围是配置 Casdoor organization 下启用且未删除的账号，不评估 application roles、permissions、`isAdmin` 或登录策略；管理员在预览中最终勾选后才导入。`/api/get-users` 的 `groups` 仅视为 `owner/name` 组引用；确认前分页读取同一组织的 `GET /api/get-groups`，按 `parentId` 还原完整路径并严格校验 owner、name、type、isEnabled、isTopGroup 与父级。只把启用中的 `Physical` 组写入 CASDOOR 成员关系；Virtual、停用组和目录中已不存在的陈旧引用忽略。互不为祖先的真实 Physical 组全部保留，同一路径族仍只直接归属最深实体组；无实体组不建立组织关系，页面归入“未分类”。
+**目录与实体组口径**：未配置 `CASDOOR_IMPORT_PERMISSION` 时，账号候选范围是配置 Casdoor organization 下启用且未删除的账号；配置后，候选账号与进入组织解析的群组都必须命中该 Permission（含角色继承）的 groups/users，且不把 Casdoor 权限映射为 InPulse 权限。管理员在预览中最终勾选后才导入。`/api/get-users` 的 `groups` 仅视为 `owner/name` 组引用；确认前分页读取同一组织的 `GET /api/get-groups`，按 `parentId` 还原完整路径并严格校验 owner、name、type、isEnabled、isTopGroup 与父级。只把启用中的 `Physical` 组写入 CASDOOR 成员关系；Virtual、停用组和目录中已不存在的陈旧引用忽略。互不为祖先的真实 Physical 组全部保留，同一路径族仍只直接归属最深实体组；无实体组不建立组织关系，页面归入“未分类”。
 
 **身份与事务**：`sso_subject` 命中则刷新；登录名命中、未绑定且邮箱一致时绑定；其余 JIT 新建。新账号固定 `password_hash=NULL`、`is_admin=false`，无项目成员关系；导入路径显式关闭 ADR-075 首管理员授予。目录读取、身份写入、组织创建、成员关系替换与审计共享同一事务；导入不自动停用、删除或重新启用平台账号。组目录读取失败、字段非法、父级缺失或成环时整批 503 fail closed。
 

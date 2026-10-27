@@ -26,6 +26,7 @@ import {
   type CasdoorDirectorySnapshot,
 } from "../auth/sso/sso-casdoor-directory.client.js";
 import { SsoGroupMetadataError } from "../auth/sso/sso-casdoor-group.client.js";
+import { SsoCasdoorPermissionError } from "../auth/sso/sso-casdoor-permission.client.js";
 import type { TransactionContext } from "../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../database/unit-of-work.js";
 import {
@@ -313,6 +314,14 @@ export class AdminCasdoorImportHttpService {
         503,
         "CASDOOR_IMPORT_UNAVAILABLE",
         "Casdoor 群组信息暂时不可用，请稍后重试",
+        { reason: error.reason, requestId },
+      );
+    }
+    if (error instanceof SsoCasdoorPermissionError) {
+      return errorBody(
+        503,
+        "CASDOOR_IMPORT_PERMISSION_UNAVAILABLE",
+        "Casdoor 应用权限范围暂时不可用，请稍后重试",
         { reason: error.reason, requestId },
       );
     }

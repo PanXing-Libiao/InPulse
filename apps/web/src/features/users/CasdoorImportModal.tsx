@@ -129,9 +129,9 @@ export function CasdoorImportModal({
     >
       <div className="casdoor-import">
         <p className="casdoor-import-intro">
-          只读取配置组织下启用中的账号，并仅保留 Casdoor 中启用中的 Physical
-          实体组。没有实体组的账号会进入未分类；Virtual
-          组、停用账号和已删除账号不会导入。
+          {
+            "只读取配置组织下启用中的账号；正式环境会按 InPulse 应用权限收窄候选范围，并仅保留权限内的 Casdoor Physical 实体组。没有实体组的账号会进入未分类；Virtual 组、停用账号和已删除账号不会导入。"
+          }
         </p>
 
         {preview.isPending ? (
