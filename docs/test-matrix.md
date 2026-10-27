@@ -7176,3 +7176,12 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR099-CASDOOR-001 | 真实 Casdoor smoke test              | get-group 鉴权与返回结构 | 使用真实 Casdoor 账号同时加入一个 Physical 与一个 Virtual 组，完成 SSO 后只显示 Physical 组织；确认同一 SSO application 的 clientId/clientSecret 可通过 HTTP Basic 读取 get-group，返回字段满足严格校验                              | 通过（2026-10-27）：真实 SSO 后只显示 Physical “测试部”，Virtual Group3 未出现 |
 
 已用真实 Casdoor 完成 ADR099-CASDOOR-001：测试账号同时属于 Physical 与 Virtual 组，Basic 鉴权和返回结构通过严格校验，SSO 后只显示“测试部”，无实体组成员保持“未分类”。若上游未来返回 401/403 或字段变化，登录仍按 `group-metadata-failed` fail closed。本次验证不等于 CI、生产镜像或全量 Playwright 通过。
+
+## 2026-10-27 成员与角色页取消未分类页签（ADR-100）
+
+用户指出绝大多数账号没有实体群组，“未分类”页签与“全部”内容重合，要求去掉这个分类框。本批只调整管理员成员页的组织筛选展示，不改组织数据与 SSO 口径。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR100-WEB-001 | Web 单元 | 组织筛选条 | `AdminUsersPageView.test.tsx`：不再渲染“未分类”角色页签；无组织成员与有组织成员同样出现在“全部”中，行内“未分类”徽章保留 | 本次执行 |
+| ADR100-E2E-001 | Playwright 浏览器 | 管理员用户页 | `admin-users.spec.ts`：不再断言“未分类”页签；行内徽章、状态列与操作列对齐断言保留 | 本次执行 |

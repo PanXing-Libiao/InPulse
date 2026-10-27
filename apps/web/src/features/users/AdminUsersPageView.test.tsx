@@ -792,7 +792,7 @@ describe("ADR-081 organizations", () => {
     expect(screen.getByText("Bob")).toBeInTheDocument();
   });
 
-  it("filters members without an organization into the unclassified tab", async () => {
+  it("keeps members without an organization in the flat list without an unclassified tab", async () => {
     const organization = {
       id: 7,
       name: "研发一组",
@@ -818,14 +818,10 @@ describe("ADR-081 organizations", () => {
     } as unknown as InpulseApiClient);
     await screen.findByText("Carol");
 
-    const unclassifiedTab = await screen.findByRole("tab", {
-      name: /未分类/,
-    });
-    expect(unclassifiedTab).toHaveTextContent("2");
-    fireEvent.click(unclassifiedTab);
+    expect(screen.queryByRole("tab", { name: /未分类/ })).toBeNull();
     expect(screen.getByText("Alice")).toBeInTheDocument();
     expect(screen.getByText("Bob")).toBeInTheDocument();
-    expect(screen.queryByText("Carol")).not.toBeInTheDocument();
+    expect(screen.getByText("Carol")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: /全部/ }));
     expect(screen.getByText("Carol")).toBeInTheDocument();
