@@ -20,6 +20,8 @@ const ACTION_LABELS: Readonly<Record<string, string>> = {
   "project.documentImport": "导入文档",
   "project.wecomGroup.notificationOptions.update": "更新企业微信群通知选项",
   "project.wecomGroup.unbind": "解绑企业微信群",
+  "project.wecomGroup.webhook.create": "添加企业微信群 Webhook",
+  "project.wecomGroup.webhook.delete": "删除企业微信群 Webhook",
   "module.create": "创建模块",
   "module.update": "更新模块",
   // ADR-096：删除模块与删除功能（物理删除，无还原入口）。
@@ -113,6 +115,7 @@ const TARGET_TYPE_LABELS: Readonly<Record<string, string>> = {
   LEFTOVER_ITEM: "遗留问题",
   EXTERNAL_LINK: "GitHub 链接",
   WECOM_ROBOT_CONFIG: "企业微信机器人配置",
+  PROJECT_WECOM_GROUP: "企业微信项目群目标",
   AI_ASSIST_SETTINGS: "AI 辅助设置",
 };
 

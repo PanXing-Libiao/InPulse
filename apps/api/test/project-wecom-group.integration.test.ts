@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,6 +12,10 @@ import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { migrate } from "../../../database/src/migrate.ts";
 import { hashOpaqueToken } from "../src/auth/token.js";
 import { hashWecomBindingCode } from "../src/modules/wecom-binding/index.js";
+import {
+  decryptWecomWebhookUrl,
+  loadWecomRobotEncryptionKeyring,
+} from "../src/modules/wecom-robot/public/wecom-encryption.js";
 import {
   connect,
   createProject,
@@ -208,6 +212,44 @@ async function updateGroupNotificationOptions(
   );
 }
 
+function nextWebhookFixture(): {
+  readonly key: string;
+  readonly url: string;
+} {
+  const key = "test-" + randomBytes(24).toString("base64url");
+  return {
+    key,
+    url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=" + key,
+  };
+}
+
+function webhookPath(projectId: number): string {
+  return `${baseUrl}/api/v1/projects/${projectId}/wecom-group/webhooks`;
+}
+
+async function createWebhook(
+  projectId: number,
+  headers: Record<string, string>,
+  body: unknown,
+): Promise<Response> {
+  return fetch(webhookPath(projectId), {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function deleteWebhook(
+  projectId: number,
+  bindingId: number,
+  headers: Record<string, string>,
+): Promise<Response> {
+  return fetch(webhookPath(projectId) + "/" + String(bindingId), {
+    method: "DELETE",
+    headers,
+  });
+}
+
 async function redeemGroup(
   sql: Sql,
   code: string,
@@ -279,10 +321,12 @@ beforeAll(async () => {
   sessionKey = randomBytes(32);
   const auditKey = randomBytes(32);
   const idempotencyKey = randomBytes(32);
+  const wecomRobotKey = randomBytes(32);
   keyringDirectory = await mkdtemp(join(tmpdir(), "inpulse-wecom-group-"));
   const sessionFile = join(keyringDirectory, "session.keyring");
   const auditFile = join(keyringDirectory, "audit.keyring");
   const idempotencyFile = join(keyringDirectory, "idempotency.keyring");
+  const wecomRobotFile = join(keyringDirectory, "wecom-robot.keyring");
   await writeFile(
     sessionFile,
     `${KEY_VERSION}:${sessionKey.toString("hex")}\n`,
@@ -296,6 +340,11 @@ beforeAll(async () => {
   await writeFile(
     idempotencyFile,
     `${KEY_VERSION}:${idempotencyKey.toString("hex")}\n`,
+    "utf8",
+  );
+  await writeFile(
+    wecomRobotFile,
+    `${KEY_VERSION}:${wecomRobotKey.toString("hex")}\n`,
     "utf8",
   );
 
@@ -316,6 +365,12 @@ beforeAll(async () => {
     SESSION_HASH_KEYRING_TEST_PATH:
       process.env["SESSION_HASH_KEYRING_TEST_PATH"],
     SESSION_HASH_KEY_VERSION: process.env["SESSION_HASH_KEY_VERSION"],
+    WECOM_ROBOT_ENCRYPTION_KEY_FILE:
+      process.env["WECOM_ROBOT_ENCRYPTION_KEY_FILE"],
+    WECOM_ROBOT_ENCRYPTION_KEY_TEST_PATH:
+      process.env["WECOM_ROBOT_ENCRYPTION_KEY_TEST_PATH"],
+    WECOM_ROBOT_ENCRYPTION_KEY_VERSION:
+      process.env["WECOM_ROBOT_ENCRYPTION_KEY_VERSION"],
   };
   process.env["NODE_ENV"] = "test";
   process.env["DATABASE_URL"] = urls.runtime;
@@ -329,6 +384,9 @@ beforeAll(async () => {
   process.env["IDEMPOTENCY_FINGERPRINT_KEYRING_FILE"] = idempotencyFile;
   process.env["IDEMPOTENCY_FINGERPRINT_KEYRING_TEST_PATH"] = "1";
   process.env["IDEMPOTENCY_FINGERPRINT_KEY_VERSION"] = String(KEY_VERSION);
+  process.env["WECOM_ROBOT_ENCRYPTION_KEY_FILE"] = wecomRobotFile;
+  process.env["WECOM_ROBOT_ENCRYPTION_KEY_TEST_PATH"] = "1";
+  process.env["WECOM_ROBOT_ENCRYPTION_KEY_VERSION"] = String(KEY_VERSION);
 
   const { AppModule } = await import("../src/app.module.js");
   app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -1093,6 +1151,339 @@ describe("项目企微群绑定（真实 PostgreSQL + 真实 HTTP，ADR-077）",
       ((await replayAfterUnbind.json()) as { readonly code: string }).code,
     ).toBe("PROJECT_WECOM_GROUP_NOT_BOUND");
   });
+  test("Webhook 创建：权限、严格 URL 校验、加密落库、脱敏响应、去重与审计", async () => {
+    const sql = requireRuntime();
+    const { actor, project } = await leaderContext(sql);
+    const member = await createActor(sql);
+    const outsider = await createActor(sql);
+    await addMember(sql, project.projectId, member.userId);
+    const fixture = nextWebhookFixture();
+    const payload = { label: "研发项目群", webhookUrl: fixture.url };
+
+    const memberCreate = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(member),
+        "idempotency-key": "pwg-webhook-" + nextWecomId("key"),
+      },
+      payload,
+    );
+    expect(memberCreate.status).toBe(403);
+
+    const outsiderCreate = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(outsider),
+        "idempotency-key": "pwg-webhook-" + nextWecomId("key"),
+      },
+      payload,
+    );
+    expect(outsiderCreate.status).toBe(404);
+
+    const invalidUrl = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": "pwg-webhook-" + nextWecomId("key"),
+      },
+      {
+        label: "非法目标",
+        webhookUrl: "https://example.com/webhook?key=" + fixture.key,
+      },
+    );
+    expect(invalidUrl.status).toBe(422);
+    const invalidRaw = await invalidUrl.text();
+    expect(invalidRaw).not.toContain(fixture.key);
+    expect((JSON.parse(invalidRaw) as { readonly code: string }).code).toBe(
+      "PROJECT_WECOM_WEBHOOK_URL_INVALID",
+    );
+
+    const createKey = "pwg-webhook-" + nextWecomId("key");
+    const created = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": createKey,
+      },
+      payload,
+    );
+    expect(created.status).toBe(201);
+    const createdRaw = await created.text();
+    expect(createdRaw).not.toContain(fixture.key);
+    const target = JSON.parse(createdRaw) as {
+      readonly id: number;
+      readonly label: string;
+      readonly urlHint: string;
+      readonly boundAt: string;
+      readonly boundByName: string;
+      readonly lastDeliveryError: string | null;
+      readonly webhookUrl?: string;
+    };
+    expect(target.label).toBe("研发项目群");
+    expect(target.urlHint).toBe(fixture.key.slice(-4));
+    expect(target.boundByName.length).toBeGreaterThan(0);
+    expect(target.lastDeliveryError).toBeNull();
+    expect(target.webhookUrl).toBeUndefined();
+
+    const replay = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": createKey,
+      },
+      payload,
+    );
+    expect(replay.status).toBe(201);
+    expect((await replay.json()) as unknown).toEqual(target);
+
+    const read = await getGroup(project.projectId, member.cookie);
+    expect(read.status).toBe(200);
+    const readRaw = await read.text();
+    expect(readRaw).not.toContain(fixture.key);
+    const readBody = JSON.parse(readRaw) as {
+      readonly state: string;
+      readonly boundAt: string | null;
+      readonly webhookTargets: readonly unknown[];
+    };
+    expect(readBody.state).toBe("BOUND");
+    expect(readBody.boundAt).toBeNull();
+    expect(readBody.webhookTargets).toHaveLength(1);
+    expect(readBody.webhookTargets[0]).toEqual({
+      id: target.id,
+      label: target.label,
+      urlHint: target.urlHint,
+      boundAt: target.boundAt,
+      boundByName: target.boundByName,
+      lastDeliveryError: null,
+    });
+
+    const rows = (await sql`
+      SELECT
+        channel_type AS "channelType",
+        wecom_chat_id AS "chatId",
+        webhook_url_ciphertext AS "ciphertext",
+        webhook_url_key_version AS "keyVersion",
+        webhook_url_fingerprint AS "fingerprint",
+        webhook_url_hint AS "hint",
+        status
+        FROM app.project_wecom_groups
+       WHERE id = ${target.id}
+    `) as unknown as readonly {
+      channelType: string;
+      chatId: string | null;
+      ciphertext: Buffer;
+      keyVersion: number;
+      fingerprint: Buffer;
+      hint: string;
+      status: string;
+    }[];
+    const row = rows[0];
+    expect(row?.channelType).toBe("WEBHOOK");
+    expect(row?.chatId).toBeNull();
+    expect(row?.hint).toBe(fixture.key.slice(-4));
+    expect(row?.status).toBe("ACTIVE");
+    expect(Buffer.from(row!.ciphertext).toString("utf8")).not.toContain(
+      fixture.key,
+    );
+    expect(Buffer.from(row!.fingerprint).toString("hex")).toBe(
+      createHash("sha256").update(fixture.url, "utf8").digest("hex"),
+    );
+    const keyring = loadWecomRobotEncryptionKeyring(process.env);
+    expect(
+      decryptWecomWebhookUrl(
+        Buffer.from(row!.ciphertext),
+        Number(row!.keyVersion),
+        keyring,
+      ),
+    ).toBe(fixture.url);
+
+    const duplicate = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": "pwg-webhook-" + nextWecomId("key"),
+      },
+      { label: "重复目标", webhookUrl: fixture.url },
+    );
+    expect(duplicate.status).toBe(409);
+    expect(((await duplicate.json()) as { readonly code: string }).code).toBe(
+      "PROJECT_WECOM_WEBHOOK_ALREADY_BOUND",
+    );
+
+    const audits = (await requireAuditReader()`
+      SELECT
+        actor_id AS "actorId",
+        target_type AS "targetType",
+        event_payload AS "eventPayload"
+        FROM app.audit_logs
+       WHERE action = 'project.wecomGroup.webhook.create'
+         AND target_id = ${String(target.id)}
+       ORDER BY sequence_no DESC
+       LIMIT 1
+    `) as unknown as readonly {
+      actorId: number;
+      targetType: string;
+      eventPayload: unknown;
+    }[];
+    expect(audits[0]?.actorId).toBe(actor.userId);
+    expect(audits[0]?.targetType).toBe("PROJECT_WECOM_GROUP");
+    expect(JSON.stringify(audits[0]?.eventPayload)).not.toContain(fixture.key);
+  });
+
+  test("Webhook 多目标、删除隔离、仅 Webhook 通知选项、机器人更换隔离与审计", async () => {
+    const sql = requireRuntime();
+    const { actor, project } = await leaderContext(sql);
+    const other = await leaderContext(sql);
+    const member = await createActor(sql);
+    await addMember(sql, project.projectId, member.userId);
+    const firstFixture = nextWebhookFixture();
+    const secondFixture = nextWebhookFixture();
+
+    const first = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": "pwg-webhook-" + nextWecomId("key"),
+      },
+      { label: "目标一", webhookUrl: firstFixture.url },
+    );
+    expect(first.status).toBe(201);
+    const firstTarget = (await first.json()) as { readonly id: number };
+
+    const second = await createWebhook(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": "pwg-webhook-" + nextWecomId("key"),
+      },
+      { label: "目标二", webhookUrl: secondFixture.url },
+    );
+    expect(second.status).toBe(201);
+    const secondTarget = (await second.json()) as { readonly id: number };
+
+    const multi = await getGroup(project.projectId, member.cookie);
+    const multiBody = (await multi.json()) as {
+      readonly webhookTargets: readonly { readonly id: number }[];
+    };
+    expect(multiBody.webhookTargets.map((item) => item.id).sort()).toEqual(
+      [firstTarget.id, secondTarget.id].sort(),
+    );
+
+    const savedOptions = await updateGroupNotificationOptions(
+      project.projectId,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": "pwg-options-" + nextWecomId("key"),
+      },
+      { disabledCategories: ["record"] },
+    );
+    expect(savedOptions.status).toBe(200);
+    expect(await savedOptions.json()).toEqual({
+      disabledCategories: ["record"],
+    });
+
+    const crossProjectDelete = await deleteWebhook(
+      other.project.projectId,
+      secondTarget.id,
+      {
+        ...mutationHeaders(other.actor),
+        "idempotency-key": "pwg-webhook-delete-" + nextWecomId("key"),
+      },
+    );
+    expect(crossProjectDelete.status).toBe(404);
+
+    const deleteKey = "pwg-webhook-delete-" + nextWecomId("key");
+    const deleted = await deleteWebhook(project.projectId, firstTarget.id, {
+      ...mutationHeaders(actor),
+      "idempotency-key": deleteKey,
+    });
+    expect(deleted.status).toBe(204);
+    const deleteReplay = await deleteWebhook(
+      project.projectId,
+      firstTarget.id,
+      {
+        ...mutationHeaders(actor),
+        "idempotency-key": deleteKey,
+      },
+    );
+    expect(deleteReplay.status).toBe(204);
+
+    const afterDelete = await getGroup(project.projectId, member.cookie);
+    const afterDeleteBody = (await afterDelete.json()) as {
+      readonly webhookTargets: readonly { readonly id: number }[];
+    };
+    expect(afterDeleteBody.webhookTargets.map((item) => item.id)).toEqual([
+      secondTarget.id,
+    ]);
+
+    const botChatId = nextWecomId("chat");
+    await sql`
+      INSERT INTO app.project_wecom_groups (
+        project_id,
+        channel_type,
+        wecom_chat_id,
+        bound_by_user_id
+      )
+      VALUES (
+        ${project.projectId},
+        'BOT',
+        ${botChatId},
+        ${actor.userId}
+      )
+    `;
+    const revoked = (await sql`
+      SELECT * FROM app.revoke_wecom_bindings_on_robot_change()
+    `) as unknown as readonly { revoked_project_groups: number }[];
+    expect(revoked[0]?.revoked_project_groups).toBeGreaterThanOrEqual(1);
+
+    const afterRobotChange = await getGroup(project.projectId, member.cookie);
+    const afterRobotChangeBody = (await afterRobotChange.json()) as {
+      readonly state: string;
+      readonly boundAt: string | null;
+      readonly webhookTargets: readonly { readonly id: number }[];
+    };
+    expect(afterRobotChangeBody.state).toBe("BOUND");
+    expect(afterRobotChangeBody.boundAt).toBeNull();
+    expect(afterRobotChangeBody.webhookTargets.map((item) => item.id)).toEqual([
+      secondTarget.id,
+    ]);
+
+    const statuses = (await sql`
+      SELECT id, channel_type AS "channelType", status
+        FROM app.project_wecom_groups
+       WHERE id IN (${firstTarget.id}, ${secondTarget.id})
+       ORDER BY id
+    `) as unknown as readonly {
+      id: number;
+      channelType: string;
+      status: string;
+    }[];
+    expect(statuses.find((item) => item.id === firstTarget.id)?.status).toBe(
+      "REVOKED",
+    );
+    expect(statuses.find((item) => item.id === secondTarget.id)?.status).toBe(
+      "ACTIVE",
+    );
+
+    const deleteAudits = (await requireAuditReader()`
+      SELECT
+        actor_id AS "actorId",
+        event_payload AS "eventPayload"
+        FROM app.audit_logs
+       WHERE action = 'project.wecomGroup.webhook.delete'
+         AND target_id = ${String(firstTarget.id)}
+       ORDER BY sequence_no DESC
+       LIMIT 1
+    `) as unknown as readonly {
+      actorId: number;
+      eventPayload: unknown;
+    }[];
+    expect(deleteAudits[0]?.actorId).toBe(actor.userId);
+    expect(JSON.stringify(deleteAudits[0]?.eventPayload)).not.toContain(
+      firstFixture.key,
+    );
+  });
+
   test("最小授权探针：app_runtime 对三张表无 DELETE，app_backup 只读", async () => {
     const sql = requireRuntime();
     await expectPrivilegeDenied(

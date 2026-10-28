@@ -51,6 +51,8 @@ export interface ProjectOverviewPageViewProps {
   /** 标题左侧的返回箭头（与功能/模块页同款圆钮）；省略时不渲染。 */
   readonly onBack?: (() => void) | undefined;
   readonly onOpenMembers: () => void;
+  /** 打开企业微信项目群的机器人 / Webhook 绑定与通知管理弹窗。 */
+  readonly onOpenWecom: () => void;
   /** 「查看全部」：打开项目迭代记录工作区弹窗。 */
   readonly onOpenRecords: () => void;
   /** 单条最近迭代：就地打开该记录的详情弹窗。 */
@@ -82,6 +84,7 @@ export const ProjectOverviewPageView: React.FC<
   onEditProject,
   onBack,
   onOpenMembers,
+  onOpenWecom,
   onOpenRecords,
   onOpenRecord,
   onOpenIssues,
@@ -237,6 +240,16 @@ export const ProjectOverviewPageView: React.FC<
         </div>
         <div className="project-detail-actions">
           <ProjectRepositoryLink projectId={projectId} client={client} />
+          <button
+            type="button"
+            className="project-wecom-entry"
+            title="企业微信项目群消息通知"
+            {...projectWorkspacePreloadHandlers("wecom")}
+            onClick={onOpenWecom}
+          >
+            <InpulseIcon name="wecom" size={18} />
+            <span>消息通知</span>
+          </button>
           {onOpenModules === undefined ? null : (
             <button
               type="button"

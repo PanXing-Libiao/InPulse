@@ -215,6 +215,12 @@
       "fingerprint": "9fc9587ed7cdf331dbc2d96dd080a6a5db52d6e3d02a7ae9d6c5749a5ffffe47"
     }
   ],
+  "createProjectWecomWebhook": [
+    {
+      "version": "1.0.0",
+      "fingerprint": "b8811d3238eb372b48d0897e9f606b2b91a1c2df355bed648f931fd9d46ebb68"
+    }
+  ],
   "createTask": [
     {
       "version": "1.0.0",
@@ -325,6 +331,12 @@
     {
       "version": "1.0.0",
       "fingerprint": "72844228338dc21fb6afa1850dca263cee9dfd99acee5db05d2549ee08466542"
+    }
+  ],
+  "deleteProjectWecomWebhook": [
+    {
+      "version": "1.0.0",
+      "fingerprint": "a4b05c4b0eae9113a0f6fa61470f6d7e8abea850967f7e073d91b9f81835113c"
     }
   ],
   "deleteRecordDraft": [

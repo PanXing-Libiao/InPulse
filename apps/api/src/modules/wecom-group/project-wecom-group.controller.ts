@@ -84,6 +84,36 @@ export class ProjectWecomGroupController {
     );
   }
 
+  @Post(":projectId/wecom-group/webhooks")
+  @UseGuards(StrictSameOriginGuard)
+  @Operation("createProjectWecomWebhook")
+  async createWebhook(
+    @Req() request: ProjectWecomGroupHttpRequest,
+    @Res({ passthrough: true }) response: ProjectWecomGroupControllerResponse,
+    @ContractPath("createProjectWecomWebhook") params: unknown,
+    @ContractBody("createProjectWecomWebhook") body: unknown,
+    @ContractHeaders("createProjectWecomWebhook") _headers: unknown = undefined,
+  ) {
+    return this.respond(
+      "createProjectWecomWebhook",
+      request,
+      response,
+      params,
+      body,
+    );
+  }
+
+  @Delete(":projectId/wecom-group/webhooks/:bindingId")
+  @UseGuards(StrictSameOriginGuard)
+  @Operation("deleteProjectWecomWebhook")
+  async deleteWebhook(
+    @Req() request: ProjectWecomGroupHttpRequest,
+    @Res({ passthrough: true }) response: ProjectWecomGroupControllerResponse,
+    @ContractPath("deleteProjectWecomWebhook") params: unknown,
+    @ContractHeaders("deleteProjectWecomWebhook") _headers: unknown = undefined,
+  ) {
+    return this.respond("deleteProjectWecomWebhook", request, response, params);
+  }
   @Delete(":projectId/wecom-group")
   @UseGuards(StrictSameOriginGuard)
   @Operation("deleteProjectWecomGroup")

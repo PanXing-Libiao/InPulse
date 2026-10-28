@@ -12,23 +12,25 @@ import {
   loadActiveProjectMembers,
   loadIssuesPageView,
   loadProjectMembersPageView,
+  loadProjectWecomGroupCard,
   loadRecordsWorkspace,
   loadTaskDetailOverlay,
   type ProjectWorkspaceModalKind,
 } from "./project-workspace-chunks";
 
 /**
- * 项目主页的三个就地弹窗：成员与设置、迭代记录、遗留问题。
+ * 项目主页的四个就地弹窗：成员与设置、企业微信项目群、迭代记录、遗留问题。
  * 项目主页不再整页跳转到 `/members`、`/records`、`/issues`，
- * 三个工作区视图按需加载后装进 AppModal，页面上下文（模块列表、筛选状态）不丢。
+ * 四个工作区视图按需加载后装进 AppModal，页面上下文（模块列表、筛选状态）不丢。
  *
- * 三个视图都自带 `useSearchParams` 状态（项目筛选、草稿详情、记录展开等），
+ * 成员与记录等视图自带 `useSearchParams` 状态（项目筛选、草稿详情、记录展开等），
  * 弹窗内用 `MemoryRouter` 给它们一份独立的初始地址，交互不污染浏览器地址栏；
  * 关闭弹窗即丢弃这份局部地址，重新打开回到该项目的默认视图。
  */
 // 成员/记录视图只有命名导出：lazy 需要 default，装载函数见 project-workspace-chunks。
 const ProjectMembersPageView = lazy(loadProjectMembersPageView);
 const ActiveProjectMembers = lazy(loadActiveProjectMembers);
+const ProjectWecomGroupCard = lazy(loadProjectWecomGroupCard);
 const RecordsWorkspace = lazy(loadRecordsWorkspace);
 const IssuesPageView = lazy(loadIssuesPageView);
 const TaskDetailOverlay = lazy(loadTaskDetailOverlay);
@@ -55,6 +57,10 @@ const MODAL_META: Record<
     label: "成员与设置",
     initialSearch: () => "",
   },
+  wecom: {
+    label: "企业微信项目群",
+    initialSearch: () => "",
+  },
   records: {
     label: "迭代记录",
     initialSearch: (projectId) => "view=published&projectId=" + projectId,
@@ -77,6 +83,8 @@ export const ProjectWorkspaceModals: React.FC<ProjectWorkspaceModalsProps> = ({
   const canManage =
     isSystemAdmin ||
     canManageProjectResources(false, detail.data?.currentUserRole ?? null);
+  const canManageWecom =
+    isSystemAdmin || detail.data?.currentUserRole === "LEADER";
   /** 遗留问题弹窗里点来源/跟进任务：再叠一层任务详情弹窗。 */
   const [taskTarget, setTaskTarget] = useState<TaskLocation | null>(null);
 
@@ -119,6 +127,14 @@ export const ProjectWorkspaceModals: React.FC<ProjectWorkspaceModalsProps> = ({
                     {...(client ? { client } : {})}
                   />
                 )
+              ) : open === "wecom" ? (
+                <ProjectWecomGroupCard
+                  projectId={projectId}
+                  projectName={projectName}
+                  heading="绑定与通知设置"
+                  canManage={canManageWecom}
+                  client={client}
+                />
               ) : open === "records" ? (
                 <RecordsWorkspace {...(client ? { client } : {})} embedded />
               ) : (

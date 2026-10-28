@@ -1,5 +1,5 @@
 /**
- * 项目主页三个就地弹窗（成员与设置 / 迭代记录 / 遗留问题）的内容 chunk 装载点。
+ * 项目主页四个就地弹窗（成员与设置 / 企业微信项目群 / 迭代记录 / 遗留问题）的内容 chunk 装载点。
  *
  * 背景（2026-10-12）：这三个视图与任务详情都用 `React.lazy` 按需加载，而弹层骨架是同步
  * 渲染的，于是「弹层的盒子先出现、内容后到」。本机 dev server 实测：点「查看全部」后弹层
@@ -16,8 +16,9 @@
  * 加载函数集中在本文件，`lazy()` 与预热共用同一份 `import()`，避免两处路径各写一遍后漂移。
  */
 
-/** 项目主页可用的三个工作区弹窗。 */
-export type ProjectWorkspaceModalKind = "members" | "records" | "issues";
+/** 项目主页可用的四个工作区弹窗。 */
+export type ProjectWorkspaceModalKind =
+  "members" | "wecom" | "records" | "issues";
 
 /** 成员视图只有命名导出：lazy 需要 default，这里映射一次。 */
 export const loadProjectMembersPageView = () =>
@@ -28,6 +29,11 @@ export const loadProjectMembersPageView = () =>
 export const loadActiveProjectMembers = () =>
   import("@features/projects/ActiveProjectMembers").then((mod) => ({
     default: mod.ActiveProjectMembers,
+  }));
+
+export const loadProjectWecomGroupCard = () =>
+  import("@features/projects/ProjectWecomGroupCard").then((mod) => ({
+    default: mod.ProjectWecomGroupCard,
   }));
 
 export const loadRecordsWorkspace = () =>
@@ -48,6 +54,7 @@ const WORKSPACE_CHUNKS: Record<
 > = {
   members: () =>
     Promise.all([loadProjectMembersPageView(), loadActiveProjectMembers()]),
+  wecom: loadProjectWecomGroupCard,
   records: loadRecordsWorkspace,
   issues: loadIssuesPageView,
 };

@@ -88,6 +88,7 @@ const renderView = (overrides: RenderOverrides = {}) => {
     onRetryProject: vi.fn(),
     onOpenModules: vi.fn(),
     onOpenMembers: vi.fn(),
+    onOpenWecom: vi.fn(),
     onOpenRecords: vi.fn(),
     onOpenRecord: vi.fn(),
     onOpenIssues: vi.fn(),
@@ -110,6 +111,7 @@ const renderView = (overrides: RenderOverrides = {}) => {
           onRetryProject={handlers.onRetryProject}
           onOpenModules={handlers.onOpenModules}
           onOpenMembers={handlers.onOpenMembers}
+          onOpenWecom={handlers.onOpenWecom}
           onOpenRecords={handlers.onOpenRecords}
           onOpenRecord={handlers.onOpenRecord}
           onOpenIssues={handlers.onOpenIssues}
@@ -137,6 +139,14 @@ describe("ProjectOverviewPageView", () => {
     expect(
       within(screen.getByTestId("overview-metric-members")).getByText("3"),
     ).toBeInTheDocument();
+  });
+
+  it("opens the WeCom project group workspace from the header icon", async () => {
+    const handlers = renderView();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: "消息通知" }));
+    expect(handlers.onOpenWecom).toHaveBeenCalledTimes(1);
   });
 
   it("renders the overview metric cards from the adapter", async () => {

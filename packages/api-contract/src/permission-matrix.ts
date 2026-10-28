@@ -565,6 +565,48 @@ export const permissionMatrix = [
     },
   },
   {
+    operationId: "createProjectWecomWebhook",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: {
+        kind: "conditional",
+        allowedWhen:
+          "ADR-105：当前 projectWecomGroup 能力档位允许写 Webhook 目标（默认系统管理员或组长；不允许时 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与 Idempotency-Key 必填；仅接受企业微信官方 Webhook URL，URL 加密落库且不进入审计、日志或响应；同 URL 409，单项目上限 20",
+        deniedWith: 403,
+      },
+      其他项目成员: { kind: "deny", status: 404 },
+      已移除成员: { kind: "deny", status: 404 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: {
+        kind: "conditional",
+        allowedWhen:
+          "完整系统管理员 Session；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.webhook.create；审计与响应只含标签和 Key 尾号",
+        deniedWith: 403,
+      },
+    },
+  },
+  {
+    operationId: "deleteProjectWecomWebhook",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: {
+        kind: "conditional",
+        allowedWhen:
+          "ADR-105：当前 projectWecomGroup 能力档位允许删除 Webhook 目标（默认系统管理员或组长；不允许时 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与 Idempotency-Key 必填；目标必须属于当前项目且为 ACTIVE WEBHOOK；状态流转 REVOKED，写审计 project.wecomGroup.webhook.delete",
+        deniedWith: 403,
+      },
+      其他项目成员: { kind: "deny", status: 404 },
+      已移除成员: { kind: "deny", status: 404 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: {
+        kind: "conditional",
+        allowedWhen:
+          "完整系统管理员 Session；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.webhook.delete",
+        deniedWith: 403,
+      },
+    },
+  },
+  {
     operationId: "getProjectMemberPermissions",
     outcomes: {
       匿名: { kind: "deny", status: 401 },

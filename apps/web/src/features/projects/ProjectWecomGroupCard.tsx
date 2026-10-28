@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { formatBeijingSecond } from "@features/common/beijing-time";
-import { Alert, Button, Popconfirm } from "antd";
+import { Alert, Button, Input, Popconfirm } from "antd";
 
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import { CalmSectionTitle } from "@features/common/components/Calm";
@@ -8,6 +8,7 @@ import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import type {
   InpulseApiClient,
   ProjectWecomGroupNotificationOptions,
+  ProjectWecomWebhookTarget,
 } from "@generated/api";
 
 import {
@@ -20,7 +21,9 @@ export interface ProjectWecomGroupCardProps {
   readonly projectId: number;
   /** 通知选项弹窗的眉标：当前项目名称；项目尚未加载时退回「企业微信项目群」。 */
   readonly projectName?: string | null | undefined;
-  /** ADR-077：组长 / 系统管理员可见「生成绑定码」与「解绑」；普通成员只读。 */
+  /** 卡片内标题；在项目主页专用弹窗中可改用更具体的分区名，避免与弹层标题重复。 */
+  readonly heading?: string | undefined;
+  /** ADR-077 / ADR-105：组长 / 系统管理员可管理机器人绑定与 Webhook；普通成员只读。 */
   readonly canManage: boolean;
   readonly client?: InpulseApiClient | undefined;
 }
@@ -41,19 +44,27 @@ function formatRemaining(remainingMs: number): string {
 }
 
 /**
- * ADR-077 项目企微群绑定卡片（项目成员页）：三态展示（UNBOUND / PENDING /
- * BOUND）、一次性绑定码（明文只展示一次、10 分钟有效、倒计时）、解绑二次确认、
- * 桥接侧最近投递错误与机器人资料链接提示。签发与解绑的服务端门禁是组长 /
- * 系统管理员，普通成员只读；有待用码时每 5 秒轮询，群里发送后自动刷新。
+ * ADR-077 / ADR-105 项目企微群通知卡片（项目主页企微入口弹窗）：
+ * - 智能机器人三态、一次性绑定码、机器人资料链接与解绑；
+ * - 群机器人 Webhook 的脱敏列表、添加与逐项删除；
+ * - 两种通道共用项目级通知选项，并明确提示同群重复投递风险。
+ * 服务端门禁是 projectWecomGroup 能力（默认组长 / 系统管理员），普通成员只读。
  */
 export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
   projectId,
   projectName = null,
+  heading = "企业微信项目群",
   canManage,
   client,
 }) => {
-  const { query, issueCode, updateNotificationOptions, unbind } =
-    useProjectWecomGroup(projectId, client);
+  const {
+    query,
+    issueCode,
+    updateNotificationOptions,
+    unbind,
+    createWebhook,
+    deleteWebhook,
+  } = useProjectWecomGroup(projectId, client);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
@@ -62,6 +73,10 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
     "idle" | "copied" | "failed"
   >("idle");
   const [now, setNow] = useState(() => Date.now());
+  const [webhookFormOpen, setWebhookFormOpen] = useState(false);
+  const [webhookLabel, setWebhookLabel] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookFormError, setWebhookFormError] = useState<string | null>(null);
 
   // 绑定码有效期倒计时：只在卡片挂载期间走秒。
   useEffect(() => {
@@ -81,6 +96,8 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
   const pendingWithoutCode =
     !codeUsable && status?.state === "PENDING" && codeExpiresAt !== null;
   const bound = status?.state === "BOUND";
+  const botBound = status !== undefined && status.boundAt !== null;
+  const webhookTargets = status?.webhookTargets ?? [];
 
   async function handleCopyCode(): Promise<void> {
     if (code === null) return;
@@ -122,9 +139,44 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
       onClick={generate}
       loading={issueCode.isPending}
     >
-      {bound || pendingWithoutCode ? "重新生成绑定码" : "生成绑定码"}
+      {botBound || pendingWithoutCode ? "重新生成绑定码" : "生成绑定码"}
     </Button>
   );
+
+  const resetWebhookForm = (): void => {
+    setWebhookLabel("");
+    setWebhookUrl("");
+    setWebhookFormError(null);
+  };
+
+  const toggleWebhookForm = (): void => {
+    if (webhookFormOpen) resetWebhookForm();
+    setWebhookFormOpen(!webhookFormOpen);
+  };
+
+  const submitWebhook = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ): Promise<void> => {
+    event.preventDefault();
+    const label = webhookLabel.trim();
+    const url = webhookUrl.trim();
+    if (label.length === 0) {
+      setWebhookFormError("请填写目标群标签，例如「研发项目群」。");
+      return;
+    }
+    if (url.length === 0) {
+      setWebhookFormError("请填写企业微信群机器人的 Webhook 地址。");
+      return;
+    }
+    setWebhookFormError(null);
+    try {
+      await createWebhook.mutateAsync({ label, webhookUrl: url });
+      resetWebhookForm();
+      setWebhookFormOpen(false);
+    } catch (error) {
+      setWebhookFormError(projectWecomGroupErrorMessage(error));
+    }
+  };
 
   const robotLinkNote =
     robotUrl === null ? null : (
@@ -185,13 +237,145 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
     </div>
   ) : null;
 
+  const webhookTargetRow = (target: ProjectWecomWebhookTarget) => (
+    <li key={target.id} className="wecom-webhook-target">
+      <div className="wecom-webhook-target-head">
+        <div className="wecom-webhook-target-title">
+          <InpulseIcon name="bell" size={15} />
+          <strong>{target.label}</strong>
+        </div>
+        <span className="wecom-webhook-key">Key 尾号 {target.urlHint}</span>
+        {canManage ? (
+          <Popconfirm
+            title="删除这个 Webhook 目标？"
+            description="删除后该项目不再向这个群机器人 Webhook 发送消息；已有投递历史会保留。"
+            okText="确认删除"
+            cancelText="取消"
+            placement="topRight"
+            onConfirm={() => deleteWebhook.mutate(target.id)}
+          >
+            <Button size="small" danger loading={deleteWebhook.isPending}>
+              删除
+            </Button>
+          </Popconfirm>
+        ) : null}
+      </div>
+      <p className="wecom-webhook-meta">
+        绑定时间：{formatTimestamp(target.boundAt)}；操作人：
+        {target.boundByName}
+      </p>
+      {target.lastDeliveryError !== null ? (
+        <div className="wecom-binding-alert">
+          <Alert
+            type="warning"
+            showIcon
+            title={"最近一次投递失败：" + target.lastDeliveryError}
+          />
+        </div>
+      ) : null}
+    </li>
+  );
+
+  const webhookSection = (
+    <div className="wecom-webhook-section" aria-label="企业微信 Webhook 群目标">
+      <div className="wecom-webhook-head">
+        <div>
+          <h3>群机器人 Webhook</h3>
+          <p>
+            在目标企业微信群右上角打开「聊天信息 → 消息推送 → 添加机器人」，
+            复制 Webhook
+            地址后粘贴到这里。完整地址只在保存时使用，页面之后只显示 Key 尾号。
+          </p>
+        </div>
+        {canManage ? (
+          <Button size="small" onClick={toggleWebhookForm}>
+            {webhookFormOpen ? "取消" : "添加 Webhook"}
+          </Button>
+        ) : null}
+      </div>
+
+      {botBound && webhookTargets.length > 0 ? (
+        <div className="wecom-binding-alert">
+          <Alert
+            type="warning"
+            showIcon
+            title="同一项目同时配置了智能机器人和 Webhook"
+          />
+          <p className="wecom-webhook-duplicate-note">
+            如果两种通道指向同一个企业微信群，该群会收到重复消息；请确认它们覆盖的是不同群，或只保留一种通道。
+          </p>
+        </div>
+      ) : null}
+
+      {webhookFormOpen && canManage ? (
+        <form
+          className="wecom-webhook-form"
+          onSubmit={(event) => void submitWebhook(event)}
+        >
+          <label>
+            <span>目标群标签</span>
+            <Input
+              aria-label="Webhook 目标群标签"
+              value={webhookLabel}
+              maxLength={80}
+              placeholder="例如：研发项目群"
+              onChange={(event) => setWebhookLabel(event.target.value)}
+            />
+          </label>
+          <label>
+            <span>企业微信 Webhook 地址</span>
+            <Input.Password
+              aria-label="企业微信 Webhook 地址"
+              value={webhookUrl}
+              maxLength={2048}
+              autoComplete="off"
+              placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+              onChange={(event) => setWebhookUrl(event.target.value)}
+            />
+          </label>
+          {webhookFormError !== null ? (
+            <p className="wecom-webhook-form-error" role="alert">
+              {webhookFormError}
+            </p>
+          ) : null}
+          <div className="wecom-webhook-form-actions">
+            <Button
+              type="primary"
+              htmlType="submit"
+              size="small"
+              loading={createWebhook.isPending}
+            >
+              保存 Webhook
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
+      {webhookTargets.length === 0 ? (
+        <div className="wecom-webhook-empty">
+          尚未添加 Webhook。添加后，项目动态可以直接发送到对应的企业微信群。
+        </div>
+      ) : (
+        <ul className="wecom-webhook-targets">
+          {webhookTargets.map(webhookTargetRow)}
+        </ul>
+      )}
+
+      {!canManage ? (
+        <p className="wecom-binding-meta">
+          只有项目组长或系统管理员可以添加或删除 Webhook 目标。
+        </p>
+      ) : null}
+    </div>
+  );
+
   return (
     <section
       className="panel settings-panel project-wecom-card"
       aria-label="企业微信项目群"
     >
       <div className="settings-panel-head">
-        <CalmSectionTitle title="企业微信项目群">
+        <CalmSectionTitle title={heading}>
           {canManage ? (
             <div className="calm-section-actions">
               {bound ? (
@@ -200,10 +384,10 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
                 </Button>
               ) : null}
               {issueButton}
-              {bound ? (
+              {botBound ? (
                 <Popconfirm
-                  title="解除项目与企业微信群的绑定？"
-                  description="解绑后该群不再收到项目消息；已有通知与投递历史都会保留。"
+                  title="解除项目与智能机器人的绑定？"
+                  description="解绑后该智能机器人目标不再收到项目消息；Webhook 目标、已有通知与投递历史都会保留。"
                   okText="确认解绑"
                   cancelText="取消"
                   classNames={{ root: "wecom-unbind-popconfirm" }}
@@ -211,7 +395,7 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
                   onConfirm={() => unbind.mutate()}
                 >
                   <Button size="small" danger loading={unbind.isPending}>
-                    解绑企业微信群
+                    解绑智能机器人
                   </Button>
                 </Popconfirm>
               ) : null}
@@ -240,16 +424,23 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
           <div className="wecom-binding-note is-ready" role="status">
             <InpulseIcon name="check" size={17} />
             <span>
-              <strong>已绑定企业微信群</strong>
-              群消息按「通知选项」中的开关推送；普通任务编辑不会推送到群。
-              个人单聊提醒不受这些群开关影响，两者并存。
+              <strong>
+                {botBound ? "已绑定企业微信群" : "已添加 Webhook 群通知目标"}
+              </strong>
+              {botBound
+                ? "群消息按「通知选项」中的开关推送；普通任务编辑不会推送到群。个人单聊提醒不受这些群开关影响，两者并存。"
+                : "项目消息会发送到下方列出的企业微信群机器人 Webhook；无需先与智能机器人对话，也不依赖长连接订阅。"}
             </span>
           </div>
-          <p className="wecom-binding-meta">
-            绑定时间：
-            {status.boundAt === null ? "未知" : formatTimestamp(status.boundAt)}
-            ；操作人：{status.boundByName ?? "未知"}
-          </p>
+          {botBound ? (
+            <p className="wecom-binding-meta">
+              绑定时间：
+              {status.boundAt === null
+                ? "未知"
+                : formatTimestamp(status.boundAt)}
+              ；操作人：{status.boundByName ?? "未知"}
+            </p>
+          ) : null}
           {status.lastDeliveryError !== null ? (
             <div className="wecom-binding-alert">
               <Alert
@@ -276,7 +467,7 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
           ) : null}
           {unbind.isSuccess ? (
             <div className="wecom-binding-alert">
-              <Alert type="success" showIcon title="已解除绑定。" />
+              <Alert type="success" showIcon title="已解绑智能机器人目标。" />
             </div>
           ) : null}
         </>
@@ -304,14 +495,14 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
                 <li>把绑定码发到群里，机器人确认后即完成绑定。</li>
               </ol>
               <div className="wecom-binding-placeholder">
-                生成后，绑定码会显示在这里（10 分钟内有效、只能使用一次）
+                也可以直接使用下方 Webhook，无需智能机器人激活与长连接。
               </div>
             </>
           )}
           {robotLinkNote}
           {unbind.isSuccess ? (
             <div className="wecom-binding-alert">
-              <Alert type="success" showIcon title="已解除绑定。" />
+              <Alert type="success" showIcon title="已解绑智能机器人目标。" />
             </div>
           ) : null}
           {!canManage ? (
@@ -321,6 +512,8 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
           ) : null}
         </>
       )}
+
+      {webhookSection}
 
       {issueCode.isError ? (
         <div className="wecom-binding-alert">
@@ -337,6 +530,15 @@ export const ProjectWecomGroupCard: React.FC<ProjectWecomGroupCardProps> = ({
             type="error"
             showIcon
             title={projectWecomGroupErrorMessage(unbind.error)}
+          />
+        </div>
+      ) : null}
+      {deleteWebhook.isError ? (
+        <div className="wecom-binding-alert">
+          <Alert
+            type="error"
+            showIcon
+            title={projectWecomGroupErrorMessage(deleteWebhook.error)}
           />
         </div>
       ) : null}

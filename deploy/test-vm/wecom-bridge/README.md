@@ -7,7 +7,7 @@
 ## 目录
 
 - `app/`：桥接脚本。`runner.mjs` 拉起两个子进程——`long-conn.mjs`（企业微信长连接：绑定码兑换、
-  主动推送、项目群投递消费）与 `bridge.mjs`（轮询 `app.notifications` 推送个人通知，并按 MEMBER 可见项目动态物化项目群投递）。
+  主动推送、项目群投递消费；按目标通道发送智能机器人或 Webhook）与 `bridge.mjs`（轮询 `app.notifications` 推送个人通知，并按 MEMBER 可见项目动态物化项目群投递）。
 - `Dockerfile`：`FROM` 本地 registry 的 api 镜像（复用其 node 24）；`COPY app /opt/wecom-bridge`。
 - `bridge.env`、`app/bridge-config.json`、`app/config.json`、`test-bridge-config.json`：运行配置
   （不含任何 Secret；密钥与密码由 VM 上只读挂载）。
@@ -53,7 +53,7 @@
 - 群动态展示（2026-10-21）：`group-message.mjs` 生成与个人通知一致的 `text_notice` 模板卡片，包含来源、主标题、编号、项目副标题、最多 6 行关键字段和 `cardActionUrl` 跳转；任务展示负责人、进度、截止、功能或模块，项目状态使用“进入维护 / 重新开工”等事件语义。真实群投递已验证 `chat_type:2` 接受卡片并返回 `errcode=0`。展示层不改变五类开关、来源收敛或发送限速。
 - 兼容：升级前已排队且未发送的 `NOTIFICATION` 行仍由 `long-conn.mjs` 兼容消费，
   避免升级丢失旧 PENDING 消息；新物化不再生成该来源类型。
-- 限速与重试：投递侧 30 条/分钟、1000 条/小时（内存窗口，超限自动退避并限频打日志）；
+- 限速与重试：BOT 投递 30 条/分钟、1000 条/小时；Webhook 每目标独立 20 条/分钟（均为内存窗口，超限自动退避并限频打日志）；
   识别为限速/临时错误的响应保持 `PENDING` 并退避 60 秒重试；15 秒无响应按超时保持
   `PENDING` 稍后重试（响应迟到时可能重复，PoC 取舍）；其余错误直接 `FAILED` 不自动重试；
   解绑后残留的 `PENDING` 行按「群绑定已解绑」置 FAILED；重启后从 PENDING 断点续传。
@@ -71,6 +71,15 @@
   失败回写（`errcode 93006 invalid chatid` -> `FAILED` + 绑定行 `last_delivery_error`）；
   long-conn 停机期间 PENDING 行保留、重启后续传送达。联调合成数据已清理。
   ADR-093 收敛来源后的改动需重新同步 VM 后再做真实群投递验证。
+
+## Webhook 群通道（ADR-105，2026-10-28）
+
+- 数据：`app.project_wecom_groups.channel_type` 区分 `BOT` / `WEBHOOK`。一个项目仍最多一个 ACTIVE 智能机器人目标；Webhook 允许一个项目多个 ACTIVE 目标（上限 20），但同一规范化 URL 全局只允许一个 ACTIVE 目标。
+- 配置：项目成员页「企业微信项目群」可添加官方群机器人 Webhook。完整 URL 使用机器人 keyring 加密，AAD 为 `app.project_wecom_groups.webhook_url`；数据库只保存密文、密钥版本、SHA-256 指纹与 Key 尾号，页面、审计、日志和错误都不回显完整 URL。Webhook URL 属于 Secret。
+- 发送：`bridge.mjs` 仍只物化 MEMBER 可见项目动态；同一投递队列按目标 `channel_type` 分流。Webhook 解密 URL 后直接 HTTP POST 现有 markdown / template_card / image，成功以响应 `errcode = 0` 为准，不依赖长连接订阅。
+- 限速：每个 Webhook 目标独立 20 条/分钟；达到窗口时该目标保持 `PENDING` 并让出队列，不阻塞其他目标。BOT 继续使用 30 条/分钟、1000 条/小时。
+- 兼容：五类项目群通知开关对 BOT 与 Webhook 统一生效；管理员更换机器人只撤销 BOT，Webhook 保持绑定。若同一项目同时配置智能机器人和指向同一群的 Webhook，该群会收到重复消息，界面负责提示。
+- 测试：`node --test deploy/test-vm/wecom-bridge/app/wecom-webhook.test.mjs` 覆盖加密 AAD、消息体收窄、图片 2 MB 限制、独立限速与 HTTP / errcode 分类。
 
 ## 项目封箱彩蛋（ADR-091，2026-10-20）
 

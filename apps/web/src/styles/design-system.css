@@ -1897,6 +1897,31 @@ td small {
   align-items: center;
   gap: 10px;
 }
+/* 项目主页的企业微信入口：品牌色图标 + 可见文案，与操作行同高且不抢主操作。 */
+.project-wecom-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 7px;
+  height: 35px;
+  padding: 0 13px;
+  border: 1px solid #cfe4fa;
+  border-radius: 5px;
+  background: #edf6ff;
+  color: #2c7ad6;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.project-wecom-entry:hover {
+  border-color: #b8d5f3;
+  background: #dceeff;
+  color: #1f65bd;
+}
+.project-wecom-entry:focus-visible {
+  outline: 2px solid #8bbcf0;
+  outline-offset: 2px;
+}
 .project-repository-link {
   display: inline-flex;
   align-items: center;
@@ -8313,6 +8338,148 @@ div.ant-popover.import-member-popover
 
 .wecom-binding-alert {
   margin-top: 12px;
+}
+
+/* ADR-105：项目群卡片中的 Webhook 目标管理。完整 URL 不渲染，只展示标签与 Key 尾号。 */
+.wecom-webhook-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e7eef5;
+}
+
+.wecom-webhook-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.wecom-webhook-head > div {
+  min-width: 0;
+}
+
+.wecom-webhook-head h3 {
+  margin: 0;
+  color: #304962;
+  font-size: var(--text-xl);
+  font-weight: 600;
+}
+
+.wecom-webhook-head p {
+  max-width: 760px;
+  margin: 6px 0 0;
+  color: #71879b;
+  font-size: var(--text-md);
+  line-height: 1.7;
+}
+
+.wecom-webhook-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dfe8f1;
+  border-radius: 10px;
+  background: #f8fbfe;
+}
+
+.wecom-webhook-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #5d7489;
+  font-size: var(--text-md);
+}
+
+.wecom-webhook-form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #ad3f3a;
+  font-size: var(--text-md);
+}
+
+.wecom-webhook-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.wecom-webhook-duplicate-note {
+  margin: 6px 2px 0;
+  color: #80613e;
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+
+.wecom-webhook-empty {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px dashed #cfdcea;
+  border-radius: 10px;
+  background: #fbfdff;
+  color: #8ba0b3;
+  font-size: var(--text-md);
+  text-align: center;
+}
+
+.wecom-webhook-targets {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wecom-webhook-target {
+  padding: 12px 14px;
+  border: 1px solid #e0e8f0;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.wecom-webhook-target-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wecom-webhook-target-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #304962;
+}
+
+.wecom-webhook-target-title svg {
+  flex: 0 0 auto;
+  color: #3f80b9;
+}
+
+.wecom-webhook-target-title strong {
+  overflow-wrap: anywhere;
+  font-size: var(--text-base);
+}
+
+.wecom-webhook-key {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #edf4fb;
+  color: #5d7891;
+  font-size: var(--text-sm);
+}
+
+.wecom-webhook-target-head > .ant-btn {
+  margin-left: auto;
+}
+
+.wecom-webhook-meta {
+  margin: 7px 0 0;
+  color: #7b8fa2;
+  font-size: var(--text-md);
 }
 
 /* 解绑二次确认气泡（项目群卡片与账户菜单的绑定弹层共用）：antd-adapter.css 为原型里的

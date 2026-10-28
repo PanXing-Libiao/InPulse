@@ -45,6 +45,7 @@ export type InpulseIconName =
   | "user"
   | "upload"
   | "users"
+  | "wecom"
   | "x"
   | "zap";
 
@@ -339,6 +340,13 @@ const iconContents: Readonly<Record<InpulseIconName, React.ReactNode>> = {
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </>
+  ),
+  wecom: (
+    <>
+      <path d="M13.6 4H6.7A3.7 3.7 0 0 0 3 7.7v4.1a3.7 3.7 0 0 0 3.7 3.7h1.1v2.4l3.4-2.4h2.4a3.7 3.7 0 0 0 3.7-3.7V7.7A3.7 3.7 0 0 0 13.6 4Z" />
+      <path d="M12.8 10.4h4.7a2.5 2.5 0 0 1 2.5 2.5v2.4a2.5 2.5 0 0 1-2.5 2.5h-.9v2.1l-2.7-2.1h-1.1a2.5 2.5 0 0 1-2.5-2.5v-.7" />
+      <path d="M7 7.7h.01M10.6 7.7h.01" />
     </>
   ),
   trash: (

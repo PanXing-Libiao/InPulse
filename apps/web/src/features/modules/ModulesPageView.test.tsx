@@ -512,6 +512,57 @@ describe("新项目搭建引导（2026-10-10）", () => {
   });
 });
 
+describe("项目主页企微群入口", () => {
+  const projectDetail = {
+    project: {
+      id: 2,
+      code: "PAY",
+      name: "结算系统",
+      description: "",
+      status: "ACTIVE" as const,
+      hasCompletedTask: false,
+      rowVersion: 1,
+      createdBy: 1,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      memberCount: 3,
+      stats: {
+        activeModuleCount: 1,
+        activeFeatureCount: 0,
+        openTaskCount: 0,
+        completedTaskCount: 0,
+      },
+    },
+    currentUserRole: "MEMBER" as const,
+  };
+
+  it("点击顶部企微消息通知入口打开项目群绑定弹窗", async () => {
+    const client = {
+      listModules: vi.fn().mockResolvedValue({ items: [] }),
+      getProject: vi.fn().mockResolvedValue(projectDetail),
+      getProjectWecomGroup: vi.fn().mockResolvedValue({
+        state: "UNBOUND",
+        codeExpiresAt: null,
+        boundAt: null,
+        boundByName: null,
+        lastDeliveryError: null,
+        botProfileUrl: null,
+        webhookTargets: [],
+        notificationOptions: { disabledCategories: [] },
+      }),
+    } as unknown as InpulseApiClient;
+    mount(client);
+
+    fireEvent.click(await screen.findByRole("button", { name: "消息通知" }));
+    expect(
+      await screen.findByRole("dialog", { name: "企业微信项目群" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("只有项目组长或系统管理员可以生成绑定码或解绑。"),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("ADR-064 文档导入入口", () => {
   const projectDetail = {
     project: {

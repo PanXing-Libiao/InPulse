@@ -8,11 +8,11 @@ const json = (schemaRef: SchemaName): RouteDefinition["responses"][string] => ({
 const error = json("ErrorResponse");
 
 /**
- * ADR-077：企业微信项目群绑定（项目级）。
- * GET 读取当前绑定状态（成员可读）；POST codes 签发一次性绑定码
- * （securityFlow，ADR-023 allowlist 扩展，仅组长/系统管理员）；DELETE 解绑
- * （状态流转 + 审计，仅组长/系统管理员）。绑定兑换发生在长连接桥接侧，
- * 调用 app.redeem_project_wecom_binding_code（PWG01～PWG08）。
+ * ADR-077 / ADR-090 / ADR-105：企业微信项目群通知目标（项目级）。
+ * GET 读取智能机器人与 Webhook 目标状态（成员可读）；POST codes 签发一次性
+ * 绑定码（securityFlow，仅具有 projectWecomGroup 能力的成员）；DELETE 解绑
+ * 智能机器人目标；ADR-105 另增 Webhook 目标创建与删除。绑定兑换发生在长连接
+ * 桥接侧，调用 app.redeem_project_wecom_binding_code（PWG01～PWG08）。
  */
 export const projectWecomGroupRoutes: readonly RouteDefinition[] = [
   {
@@ -190,5 +190,118 @@ export const projectWecomGroupRoutes: readonly RouteDefinition[] = [
     versionPolicy: "none",
     concurrencyPolicy: "none",
     auditAction: "project.wecomGroup.unbind",
+  },
+  {
+    method: "POST",
+    path: "/projects/{projectId}/wecom-group/webhooks",
+    operationId: "createProjectWecomWebhook",
+    summary:
+      "添加项目企业微信 Webhook 群目标：严格限制为企业微信官方群机器人 URL，服务端加密保存完整 URL，只返回标签、Key 尾号、绑定时间、绑定人与最近投递错误；同一 URL 全局只能有一个 ACTIVE 目标，单项目最多 20 个；仅具有 projectWecomGroup 能力的成员可写（默认组长/系统管理员），非成员 404；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.webhook.create。",
+    request: {
+      path: "ProjectWecomGroupPath",
+      query: "none",
+      headers: "ProjectWecomGroupMutationHeaders",
+      body: {
+        contentTypes: [
+          {
+            contentType: "application/json",
+            schemaRef: "ProjectWecomWebhookCreateRequest",
+          },
+        ],
+      },
+    },
+    responses: {
+      "201": json("ProjectWecomWebhookTarget"),
+      "400": error,
+      "401": error,
+      "403": error,
+      "404": error,
+      "409": error,
+      "422": error,
+      "500": error,
+      "503": error,
+    },
+    authPolicy: "session",
+    csrfPolicy: "required",
+    idempotencyPolicy: "idempotencyRequired",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "1.0.0",
+    idempotencyFingerprintVersion: "1.0.0",
+    behaviorHeaders: [],
+    idempotencyReplayPolicy: {
+      version: "1.0.0",
+      success: {
+        "201": {
+          body: {
+            responseSchemaRef: "ProjectWecomWebhookTarget",
+            safeBodyFieldPaths: [
+              "id",
+              "label",
+              "urlHint",
+              "boundAt",
+              "boundByName",
+              "lastDeliveryError",
+            ],
+          },
+        },
+      },
+    },
+    replayAuthorizationPolicy: {
+      version: "1.0.0",
+      resources: {
+        contextSchemaRef: "ProjectWecomWebhookReplayContext",
+        resultRefExtractor: "bindingId",
+        currentReadAuthorizer: "projectWecomWebhookCreateReplayAuthorizer",
+      },
+    },
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "project.wecomGroup.webhook.create",
+  },
+  {
+    method: "DELETE",
+    path: "/projects/{projectId}/wecom-group/webhooks/{bindingId}",
+    operationId: "deleteProjectWecomWebhook",
+    summary:
+      "解除指定项目 Webhook 群目标：ACTIVE 目标置 REVOKED（不物理删除，保留投递历史）；目标必须属于该项目且 channel_type=WEBHOOK；仅具有 projectWecomGroup 能力的成员可写，非成员 404；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.webhook.delete，不记录完整 URL 或 Key。",
+    request: {
+      path: "ProjectWecomWebhookPath",
+      query: "none",
+      headers: "ProjectWecomGroupMutationHeaders",
+      body: { noBody: true },
+    },
+    responses: {
+      "204": { noBody: true },
+      "400": error,
+      "401": error,
+      "403": error,
+      "404": error,
+      "409": error,
+      "500": error,
+    },
+    authPolicy: "session",
+    csrfPolicy: "required",
+    idempotencyPolicy: "idempotencyRequired",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "1.0.0",
+    idempotencyFingerprintVersion: "1.0.0",
+    behaviorHeaders: [],
+    idempotencyReplayPolicy: {
+      version: "1.0.0",
+      success: { "204": { noBody: true } },
+    },
+    replayAuthorizationPolicy: {
+      version: "1.0.0",
+      resources: {
+        contextSchemaRef: "ProjectWecomWebhookReplayContext",
+        resultRefExtractor: "bindingId",
+        currentReadAuthorizer: "projectWecomWebhookDeleteReplayAuthorizer",
+      },
+    },
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "project.wecomGroup.webhook.delete",
   },
 ];

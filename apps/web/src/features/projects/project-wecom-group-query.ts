@@ -8,6 +8,8 @@ import {
   type ProjectWecomGroupCode,
   type ProjectWecomGroupNotificationOptions,
   type ProjectWecomGroupStatus,
+  type ProjectWecomWebhookCreateRequest,
+  type ProjectWecomWebhookTarget,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
@@ -16,8 +18,9 @@ import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
  * ADR-077 项目企微群绑定数据层：GET 读取三态（UNBOUND / PENDING / BOUND）；
  * POST 签发一次性绑定码（securityFlow：只签发 CSRF、重新生成立即作废旧码）；
  * PUT 保存项目群通知开关（先签发 CSRF，再携带一次性 Idempotency-Key）；
- * DELETE 解绑。所有请求都经生成客户端，组件不裸写 fetch。签发、保存与解绑的
- * 服务端门禁是组长 / 系统管理员，普通成员只读。
+ * DELETE 解绑智能机器人；Webhook 目标各自新增 / 删除。所有请求都经生成客户端，
+ * 组件不裸写 fetch。签发、保存、解绑与 Webhook 管理的服务端门禁是项目
+ * projectWecomGroup 能力（默认组长 / 系统管理员），普通成员只读。
  */
 export const projectWecomGroupQueryKey = (projectId: number) =>
   ["project-wecom-group", projectId] as const;
@@ -39,9 +42,18 @@ export function projectWecomGroupErrorMessage(error: unknown): string {
         return "当前服务还没有企业微信项目群功能，请让管理员更新后端服务后重试。";
       return "项目不存在或你已不是项目成员。";
     }
-    if (error.status === 409)
+    if (error.status === 409) {
+      if (error.code === "PROJECT_WECOM_WEBHOOK_ALREADY_BOUND")
+        return "这个 Webhook 已经绑定到活跃项目目标，不能重复添加。";
+      if (error.code === "PROJECT_WECOM_WEBHOOK_LIMIT_REACHED")
+        return "单个项目最多绑定 20 个 Webhook 目标，请先删除不再使用的目标。";
       return "该请求与先前的操作冲突，请刷新页面后重试。";
-    if (error.status === 422) return "请求参数校验失败，请刷新页面后重试。";
+    }
+    if (error.status === 422) {
+      if (error.code === "PROJECT_WECOM_WEBHOOK_URL_INVALID")
+        return "Webhook 地址必须是企业微信官方群机器人地址，并包含一个合法 key。";
+      return "请求参数校验失败，请刷新页面后重试。";
+    }
     if (error.status === 429) return "请求过于频繁，请稍后重试。";
     if (error.status === 503) return "服务暂时不可用，请稍后重试。";
   }
@@ -102,6 +114,46 @@ export function useProjectWecomGroup(
     },
   });
 
+  const createWebhook = useMutation({
+    retry: false,
+    mutationFn: async (
+      input: ProjectWecomWebhookCreateRequest,
+    ): Promise<ProjectWecomWebhookTarget> => {
+      const key = createIdempotencyKey("pwg-webhook-create");
+      const csrf = await api.issueCsrfToken();
+      return api.createProjectWecomWebhook(projectId, input, {
+        headers: {
+          "x-csrf-token": csrf.csrfToken,
+          "Idempotency-Key": key,
+        },
+      });
+    },
+    onSuccess: async () => {
+      await cache.invalidateQueries({
+        queryKey: projectWecomGroupQueryKey(projectId),
+      });
+    },
+  });
+
+  const deleteWebhook = useMutation({
+    retry: false,
+    mutationFn: async (bindingId: number): Promise<void> => {
+      const key = createIdempotencyKey("pwg-webhook-delete");
+      const csrf = await api.issueCsrfToken();
+      await api.deleteProjectWecomWebhook(projectId, bindingId, {
+        headers: {
+          "x-csrf-token": csrf.csrfToken,
+          "Idempotency-Key": key,
+        },
+      });
+    },
+    onSuccess: async () => {
+      await cache.invalidateQueries({
+        queryKey: projectWecomGroupQueryKey(projectId),
+      });
+    },
+  });
+
   const updateNotificationOptions = useMutation({
     retry: false,
     mutationFn: async (
@@ -132,5 +184,12 @@ export function useProjectWecomGroup(
     },
   });
 
-  return { query, issueCode, updateNotificationOptions, unbind };
+  return {
+    query,
+    issueCode,
+    updateNotificationOptions,
+    unbind,
+    createWebhook,
+    deleteWebhook,
+  };
 }

@@ -150,6 +150,7 @@ function baseClient() {
       boundByName: null,
       lastDeliveryError: null,
       botProfileUrl: null,
+      webhookTargets: [],
       notificationOptions: { disabledCategories: [] },
     }),
     createProjectWecomGroupCode: vi.fn().mockResolvedValue({
@@ -219,9 +220,9 @@ describe("ProjectMembersPageView", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the project members setting title and returns to the project overview", async () => {
-    const client = baseClient() as unknown as InpulseApiClient;
-    mount(client);
+  it("shows the project members setting title and no longer duplicates the WeCom card", async () => {
+    const api = baseClient();
+    mount(api as unknown as InpulseApiClient);
 
     expect(
       await screen.findByRole("heading", {
@@ -229,6 +230,8 @@ describe("ProjectMembersPageView", () => {
         level: 1,
       }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "企业微信项目群" })).toBeNull();
+    expect(api.getProjectWecomGroup).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "返回项目主页" }));
     expect(screen.getByTestId("location")).toHaveTextContent(

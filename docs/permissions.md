@@ -335,7 +335,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | `assignUsersOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（2.0.0）；`userIds` 1～200 去重、`organizationId` 为正整数或 `null`；按用户 ID 升序 `FOR UPDATE`；只允许本地账号与 LOCAL 目标组织，SSO 用户或 CASDOOR 目标返回 409 `ORGANIZATION_SSO_MANAGED`；本地账号使用单组织替换语义，重复调用 `updatedCount = 0`；目标组织不存在 422 `ORGANIZATION_NOT_FOUND`；审计 `admin.user.organizations.assign` |
 | `getMyOrganizationMembers` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效会话：返回当前用户全部 `organizations` 与去重后的同组织 ACTIVE 成员；成员含 `id` / `name` / `avatarUrl` / `isAdmin` / `organizationIds`（最多 300 条；不返回登录名、邮箱与停用状态）；未分配返回空数组；只读，响应 `no-store` |
 
-六条路由承载 ADR-081 的组织（部门）能力。2026-10-16 历史口径为「一名成员至多归属一个组织、未分配为 `NULL`」，该口径自 [ADR-097](adr/ADR-097.md) 起只继续适用于本地口令账号；SSO 用户可同时属于多个 CASDOOR 群组。组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。ADR-081 落库时新增迁移 `0046_organizations.sql`、路由总数 119 → 125；ADR-097 未新增业务路由；ADR-099 结束时为 129 条操作 / 129 条路由，ADR-100 新增两条管理员导入路由后为 131 条操作 / 131 条路由；ADR-104 新增两条全平台权限配置路由后当前为 133 条操作 / 133 条路由。2026-10-16 第二批与修正保留：① `getUserDirectory` 增加只读组织字段，新建项目「初始项目成员」选择器按组织分组并支持「全选组织」；② 修正 `/settings` 前端路由守卫为登录守卫，普通成员进入后只渲染只读同组织视图；③ 真实 PostgreSQL 集成覆盖组织归属空数组与非空数组。
+六条路由承载 ADR-081 的组织（部门）能力。2026-10-16 历史口径为「一名成员至多归属一个组织、未分配为 `NULL`」，该口径自 [ADR-097](adr/ADR-097.md) 起只继续适用于本地口令账号；SSO 用户可同时属于多个 CASDOOR 群组。组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。ADR-081 落库时新增迁移 `0046_organizations.sql`、路由总数 119 → 125；ADR-097 未新增业务路由；ADR-099 结束时为 129 条操作 / 129 条路由，ADR-100 新增两条管理员导入路由后为 131 条操作 / 131 条路由；ADR-104 新增两条全平台权限配置路由后为 133 条操作 / 133 条路由；ADR-105 新增 Webhook 创建与删除两条路由后当前为 135 条操作 / 135 条路由。2026-10-16 第二批与修正保留：① `getUserDirectory` 增加只读组织字段，新建项目「初始项目成员」选择器按组织分组并支持「全选组织」；② 修正 `/settings` 前端路由守卫为登录守卫，普通成员进入后只渲染只读同组织视图；③ 真实 PostgreSQL 集成覆盖组织归属空数组与非空数组。
 
 ## ADR-088 离职账号物理删除（2026-10-20）
 
@@ -414,7 +414,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 **重放与审计**：确认导入的响应只含计数，重放只要求原操作人当前仍是完整管理员并继续通过 CSRF 门禁；同 Key、同摘要、同契约版本重放不重复建号或写审计，同 Key 不同请求体 409。审计 target 为 Casdoor organization，payload 仅含组织名与扫描、新建、绑定、刷新、跳过、组织与成员关系计数，不写登录名、邮箱、Casdoor ID、组路径明细或任何凭据。
 
-**验证边界**：本地真实 PostgreSQL 与 HTTP 集成覆盖预览零写入、无口令非管理员新账号、同邮箱绑定、冲突跳过、Physical 组织与无实体组未分类、重复导入、组移除后清空关系、管理员授权、CSRF、幂等重放及单条审计；真实 Casdoor 批量导入 smoke 尚未执行。ADR-100 验证时 `permissions:check` 与 Route Registry 为 131 条操作 / 131 条路由；ADR-104 后当前为 133。
+**验证边界**：本地真实 PostgreSQL 与 HTTP 集成覆盖预览零写入、无口令非管理员新账号、同邮箱绑定、冲突跳过、Physical 组织与无实体组未分类、重复导入、组移除后清空关系、管理员授权、CSRF、幂等重放及单条审计；真实 Casdoor 批量导入 smoke 尚未执行。ADR-100 验证时 `permissions:check` 与 Route Registry 为 131 条操作 / 131 条路由；ADR-104 后为 133；ADR-105 后当前为 135。
 
 ## ADR-102 Casdoor 导入预览分类与审计展示（2026-10-27）
 
@@ -454,3 +454,16 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 **实现口径**：11 项写入口统一在事务内读取用户状态、`is_admin`、项目 ACTIVE 成员角色与配置；系统管理员必须始终通过，非成员仍返回 404。文档导入放宽后，创建模块/功能与任务仍分别需要 `moduleFeatureEdit`、`taskEdit`。幂等重放前重新验证当前管理员、原操作人、配置行与结果资源可读权限；管理员被撤权后不得回放旧成功响应。
 
 **前端与验证**：权限矩阵对管理员可编辑、对普通成员只读，固定项展示徽标；保存时由生成客户端携带 CSRF、`If-Match` 与幂等键，409 提示重新加载。真实 PostgreSQL + HTTP 主流程覆盖默认值、保存后即时生效、审计、普通成员 403、幂等重放、版本冲突与非 JSON 400；本次按用户要求保持精简，不堆叠重复用例。
+
+## ADR-105 企业微信 Webhook 项目群通知通道（2026-10-28）
+
+本节按 [ADR-105](adr/ADR-105.md)（Accepted）扩展项目群目标，路由总数 133 → 135。智能机器人（`BOT`）与群机器人 Webhook（`WEBHOOK`）并存；一个项目至多一个 ACTIVE 智能机器人目标，但可有多个 ACTIVE Webhook 目标（上限 20），同一规范化 Webhook URL 全局至多绑定一个 ACTIVE 目标。
+
+| operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `createProjectWecomWebhook` | 401 | 受 `projectWecomGroup` 档位约束 | 404 | 404 | 401 | 允许 | 完整认证 Session + 同源 + CSRF + `Idempotency-Key`（数据库级幂等 1.0.0）；只接受 `https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...`；URL 以独立 AAD 加密，响应 / 审计 / 日志只含标签与 Key 尾号；重复 URL 409，超过 20 个 409；写审计 `project.wecomGroup.webhook.create` |
+| `deleteProjectWecomWebhook` | 401 | 受 `projectWecomGroup` 档位约束 | 404 | 404 | 401 | 允许 | 完整认证 Session + 同源 + CSRF + `Idempotency-Key`（数据库级幂等 1.0.0）；目标必须属于该项目且为 ACTIVE `WEBHOOK`；以 `REVOKED` 保留行与投递历史；写审计 `project.wecomGroup.webhook.delete`；同 Key 重放返回 204 |
+
+`GET /projects/{projectId}/wecom-group` 新增 `webhookTargets` 脱敏列表；只要存在任一 ACTIVE 目标，`state` 即为 `BOUND`。两条写路由与既有绑定、解绑和通知选项共用 `projectWecomGroup` 能力门禁：普通成员是否可写由 ADR-104 全平台三档配置决定，非成员仍返回 404。原智能机器人解绑与管理员更换机器人只撤销 `BOT` 目标，Webhook 保持 ACTIVE。群通知五类开关继续由智能机器人与全部 Webhook 共用。
+
+**验证边界**：URL 规范化、集成加密 / 去重 / 删除隔离 / 机器人与 Webhook 隔离、前端表单和 Webhook 发送层均有定向测试；真实企业微信 Webhook 冒烟与测试 VM 部署同步尚未执行。

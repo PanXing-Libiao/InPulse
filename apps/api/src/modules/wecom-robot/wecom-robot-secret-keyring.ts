@@ -8,7 +8,11 @@ const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 /** GCM 附加认证数据：恒定绑定到表与列（ADR-070）。 */
-const AAD = Buffer.from("app.wecom_robot_config.secret", "utf8");
+const ROBOT_SECRET_AAD = Buffer.from("app.wecom_robot_config.secret", "utf8");
+const PROJECT_WECOM_WEBHOOK_URL_AAD = Buffer.from(
+  "app.project_wecom_groups.webhook_url",
+  "utf8",
+);
 
 /** 主密钥不可用（文件缺失 / 非法 / 缺版本）；HTTP 层 fail closed。 */
 export class WecomRobotEncryptionUnavailableError extends Error {
@@ -113,10 +117,10 @@ export function loadWecomRobotEncryptionKeyring(
   return parseWecomRobotEncryptionKeyring(content, currentVersion);
 }
 
-/** 加密密钥明文；返回 `nonce || tag || ciphertext` 与主密钥版本。 */
-export function encryptWecomRobotSecret(
+function encryptWithAad(
   plaintext: string,
   keyring: WecomRobotEncryptionKeyring,
+  aad: Buffer,
 ): { readonly ciphertext: Buffer; readonly keyVersion: number } {
   const key = keyring.keys.get(keyring.currentVersion);
   if (key === undefined) {
@@ -126,7 +130,7 @@ export function encryptWecomRobotSecret(
   }
   const nonce = randomBytes(NONCE_BYTES);
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
-  cipher.setAAD(AAD);
+  cipher.setAAD(aad);
   const encrypted = Buffer.concat([
     cipher.update(plaintext, "utf8"),
     cipher.final(),
@@ -138,11 +142,11 @@ export function encryptWecomRobotSecret(
   };
 }
 
-/** 解密密钥明文；未知主密钥版本与 GCM 校验失败都抛错（fail closed）。 */
-export function decryptWecomRobotSecret(
+function decryptWithAad(
   ciphertext: Buffer,
   keyVersion: number,
   keyring: WecomRobotEncryptionKeyring,
+  aad: Buffer,
 ): string {
   const key = keyring.keys.get(keyVersion);
   if (key === undefined) {
@@ -156,7 +160,7 @@ export function decryptWecomRobotSecret(
   const body = ciphertext.subarray(NONCE_BYTES + TAG_BYTES);
   try {
     const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-    decipher.setAAD(AAD);
+    decipher.setAAD(aad);
     decipher.setAuthTag(tag);
     const plaintext = Buffer.concat([
       decipher.update(body),
@@ -172,6 +176,45 @@ export function decryptWecomRobotSecret(
     }
     throw new WecomRobotDecryptError();
   }
+}
+
+/** 加密机器人 Secret；返回 `nonce || tag || ciphertext` 与主密钥版本。 */
+export function encryptWecomRobotSecret(
+  plaintext: string,
+  keyring: WecomRobotEncryptionKeyring,
+): { readonly ciphertext: Buffer; readonly keyVersion: number } {
+  return encryptWithAad(plaintext, keyring, ROBOT_SECRET_AAD);
+}
+
+/** 解密机器人 Secret；未知主密钥版本与 GCM 校验失败都抛错（fail closed）。 */
+export function decryptWecomRobotSecret(
+  ciphertext: Buffer,
+  keyVersion: number,
+  keyring: WecomRobotEncryptionKeyring,
+): string {
+  return decryptWithAad(ciphertext, keyVersion, keyring, ROBOT_SECRET_AAD);
+}
+
+/** 加密项目 Webhook URL；使用与机器人 Secret 独立列绑定的 AAD。 */
+export function encryptWecomWebhookUrl(
+  plaintext: string,
+  keyring: WecomRobotEncryptionKeyring,
+): { readonly ciphertext: Buffer; readonly keyVersion: number } {
+  return encryptWithAad(plaintext, keyring, PROJECT_WECOM_WEBHOOK_URL_AAD);
+}
+
+/** 解密项目 Webhook URL；AAD 不匹配或密文损坏时 fail closed。 */
+export function decryptWecomWebhookUrl(
+  ciphertext: Buffer,
+  keyVersion: number,
+  keyring: WecomRobotEncryptionKeyring,
+): string {
+  return decryptWithAad(
+    ciphertext,
+    keyVersion,
+    keyring,
+    PROJECT_WECOM_WEBHOOK_URL_AAD,
+  );
 }
 
 /** 密钥尾 4 位提示；短于 4 位时整体作为提示。 */

@@ -365,6 +365,20 @@ describe("F-08 audit page", () => {
         targetType: "PROJECT",
         targetId: "7",
       },
+      {
+        ...systemItem,
+        sequenceNo: 24,
+        action: "project.wecomGroup.webhook.create",
+        targetType: "PROJECT_WECOM_GROUP",
+        targetId: "19",
+      },
+      {
+        ...systemItem,
+        sequenceNo: 23,
+        action: "project.wecomGroup.webhook.delete",
+        targetType: "PROJECT_WECOM_GROUP",
+        targetId: "19",
+      },
     ];
     const getAuditLogs = vi.fn().mockResolvedValue(page(organizationItems));
     const listProjects = vi.fn().mockResolvedValue({ items: [project] });
@@ -393,6 +407,8 @@ describe("F-08 audit page", () => {
       "调整成员组织",
       "更新企业微信群通知选项",
       "解绑企业微信群",
+      "添加企业微信群 Webhook",
+      "删除企业微信群 Webhook",
     ]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
@@ -403,6 +419,8 @@ describe("F-08 audit page", () => {
       "admin.user.organizations.assign",
       "project.wecomGroup.notificationOptions.update",
       "project.wecomGroup.unbind",
+      "project.wecomGroup.webhook.create",
+      "project.wecomGroup.webhook.delete",
     ]) {
       expect(screen.queryByText(raw)).toBeNull();
     }

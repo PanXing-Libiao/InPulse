@@ -152,6 +152,7 @@ const wecomStatus = {
   boundByName: "开发者 C",
   lastDeliveryError: null,
   botProfileUrl: null,
+  webhookTargets: [],
   notificationOptions: { disabledCategories: [] },
 } as const;
 

@@ -1430,7 +1430,32 @@ export type ProjectWecomGroupStatus = {
   readonly boundByName: (string | null);
   readonly lastDeliveryError: (string | null);
   readonly botProfileUrl: (string | null);
+  readonly webhookTargets: readonly ProjectWecomWebhookTarget[];
   readonly notificationOptions: ProjectWecomGroupNotificationOptions;
+};
+
+export type ProjectWecomWebhookCreateRequest = {
+  readonly label: string;
+  readonly webhookUrl: string;
+};
+
+export type ProjectWecomWebhookPath = {
+  readonly projectId: number;
+  readonly bindingId: number;
+};
+
+export type ProjectWecomWebhookReplayContext = {
+  readonly projectId: number;
+  readonly bindingId: number;
+};
+
+export type ProjectWecomWebhookTarget = {
+  readonly id: number;
+  readonly label: string;
+  readonly urlHint: string;
+  readonly boundAt: string;
+  readonly boundByName: string;
+  readonly lastDeliveryError: (string | null);
 };
 
 export type PublishRecordRequest = Readonly<Record<string, unknown>>;

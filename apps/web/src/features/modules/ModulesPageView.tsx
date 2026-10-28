@@ -189,6 +189,7 @@ export function ModulesPageView({
           onRetryProject={() => void projectQuery.refetch()}
           onBack={() => navigate("/projects")}
           onOpenMembers={() => setWorkspaceModal("members")}
+          onOpenWecom={() => setWorkspaceModal("wecom")}
           onOpenRecords={() => setWorkspaceModal("records")}
           onOpenRecord={setRecordTarget}
           onOpenIssues={() => setWorkspaceModal("issues")}

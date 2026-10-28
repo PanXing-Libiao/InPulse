@@ -25,6 +25,10 @@
 // 2026-10-20 改造（ADR-091：项目封箱彩蛋）：
 //   PROJECT_WRAPPED 动态发送「封箱文案 + 海报」两段；delivered_step_count 持久化
 //   已成功的段数，文本先成功、图片失败或进程重启时只续发图片。
+// 2026-10-28 改造（ADR-105：企业微信群机器人 Webhook）：
+//   同一投递队列按 group_binding_id 的目标通道消费；BOT 仍走 aibot_send_msg，
+//   WEBHOOK 解密目标 URL 后直接 HTTP POST，不依赖长连接订阅。每个 Webhook
+//   目标独立限速 20 条/分钟，达到窗口只跳过该目标，不阻塞其他目标。
 import { readFileSync, writeFileSync } from "node:fs";
 import { createDecipheriv, createHash } from "node:crypto";
 import {
@@ -34,6 +38,11 @@ import {
   redeemProjectGroupCode,
 } from "./binding-code.mjs";
 import { buildGroupActivityCard } from "./group-message.mjs";
+import {
+  decryptWebhookUrl,
+  sendWebhookMessage,
+  WebhookRateLimiter,
+} from "./wecom-webhook.mjs";
 import {
   buildGroupWrapText,
   imageMessageFromPoster,
@@ -58,6 +67,7 @@ const WELCOME_STATE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_GROUP_DELIVERY_POLL_MS = 3000;
 const DEFAULT_GROUP_DELIVERIES_PER_MINUTE = 30;
 const DEFAULT_GROUP_DELIVERIES_PER_HOUR = 1000;
+const WEBHOOK_DELIVERIES_PER_MINUTE = 20;
 const GROUP_DELIVERY_RESPONSE_TIMEOUT_MS = 15000;
 const GROUP_DELIVERY_RETRY_BACKOFF_MS = 60000;
 const NONCE_BYTES = 12;
@@ -441,19 +451,27 @@ const GROUP_STATUS_LABELS = {
   CANCELED: "已取消",
 };
 const GROUP_PENDING_SQL = [
-  "select",
-  "  d.id as delivery_id,",
-  "  d.group_binding_id,",
-  "  d.source_kind,",
-  "  d.source_id,",
-  "  d.delivered_step_count,",
-  "  g.status as binding_status,",
-  "  g.wecom_chat_id",
-  "from app.wecom_group_deliveries d",
-  "join app.project_wecom_groups g on g.id = d.group_binding_id",
-  "where d.status = 'PENDING'",
-  "order by d.id asc",
-  "limit 1",
+  "select * from (",
+  "  select distinct on (d.group_binding_id)",
+  "    d.id as delivery_id,",
+  "    d.group_binding_id,",
+  "    d.source_kind,",
+  "    d.source_id,",
+  "    d.delivered_step_count,",
+  "    g.status as binding_status,",
+  "    g.channel_type,",
+  "    g.webhook_url_ciphertext,",
+  "    g.webhook_url_key_version,",
+  "    g.webhook_label,",
+  "    g.webhook_url_hint,",
+  "    g.wecom_chat_id",
+  "  from app.wecom_group_deliveries d",
+  "  join app.project_wecom_groups g on g.id = d.group_binding_id",
+  "  where d.status = 'PENDING'",
+  "  order by d.group_binding_id, d.id asc",
+  ") as candidates",
+  "order by delivery_id asc",
+  "limit 1000",
 ].join(" ");
 const GROUP_NOTIFICATION_SQL = [
   "select",
@@ -624,6 +642,10 @@ let groupDeliveryBusy = false;
 let groupDeliveryRateLogAt = 0;
 const groupSendTimestamps = [];
 const groupDeliveryBackoffUntil = new Map();
+const webhookRateLimiter = new WebhookRateLimiter(
+  WEBHOOK_DELIVERIES_PER_MINUTE,
+  60 * 1000,
+);
 
 function clampGroupText(value, maxChars) {
   const text = String(value === null || value === undefined ? "" : value)
@@ -911,19 +933,59 @@ async function sendGroupMessage(chatId, message) {
   );
 }
 
+function botDeliveryCapacity(now) {
+  pruneGroupSendTimestamps(now);
+  return (
+    groupSendCountSince(now, 60 * 1000) < groupDeliveriesPerMinute &&
+    groupSendCountSince(now, 60 * 60 * 1000) < groupDeliveriesPerHour
+  );
+}
+
+function groupDeliveryTargetLabel(row) {
+  if (row.channel_type === "WEBHOOK") {
+    const label = clampGroupText(row.webhook_label, 40) || "未命名";
+    const hint = clampGroupText(row.webhook_url_hint, 12) || "****";
+    return "Webhook「" + label + "」（尾号 " + hint + "）";
+  }
+  return "群 " + String(row.wecom_chat_id || "");
+}
+
+function selectGroupDeliveryRow(rows, now) {
+  for (const row of rows) {
+    const deliveryId = Number(row.delivery_id);
+    const backoffUntil = groupDeliveryBackoffUntil.get(deliveryId);
+    if (backoffUntil !== undefined && backoffUntil > now) continue;
+    if (row.binding_status !== "ACTIVE") return row;
+    if (row.channel_type === "BOT") {
+      if (!subscribed || socket === null || socket.readyState !== OPEN)
+        continue;
+      if (!botDeliveryCapacity(now)) continue;
+      return row;
+    }
+    if (row.channel_type === "WEBHOOK") {
+      if (
+        !webhookRateLimiter.canSend(String(Number(row.group_binding_id)), now)
+      ) {
+        continue;
+      }
+      return row;
+    }
+    return row;
+  }
+  return undefined;
+}
+
 async function pollGroupDeliveries() {
   if (!groupDeliveriesEnabled || pool === null || groupDeliveryBusy) return;
-  if (!subscribed || socket === null || socket.readyState !== OPEN) return;
   groupDeliveryBusy = true;
   try {
-    const pending = await pool.query(GROUP_PENDING_SQL);
-    const row = pending.rows[0];
-    if (row === undefined) return;
     const now = Date.now();
+    webhookRateLimiter.prune(now);
+    const pending = await pool.query(GROUP_PENDING_SQL);
+    const row = selectGroupDeliveryRow(pending.rows, now);
+    if (row === undefined) return;
     const deliveryId = Number(row.delivery_id);
     const bindingId = Number(row.group_binding_id);
-    const backoffUntil = groupDeliveryBackoffUntil.get(deliveryId);
-    if (backoffUntil !== undefined && backoffUntil > now) return;
     if (row.binding_status !== "ACTIVE") {
       await markGroupDeliveryFailed(
         deliveryId,
@@ -932,6 +994,15 @@ async function pollGroupDeliveries() {
       );
       return;
     }
+    if (row.channel_type !== "BOT" && row.channel_type !== "WEBHOOK") {
+      await markGroupDeliveryFailed(
+        deliveryId,
+        bindingId,
+        "群通知目标通道类型非法",
+      );
+      return;
+    }
+
     let messages = null;
     try {
       if (row.source_kind === "NOTIFICATION") {
@@ -956,6 +1027,34 @@ async function pollGroupDeliveries() {
       );
       return;
     }
+
+    let webhookUrl = null;
+    if (row.channel_type === "WEBHOOK") {
+      try {
+        webhookUrl = decryptWebhookUrl(
+          row.webhook_url_ciphertext,
+          Number(row.webhook_url_key_version),
+          loadKeyringKeys(),
+        );
+      } catch (error) {
+        const errorText =
+          error instanceof Error ? error.message : String(error);
+        if (isRetryableCommandFailure(error)) {
+          await keepGroupDeliveryForRetry(
+            deliveryId,
+            "Webhook URL 暂不可用，稍后重试：" + errorText,
+          );
+        } else {
+          await markGroupDeliveryFailed(
+            deliveryId,
+            bindingId,
+            "Webhook URL 解密失败：" + errorText,
+          );
+        }
+        return;
+      }
+    }
+
     let stepIndex = Math.max(0, Number(row.delivered_step_count) || 0);
     if (stepIndex >= messages.length) {
       await markGroupDeliverySent(deliveryId, bindingId);
@@ -969,19 +1068,30 @@ async function pollGroupDeliveries() {
     }
     while (stepIndex < messages.length) {
       const sendNow = Date.now();
-      pruneGroupSendTimestamps(sendNow);
-      if (
-        groupSendCountSince(sendNow, 60 * 1000) >= groupDeliveriesPerMinute ||
-        groupSendCountSince(sendNow, 60 * 60 * 1000) >= groupDeliveriesPerHour
-      ) {
-        if (sendNow - groupDeliveryRateLogAt > 60000) {
-          groupDeliveryRateLogAt = sendNow;
-          log("群投递达到机器人限速窗口，窗口释放后自动继续");
+      if (row.channel_type === "BOT") {
+        if (!botDeliveryCapacity(sendNow)) {
+          if (sendNow - groupDeliveryRateLogAt > 60000) {
+            groupDeliveryRateLogAt = sendNow;
+            log("群投递达到智能机器人限速窗口，窗口释放后自动继续");
+          }
+          return;
         }
-        return;
+        groupSendTimestamps.push(sendNow);
+      } else {
+        const limiterKey = String(bindingId);
+        if (!webhookRateLimiter.canSend(limiterKey, sendNow)) {
+          log(
+            "Webhook 目标达到独立限速窗口，保持 PENDING 并让出其他目标：投递行",
+            deliveryId,
+            "绑定行",
+            bindingId,
+          );
+          return;
+        }
+        webhookRateLimiter.record(limiterKey, sendNow);
       }
+
       const message = messages[stepIndex];
-      groupSendTimestamps.push(sendNow);
       log(
         "已发起群投递：投递行",
         deliveryId,
@@ -989,12 +1099,18 @@ async function pollGroupDeliveries() {
         bindingId,
         "分段",
         String(stepIndex + 1) + "/" + String(messages.length),
-        "-> 群",
-        row.wecom_chat_id,
+        "->",
+        groupDeliveryTargetLabel(row),
       );
       log("  消息内容:", summarizeGroupMessage(message));
       try {
-        await sendGroupMessage(row.wecom_chat_id, message);
+        if (row.channel_type === "WEBHOOK") {
+          await sendWebhookMessage(webhookUrl, message, {
+            timeoutMs: GROUP_DELIVERY_RESPONSE_TIMEOUT_MS,
+          });
+        } else {
+          await sendGroupMessage(row.wecom_chat_id, message);
+        }
       } catch (error) {
         const errorText =
           error instanceof Error ? error.message : String(error);
@@ -1041,7 +1157,6 @@ async function pollGroupDeliveries() {
     groupDeliveryBusy = false;
   }
 }
-
 function onSubscribed() {
   log("订阅成功：长连接已就绪，等待回调或主动推送");
   if (extraUserIds.length > 0 && !extraPushDone) {
@@ -1670,11 +1785,13 @@ if (dbMode) {
     log(
       "项目群投递：每 " +
         groupDeliveryPollMs +
-        " 毫秒检查一次 PENDING 队列（限速 " +
+        " 毫秒检查一次 PENDING 队列（BOT " +
         groupDeliveriesPerMinute +
         " 条/分钟、" +
         groupDeliveriesPerHour +
-        " 条/小时）",
+        " 条/小时；Webhook 每目标 " +
+        WEBHOOK_DELIVERIES_PER_MINUTE +
+        " 条/分钟，不依赖长连接订阅）",
     );
   } else {
     log("项目群投递未启用（groupDeliveries=false 或未配置数据库）");

@@ -26,7 +26,9 @@ export type ProjectWecomGroupOperation =
   | "getProjectWecomGroup"
   | "createProjectWecomGroupCode"
   | "updateProjectWecomGroupNotificationOptions"
-  | "deleteProjectWecomGroup";
+  | "deleteProjectWecomGroup"
+  | "createProjectWecomWebhook"
+  | "deleteProjectWecomWebhook";
 
 export interface ProjectWecomGroupHttpRequest {
   readonly headers: HttpHeaderBag;
@@ -54,9 +56,9 @@ class ProjectWecomGroupInputError extends Error {
 }
 
 /**
- * ADR-077 项目企微群绑定 HTTP 编排：读路径独立事务；签发绑定码是 securityFlow
- * （不进入通用幂等记录，直接单事务执行）；解绑由幂等 runner 持有单事务并在重放前
- * 重新执行同一组长/管理员门禁。
+ * ADR-077 / ADR-090 / ADR-105 项目企微群 HTTP 编排：
+ * 读路径独立事务；绑定码 securityFlow 单事务执行；其余写命令由幂等 runner
+ * 持有单事务，并在重放前重新执行能力与资源门禁。
  */
 @Injectable()
 export class ProjectWecomGroupHttpService {
@@ -81,7 +83,6 @@ export class ProjectWecomGroupHttpService {
       const route = routeRegistry.find(
         (entry) => entry.operationId === operation,
       )!;
-      const path = this.parsePath(request.params);
       if (Object.keys((request.query ?? {}) as object).length) {
         throw new ProjectWecomGroupInputError({
           query: "此接口不接受查询参数",
@@ -89,6 +90,7 @@ export class ProjectWecomGroupHttpService {
       }
 
       if (operation === "getProjectWecomGroup") {
+        const path = this.parseProjectPath(request.params);
         const body = await this.uow.run(async (tx) => {
           const actorId = await this.resolveReadActor(tx, request.headers);
           return this.groups.status(tx, {
@@ -109,6 +111,7 @@ export class ProjectWecomGroupHttpService {
       }
 
       if (operation === "createProjectWecomGroupCode") {
+        const path = this.parseProjectPath(request.params);
         const body = await this.uow.run(async (tx) => {
           const actorId = await this.resolveWriteActor(tx, request.headers);
           return this.groups.createCode(tx, {
@@ -120,6 +123,7 @@ export class ProjectWecomGroupHttpService {
       }
 
       if (operation === "updateProjectWecomGroupNotificationOptions") {
+        const path = this.parseProjectPath(request.params);
         const options = this.parseNotificationOptions(request.body);
         const result = await this.idempotency.run({
           operationId: operation,
@@ -154,6 +158,79 @@ export class ProjectWecomGroupHttpService {
         };
       }
 
+      if (operation === "createProjectWecomWebhook") {
+        const path = this.parseProjectPath(request.params);
+        const webhook = this.parseWebhookCreate(request.body);
+        const result = await this.idempotency.run({
+          operationId: operation,
+          actorId: (tx) => this.resolveWriteActor(tx, request.headers),
+          request: {
+            method: route.method,
+            path: route.path,
+            pathParams: { projectId: String(path.projectId) },
+            query: {},
+            headers: request.headers,
+            body: webhook,
+          },
+          execute: (tx, actorId) =>
+            this.groups.createWebhook(tx, {
+              actorId,
+              projectId: path.projectId,
+              label: webhook.label,
+              webhookUrl: webhook.webhookUrl,
+              requestId,
+            }),
+          replayAuthorizer: async (record, tx) => {
+            const actorId = await this.resolveWriteActor(tx, request.headers);
+            await this.groups.createWebhookReplayAuthorizer(
+              tx,
+              actorId,
+              record.replayAuthContext,
+            );
+          },
+        });
+        return {
+          status: result.responseStatus,
+          body: result.responseBody,
+        };
+      }
+
+      if (operation === "deleteProjectWecomWebhook") {
+        const path = this.parseWebhookPath(request.params);
+        const result = await this.idempotency.run({
+          operationId: operation,
+          actorId: (tx) => this.resolveWriteActor(tx, request.headers),
+          request: {
+            method: route.method,
+            path: route.path,
+            pathParams: {
+              projectId: String(path.projectId),
+              bindingId: String(path.bindingId),
+            },
+            query: {},
+            headers: request.headers,
+            body: undefined,
+          },
+          execute: (tx, actorId) =>
+            this.groups.deleteWebhook(tx, {
+              actorId,
+              projectId: path.projectId,
+              bindingId: path.bindingId,
+              requestId,
+            }),
+          replayAuthorizer: async (record, tx) => {
+            const actorId = await this.resolveWriteActor(tx, request.headers);
+            await this.groups.deleteWebhookReplayAuthorizer(
+              tx,
+              actorId,
+              record.replayAuthContext,
+            );
+          },
+        });
+        return { status: result.responseStatus, body: undefined };
+      }
+
+      const path = this.parseProjectPath(request.params);
       const result = await this.idempotency.run({
         operationId: operation,
         actorId: (tx) => this.resolveWriteActor(tx, request.headers),
@@ -186,12 +263,26 @@ export class ProjectWecomGroupHttpService {
     }
   }
 
-  private parsePath(value: unknown): { readonly projectId: number } {
+  private parseProjectPath(value: unknown): { readonly projectId: number } {
     const parsed = schemaRegistry.ProjectWecomGroupPath.schema.safeParse(value);
     if (!parsed.success) {
       throw new ProjectWecomGroupInputError({ path: "项目参数无效" });
     }
     return { projectId: parsed.data.projectId };
+  }
+
+  private parseWebhookPath(value: unknown): {
+    readonly projectId: number;
+    readonly bindingId: number;
+  } {
+    const parsed =
+      schemaRegistry.ProjectWecomWebhookPath.schema.safeParse(value);
+    if (!parsed.success) {
+      throw new ProjectWecomGroupInputError({
+        path: "项目或 Webhook 目标参数无效",
+      });
+    }
+    return parsed.data;
   }
 
   private parseNotificationOptions(
@@ -212,7 +303,22 @@ export class ProjectWecomGroupHttpService {
     return parsed.data;
   }
 
-  /** 读路径只要求有效认证 Session；成员关系与管理员标记由服务层同事务实时读取。 */
+  private parseWebhookCreate(
+    value: unknown,
+  ): ReturnType<
+    typeof schemaRegistry.ProjectWecomWebhookCreateRequest.schema.parse
+  > {
+    const parsed =
+      schemaRegistry.ProjectWecomWebhookCreateRequest.schema.safeParse(value);
+    if (!parsed.success) {
+      throw new ProjectWecomGroupInputError({
+        label: "标签必须为 1 到 80 个字符",
+        webhookUrl: "请填写企业微信官方群机器人 Webhook URL",
+      });
+    }
+    return parsed.data;
+  }
+
   private async resolveReadActor(
     tx: TransactionContext,
     headers: HttpHeaderBag,
@@ -231,7 +337,6 @@ export class ProjectWecomGroupHttpService {
     return actor.userId;
   }
 
-  /** 写路径要求有效认证 Session 与同步 CSRF；组长/管理员门禁在服务层校验。 */
   private async resolveWriteActor(
     tx: TransactionContext,
     headers: HttpHeaderBag,
@@ -269,9 +374,7 @@ export class ProjectWecomGroupHttpService {
         "PROJECT_WECOM_GROUP_VALIDATION_FAILED",
         "请检查项目企微群绑定请求字段",
         requestId,
-        {
-          ...error.fields,
-        },
+        { ...error.fields },
       );
     }
     return errorBody(
