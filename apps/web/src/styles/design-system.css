@@ -4755,17 +4755,42 @@ td.due-overdue {
   gap: 9px;
   flex-wrap: wrap;
 }
-.issue-head strong {
-  font-size: var(--text-base);
-  color: #2f4a63;
-  line-height: 1.6;
-  /* 统一卡：标题恒独占一行（flex-basis: 100%），最多 2 行并截断。2026-10-20
-     起不再固定预留 2 行高度：短标题的卡片会自然收紧，避免标题下方出现大块空白。 */
-  flex-basis: 100%;
+/* 2026-10-27 用户反馈：正文 1 行与 2 行混排时卡片高度不齐、右侧按钮跟着上下跳。
+   正文固定占 2 行高度，只有真正溢出时才出现「展开」；展开按钮那一行始终占位，
+   按钮出现时不会把来源行往下顶。 */
+.issue-content {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  min-height: 3.2em;
+  font-size: var(--text-base);
+  color: #2f4a63;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.issue-content.is-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+.issue-expand-row {
+  height: 18px;
+  overflow: hidden;
+}
+.issue-expand {
+  display: block;
+  height: 18px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: var(--text-sm);
+  line-height: 18px;
+  color: #1467d8;
+  cursor: pointer;
+}
+.issue-expand:hover {
+  text-decoration: underline;
 }
 /* 来源行行首：项目标识 + 项目名（2026-10-10 用户指示）。标识与项目名之间用 margin
    留距，不写空白文本节点，避免行首间距受 JSX 空白折叠影响。 */
@@ -4777,7 +4802,7 @@ td.due-overdue {
   font-weight: 600;
 }
 .issue-origin {
-  margin: 9px 0 0;
+  margin: 0;
   color: #8494a6;
   font-size: var(--text-sm);
   line-height: 1.75;
@@ -4789,6 +4814,8 @@ td.due-overdue {
   overflow: hidden;
 }
 .issue-actions {
+  /* 固定右列宽度：每条卡片的动作从同一处开始，正文长短不再让按钮左右漂移。 */
+  width: 210px;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -5455,6 +5482,7 @@ td.due-overdue {
     gap: 12px;
   }
   .issue-actions {
+    width: auto;
     justify-content: flex-start;
   }
   .rule-list-grid {

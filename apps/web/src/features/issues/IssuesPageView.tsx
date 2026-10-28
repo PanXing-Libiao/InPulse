@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert } from "antd";
 import {
@@ -49,6 +49,56 @@ import {
  * 标记为 RESOLVED，历史版本、来源记录与审计全部保留，不做物理删除。
  */
 
+/**
+ * 遗留问题正文：默认截 2 行，只有真正溢出时才出现「展开 / 收起」。
+ * 卡片正文区固定 2 行高度，让 1 行与 2 行的条目保持同一卡片高度；
+ * 展开按钮所在行始终占位，避免出现按钮时把来源行往下顶。
+ */
+const IssueContentBlock: React.FC<{
+  readonly content: string;
+  readonly expanded: boolean;
+  readonly onToggle: () => void;
+}> = ({ content, expanded, onToggle }) => {
+  const ref = useRef<HTMLElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  useEffect(() => {
+    // 展开状态下 clamp 已移除，量不出溢出；保留上一次的判断才能继续「收起」。
+    if (expanded) return;
+    const element = ref.current;
+    if (element === null) return;
+    const measure = () =>
+      setOverflowing(element.scrollHeight > element.clientHeight + 1);
+    measure();
+    // 窗口变窄或侧栏展开时正文会重新换行，溢出判断要跟着更新。
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [content, expanded]);
+  return (
+    <>
+      <strong
+        ref={ref}
+        className={"issue-content" + (expanded ? " is-expanded" : "")}
+      >
+        {content}
+      </strong>
+      <div className="issue-expand-row">
+        {overflowing ? (
+          <button
+            type="button"
+            className="issue-expand"
+            aria-expanded={expanded}
+            onClick={onToggle}
+          >
+            {expanded ? "收起" : "展开"}
+          </button>
+        ) : null}
+      </div>
+    </>
+  );
+};
+
 export interface IssuesPageViewProps {
   readonly client?: InpulseApiClient;
   readonly onBackToRecords?: () => void;
@@ -74,6 +124,20 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
   const [deleteTarget, setDeleteTarget] = useState<DeleteLeftoverTarget | null>(
     null,
   );
+
+  /** 正文超过 2 行的条目才出现「展开」；按遗留项 id 记录展开状态。 */
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
+
+  const toggleExpanded = (leftoverItemId: number) => {
+    setExpandedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(leftoverItemId)) next.delete(leftoverItemId);
+      else next.add(leftoverItemId);
+      return next;
+    });
+  };
   const openQuery = useLeftoverItemsQuery({
     client,
     bucket: "OPEN",
@@ -156,8 +220,12 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
               {leftoverStatusText(item.status)}
             </CalmBadge>
             <span className="task-id">{item.recordCode}</span>
-            <strong>{item.content}</strong>
           </div>
+          <IssueContentBlock
+            content={item.content}
+            expanded={expandedIds.has(item.leftoverItemId)}
+            onToggle={() => toggleExpanded(item.leftoverItemId)}
+          />
           {/* 来源行：项目标识 + 项目名 + 记录 / 位置 / 作者 / 日期（2026-10-10 用户指示）。 */}
           <p className="issue-origin">
             {projectCode === undefined ? null : (
