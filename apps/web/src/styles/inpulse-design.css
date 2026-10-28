@@ -2514,10 +2514,24 @@
   }
 }
 
+/* 2026-10-28 用户反馈成员状态滑块过大：收窄等宽槽位，并把高度对齐
+   同一行的搜索框与按钮；只作用于「启用中 / 已停用」筛选。 */
 .member-scope-filter {
   flex: 0 0 auto;
   margin: 0;
   margin-right: auto;
+}
+
+.member-scope-filter .segmented {
+  width: 210px;
+  padding: 3px;
+  border-radius: 7px;
+}
+
+.member-scope-filter .segmented button {
+  height: 29px;
+  padding: 0 12px;
+  font-size: var(--text-base);
 }
 
 /* 成员状态筛选的数量只保留文字，不再套圆角底色。 */

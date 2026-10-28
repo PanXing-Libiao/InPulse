@@ -5764,10 +5764,12 @@ td.due-overdue {
   font-size: var(--text-sm);
   color: var(--tb-sub);
 }
+/* 2026-10-28 用户要求顶部完成度进度条更醒目：仅加粗主进度条，
+   泳道内的细进度条保持原尺寸。 */
 .tb-split-bar {
   display: flex;
-  height: 7px;
-  border-radius: 4px;
+  height: 9px;
+  border-radius: 5px;
   overflow: hidden;
   background: #e9eff5;
 }
@@ -5778,8 +5780,9 @@ td.due-overdue {
 .sb-done {
   background: #3f9d72;
 }
+/* 2026-10-28 用户要求「未完成」改灰色：进度条分段与图例圆点共用此类。 */
 .sb-todo {
-  background: #5f9bdc;
+  background: #9aa8b6;
 }
 .sb-cancel {
   background: #c9d4e0;
