@@ -2798,6 +2798,10 @@
   font-size: var(--text-sm);
 }
 
+.settings-members-panel .calm-section-title {
+  column-gap: 16px;
+}
+
 .settings-members-panel .calm-section-title > div:first-child {
   flex: 0 0 auto;
 }

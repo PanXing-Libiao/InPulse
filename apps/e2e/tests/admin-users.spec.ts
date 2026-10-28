@@ -83,8 +83,14 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     const scope = page.getByRole("group", { name: "成员状态筛选" });
     const filterBox = await scope.boundingBox();
     const searchBox = await page.getByLabel("搜索成员").boundingBox();
-    if (!filterBox || !searchBox)
+    const titleBox = await page
+      .getByRole("heading", { name: "成员与角色", exact: true })
+      .boundingBox();
+    if (!filterBox || !searchBox || !titleBox)
       throw new Error("member toolbar is not laid out");
+    expect(filterBox.x - (titleBox.x + titleBox.width)).toBeGreaterThanOrEqual(
+      12,
+    );
     expect(filterBox.x).toBeLessThan(searchBox.x);
     expect(
       Math.abs(
