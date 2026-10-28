@@ -460,6 +460,7 @@ describe("F-03 admin users page", () => {
     } as unknown as InpulseApiClient);
     await screen.findByText("Alice");
     const scope = screen.getByRole("group", { name: "成员状态筛选" });
+    expect(scope).toHaveClass("segmented-equal-width");
     const search = screen.getByLabelText("搜索成员");
     expect(scope.closest(".member-head-tools")).not.toBeNull();
     expect(scope.closest(".member-head-tools")?.contains(search)).toBe(true);
@@ -594,6 +595,22 @@ describe("F-03 settings sections", () => {
   it("switches between the member, permission matrix and notification panels", async () => {
     const client = {
       listAdminUsers: vi.fn().mockResolvedValue({ items: [admin, member] }),
+      getProjectMemberPermissions: vi.fn().mockResolvedValue({
+        projectEdit: "ALL_MEMBERS",
+        projectMemberManage: "ALL_MEMBERS",
+        projectLeaderTransfer: "LEADERS_ONLY",
+        projectDelete: "LEADERS_ONLY",
+        projectDocumentImport: "ALL_MEMBERS",
+        moduleFeatureEdit: "ALL_MEMBERS",
+        moduleFeatureDelete: "LEADERS_ONLY",
+        taskEdit: "ALL_MEMBERS",
+        taskLifecycle: "ALL_MEMBERS",
+        recordWrite: "ALL_MEMBERS",
+        projectWecomGroup: "LEADERS_ONLY",
+        rowVersion: 1,
+        updatedAt: null,
+        updatedByName: null,
+      }),
     } as unknown as InpulseApiClient;
     mount(client);
     await screen.findByText("Alice");
@@ -619,14 +636,20 @@ describe("F-03 settings sections", () => {
     fireEvent.click(matrixTab);
     expect(matrixTab).toHaveAttribute("aria-current", "page");
     expect(memberTab).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("table", { name: "权限矩阵" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("table", {
+        name: "全平台项目成员权限矩阵",
+      }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Alice")).not.toBeInTheDocument();
 
     fireEvent.click(notifyTab);
     expect(notifyTab).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("table", { name: "通知场景" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("table", { name: "权限矩阵" }),
+      screen.queryByRole("table", {
+        name: "全平台项目成员权限矩阵",
+      }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(memberTab);

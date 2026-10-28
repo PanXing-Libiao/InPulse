@@ -53,7 +53,13 @@ export class ExistingTaskStatusCommandPort extends TaskStatusCommandPort {
     actorId: number,
     resource: TaskStatusResource,
   ) {
-    return this.service.authorize(tx, actorId, resource, resource.taskId);
+    return this.service.authorize(
+      tx,
+      actorId,
+      resource,
+      resource.taskId,
+      "taskLifecycle",
+    );
   }
   apply(
     tx: TransactionContext,
@@ -78,6 +84,6 @@ export class ExistingTaskStatusCommandPort extends TaskStatusCommandPort {
     });
   }
   replay(tx: TransactionContext, actorId: number, context: unknown) {
-    return this.service.replay(tx, actorId, context);
+    return this.service.replay(tx, actorId, context, "taskLifecycle");
   }
 }

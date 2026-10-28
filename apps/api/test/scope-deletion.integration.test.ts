@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import "reflect-metadata";
 import { Module, type INestApplication } from "@nestjs/common";
@@ -62,7 +63,11 @@ beforeAll(async () => {
   modules = new ModuleManagementRepository();
   const access = new PostgresProjectAccessQueryPort(client),
     members = new PostgresProjectMembersQueryPort(),
-    roles = new ProjectRoleGateService(access, members),
+    roles = new ProjectRoleGateService(
+      access,
+      members,
+      postgresProjectMemberPermissions(),
+    ),
     audit = new PostgresAuditWritePort({
       currentVersion: 1,
       keyFor: () => key,

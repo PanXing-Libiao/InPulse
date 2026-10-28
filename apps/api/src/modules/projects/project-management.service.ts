@@ -16,6 +16,7 @@ import {
 } from "./project-access.port.js";
 import { ProjectMembersQueryPort } from "./project-members-query.port.js";
 import { ProjectRoleGateService } from "./project-role-gate.service.js";
+import { ProjectMemberPermissionPolicyService } from "./project-member-permission-policy.service.js";
 import { ProjectStartNotifier } from "./project-start.notifier.js";
 import { ProjectWrapNotifier } from "./project-wrap.notifier.js";
 import {
@@ -61,14 +62,6 @@ const versionConflict = () =>
     "项目版本已变化，请重新加载后编辑",
   );
 
-/** ADR-062：删除只对系统管理员与项目组长开放，普通成员明确 403。 */
-const deleteForbidden = () =>
-  new ProjectManagementError(
-    403,
-    "PROJECT_DELETE_FORBIDDEN",
-    "只有项目组长或系统管理员可以删除项目",
-  );
-
 /**
  * F-06.1 项目编辑：只接收显式 TransactionContext，名称/描述更新、
  * 审计、活动与搜索投影在同一事务内提交；编码创建后不可修改。
@@ -87,6 +80,8 @@ export class ProjectManagementService {
     private readonly members: ProjectMembersQueryPort,
     @Inject(ProjectRoleGateService)
     private readonly roles: ProjectRoleGateService,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
     @Inject(ProjectStartNotifier)
     private readonly startNotifier: ProjectStartNotifier,
     @Inject(ProjectWrapNotifier)
@@ -104,6 +99,11 @@ export class ProjectManagementService {
       projectId,
     });
     if (check.kind === "not-found") throw missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["projectEdit"],
+    });
   }
 
   /** 幂等重放前的当前权限复核；任一门禁失败都不得返回已存成功结果。 */
@@ -210,8 +210,8 @@ export class ProjectManagementService {
   }
 
   /**
-   * F-06.3 项目状态变更：本项目任意活跃成员或系统管理员把项目在未开始、
-   * 进行中、维护中之间手动切换；项目三态下不存在归档，也没有归档流程。
+   * F-06.3 项目状态变更：按全平台 projectEdit 配置判定，系统管理员始终可切换；
+   * 项目在未开始、进行中、维护中之间手动切换，三态下不存在归档，也没有归档流程。
    *
    * 三条硬约束在服务端拦截，前端置灰只是提示：
    * - 未开始与维护中之间禁止直接互改，必须先经过进行中；
@@ -232,12 +232,7 @@ export class ProjectManagementService {
       readonly requestId: string;
     },
   ): Promise<ProjectDetailResponse> {
-    const role = await this.roles.manageRole(
-      tx,
-      input.actorId,
-      input.projectId,
-    );
-    if (role === "NOT_MEMBER") throw missing();
+    await this.authorize(tx, input.actorId, input.projectId);
     const current = await this.projects.findProjectForChange(
       tx,
       { projectId: input.projectId },
@@ -398,8 +393,8 @@ export class ProjectManagementService {
   }
 
   /**
-   * ADR-062 项目删除（物理删除）：只有本项目组长与系统管理员可以删除，
-   * 普通成员 403 `PROJECT_DELETE_FORBIDDEN`，非成员由写前授权统一 404；
+   * ADR-062 / ADR-104 项目删除（物理删除）：按全平台 projectDelete 档位判定；
+   * 被配置拒绝返回 403 `PROJECT_DELETE_FORBIDDEN`，非成员统一 404；
    * 删除不可撤销，且要求 `If-Match` 版本一致（版本过期 409）。
    *
    * 删除完全交给数据库的 `app.purge_project`：`app_runtime` 没有业务表的
@@ -429,7 +424,6 @@ export class ProjectManagementService {
       input.projectId,
     );
     if (role === "NOT_MEMBER") throw missing();
-    if (role === "MEMBER") throw deleteForbidden();
     const current = await this.projects.findProjectForChange(
       tx,
       { projectId: input.projectId },

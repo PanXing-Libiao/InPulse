@@ -3,6 +3,7 @@ import { taskCreateSchemas } from "./contracts/task-create.zod.js";
 import { wecomBindingSchemas } from "./contracts/wecom-binding.zod.js";
 import { adminAiAssistSchemas } from "./contracts/admin-ai-assist.zod.js";
 import { wecomRobotSchemas } from "./contracts/wecom-robot.zod.js";
+import { projectMemberPermissionSchemas } from "./contracts/project-member-permissions.zod.js";
 import { projectWecomGroupSchemas } from "./contracts/project-wecom-group.zod.js";
 import { organizationSchemas } from "./contracts/organization.zod.js";
 import {
@@ -192,6 +193,7 @@ export const schemaRegistry = {
   ...wecomBindingSchemas,
   ...adminAiAssistSchemas,
   ...wecomRobotSchemas,
+  ...projectMemberPermissionSchemas,
   ...projectWecomGroupSchemas,
   ...organizationSchemas,
   TaskCenterQuery: {

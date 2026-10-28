@@ -13,6 +13,7 @@ import { PostgresUnitOfWork } from "../../database/unit-of-work.js";
 import { ActivityWritePort } from "../activity/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { SearchProjectionWritePort } from "../search/index.js";
@@ -65,6 +66,8 @@ export class FeaturesManagementService {
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
     @Inject(SearchProjectionWritePort)
     private readonly search: SearchProjectionWritePort,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
 
   async read(
@@ -120,6 +123,11 @@ export class FeaturesManagementService {
       projectId,
     });
     if (check.kind === "not-found") throw missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["moduleFeatureEdit"],
+    });
     // 先验证真实归属，避免向错误项目参数请求泄露资源状态。
     if (
       featureId !== undefined &&

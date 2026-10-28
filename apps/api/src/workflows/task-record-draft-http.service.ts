@@ -20,6 +20,7 @@ import {
 } from "../idempotency/http-service.js";
 import type { TransactionContext } from "../database/transaction-context.js";
 import { RecordDraftError } from "../modules/change-records/index.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import {
   TaskRecordDraftWorkflow,
   type TaskDraftPath,
@@ -181,6 +182,7 @@ export class TaskRecordDraftHttpService {
         message = "暂时无法保存来源草稿";
       if (
         error instanceof RecordDraftError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError
       )
         ({ status, code, message } = error);

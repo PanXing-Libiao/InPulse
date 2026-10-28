@@ -23,6 +23,7 @@ import {
   FeatureManagementError,
   type FeatureOperation,
 } from "./features-management.service.js";
+import { ProjectCapabilityAccessError } from "../projects/index.js";
 
 export interface FeaturesHttpRequest {
   readonly headers: HttpHeaderBag;
@@ -220,6 +221,7 @@ export class FeaturesHttpService {
       let details: Record<string, string> = {};
       if (
         error instanceof FeatureManagementError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof SearchProjectionCapacityError ||
         error instanceof IdempotencyHttpError
       )

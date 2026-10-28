@@ -2743,6 +2743,69 @@
   font-size: var(--text-base);
 }
 
+.permission-matrix-intro {
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.permission-matrix-intro span {
+  line-height: 1.7;
+}
+
+.permission-matrix-intro strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.permission-matrix-panel .permission-level-cell {
+  min-width: 205px;
+}
+
+.permission-matrix-panel .permission-level-cell .ant-select {
+  margin: 0 auto;
+}
+
+.permission-matrix-actions,
+.permission-matrix-load-error,
+.permission-matrix-save-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.permission-matrix-actions {
+  padding: 14px 15px 2px;
+}
+
+.permission-matrix-saved-at {
+  color: #718196;
+  font-size: var(--text-xs);
+}
+
+.permission-matrix-action-buttons {
+  display: inline-flex;
+  gap: 9px;
+}
+
+.permission-matrix-load-error,
+.permission-matrix-save-error {
+  margin-top: 12px;
+}
+
+.permission-matrix-load-error .permission-note,
+.permission-matrix-save-error .permission-note {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+@media (max-width: 700px) {
+  .permission-matrix-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .notification-policy-panel .calm-section-title h3 {
   color: #132238;
   font-size: var(--text-2xl);

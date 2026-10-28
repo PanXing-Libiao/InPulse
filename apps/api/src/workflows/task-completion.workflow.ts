@@ -10,6 +10,7 @@ import {
 import type { TransactionContext } from "../database/transaction-context.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
@@ -49,8 +50,15 @@ export class TaskCompletionWorkflow {
     private readonly publications: RecordPublicationCommandPort,
     @Inject(TaskCompletionCommandPort)
     private readonly completion: TaskCompletionCommandPort,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
-  async authorize(tx: TransactionContext, actorId: number, taskId: number) {
+  async authorize(
+    tx: TransactionContext,
+    actorId: number,
+    taskId: number,
+    requiresRecordWrite = false,
+  ) {
     const source = await this.tasks.findByTaskId(tx, taskId);
     if (!source) throw missing();
     const project = await this.access.checkProjectForWrite(tx, {
@@ -58,6 +66,13 @@ export class TaskCompletionWorkflow {
       projectId: source.projectId,
     });
     if (project.kind === "not-found") throw missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: source.projectId,
+      capabilities: requiresRecordWrite
+        ? ["taskLifecycle", "recordWrite"]
+        : ["taskLifecycle"],
+    });
     return source;
   }
   private async prepare(
@@ -66,10 +81,16 @@ export class TaskCompletionWorkflow {
     taskId: number,
     draftId?: number,
     replay?: TaskCompletionReplayContext,
+    requiresRecordWrite = false,
   ) {
     for (let attempt = 0; attempt < 3; attempt++) {
       await tx.sql`SAVEPOINT task_completion_locks`;
-      const previous = await this.authorize(tx, actorId, taskId);
+      const previous = await this.authorize(
+        tx,
+        actorId,
+        taskId,
+        requiresRecordWrite,
+      );
       if (
         replay &&
         (previous.projectId !== replay.projectId ||
@@ -160,11 +181,14 @@ export class TaskCompletionWorkflow {
     requestId: string,
   ): Promise<TaskCompletionResponse> {
     const command = taskCompletionRequestSchema.parse(input);
+    const requiresRecordWrite = command.mode === "WITH_RECORD";
     const { source, record } = await this.prepare(
       tx,
       actorId,
       taskId,
       "recordDraftId" in command ? command.recordDraftId : undefined,
+      undefined,
+      requiresRecordWrite,
     );
     if (source.rowVersion !== command.expectedRowVersion)
       throw new TaskManagementError(
@@ -238,7 +262,14 @@ export class TaskCompletionWorkflow {
   ) {
     const saved = taskCompletionReplayContextSchema.parse(context);
     if (saved.taskId !== taskId) throw missing();
-    await this.prepare(tx, actorId, taskId, undefined, saved);
+    await this.prepare(
+      tx,
+      actorId,
+      taskId,
+      undefined,
+      saved,
+      saved.record !== null,
+    );
     if (saved.record) await this.publications.replay(tx, actorId, saved.record);
   }
 }

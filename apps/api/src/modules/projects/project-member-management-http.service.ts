@@ -20,6 +20,7 @@ import {
   ProjectMemberManagementError,
   ProjectMemberManagementService,
 } from "./project-member-management.service.js";
+import { ProjectCapabilityAccessError } from "./project-member-permission-policy.service.js";
 
 export type ProjectMemberOperation =
   | "listProjectMembers"
@@ -185,6 +186,9 @@ export class ProjectMemberManagementHttpService {
             tx,
             actorId,
             record.replayAuthContext,
+            operation === "setProjectMemberRole"
+              ? "projectLeaderTransfer"
+              : "projectMemberManage",
           );
         },
       });
@@ -305,7 +309,10 @@ export class ProjectMemberManagementHttpService {
     error: unknown,
     requestId: string,
   ): { readonly status: number; readonly body: unknown } {
-    if (error instanceof ProjectMemberManagementError) {
+    if (
+      error instanceof ProjectMemberManagementError ||
+      error instanceof ProjectCapabilityAccessError
+    ) {
       return errorBody(error.status, error.code, error.message, requestId);
     }
     if (error instanceof ProjectMemberTaskCommandError) {

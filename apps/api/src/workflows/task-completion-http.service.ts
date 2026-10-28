@@ -17,6 +17,7 @@ import {
 } from "../idempotency/http-service.js";
 import { TaskManagementError } from "../modules/tasks/index.js";
 import { RecordDraftError } from "../modules/change-records/index.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import type { TransactionContext } from "../database/transaction-context.js";
 import { TaskCompletionWorkflow } from "./task-completion.workflow.js";
 export interface CompletionHttpRequest {
@@ -159,6 +160,7 @@ export class TaskCompletionHttpService {
       const known =
         error instanceof TaskManagementError ||
         error instanceof RecordDraftError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof SearchProjectionCapacityError ||
         error instanceof IdempotencyHttpError;
       return {

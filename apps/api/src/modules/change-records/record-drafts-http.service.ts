@@ -25,6 +25,7 @@ import {
   RecordDraftsService,
   RecordDraftError,
 } from "./record-drafts.service.js";
+import { ProjectCapabilityAccessError } from "../projects/index.js";
 
 export type DraftOperation =
   | "listRecordDrafts"
@@ -289,6 +290,7 @@ export class RecordDraftsHttpService {
       let details: Record<string, string> = {};
       if (
         error instanceof RecordDraftError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError
       )
         ({ status, code, message } = error);

@@ -1,6 +1,7 @@
 import { wecomBindingRoutes } from "./wecom-binding-routes.js";
 import { wecomRobotRoutes } from "./wecom-robot-routes.js";
 import { projectWecomGroupRoutes } from "./project-wecom-group-routes.js";
+import { projectMemberPermissionRoutes } from "./project-member-permission-routes.js";
 import { aiAssistSettingsRoutes } from "./ai-assist-settings-routes.js";
 import { taskCreateRoutes } from "./task-create-routes.js";
 import { documentImportRoutes } from "./document-import-routes.js";
@@ -45,6 +46,7 @@ export const routeRegistry = [
   ...wecomBindingRoutes,
   ...wecomRobotRoutes,
   ...projectWecomGroupRoutes,
+  ...projectMemberPermissionRoutes,
   ...aiAssistSettingsRoutes,
   ...projectMemberRoutes,
   ...projectRoutes,

@@ -765,7 +765,12 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
         {effectiveTab === "projectMembers" ? (
           <ProjectMemberOverviewPanel {...(client ? { client } : {})} />
         ) : null}
-        {effectiveTab === "permissions" ? <PermissionMatrixPanel /> : null}
+        {effectiveTab === "permissions" ? (
+          <PermissionMatrixPanel
+            {...(client ? { client } : {})}
+            isAdmin={selfIsAdmin}
+          />
+        ) : null}
         {effectiveTab === "notifications" ? <NotificationPolicyPanel /> : null}
         {effectiveTab === "aiAssist" ? (
           <AiAssistSettingsPanel {...(client ? { client } : {})} />
@@ -785,6 +790,7 @@ export const AdminUsersPageView: React.FC<AdminUsersPageViewProps> = ({
                 <div className="member-scope-filter">
                   <CalmSegmented
                     label="成员状态筛选"
+                    equalWidth
                     value={memberScope}
                     options={[
                       {

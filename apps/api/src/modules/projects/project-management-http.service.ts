@@ -25,6 +25,7 @@ import {
   ProjectManagementError,
   ProjectManagementService,
 } from "./project-management.service.js";
+import { ProjectCapabilityAccessError } from "./project-member-permission-policy.service.js";
 
 export type ProjectManagementOperation =
   "updateProject" | "changeProjectStatus" | "deleteProject";
@@ -253,6 +254,7 @@ export class ProjectManagementHttpService {
   ): { readonly status: number; readonly body: unknown } {
     if (
       error instanceof ProjectManagementError ||
+      error instanceof ProjectCapabilityAccessError ||
       error instanceof SearchProjectionCapacityError
     ) {
       return errorBody(error.status, error.code, error.message, requestId);

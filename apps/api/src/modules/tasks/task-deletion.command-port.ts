@@ -52,7 +52,7 @@ export class SqlTaskDeletionCommandPort extends TaskDeletionCommandPort {
     scope: TaskScope,
     taskId: number,
   ): Promise<void> {
-    return this.tasks.authorize(tx, actorId, scope, taskId);
+    return this.tasks.authorize(tx, actorId, scope, taskId, "taskLifecycle");
   }
 
   find(

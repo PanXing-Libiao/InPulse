@@ -669,6 +669,12 @@
       "fingerprint": "de09f7523b61ee9b614c51785a821958ccf0bc29c964295a5f6cb2e3620f2f31"
     }
   ],
+  "updateProjectMemberPermissions": [
+    {
+      "version": "1.0.0",
+      "fingerprint": "6b917690bf722e99829532592487b07666296a4994fcc129755e0461559762b7"
+    }
+  ],
   "updateProjectWecomGroupNotificationOptions": [
     {
       "version": "1.0.0",

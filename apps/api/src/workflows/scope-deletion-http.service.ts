@@ -14,15 +14,14 @@ import {
 import { RecordDraftError } from "../modules/change-records/record-drafts.service.js";
 import {
   FeatureDeletionError,
-  featureDeletionForbidden,
   featureDeletionMissing,
 } from "../modules/features/feature-deletion.command-port.js";
 import {
   ModuleDeletionError,
-  moduleDeletionForbidden,
   moduleDeletionMissing,
 } from "../modules/modules/module-deletion.command-port.js";
 import { ProjectRoleGateService } from "../modules/projects/project-role-gate.service.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/project-member-permission-policy.service.js";
 import { TaskManagementError } from "../modules/tasks/tasks-management.service.js";
 import type { CompletionHttpRequest } from "./task-completion-http.service.js";
 import { ScopeDeletionWorkflow } from "./scope-deletion.workflow.js";
@@ -63,8 +62,6 @@ export class ScopeDeletionHttpService {
   ) {
     const requestId = randomUUID();
     const isModule = operation === "deleteModule";
-    const forbidden = () =>
-      isModule ? moduleDeletionForbidden() : featureDeletionForbidden();
     const missing = () =>
       isModule ? moduleDeletionMissing() : featureDeletionMissing();
     const validationFailed = () =>
@@ -248,9 +245,17 @@ export class ScopeDeletionHttpService {
             tx,
             current.userId,
             saved.projectId,
+            isModule
+              ? {
+                  code: "MODULE_DELETE_FORBIDDEN",
+                  message: "当前平台权限配置不允许该成员删除模块",
+                }
+              : {
+                  code: "FEATURE_DELETE_FORBIDDEN",
+                  message: "当前平台权限配置不允许该成员删除功能",
+                },
           );
           if (role === "NOT_MEMBER") throw missing();
-          if (role !== "SYSTEM_ADMIN" && role !== "LEADER") throw forbidden();
         },
       });
       return {
@@ -269,6 +274,7 @@ export class ScopeDeletionHttpService {
         error instanceof FeatureDeletionError ||
         error instanceof TaskManagementError ||
         error instanceof RecordDraftError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError;
       return {
         status: known ? error.status : 500,

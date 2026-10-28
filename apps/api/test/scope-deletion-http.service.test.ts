@@ -15,6 +15,7 @@ import { resolveRegisteredRoute } from "../src/idempotency/route.js";
 import type { IdempotencyRecord } from "../src/idempotency/store.js";
 import { featureDeletionForbidden } from "../src/modules/features/feature-deletion.command-port.js";
 import { moduleUnclassifiedProtected } from "../src/modules/modules/module-deletion.command-port.js";
+import { ProjectCapabilityAccessError } from "../src/modules/projects/project-member-permission-policy.service.js";
 import type { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
 import { ScopeDeletionHttpService } from "../src/workflows/scope-deletion-http.service.js";
 import type { ScopeDeletionWorkflow } from "../src/workflows/scope-deletion.workflow.js";
@@ -352,6 +353,14 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
     );
 
     const member = setup({ actorId: 7, replay: true, replayRole: "MEMBER" });
+    member.scopeDeleterReplayRole.mockRejectedValueOnce(
+      new ProjectCapabilityAccessError(
+        403,
+        "MODULE_DELETE_FORBIDDEN",
+        "当前平台权限配置不允许该成员删除模块或功能",
+        "moduleFeatureDelete",
+      ),
+    );
     const memberFailure = await member.service.handle(
       "deleteModule",
       request(),

@@ -26,6 +26,7 @@ import {
 } from "../modules/change-records/external-link-target.port.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
@@ -90,6 +91,8 @@ export class ExternalLinkWorkflow {
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
     @Inject(ExternalLinkSearchPort)
     private readonly search: ExternalLinkSearchPort,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {
     this.queries = {
       PROJECT: project,
@@ -124,6 +127,13 @@ export class ExternalLinkWorkflow {
       projectId: before.projectId,
     });
     if (project.kind === "not-found") throw missing();
+    if (write) {
+      await this.permissions.assertCapabilities(tx, {
+        actorUserId: actor,
+        projectId: before.projectId,
+        capabilities: ["recordWrite"],
+      });
+    }
     let writable = true;
     if (before.moduleId !== null) {
       // ADR-044：模块已无归档只读态，这里只保留父级 FOR SHARE 取锁与归属校验。
@@ -214,6 +224,11 @@ export class ExternalLinkWorkflow {
       schemaRegistry.ExternalLinkReplayContext.schema.parse(context);
     if (value.targetType !== type || value.targetId !== id) throw missing();
     const { target } = await this.target(tx, actor, type, id);
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actor,
+      projectId: target.projectId,
+      capabilities: ["recordWrite"],
+    });
     if (
       target.projectId !== value.projectId ||
       !(await this.links.exists(tx, target.projectId, value.linkId))

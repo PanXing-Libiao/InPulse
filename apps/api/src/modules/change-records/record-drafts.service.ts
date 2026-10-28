@@ -23,6 +23,7 @@ import { PostgresUnitOfWork } from "../../database/unit-of-work.js";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { ModuleQueryPort, ModuleReadPort } from "../modules/index.js";
@@ -77,6 +78,8 @@ export class RecordDraftsService
     @Inject(PostgresUnitOfWork) private readonly uow: PostgresUnitOfWork,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(TimeCursorService) private readonly cursor: TimeCursorService,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
   /**
    * 草稿列表分页（B-1 / C-006）：items / nextCursor / hasMore；签名游标绑定
@@ -242,6 +245,11 @@ export class RecordDraftsService
       projectId: scope.projectId,
     });
     if (project.kind === "not-found") throw missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: scope.projectId,
+      capabilities: ["recordWrite"],
+    });
     if (!(await this.moduleRead.find(tx, scope.projectId, scope.moduleId)))
       throw missing();
     if (

@@ -20,6 +20,7 @@ import { PostgresUnitOfWork } from "../database/unit-of-work.js";
 import type { TransactionContext } from "../database/transaction-context.js";
 import { TaskManagementError } from "../modules/tasks/index.js";
 import { RecordDraftError } from "../modules/change-records/index.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import {
   LeftoverTaskWorkflow,
   LeftoverTaskError,
@@ -201,6 +202,7 @@ export class LeftoverTaskHttpService {
       const known =
         error instanceof TaskManagementError ||
         error instanceof RecordDraftError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof SearchProjectionCapacityError ||
         error instanceof IdempotencyHttpError;
       return {

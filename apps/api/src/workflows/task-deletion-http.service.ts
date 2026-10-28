@@ -14,6 +14,7 @@ import {
 import { TaskDeletionCommandPort } from "../modules/tasks/task-deletion.command-port.js";
 import { TaskManagementError } from "../modules/tasks/tasks-management.service.js";
 import { RecordDraftError } from "../modules/change-records/record-drafts.service.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import { TaskDeletionWorkflow } from "./task-deletion.workflow.js";
 import type { CompletionHttpRequest } from "./task-completion-http.service.js";
 
@@ -201,6 +202,7 @@ export class TaskDeletionHttpService {
       const known =
         error instanceof TaskManagementError ||
         error instanceof RecordDraftError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError;
       return {
         status: known ? error.status : 500,

@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import "reflect-metadata";
@@ -86,6 +87,7 @@ beforeAll(async () => {
     uow,
     audit,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
+    postgresProjectMemberPermissions(),
   );
   const auth = new SessionAuthService(
     uow,
@@ -116,6 +118,7 @@ beforeAll(async () => {
     service,
     uow,
     new PostgresUserReadPort(),
+    postgresProjectMemberPermissions(),
   );
   const sourceHttp = new TaskRecordDraftHttpService(
     auth,

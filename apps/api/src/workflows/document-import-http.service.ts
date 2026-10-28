@@ -49,6 +49,7 @@ import {
   ProjectCodeConflictError,
 } from "../modules/projects/project-bootstrap.workflow.js";
 import { SearchProjectionCapacityError } from "../modules/search/public/search-projection-errors.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import { TaskManagementError } from "../modules/tasks/tasks-management.service.js";
 import {
   DocumentImportError,
@@ -374,6 +375,7 @@ function mapDocumentImportError(error: unknown): unknown {
     error instanceof ModuleManagementError ||
     error instanceof FeatureManagementError ||
     error instanceof TaskManagementError ||
+    error instanceof ProjectCapabilityAccessError ||
     error instanceof SearchProjectionCapacityError
   ) {
     return new ApiHttpError(error.status, error.code, error.message);

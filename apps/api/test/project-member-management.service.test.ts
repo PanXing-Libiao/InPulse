@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { allowProjectMemberPermissions } from "./project-member-permission.helpers.js";
+
 import type { TransactionContext } from "../src/database/transaction-context.js";
 import type { ProjectAccessQueryPort } from "../src/modules/projects/project-access.port.js";
 import type {
@@ -8,6 +10,7 @@ import type {
 } from "../src/modules/projects/projects-write.port.js";
 import type { ProjectMemberTaskCommandPort } from "../src/modules/tasks/project-member-task.command-port.js";
 import type { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
+import { ProjectCapabilityAccessError } from "../src/modules/projects/project-member-permission-policy.service.js";
 import { ProjectMemberManagementService } from "../src/modules/projects/project-member-management.service.js";
 
 const tx = {} as TransactionContext;
@@ -104,6 +107,7 @@ function setup() {
     access as unknown as ProjectAccessQueryPort,
     tasks as unknown as ProjectMemberTaskCommandPort,
     roleGate as unknown as ProjectRoleGateService,
+    allowProjectMemberPermissions(),
     audit as never,
     activity as never,
     notifications as never,
@@ -362,7 +366,14 @@ describe("ProjectMemberManagementService", () => {
     );
 
     // ADR-039：普通成员调用角色任命 -> 403
-    s.roleGate.roleSetterRole.mockResolvedValueOnce("MEMBER");
+    s.roleGate.roleSetterRole.mockRejectedValueOnce(
+      new ProjectCapabilityAccessError(
+        403,
+        "PROJECT_MEMBER_ROLE_FORBIDDEN",
+        "当前平台权限配置不允许该成员任命或转移项目组长",
+        "projectLeaderTransfer",
+      ),
+    );
     await expect(
       s.service.setRole(tx, {
         actorId: 2,
@@ -463,10 +474,15 @@ describe("ProjectMemberManagementService", () => {
   it("re-checks project writability before replaying idempotent member writes", async () => {
     const s = setup();
     await expect(
-      s.service.replayAuthorizer(tx, 1, {
-        projectId: 7,
-        memberUserId: 5,
-      }),
+      s.service.replayAuthorizer(
+        tx,
+        1,
+        {
+          projectId: 7,
+          memberUserId: 5,
+        },
+        "projectMemberManage",
+      ),
     ).resolves.toBeUndefined();
     expect(s.access.checkProjectForWrite).toHaveBeenCalledWith(tx, {
       actorUserId: 1,
@@ -477,10 +493,15 @@ describe("ProjectMemberManagementService", () => {
       kind: "not-found",
     });
     await expect(
-      s.service.replayAuthorizer(tx, 1, {
-        projectId: 7,
-        memberUserId: 5,
-      }),
+      s.service.replayAuthorizer(
+        tx,
+        1,
+        {
+          projectId: 7,
+          memberUserId: 5,
+        },
+        "projectMemberManage",
+      ),
     ).rejects.toMatchObject({
       status: 404,
       code: "PROJECT_MEMBER_NOT_FOUND",

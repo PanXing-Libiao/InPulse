@@ -17,7 +17,9 @@ import {
   PROJECT_ACCESS_QUERY_PORT,
   ProjectCodePort,
   ProjectMembersQueryPort,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
+  type ProjectMemberPermissionCapability,
 } from "../modules/projects/index.js";
 import { ProjectCreationLockPort } from "../modules/projects/project-creation-lock.port.js";
 import {
@@ -184,6 +186,8 @@ export class DocumentImportWorkflow {
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(ProjectBootstrapWorkflow)
     private readonly projectBootstrap: ProjectBootstrapWorkflow,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
 
   /**
@@ -203,6 +207,11 @@ export class DocumentImportWorkflow {
     if (access.kind === "not-found") {
       throw this.targetNotFound();
     }
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: target.projectId,
+      capabilities: ["projectDocumentImport"],
+    });
     if (target.moduleId === null) {
       return { kind: "PROJECT_ROOT", projectId: target.projectId };
     }
@@ -842,6 +851,11 @@ export class DocumentImportWorkflow {
     if (access.kind === "not-found") {
       throw this.projectNotFound();
     }
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["projectDocumentImport"],
+    });
     const parsed = parseDocumentTemplate(text);
     const plan = await this.preparePlan(tx, {
       mode: "PROJECT",
@@ -890,6 +904,11 @@ export class DocumentImportWorkflow {
     if (access.kind === "not-found") {
       throw this.projectNotFound();
     }
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["projectDocumentImport"],
+    });
     const parsed = parseDocumentTemplate(text);
     if (parsed.digest !== expectedDigest) {
       throw this.staleDocument();
@@ -903,6 +922,21 @@ export class DocumentImportWorkflow {
     this.assertNoErrors(plan.issues);
     if (plan.duplicate !== null) {
       throw this.duplicateDocument(plan.duplicate);
+    }
+    const required: ProjectMemberPermissionCapability[] = [];
+    if (
+      plan.summary.moduleCreateCount > 0 ||
+      plan.summary.featureCreateCount > 0
+    ) {
+      required.push("moduleFeatureEdit");
+    }
+    if (plan.summary.taskCreateCount > 0) required.push("taskEdit");
+    if (required.length > 0) {
+      await this.permissions.assertCapabilities(tx, {
+        actorUserId: actorId,
+        projectId,
+        capabilities: required,
+      });
     }
     const code = await this.codes.findProjectCode(tx, projectId);
     if (code === undefined) {
@@ -983,6 +1017,18 @@ export class DocumentImportWorkflow {
     if (access.kind === "not-found") {
       throw this.projectNotFound();
     }
+    const replayCapabilities: ProjectMemberPermissionCapability[] = [
+      "projectDocumentImport",
+    ];
+    if (context.moduleIds.length > 0 || context.featureIds.length > 0) {
+      replayCapabilities.push("moduleFeatureEdit");
+    }
+    if (context.taskIds.length > 0) replayCapabilities.push("taskEdit");
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: context.projectId,
+      capabilities: replayCapabilities,
+    });
     const missing = (): DocumentImportError =>
       new DocumentImportError(
         404,

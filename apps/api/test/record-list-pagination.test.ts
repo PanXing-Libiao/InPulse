@@ -9,6 +9,7 @@ import { PublishedRecordReadService } from "../src/modules/change-records/publis
 import { RecordDraftsService } from "../src/modules/change-records/record-drafts.service.js";
 import type { RecordDraftRepository } from "../src/modules/change-records/record-draft.repository.js";
 import type { PublishedRecordRepository } from "../src/modules/change-records/published-record.repository.js";
+import { allowProjectMemberPermissions } from "./project-member-permission.helpers.js";
 
 const ring = VersionedHmacKeyring.fromEntries(
   [{ version: 1, key: randomBytes(32) }],
@@ -56,6 +57,7 @@ function draftsService(repository: RecordDraftRepository) {
     uowStub(),
     { listNames: async () => [] } as never,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
+    allowProjectMemberPermissions(),
   );
 }
 

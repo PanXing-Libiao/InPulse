@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import "reflect-metadata";
 import { randomBytes, randomUUID } from "node:crypto";
 
@@ -299,6 +300,7 @@ beforeAll(async () => {
     dispatcher,
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
+    postgresProjectMemberPermissions(),
   );
   memberService = new ProjectMemberManagementService(
     new PostgresProjectsWritePort(),
@@ -308,7 +310,12 @@ beforeAll(async () => {
       new TaskManagementRepository(),
       management,
     ),
-    new ProjectRoleGateService(access, new PostgresProjectMembersQueryPort()),
+    new ProjectRoleGateService(
+      access,
+      new PostgresProjectMembersQueryPort(),
+      postgresProjectMemberPermissions(),
+    ),
+    postgresProjectMemberPermissions(),
     audit,
     activity,
     dispatcher,

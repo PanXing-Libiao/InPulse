@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import "reflect-metadata";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -97,6 +98,7 @@ beforeAll(async () => {
       new PostgresFeatureQueryPort(),
       new PostgresTaskQueryPort(),
       repository,
+      postgresProjectMemberPermissions(),
     );
   audit = new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key });
   activity = new PostgresActivityWritePort();

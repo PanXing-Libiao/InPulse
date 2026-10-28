@@ -1190,6 +1190,17 @@ button {
   box-shadow: 0 1px 3px #203c5515;
 }
 
+/* 成员状态筛选使用两个等宽槽位：标签或计数变长时，选中滑块仍在固定位置。 */
+.segmented-equal-width {
+  width: 260px;
+  max-width: 100%;
+}
+.segmented-equal-width button {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 /* 分段控件切换滑块（2026-09-22）：选中底色与投影从 .selected 按钮迁到滑块上，由
    CalmSegmented 实测选中按钮的矩形后写 transform / width，档位切换只做 0.15s ease
    位移（参考 Uiverse radio-input 的滑块动画）。取值与原 .selected 完全一致，观感不变；

@@ -7,6 +7,7 @@ import {
 import type { TransactionContext } from "../database/transaction-context.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
@@ -88,6 +89,8 @@ export class LeftoverTaskWorkflow {
     private readonly search: SearchProjectionWritePort,
     @Inject(LeftoverSearchProjectionSync)
     private readonly leftovers: LeftoverSearchProjectionSync,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
   async authorize(tx: TransactionContext, actorId: number, projectId: number) {
     const check = await this.access.checkProjectForWrite(tx, {
@@ -95,6 +98,11 @@ export class LeftoverTaskWorkflow {
       projectId,
     });
     if (check.kind === "not-found") throw missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["recordWrite"],
+    });
   }
   private leftoverItem(
     record: PublishedRecord,
@@ -266,6 +274,11 @@ export class LeftoverTaskWorkflow {
       [],
       input.leftoverItemId,
     );
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: p,
+      capabilities: ["taskEdit"],
+    });
     if (item.id !== input.leftoverItemId) throw missing();
     if (item.linkedTaskId !== null)
       throw new LeftoverTaskError(
@@ -422,6 +435,11 @@ export class LeftoverTaskWorkflow {
       r,
       saved.impactFeatureIds,
     );
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: p,
+      capabilities: ["taskEdit"],
+    });
     if (
       item.id !== saved.leftoverItemId ||
       item.status !== "CONVERTED" ||

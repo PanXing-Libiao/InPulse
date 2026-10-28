@@ -496,13 +496,6 @@ export class ProjectWecomGroupService {
     if (role === "NOT_MEMBER") {
       throw this.notFound();
     }
-    if (role === "MEMBER") {
-      throw new ProjectWecomGroupError(
-        403,
-        "PROJECT_WECOM_GROUP_FORBIDDEN",
-        "只有系统管理员或本项目组长可以管理企业微信群绑定",
-      );
-    }
   }
 
   private notFound(): ProjectWecomGroupError {

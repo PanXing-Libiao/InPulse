@@ -19,6 +19,7 @@ import {
   ExternalLinkError,
 } from "./external-link.workflow.js";
 import { InvalidGitHubUrlError } from "../modules/external-links/index.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import type { CompletionHttpRequest } from "./task-completion-http.service.js";
 @Injectable()
 export class ExternalLinkHttpService {
@@ -184,6 +185,7 @@ export class ExternalLinkHttpService {
     } catch (error) {
       const known =
         error instanceof ExternalLinkError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof SearchProjectionCapacityError ||
         error instanceof IdempotencyHttpError;
       const invalid = error instanceof InvalidGitHubUrlError;

@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { SearchQueryService } from "../src/modules/search/search-query.service.js";
 import { PostgresSearchProjectionReader } from "../src/modules/search/search-projection.reader.js";
 import { SearchCursorService } from "../src/modules/search/search-cursor.js";
@@ -99,6 +100,7 @@ beforeAll(async () => {
       new PostgresFeatureQueryPort(),
       new PostgresTaskQueryPort(),
       repository,
+      postgresProjectMemberPermissions(),
     );
   audit = new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key });
   activity = new PostgresActivityWritePort();

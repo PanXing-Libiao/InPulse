@@ -16,6 +16,7 @@ import {
   IdempotencyHttpError,
   IdempotencyHttpService,
 } from "../../idempotency/http-service.js";
+import { ProjectCapabilityAccessError } from "../projects/index.js";
 import {
   ProjectWecomGroupError,
   ProjectWecomGroupService,
@@ -250,7 +251,10 @@ export class ProjectWecomGroupHttpService {
     error: unknown,
     requestId: string,
   ): { readonly status: number; readonly body: unknown } {
-    if (error instanceof ProjectWecomGroupError) {
+    if (
+      error instanceof ProjectWecomGroupError ||
+      error instanceof ProjectCapabilityAccessError
+    ) {
       return errorBody(error.status, error.code, error.message, requestId);
     }
     if (error instanceof ProjectWecomGroupHttpError) {

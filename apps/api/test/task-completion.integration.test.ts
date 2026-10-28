@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import "reflect-metadata";
 import { randomBytes, randomUUID } from "node:crypto";
 import { beforeAll, afterAll, afterEach, it, expect, vi } from "vitest";
@@ -113,9 +114,17 @@ beforeAll(async () => {
     uow,
     audit,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
+    postgresProjectMemberPermissions(),
   );
   publication = new RecordPublicationService(
-    new RecordPublicationAccess(access, modules, features, taskQuery, pubRepo),
+    new RecordPublicationAccess(
+      access,
+      modules,
+      features,
+      taskQuery,
+      pubRepo,
+      postgresProjectMemberPermissions(),
+    ),
     pubRepo,
     records,
     new PublishedRecordRepository(),
@@ -150,6 +159,7 @@ beforeAll(async () => {
         dispatcher,
       ),
     ),
+    postgresProjectMemberPermissions(),
   );
   const auth = new SessionAuthService(
       uow,
@@ -192,6 +202,7 @@ beforeAll(async () => {
               dispatcher,
               new PostgresModuleReadPort(),
               new PostgresProjectsWritePort(),
+              postgresProjectMemberPermissions(),
             ),
           ),
         ),

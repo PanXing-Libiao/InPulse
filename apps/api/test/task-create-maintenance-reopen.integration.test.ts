@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import "reflect-metadata";
 import { randomBytes, randomUUID } from "node:crypto";
 import type { TaskStatusRequest } from "@inpulse/api-contract";
@@ -60,6 +61,7 @@ beforeAll(() => {
     ),
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
+    postgresProjectMemberPermissions(),
   );
 });
 

@@ -155,10 +155,15 @@ describe("ProjectMemberManagementHttpService", () => {
       tx,
     );
     expect(s.mutationVerify).toHaveBeenCalledWith(tx, validRequest().headers);
-    expect(s.members.replayAuthorizer).toHaveBeenCalledWith(tx, 1, {
-      projectId: 7,
-      memberUserId: 5,
-    });
+    expect(s.members.replayAuthorizer).toHaveBeenCalledWith(
+      tx,
+      1,
+      {
+        projectId: 7,
+        memberUserId: 5,
+      },
+      "projectMemberManage",
+    );
   });
 
   it("routes setProjectMemberRole through the idempotent role command", async () => {

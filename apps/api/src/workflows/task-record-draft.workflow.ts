@@ -5,6 +5,7 @@ import type { TransactionContext } from "../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../database/unit-of-work.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
@@ -42,6 +43,8 @@ export class TaskRecordDraftWorkflow {
     private readonly commands: RecordDraftCommandPort,
     @Inject(PostgresUnitOfWork) private readonly uow: PostgresUnitOfWork,
     @Inject(UserReadPort) private readonly users: UserReadPort,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
   async read(actorId: number, path: TaskDraftPath) {
     const authorized = await this.access.getAuthorizedSearchScope(actorId);
@@ -80,6 +83,11 @@ export class TaskRecordDraftWorkflow {
       projectId: path.projectId,
     });
     if (project.kind === "not-found") throw missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: path.projectId,
+      capabilities: ["recordWrite"],
+    });
     const task = await this.tasks.find(tx, path.projectId, path.taskId);
     if (!task || task.moduleId !== path.moduleId) throw missing();
     // ADR-044：模块已无归档只读态；ADR-054：来源任务只有「无效」一种只读态。

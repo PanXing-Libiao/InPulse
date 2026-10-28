@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import "reflect-metadata";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Module, type INestApplication } from "@nestjs/common";
@@ -88,6 +89,7 @@ beforeAll(async () => {
     audit,
     new PostgresActivityWritePort(),
     search,
+    postgresProjectMemberPermissions(),
   );
   const http = new ModulesHttpService(
     auth,
@@ -543,6 +545,7 @@ describe("F-12 real HTTP + PostgreSQL", () => {
       new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key }),
       new PostgresActivityWritePort(),
       new PostgresSearchProjectionWritePort(),
+      postgresProjectMemberPermissions(),
     );
     let ready = 0;
     let release: (() => void) | undefined;

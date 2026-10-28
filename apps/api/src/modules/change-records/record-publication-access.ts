@@ -6,6 +6,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { ModuleQueryPort } from "../modules/index.js";
@@ -22,6 +23,8 @@ export class RecordPublicationAccess {
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
     @Inject(RecordPublicationRepository)
     private readonly repository: RecordPublicationRepository,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
   private missing() {
     return new RecordDraftError(
@@ -40,6 +43,11 @@ export class RecordPublicationAccess {
       projectId,
     });
     if (project.kind === "not-found") throw this.missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["recordWrite"],
+    });
   }
   async prepare(
     tx: TransactionContext,
@@ -53,6 +61,11 @@ export class RecordPublicationAccess {
       projectId,
     });
     if (project.kind === "not-found") throw this.missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["recordWrite"],
+    });
     for (let attempt = 0; attempt < 3; attempt++) {
       await tx.sql`SAVEPOINT record_publication_locks`;
       const previous = await this.repository.identity(tx, projectId, recordId);

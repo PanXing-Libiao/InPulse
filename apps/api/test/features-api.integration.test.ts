@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
@@ -100,6 +101,7 @@ beforeAll(async () => {
     audit,
     activity,
     search,
+    postgresProjectMemberPermissions(),
   );
   const http = new FeaturesHttpService(
     auth,

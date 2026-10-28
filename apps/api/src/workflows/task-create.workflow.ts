@@ -1,6 +1,7 @@
 import { ProjectCreationLockPort } from "../modules/projects/project-creation-lock.port.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { TaskManagementError } from "../modules/tasks/tasks-management.service.js";
@@ -26,6 +27,8 @@ export class TaskCreateWorkflow {
     private readonly features: FeatureCreateCommandPort,
     @Inject(TaskCreateCommandPort)
     private readonly tasks: TaskCreateCommandPort,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
   async execute(
     tx: TransactionContext,
@@ -45,6 +48,15 @@ export class TaskCreateWorkflow {
         "PROJECT_NOT_FOUND",
         "项目不存在或无法访问",
       );
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities:
+        input.module.kind === "new" ||
+        (input.feature !== null && input.feature.kind === "new")
+          ? ["taskEdit", "moduleFeatureEdit"]
+          : ["taskEdit"],
+    });
     const moduleId =
       input.module.kind === "existing"
         ? input.module.id
@@ -86,12 +98,22 @@ export class TaskCreateWorkflow {
     );
     return { projectId, moduleId, featureId, taskId: task.id };
   }
-  replay(
+  async replay(
     tx: TransactionContext,
     actorId: number,
     result: TaskCreateResult,
     input: TaskCreateRequest,
   ) {
+    if (
+      input.module.kind === "new" ||
+      (input.feature !== null && input.feature.kind === "new")
+    ) {
+      await this.permissions.assertCapabilities(tx, {
+        actorUserId: actorId,
+        projectId: result.projectId,
+        capabilities: ["moduleFeatureEdit"],
+      });
+    }
     return this.tasks.replay(
       tx,
       actorId,

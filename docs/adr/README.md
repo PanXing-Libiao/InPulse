@@ -117,6 +117,7 @@
 | [ADR-101](ADR-101.md) | Accepted | Casdoor 导入按应用 Permission 收窄候选账号：新增可选 `CASDOOR_IMPORT_PERMISSION`，通过 HTTP Basic 递归读取 Permission / Role 的 groups 与 users，只让命中该权限范围且启用中的账号进入管理员导入，并只把该范围内的 Physical 群组写入组织；Permission 停用、非 Allow / Approved、跨 owner、空范围或读取失败均 503 fail closed；不把 Casdoor 权限映射为 InPulse 权限，未配置时保持 ADR-100 行为；无新路由、迁移或依赖 |
 | [ADR-102](ADR-102.md) | Accepted | Casdoor 导入预览新增“无变化”分类：已绑定账号仅在姓名、可安全同步邮箱或实体组集合与平台不同时标记刷新；默认只勾选新建、绑定、刷新，分类标签可筛选并对当前结果全选；弹窗头部与滚动布局自适应；审计日志将 Casdoor 导入、组织同步及 Casdoor 组织显示为中文；无新路由、迁移或权限变化 |
 | [ADR-103](ADR-103.md) | Accepted | 成员与角色页取消未分类筛选页签（修订 ADR-098 §2.3）：无组织成员回到“全部”平铺列表，行内徽章、批量移出与项目选择器文案保持不变；不涉及路由、契约、迁移与权限 |
+| [ADR-104](ADR-104.md) | Accepted | 全平台项目成员权限三档配置：系统管理员统一设置 11 项能力为全部成员 / 仅组长 / 仅系统管理员，固定开放查看、创建项目、个人设置与整项目导入，固定管理员记录作废/恢复与系统管理；新增读取/保存两条路由（131 → 133）与迁移 `0062_project_member_permissions.sql`；配置实时生效、不缓存 Session，保存要求完整管理员 Session、CSRF、If-Match、数据库级幂等与同事务 SYSTEM 审计 |
 
 ## 关联基线
 

@@ -16,6 +16,7 @@ import {
   IdempotencyHttpService,
 } from "../../idempotency/http-service.js";
 import type { TransactionContext } from "../../database/transaction-context.js";
+import { ProjectCapabilityAccessError } from "../projects/index.js";
 import {
   TaskGroupCommandError,
   TaskGroupsService,
@@ -161,6 +162,7 @@ export class TaskGroupUnmergeHttpService {
     } catch (error) {
       const known =
         error instanceof TaskGroupCommandError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError;
       const invalid = error instanceof TaskGroupUnmergeInputError;
       return {

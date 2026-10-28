@@ -17,3 +17,15 @@ export {
   type ProjectManageRole,
   type ProjectRoleGateResult,
 } from "./project-role-gate.service.js";
+export {
+  ProjectMemberPermissionPolicyService,
+  ProjectCapabilityAccessError,
+  type ProjectMemberPermissionDecision,
+  type ProjectMemberPermissionRole,
+} from "./project-member-permission-policy.service.js";
+export type { ProjectMemberPermissionCapability } from "@inpulse/api-contract";
+export {
+  ProjectMemberPermissionRepository,
+  projectMemberPermissionToContract,
+  type ProjectMemberPermissionSettingsRecord,
+} from "./project-member-permission.repository.js";

@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import "reflect-metadata";
 import { randomBytes, randomUUID } from "node:crypto";
 
@@ -433,6 +434,7 @@ beforeAll(async () => {
     ),
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
+    postgresProjectMemberPermissions(),
   );
   taskDeletionCommands = new SqlTaskDeletionCommandPort(
     taskManagement,

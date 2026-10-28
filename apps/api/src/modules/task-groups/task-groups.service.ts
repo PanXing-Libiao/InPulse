@@ -17,6 +17,7 @@ import { SearchProjectionWritePort } from "../search/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
   ProjectCodePort,
+  ProjectMemberPermissionPolicyService,
   ProjectNotificationDispatcher,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
@@ -127,6 +128,8 @@ export class TaskGroupsService {
     private readonly notifications: ProjectNotificationDispatcher,
     @Inject(SearchProjectionWritePort)
     private readonly search: SearchProjectionWritePort,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
 
   /** 写前授权：实时成员关系与项目 ACTIVE；错误码与提示语由调用命令决定。 */
@@ -141,6 +144,11 @@ export class TaskGroupsService {
       projectId,
     });
     if (project.kind === "not-found") throw errors.missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId,
+      capabilities: ["taskLifecycle"],
+    });
   }
 
   /** 父级锁：模块按 ID 升序、影响功能按所属模块分组后按 ID 升序取 FOR SHARE。 */

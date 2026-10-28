@@ -14,6 +14,8 @@ import { PostgresProjectCodePort } from "./postgres-project-code-port.js";
 import { PostgresProjectQueryPort } from "./postgres-project-query-port.js";
 import { ProjectQueryPort } from "./project-query.port.js";
 import { ProjectRoleGateService } from "./project-role-gate.service.js";
+import { ProjectMemberPermissionRepository } from "./project-member-permission.repository.js";
+import { ProjectMemberPermissionPolicyService } from "./project-member-permission-policy.service.js";
 import { ProjectStartNotifier } from "./project-start.notifier.js";
 import { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 import { ProjectWrapNotifier } from "./project-wrap.notifier.js";
@@ -70,6 +72,8 @@ import {
       provide: ActiveUsersQueryPort,
       useClass: PostgresActiveUsersQueryPort,
     },
+    ProjectMemberPermissionRepository,
+    ProjectMemberPermissionPolicyService,
     ProjectRoleGateService,
     ProjectNotificationDispatcher,
     ProjectStartNotifier,
@@ -89,6 +93,8 @@ import {
     PROJECT_ACCESS_QUERY_PORT,
     ProjectsWritePort,
     ActiveUsersQueryPort,
+    ProjectMemberPermissionRepository,
+    ProjectMemberPermissionPolicyService,
     ProjectRoleGateService,
     ProjectNotificationDispatcher,
     ProjectStartNotifier,

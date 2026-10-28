@@ -21,6 +21,7 @@ import {
   type TaskStatusResource,
 } from "../modules/tasks/index.js";
 import { RecordDraftError } from "../modules/change-records/index.js";
+import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import { TaskCompletionWorkflow } from "./task-completion.workflow.js";
 import type { CompletionHttpRequest } from "./task-completion-http.service.js";
 export type CompatibilityStatusOperation =
@@ -223,6 +224,7 @@ export class TaskStatusCompatibilityHttpService {
       const known =
         error instanceof TaskManagementError ||
         error instanceof RecordDraftError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError;
       return {
         status: known ? error.status : 500,

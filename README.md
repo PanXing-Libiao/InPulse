@@ -52,6 +52,8 @@ InPulse 面向国内单企业、单实例的软件研发团队，目标规模为
 
 > 2026-10-16 组织（部门）成员管理（用户要求，[ADR-081](./docs/adr/ADR-081.md)）：「成员与设置」对全体登录用户开放——系统管理员可建立组织（部门）、改名、删除（成员回到未分配），并在成员列表批量归属（默认无勾选框，点「批量管理」进入选择模式，含全选当前搜索结果与加入 / 移出组织）；成员列表按组织分组显示（相同部门放一块，当前账号所在组织置顶、其余按组织 id 升序、未分配最后）；普通成员只读查看同组织成员（脱敏：不含登录名、邮箱与停用状态）。新增迁移 `0046` 与 6 条路由（`listOrganizations` / `createOrganization` / `updateOrganization` / `deleteOrganization` / `assignUsersOrganization` / `getMyOrganizationMembers`），路由总数 119 → 125（`permissions:check` 125/125）；指派选择器的「一键选中整个组织」为第二批。
 
+> 2026-10-28 全平台项目成员三档权限（用户要求，[ADR-104](./docs/adr/ADR-104.md)）：系统管理员可在“成员与设置 → 权限矩阵”统一配置 11 项项目成员能力为全部成员、仅组长或仅系统管理员；配置不按项目拆分，保存后下一次请求立即生效且不缓存 Session。查看、创建项目、个人设置/通知、个人企业微信绑定与整项目导入固定开放，记录作废/恢复与系统管理固定仅系统管理员。新增 `GET` / `PUT /api/v1/project-member-permissions`（131 → 133）与迁移 `0062_project_member_permissions.sql`；保存要求完整管理员 Session、CSRF、双引号 `If-Match`、数据库级幂等与同事务 SYSTEM 审计。真实 PostgreSQL + HTTP 主流程与相关 Web 定向测试已通过；本次按用户要求保持精简，未扩展重复测试矩阵。
+
 下列根级命令已真实可运行，并与 GitHub Actions 的 `CI / workspace` job 按[技术设计 §12.4](./技术设计v1.2.2.md#124-ci-门禁)顺序执行同一组命令；五个生产容器镜像（API/Migration/Web/DB-bootstrap/Ops）的构建与 Trivy 扫描已在 main CI（[run 34620173140](https://github.com/256-code/InPulse/actions/runs/34620173140)）实际通过，基础镜像 digest 已按 [ADR-017](./docs/adr/ADR-017.md) 固定；§12.4 中其余 Playwright 完整关键路径 E2E（`/audit` 审计页已补齐，见[测试矩阵](./docs/test-matrix.md)）、真实镜像 Tag/digest 绑定与签名发布清单、以及生产加密备份的真实全新主机恢复演练与启用仍未落库，补齐前请勿假设这些检查已执行。
 
 当前可运行的根级命令（§12.4 顺序）：

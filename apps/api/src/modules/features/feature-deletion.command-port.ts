@@ -80,10 +80,11 @@ export class SqlFeatureDeletionCommandPort extends FeatureDeletionCommandPort {
     actorId: number,
     projectId: number,
   ): Promise<void> {
-    const role = await this.roles.scopeDeleterRole(tx, actorId, projectId);
+    const role = await this.roles.scopeDeleterRole(tx, actorId, projectId, {
+      code: "FEATURE_DELETE_FORBIDDEN",
+      message: "当前平台权限配置不允许该成员删除功能",
+    });
     if (role === "NOT_MEMBER") throw featureDeletionMissing();
-    if (role !== "SYSTEM_ADMIN" && role !== "LEADER")
-      throw featureDeletionForbidden();
   }
 
   findForDeletion(

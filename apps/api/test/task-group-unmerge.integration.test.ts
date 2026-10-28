@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import "reflect-metadata";
 import { Module, type INestApplication } from "@nestjs/common";
@@ -87,6 +88,7 @@ beforeAll(async () => {
       new PostgresNotificationWritePort(),
     ),
     new PostgresSearchProjectionWritePort(),
+    postgresProjectMemberPermissions(),
   );
   const mutation = new AuthenticatedMutationService(
     auth,

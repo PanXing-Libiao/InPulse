@@ -94,10 +94,11 @@ export class SqlModuleDeletionCommandPort extends ModuleDeletionCommandPort {
     actorId: number,
     projectId: number,
   ): Promise<void> {
-    const role = await this.roles.scopeDeleterRole(tx, actorId, projectId);
+    const role = await this.roles.scopeDeleterRole(tx, actorId, projectId, {
+      code: "MODULE_DELETE_FORBIDDEN",
+      message: "当前平台权限配置不允许该成员删除模块",
+    });
     if (role === "NOT_MEMBER") throw moduleDeletionMissing();
-    if (role !== "SYSTEM_ADMIN" && role !== "LEADER")
-      throw moduleDeletionForbidden();
   }
 
   findForDeletion(

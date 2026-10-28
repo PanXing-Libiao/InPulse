@@ -22,6 +22,7 @@ import {
   ModuleManagementError,
   type ModuleOperation,
 } from "./modules-management.service.js";
+import { ProjectCapabilityAccessError } from "../projects/index.js";
 
 export interface ModulesHttpRequest {
   readonly headers: HttpHeaderBag;
@@ -199,6 +200,7 @@ export class ModulesHttpService {
       let details: Record<string, string> = {};
       if (
         error instanceof ModuleManagementError ||
+        error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError
       )
         ({ status, code, message } = error);

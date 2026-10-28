@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
@@ -132,6 +133,7 @@ beforeAll(async () => {
     dispatcher,
     new PostgresModuleReadPort(),
     new PostgresProjectsWritePort(),
+    postgresProjectMemberPermissions(),
   );
   const mutation = new AuthenticatedMutationService(auth, csrf, tokens);
   const idempotency = new IdempotencyHttpService(
@@ -157,9 +159,17 @@ beforeAll(async () => {
     uow,
     audit,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
+    postgresProjectMemberPermissions(),
   );
   const publication = new RecordPublicationService(
-    new RecordPublicationAccess(access, modules, features, taskQuery, pubRepo),
+    new RecordPublicationAccess(
+      access,
+      modules,
+      features,
+      taskQuery,
+      pubRepo,
+      postgresProjectMemberPermissions(),
+    ),
     pubRepo,
     records,
     new PublishedRecordRepository(),
@@ -194,6 +204,7 @@ beforeAll(async () => {
         dispatcher,
       ),
     ),
+    postgresProjectMemberPermissions(),
   );
   class TestModule {}
   Module({

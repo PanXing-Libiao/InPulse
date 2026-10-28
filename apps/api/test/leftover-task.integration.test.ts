@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { LeftoverTaskWorkflow } from "../src/workflows/leftover-task.workflow.js";
 import { LeftoverTaskHttpService } from "../src/workflows/leftover-task-http.service.js";
 import { LeftoverTaskController } from "../src/workflows/leftover-task.controller.js";
@@ -120,9 +121,17 @@ beforeAll(async () => {
     uow,
     audit,
     new TimeCursorService(ring, "RECORD_DRAFTS"),
+    postgresProjectMemberPermissions(),
   );
   publication = new RecordPublicationService(
-    new RecordPublicationAccess(access, modules, features, taskQuery, pubRepo),
+    new RecordPublicationAccess(
+      access,
+      modules,
+      features,
+      taskQuery,
+      pubRepo,
+      postgresProjectMemberPermissions(),
+    ),
     pubRepo,
     records,
     new PublishedRecordRepository(),
@@ -157,6 +166,7 @@ beforeAll(async () => {
         dispatcher,
       ),
     ),
+    postgresProjectMemberPermissions(),
   );
   const auth = new SessionAuthService(
       uow,
@@ -195,6 +205,7 @@ beforeAll(async () => {
         dispatcher,
         new PostgresModuleReadPort(),
         new PostgresProjectsWritePort(),
+        postgresProjectMemberPermissions(),
       ),
     ),
     new PostgresLeftoverRecordCommandPort(
@@ -204,6 +215,7 @@ beforeAll(async () => {
     activity,
     search,
     new LeftoverSearchProjectionSync(search),
+    postgresProjectMemberPermissions(),
   );
   class TestModule {}
   Module({
@@ -245,6 +257,7 @@ beforeAll(async () => {
               dispatcher,
               new PostgresModuleReadPort(),
               new PostgresProjectsWritePort(),
+              postgresProjectMemberPermissions(),
             ),
           ),
         ),

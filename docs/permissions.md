@@ -15,6 +15,8 @@
 
 项目创建者不是独立身份。创建时必须作为项目成员且表单不可取消，创建者成员行以 `role='LEADER'` 落库（ADR-033）；创建完成后可由系统管理员或现任组长把组长身份转交给其他活跃成员（[ADR-053](adr/ADR-053.md)：组长只能转移、不能被撤销，也不能被直接移除——要移除现任组长必须先把身份交出去；有活跃成员的项目必须恰好有一名组长）。`projects.created_by` 永久保留用于溯源，不直接授予权限；项目内权限来自成员行 `role`（`MEMBER | LEADER`，ADR-039、[ADR-053](adr/ADR-053.md)），角色只在本项目内生效，成员被移除即失效、重新加入从普通成员开始（无活跃组长的项目由首位加入者直接成为组长）。系统管理员创建者仍保留与成员记录无关的全局权限。详见 [ADR-012](adr/ADR-012.md)（已被 [ADR-033](adr/ADR-033.md) 扩展）。
 
+自 [ADR-104](adr/ADR-104.md)（2026-10-28）起，项目内 11 项能力不再逐项固定为“全体成员”或“仅组长”，而由系统管理员在全平台单行配置中统一选择 `ALL_MEMBERS`、`LEADERS_ONLY` 或 `ADMINS_ONLY`。系统管理员始终放行；非成员、已移除成员与停用用户的 401 / 404 语义不变。查看项目与动态、创建项目、个人设置与整项目导入固定开放；记录作废/恢复与系统管理固定仅系统管理员。
+
 ## 认证安全流程矩阵
 
 下表的 operationId 集合必须与 [ADR-023](adr/ADR-023.md) allowlist 精确相等（经 [ADR-032](adr/ADR-032.md) 扩展为 `issueCsrfToken`、`login`、`logout`、`startSsoLogin`、`completeSsoLogin` 五条，经 [ADR-069](adr/ADR-069.md) 扩展 `createWecomBindingCode`、经 [ADR-077](adr/ADR-077.md) 扩展 `createProjectWecomGroupCode` 为七条），并逐项镜像到 Route Registry 和可执行权限测试。“管理员完整 Session”指管理员密码登录成功后的完整认证态；ADR-031 起登录不再经过 MFA challenge，也不存在管理员受限 Session。即使某一身份列为允许，Origin、Fetch Metadata、CSRF、速率限制及指定前置状态仍可产生拒绝用例，确保每个 operationId 至少有一条允许和一条拒绝测试。
@@ -333,7 +335,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | `assignUsersOrganization` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + CSRF + 幂等（2.0.0）；`userIds` 1～200 去重、`organizationId` 为正整数或 `null`；按用户 ID 升序 `FOR UPDATE`；只允许本地账号与 LOCAL 目标组织，SSO 用户或 CASDOOR 目标返回 409 `ORGANIZATION_SSO_MANAGED`；本地账号使用单组织替换语义，重复调用 `updatedCount = 0`；目标组织不存在 422 `ORGANIZATION_NOT_FOUND`；审计 `admin.user.organizations.assign` |
 | `getMyOrganizationMembers` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效会话：返回当前用户全部 `organizations` 与去重后的同组织 ACTIVE 成员；成员含 `id` / `name` / `avatarUrl` / `isAdmin` / `organizationIds`（最多 300 条；不返回登录名、邮箱与停用状态）；未分配返回空数组；只读，响应 `no-store` |
 
-六条路由承载 ADR-081 的组织（部门）能力。2026-10-16 历史口径为「一名成员至多归属一个组织、未分配为 `NULL`」，该口径自 [ADR-097](adr/ADR-097.md) 起只继续适用于本地口令账号；SSO 用户可同时属于多个 CASDOOR 群组。组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。ADR-081 落库时新增迁移 `0046_organizations.sql`、路由总数 119 → 125；ADR-097 未新增业务路由；ADR-099 结束时为 129 条操作 / 129 条路由，ADR-100 新增两条管理员导入路由后当前为 131 条操作 / 131 条路由。2026-10-16 第二批与修正保留：① `getUserDirectory` 增加只读组织字段，新建项目「初始项目成员」选择器按组织分组并支持「全选组织」；② 修正 `/settings` 前端路由守卫为登录守卫，普通成员进入后只渲染只读同组织视图；③ 真实 PostgreSQL 集成覆盖组织归属空数组与非空数组。
+六条路由承载 ADR-081 的组织（部门）能力。2026-10-16 历史口径为「一名成员至多归属一个组织、未分配为 `NULL`」，该口径自 [ADR-097](adr/ADR-097.md) 起只继续适用于本地口令账号；SSO 用户可同时属于多个 CASDOOR 群组。组织不代表任何项目权限；建 / 改 / 删 / 批量归属为系统管理员专属，沿用 ADR-031 只要求当前有效的完整管理员 Session；`getMyOrganizationMembers` 是本批新增的最小只读可见面，只暴露当前用户自己组织内的脱敏字段，不放宽 `getUserDirectory` 等既有授权。ADR-081 落库时新增迁移 `0046_organizations.sql`、路由总数 119 → 125；ADR-097 未新增业务路由；ADR-099 结束时为 129 条操作 / 129 条路由，ADR-100 新增两条管理员导入路由后为 131 条操作 / 131 条路由；ADR-104 新增两条全平台权限配置路由后当前为 133 条操作 / 133 条路由。2026-10-16 第二批与修正保留：① `getUserDirectory` 增加只读组织字段，新建项目「初始项目成员」选择器按组织分组并支持「全选组织」；② 修正 `/settings` 前端路由守卫为登录守卫，普通成员进入后只渲染只读同组织视图；③ 真实 PostgreSQL 集成覆盖组织归属空数组与非空数组。
 
 ## ADR-088 离职账号物理删除（2026-10-20）
 
@@ -412,7 +414,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 **重放与审计**：确认导入的响应只含计数，重放只要求原操作人当前仍是完整管理员并继续通过 CSRF 门禁；同 Key、同摘要、同契约版本重放不重复建号或写审计，同 Key 不同请求体 409。审计 target 为 Casdoor organization，payload 仅含组织名与扫描、新建、绑定、刷新、跳过、组织与成员关系计数，不写登录名、邮箱、Casdoor ID、组路径明细或任何凭据。
 
-**验证边界**：本地真实 PostgreSQL 与 HTTP 集成覆盖预览零写入、无口令非管理员新账号、同邮箱绑定、冲突跳过、Physical 组织与无实体组未分类、重复导入、组移除后清空关系、管理员授权、CSRF、幂等重放及单条审计；真实 Casdoor 批量导入 smoke 尚未执行。当前 `permissions:check` 应与 Route Registry 同步为 131 条操作 / 131 条路由。
+**验证边界**：本地真实 PostgreSQL 与 HTTP 集成覆盖预览零写入、无口令非管理员新账号、同邮箱绑定、冲突跳过、Physical 组织与无实体组未分类、重复导入、组移除后清空关系、管理员授权、CSRF、幂等重放及单条审计；真实 Casdoor 批量导入 smoke 尚未执行。ADR-100 验证时 `permissions:check` 与 Route Registry 为 131 条操作 / 131 条路由；ADR-104 后当前为 133。
 
 ## ADR-102 Casdoor 导入预览分类与审计展示（2026-10-27）
 
@@ -421,3 +423,34 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 **预览分类**：`CasdoorImportAction` 固定为 `create`（新建）、`link`（绑定）、`refresh`（刷新）、`unchanged`（无变化）、`skip`（跳过）。已绑定账号仅在 Casdoor 姓名、可安全同步的邮箱或实体组集合与平台当前值存在差异时标记 `refresh`；全部一致时标记 `unchanged`。`unchanged` 与 `skip` 不可勾选，默认勾选 `create`、`link`、`refresh`；分类筛选后的全选只修改当前筛选结果，并保留其他分类已选账号。
 
 **审计展示**：列表与筛选项显示 `admin.user.casdoorImport` → “从 Casdoor 导入账号”、`auth.sso_organizations_synced` → “同步统一身份认证组织”、`CASDOOR_ORGANIZATION` → “Casdoor 组织”。请求与原始快照仍使用机器码，中文映射不改变审计真实性、哈希链或权限判断。
+
+## ADR-104 全平台项目成员权限三档配置（2026-10-28）
+
+本节按 [ADR-104](adr/ADR-104.md)（Accepted）新增两条配置路由，路由总数 131 → 133。配置全平台共享，不按项目拆分；保存后下一次命令立即生效，不缓存到 Session。
+
+| 能力 | 默认档位 | 覆盖范围 |
+|---|---|---|
+| `projectEdit` | `ALL_MEMBERS` | 编辑项目内容与切换项目状态 |
+| `projectMemberManage` | `ALL_MEMBERS` | 添加、移除项目成员 |
+| `projectLeaderTransfer` | `LEADERS_ONLY` | 任命或转移项目组长 |
+| `projectDelete` | `LEADERS_ONLY` | 物理删除项目 |
+| `projectDocumentImport` | `ALL_MEMBERS` | 既有项目内文档导入与项目内 AI 辅助 |
+| `moduleFeatureEdit` | `ALL_MEMBERS` | 创建或编辑模块、功能与说明 |
+| `moduleFeatureDelete` | `LEADERS_ONLY` | 物理删除模块或功能 |
+| `taskEdit` | `ALL_MEMBERS` | 创建、编辑、指派任务及遗留项转任务 |
+| `taskLifecycle` | `ALL_MEMBERS` | 任务状态、合并、解除、取消、恢复与删除 |
+| `recordWrite` | `ALL_MEMBERS` | 迭代记录、遗留问题、发布与 GitHub 链接写入 |
+| `projectWecomGroup` | `LEADERS_ONLY` | 项目微信群绑定、解绑与群消息开关 |
+
+**档位语义**：`ALL_MEMBERS` 允许系统管理员、项目组长与普通活跃成员；`LEADERS_ONLY` 只允许系统管理员与项目组长；`ADMINS_ONLY` 只允许系统管理员。没有“连系统管理员也不能操作”的档位；用户所说的“全都没有”表示所有项目成员都没有，最终处置权仍由系统管理员保留。
+
+**固定项**：查看项目、动态、成员与搜索；创建项目与选择初始成员；个人设置、通知偏好与个人企业微信绑定；整项目导入固定开放。迭代记录作废/恢复，以及用户、组织、系统配置和原始审计固定仅系统管理员。
+
+| operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `getProjectMemberPermissions` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效登录 Session；无 CSRF、无幂等；响应 `no-store` |
+| `updateProjectMemberPermissions` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + 同源 + 同步 CSRF + `If-Match` + 数据库级幂等（1.0.0）；单行 `FOR UPDATE`，版本冲突 409；更新与 `admin.projectMemberPermissions.update` SYSTEM 审计同一事务 |
+
+**实现口径**：11 项写入口统一在事务内读取用户状态、`is_admin`、项目 ACTIVE 成员角色与配置；系统管理员必须始终通过，非成员仍返回 404。文档导入放宽后，创建模块/功能与任务仍分别需要 `moduleFeatureEdit`、`taskEdit`。幂等重放前重新验证当前管理员、原操作人、配置行与结果资源可读权限；管理员被撤权后不得回放旧成功响应。
+
+**前端与验证**：权限矩阵对管理员可编辑、对普通成员只读，固定项展示徽标；保存时由生成客户端携带 CSRF、`If-Match` 与幂等键，409 提示重新加载。真实 PostgreSQL + HTTP 主流程覆盖默认值、保存后即时生效、审计、普通成员 403、幂等重放、版本冲突与非 JSON 400；本次按用户要求保持精简，不堆叠重复用例。

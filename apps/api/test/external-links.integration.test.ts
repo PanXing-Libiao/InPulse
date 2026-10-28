@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { TaskGroupsService } from "../src/modules/task-groups/task-groups.service.js";
 import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
@@ -126,6 +127,7 @@ beforeAll(async () => {
       new PostgresFeatureQueryPort(),
       new PostgresTaskQueryPort(),
       repository,
+      postgresProjectMemberPermissions(),
     );
   audit = new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key });
   activity = new PostgresActivityWritePort();
@@ -196,6 +198,7 @@ beforeAll(async () => {
             audit,
             activity,
             new ExternalLinkSearchPort(search),
+            postgresProjectMemberPermissions(),
           ),
         ),
       },
@@ -1481,6 +1484,7 @@ describe("F22 typed external links", () => {
         notifications,
       ),
       search,
+      postgresProjectMemberPermissions(),
     );
     await uow.run((tx) =>
       groups.execute(

@@ -176,6 +176,7 @@ export const CalmSegmented = <T extends string>({
   options,
   onChange,
   label,
+  equalWidth = false,
 }: {
   readonly value: T;
   readonly options: ReadonlyArray<{
@@ -194,12 +195,20 @@ export const CalmSegmented = <T extends string>({
   }>;
   readonly onChange: (value: T) => void;
   readonly label: string;
+  /**
+   * 两档或多档等宽槽位：按钮始终平分轨道，数量角标不会改变选中滑块宽度。
+   * 仅用于需要固定滑块视觉位置的筛选器，不影响其它分段控件。
+   */
+  readonly equalWidth?: boolean | undefined;
 }) => {
   const { trackRef, thumb } = useCalmSegmentedThumb();
 
   return (
     <div
-      className="segmented segmented-slide"
+      className={
+        "segmented segmented-slide" +
+        (equalWidth ? " segmented-equal-width" : "")
+      }
       role="group"
       aria-label={label}
       ref={trackRef}

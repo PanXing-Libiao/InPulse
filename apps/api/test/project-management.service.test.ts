@@ -18,6 +18,7 @@ import type {
   ProjectsWritePort,
 } from "../src/modules/projects/projects-write.port.js";
 import type { SearchProjectionWritePort } from "../src/modules/search/search-projection.write-port.js";
+import { allowProjectMemberPermissions } from "./project-member-permission.helpers.js";
 
 const current: ProjectChangeRecord = {
   projectId: 7,
@@ -121,6 +122,7 @@ function setup(
   const manageRole = vi.fn().mockResolvedValue("LEADER");
   const notifyProjectStarted = vi.fn().mockResolvedValue(undefined);
   const notifyProjectWrapped = vi.fn().mockResolvedValue(undefined);
+  const permissions = allowProjectMemberPermissions();
   const service = new ProjectManagementService(
     {
       findProjectForChange,
@@ -138,6 +140,7 @@ function setup(
       listActiveMemberIds,
     } as unknown as ProjectMembersQueryPort,
     { manageRole } as unknown as ProjectRoleGateService,
+    permissions,
     { notify: notifyProjectStarted } as unknown as ProjectStartNotifier,
     { notify: notifyProjectWrapped } as unknown as ProjectWrapNotifier,
   );
@@ -154,6 +157,7 @@ function setup(
     upsertSearch,
     findActiveRole,
     notifyProjectWrapped,
+    permissions,
   };
 }
 
@@ -283,6 +287,15 @@ describe("ProjectManagementService", () => {
       requestId: "req-status",
     });
 
+    expect(s.checkProjectForWrite).toHaveBeenCalledWith(tx, {
+      actorUserId: 9,
+      projectId: 7,
+    });
+    expect(s.permissions.assertCapabilities).toHaveBeenCalledWith(tx, {
+      actorUserId: 9,
+      projectId: 7,
+      capabilities: ["projectEdit"],
+    });
     expect(s.countOpenTasks).toHaveBeenCalledWith(tx, { projectId: 7 });
     expect(s.updateProjectStatus).toHaveBeenCalledWith(tx, {
       projectId: 7,

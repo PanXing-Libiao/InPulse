@@ -1252,6 +1252,49 @@ export type ProjectMemberPath = {
   readonly userId: number;
 };
 
+export type ProjectMemberPermissionLevel = ("ALL_MEMBERS" | "LEADERS_ONLY" | "ADMINS_ONLY");
+
+export type ProjectMemberPermissionMutationHeaders = {
+  readonly "x-csrf-token": string;
+  readonly "if-match": string;
+};
+
+export type ProjectMemberPermissionReplayContext = {
+  readonly actorUserId: number;
+  readonly settingsRowId: 1;
+};
+
+export type ProjectMemberPermissions = {
+  readonly projectEdit: ProjectMemberPermissionLevel;
+  readonly projectMemberManage: ProjectMemberPermissionLevel;
+  readonly projectLeaderTransfer: ProjectMemberPermissionLevel;
+  readonly projectDelete: ProjectMemberPermissionLevel;
+  readonly projectDocumentImport: ProjectMemberPermissionLevel;
+  readonly moduleFeatureEdit: ProjectMemberPermissionLevel;
+  readonly moduleFeatureDelete: ProjectMemberPermissionLevel;
+  readonly taskEdit: ProjectMemberPermissionLevel;
+  readonly taskLifecycle: ProjectMemberPermissionLevel;
+  readonly recordWrite: ProjectMemberPermissionLevel;
+  readonly projectWecomGroup: ProjectMemberPermissionLevel;
+  readonly rowVersion: number;
+  readonly updatedAt: (string | null);
+  readonly updatedByName: (string | null);
+};
+
+export type ProjectMemberPermissionsUpdateRequest = {
+  readonly projectEdit: ProjectMemberPermissionLevel;
+  readonly projectMemberManage: ProjectMemberPermissionLevel;
+  readonly projectLeaderTransfer: ProjectMemberPermissionLevel;
+  readonly projectDelete: ProjectMemberPermissionLevel;
+  readonly projectDocumentImport: ProjectMemberPermissionLevel;
+  readonly moduleFeatureEdit: ProjectMemberPermissionLevel;
+  readonly moduleFeatureDelete: ProjectMemberPermissionLevel;
+  readonly taskEdit: ProjectMemberPermissionLevel;
+  readonly taskLifecycle: ProjectMemberPermissionLevel;
+  readonly recordWrite: ProjectMemberPermissionLevel;
+  readonly projectWecomGroup: ProjectMemberPermissionLevel;
+};
+
 export type ProjectMemberReassignmentItem = {
   readonly taskId: number;
   readonly moduleId: number;

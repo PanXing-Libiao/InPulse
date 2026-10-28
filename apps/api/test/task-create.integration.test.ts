@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { PostgresMyTaskQueryPort } from "../src/modules/change-records/my-task-query.port.js";
 import { Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
@@ -79,6 +80,7 @@ beforeAll(() => {
     audit,
     activity,
     search,
+    postgresProjectMemberPermissions(),
   );
   const features = new FeaturesManagementService(
     access,
@@ -91,6 +93,7 @@ beforeAll(() => {
     audit,
     activity,
     search,
+    postgresProjectMemberPermissions(),
   );
   tasks = new TasksManagementService(
     access,
@@ -110,6 +113,7 @@ beforeAll(() => {
     ),
     moduleRead,
     new PostgresProjectsWritePort(),
+    postgresProjectMemberPermissions(),
   );
   workflow = new TaskCreateWorkflow(
     new ProjectCreationLockPort(),
@@ -117,6 +121,7 @@ beforeAll(() => {
     new ModuleCreateCommandPort(modules),
     new FeatureCreateCommandPort(features),
     new TaskCreateCommandPort(tasks),
+    postgresProjectMemberPermissions(),
   );
 });
 afterAll(async () => {

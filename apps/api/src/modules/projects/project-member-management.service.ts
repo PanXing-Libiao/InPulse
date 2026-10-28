@@ -20,6 +20,8 @@ import {
 } from "./project-access.port.js";
 import { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 import { ProjectRoleGateService } from "./project-role-gate.service.js";
+import { ProjectMemberPermissionPolicyService } from "./project-member-permission-policy.service.js";
+import type { ProjectMemberPermissionCapability } from "@inpulse/api-contract";
 import { PROJECT_MEMBER_ROLE_CHANGE_ACTIVITY } from "./project-member-events.js";
 import {
   ActiveUsersQueryPort,
@@ -72,6 +74,8 @@ export class ProjectMemberManagementService {
     private readonly tasks: ProjectMemberTaskCommandPort,
     @Inject(ProjectRoleGateService)
     private readonly roleGate: ProjectRoleGateService,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
     @Inject(ProjectNotificationDispatcher)
@@ -121,6 +125,11 @@ export class ProjectMemberManagementService {
   ): Promise<ProjectMemberCommandResult> {
     const project = await this.requireWritableProject(tx, input);
     await this.requireManageRole(tx, input.actorId, input.projectId);
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: input.actorId,
+      projectId: input.projectId,
+      capabilities: ["projectMemberManage"],
+    });
     const active = await this.activeUsers.findActiveUserIds(tx, [input.userId]);
     if (active.length !== 1) {
       throw new ProjectMemberManagementError(
@@ -246,6 +255,11 @@ export class ProjectMemberManagementService {
   ): Promise<ProjectMemberCommandResult> {
     const project = await this.requireWritableProject(tx, input);
     await this.requireManageRole(tx, input.actorId, input.projectId);
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: input.actorId,
+      projectId: input.projectId,
+      capabilities: ["projectMemberManage"],
+    });
     const latest = await this.projects.findLatestMember(tx, {
       projectId: input.projectId,
       userId: input.userId,
@@ -363,22 +377,15 @@ export class ProjectMemberManagementService {
       input.projectId,
     );
     if (setter === "NOT_MEMBER") throw this.notFound();
-    if (setter === "MEMBER") {
-      throw new ProjectMemberManagementError(
-        403,
-        "PROJECT_MEMBER_ROLE_FORBIDDEN",
-        "只有系统管理员或本项目组长可以任命组长",
-      );
-    }
-    // ADR-053：组长只能把身份转交给其他活跃成员，不能自设也不能撤销。
+    // ADR-053：非管理员调用者只能把身份转交给其他活跃成员，不能自设、不能撤销。
     if (
-      setter === "LEADER" &&
+      setter !== "SYSTEM_ADMIN" &&
       (input.role !== "LEADER" || input.userId === input.actorId)
     ) {
       throw new ProjectMemberManagementError(
         403,
         "PROJECT_MEMBER_ROLE_FORBIDDEN",
-        "项目组长只能把其他活跃成员设为组长来转移身份",
+        "当前调用者只能把其他活跃成员设为组长来转移身份",
       );
     }
     const target = await this.projects.findLatestMember(
@@ -474,6 +481,10 @@ export class ProjectMemberManagementService {
     tx: TransactionContext,
     actorId: number,
     context: unknown,
+    capability: Extract<
+      ProjectMemberPermissionCapability,
+      "projectMemberManage" | "projectLeaderTransfer"
+    >,
   ): Promise<void> {
     const parsed = projectMemberReplayContextSchema.safeParse(context);
     if (!parsed.success) {
@@ -484,6 +495,11 @@ export class ProjectMemberManagementService {
       projectId: parsed.data.projectId,
     });
     await this.requireManageRole(tx, actorId, parsed.data.projectId);
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: parsed.data.projectId,
+      capabilities: [capability],
+    });
     const project = await this.projects.findProject(tx, {
       projectId: parsed.data.projectId,
     });

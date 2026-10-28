@@ -1,3 +1,4 @@
+import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import "reflect-metadata";
 import { randomBytes } from "node:crypto";
 import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
@@ -255,6 +256,7 @@ function publicationAccess() {
     new PostgresFeatureQueryPort(),
     new PostgresTaskQueryPort(),
     new RecordPublicationRepository(),
+    postgresProjectMemberPermissions(),
   );
 }
 async function sourceFixture(status: "TODO" | "DONE" | "CANCELED") {

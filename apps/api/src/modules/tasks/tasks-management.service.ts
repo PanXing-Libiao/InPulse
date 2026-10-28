@@ -12,6 +12,7 @@ import type { TransactionContext } from "../../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../../database/unit-of-work.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
+  ProjectMemberPermissionPolicyService,
   type ProjectAccessQueryPort,
   ProjectCodePort,
   ProjectMembersQueryPort,
@@ -74,6 +75,8 @@ export class TasksManagementService {
     private readonly notifications: ProjectNotificationDispatcher,
     @Inject(ModuleReadPort) private readonly moduleRead: ModuleReadPort,
     @Inject(ProjectsWritePort) private readonly projects: ProjectsWritePort,
+    @Inject(ProjectMemberPermissionPolicyService)
+    private readonly permissions: ProjectMemberPermissionPolicyService,
   ) {}
   async read(
     actorId: number,
@@ -122,12 +125,18 @@ export class TasksManagementService {
     actorId: number,
     scope: TaskScope,
     taskId?: number,
+    capability: "taskEdit" | "taskLifecycle" = "taskEdit",
   ): Promise<void> {
     const project = await this.access.checkProjectForWrite(tx, {
       actorUserId: actorId,
       projectId: scope.projectId,
     });
     if (project.kind === "not-found") throw missing();
+    await this.permissions.assertCapabilities(tx, {
+      actorUserId: actorId,
+      projectId: scope.projectId,
+      capabilities: [capability],
+    });
     // Resolve full identity before reporting any archived state.
     if (
       !(scope.featureId === null
@@ -160,12 +169,13 @@ export class TasksManagementService {
     tx: TransactionContext,
     actorId: number,
     context: unknown,
+    capability: "taskEdit" | "taskLifecycle" = "taskEdit",
   ): Promise<void> {
     const parsed = moduleTaskReplayContextSchema.safeParse(context);
     const resource = parsed.success
       ? { ...parsed.data, featureId: null }
       : taskReplayContextSchema.parse(context);
-    await this.authorize(tx, actorId, resource, resource.taskId);
+    await this.authorize(tx, actorId, resource, resource.taskId, capability);
     if (parsed.success)
       for (const featureId of parsed.data.impactFeatureIds)
         if (
@@ -493,7 +503,13 @@ export class TasksManagementService {
     },
   ): Promise<TaskRecord> {
     const command = taskStatusRequestSchema.parse(input.command);
-    await this.authorize(tx, input.actorId, input, input.taskId);
+    await this.authorize(
+      tx,
+      input.actorId,
+      input,
+      input.taskId,
+      "taskLifecycle",
+    );
     // Current impact features are locked and rechecked, but never become MODULE parents.
     const before =
       input.featureId === null
