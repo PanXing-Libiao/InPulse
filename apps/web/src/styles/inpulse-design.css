@@ -2497,6 +2497,7 @@
 .member-scope-filter {
   flex: 0 0 auto;
   margin: 0;
+  margin-right: auto;
 }
 
 /* 成员状态筛选的数量只保留文字，不再套圆角底色。 */
@@ -2795,6 +2796,10 @@
 .member-id small {
   color: #8191a2;
   font-size: var(--text-sm);
+}
+
+.settings-members-panel .calm-section-title > div:first-child {
+  flex: 0 0 auto;
 }
 
 .settings-members-panel .calm-section-title h3 {
@@ -3440,10 +3445,12 @@
 /* 2026-10-19 成员与角色：标题行工具、组织标签、批量条与隐藏确认。 */
 .member-head-tools {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  min-width: 0;
 }
 
 .member-org-bar {

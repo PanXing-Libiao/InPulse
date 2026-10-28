@@ -163,6 +163,10 @@ test("管理员完成用户编辑、停用、启用与强制删除", async ({ br
     await expect(card).toHaveCount(0);
     await scope.getByRole("button", { name: "已停用", exact: true }).click();
     await expect(card.getByText("停用", { exact: true })).toBeVisible();
+    const departedFilterBox = await scope.boundingBox();
+    if (!departedFilterBox)
+      throw new Error("departed member filter is not laid out");
+    expect(Math.abs(departedFilterBox.x - filterBox.x)).toBeLessThanOrEqual(1);
     await expect(card.getByRole("button", { name: /启\s*用/ })).toBeVisible();
     await expect(card.getByRole("button", { name: "强制删除" })).toBeVisible();
     await expect(page.getByRole("button", { name: "加入组织" })).toHaveCount(0);
