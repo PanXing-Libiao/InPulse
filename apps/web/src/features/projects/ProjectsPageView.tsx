@@ -198,54 +198,56 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
 
   return (
     <>
-      <div className="page-header">
-        <div className="catalog-heading">
-          <h1>项目列表</h1>
-        </div>
-        <div className="catalog-actions">
-          {projects.length > 0 ? (
-            <>
-              {/* 生命周期滑块与搜索框同行，且在搜索框左侧（2026-10-09 用户指示）。 */}
-              <CalmSegmented
-                label="项目生命周期分档"
-                value={tier}
-                options={tierOptions}
-                onChange={selectTier}
-              />
-              <div className="task-search">
-                <InpulseIcon name="search" size={15} />
-                <input
-                  aria-label="搜索项目"
-                  placeholder="搜索项目名称、编码或描述"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+      <div className="sticky-page-band project-list-page-band">
+        <div className="page-header">
+          <div className="catalog-heading">
+            <h1>项目列表</h1>
+          </div>
+          <div className="catalog-actions">
+            {projects.length > 0 ? (
+              <>
+                {/* 生命周期滑块与搜索框同行，且在搜索框左侧（2026-10-09 用户指示）。 */}
+                <CalmSegmented
+                  label="项目生命周期分档"
+                  value={tier}
+                  options={tierOptions}
+                  onChange={selectTier}
                 />
-              </div>
-            </>
-          ) : null}
-          <Button
-            className="primary-button"
-            data-testid="create-project-button"
-            onClick={() => {
-              onStartCreate?.();
-              setCreateOpen(true);
-            }}
-          >
-            <InpulseIcon name="plus" size={15} />
-            新建项目
-          </Button>
-          {/* 从文档导入（ADR-064 / ADR-094）：直接打开工作台，在内部切换导入方式。 */}
-          <Button
-            className="secondary-button"
-            data-testid="import-project-document-button"
-            onClick={() => {
-              onStartCreate?.();
-              setImportOpen(true);
-            }}
-          >
-            <InpulseIcon name="fileText" size={15} />
-            从文档导入
-          </Button>
+                <div className="task-search">
+                  <InpulseIcon name="search" size={15} />
+                  <input
+                    aria-label="搜索项目"
+                    placeholder="搜索项目名称、编码或描述"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+              </>
+            ) : null}
+            <Button
+              className="primary-button"
+              data-testid="create-project-button"
+              onClick={() => {
+                onStartCreate?.();
+                setCreateOpen(true);
+              }}
+            >
+              <InpulseIcon name="plus" size={15} />
+              新建项目
+            </Button>
+            {/* 从文档导入（ADR-064 / ADR-094）：直接打开工作台，在内部切换导入方式。 */}
+            <Button
+              className="secondary-button"
+              data-testid="import-project-document-button"
+              onClick={() => {
+                onStartCreate?.();
+                setImportOpen(true);
+              }}
+            >
+              <InpulseIcon name="fileText" size={15} />
+              从文档导入
+            </Button>
+          </div>
         </div>
       </div>
 

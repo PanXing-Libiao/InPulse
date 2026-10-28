@@ -763,6 +763,26 @@
     margin-bottom: 0;
   }
 
+  /* 2026-10-28 用户要求项目列表与任务中心滚动时固定顶部操作区：
+   * 项目列表只有页头，任务中心把页头与控制条一起固定。原外边距改由吸顶容器
+   * 的底部内边距承担，保持吸顶前后与列表的间距不变；容器有实底，滚动内容
+   * 不会从吸顶块下方透出。 */
+  .project-list-page-band {
+    padding-bottom: 27px;
+  }
+
+  .project-list-page-band > .page-header {
+    margin-bottom: 0;
+  }
+
+  .task-center-page-band {
+    padding-bottom: 30px;
+  }
+
+  .task-center-page-band > .task-toolbar {
+    margin-bottom: 0;
+  }
+
   /* 2026-10-08 用户要求「日期先不被滚走，等当天的内容滚完了再收起来」：分组头吸顶在标题
    * 与筛选条下方，父级 `.activity-day` 就是它的包裹盒——当天内容滚完时它被下一组顶走，
    * 「收起来」由分组头自身的边界完成，不需要脚本。偏移由脚本量出的吸顶块高度给出（见

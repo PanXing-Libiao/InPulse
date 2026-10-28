@@ -319,17 +319,18 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
       data-testid="issues-page"
     >
       {embedded ? null : (
-        <div className="page-header">
-          <div>
-            <h1>遗留问题</h1>
-            <p>
-              迭代记录中「遗留问题」一栏写下的内容会汇总到这里，确认影响范围后转为可执行任务。
-            </p>
+        <div className="sticky-page-band">
+          <div className="page-header">
+            <div>
+              <h1>遗留问题</h1>
+              <p>
+                迭代记录中「遗留问题」一栏写下的内容会汇总到这里，确认影响范围后转为可执行任务。
+              </p>
+            </div>
           </div>
-          {/* 项目筛选与「回到迭代记录」并排放在页头动作区（2026-09-24 产品要求）；
-              2026-10-09 用户指示：去掉筛选框前面的灰色「项目」文字，可访问名仍由
-              CalmSelect 的 ariaLabel 提供。 */}
-          <div className="catalog-actions">
+          {/* 2026-10-28 用户要求与迭代记录页统一布局：页头只保留标题，项目筛选
+              与「回到迭代记录」移到下方工具栏，返回操作靠右。 */}
+          <div className="toolbar issues-toolbar">
             <CalmSelect
               ariaLabel="项目"
               value={projectId > 0 ? String(projectId) : ""}
@@ -342,14 +343,16 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
               animated
             />
             {onBackToRecords === undefined ? null : (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={onBackToRecords}
-              >
-                <InpulseIcon name="gitBranch" size={15} />
-                回到迭代记录
-              </button>
+              <div className="issues-toolbar-actions">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={onBackToRecords}
+                >
+                  <InpulseIcon name="gitBranch" size={15} />
+                  回到迭代记录
+                </button>
+              </div>
             )}
           </div>
         </div>

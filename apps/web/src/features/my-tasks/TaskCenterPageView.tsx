@@ -1226,167 +1226,170 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
       aria-label="任务中心"
       data-testid="task-center"
     >
-      <div className="page-header">
-        <div>
-          <h1>任务中心</h1>
-          <p>
-            所有工作从这里展开：任务负责推进，完成后沉淀为迭代记录，遗留问题继续转为新任务。
-          </p>
+      <div className="sticky-page-band task-center-page-band">
+        <div className="page-header">
+          <div>
+            <h1>任务中心</h1>
+            <p>
+              所有工作从这里展开：任务负责推进，完成后沉淀为迭代记录，遗留问题继续转为新任务。
+            </p>
+          </div>
+          <div className="catalog-actions">
+            {/* 2026-09-22（方案 A）：数量由裸文字改为数量签，与工具栏的状态角标同一种表达。
+                签对辅助技术隐藏（与侧栏 `.nav-item em` 同口径），按钮名改由 aria-label
+                显式给出，仍是「遗留问题 N」，读屏与既有用例口径不变。 */}
+            <button
+              type="button"
+              className="secondary-button"
+              aria-label={
+                leftoverCount !== null && leftoverCount > 0
+                  ? "遗留问题 " + leftoverCount
+                  : "遗留问题"
+              }
+              onClick={onOpenIssues}
+            >
+              <InpulseIcon name="alert" size={15} />
+              遗留问题
+              {leftoverCount !== null && leftoverCount > 0 ? (
+                <em className="header-count" aria-hidden="true">
+                  {leftoverCount}
+                </em>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setCreateOpen(true)}
+            >
+              <InpulseIcon name="plus" size={16} />
+              新建任务
+            </button>
+          </div>
         </div>
-        <div className="catalog-actions">
-          {/* 2026-09-22（方案 A）：数量由裸文字改为数量签，与工具栏的状态角标同一种表达。
-              签对辅助技术隐藏（与侧栏 `.nav-item em` 同口径），按钮名改由 aria-label
-              显式给出，仍是「遗留问题 N」，读屏与既有用例口径不变。 */}
+
+        {activeAdapter.source === "mock" ? (
+          <div className="skeleton-note" data-testid="task-center-mock-notice">
+            <InpulseIcon name="alert" size={16} />
+            <span>
+              <strong>骨架数据：</strong>
+              {activeAdapter.notice}
+            </span>
+          </div>
+        ) : null}
+
+        {filters.overdue && (
+          <p>
+            仅显示已逾期任务
+            {filters.projectId !== null
+              ? ` · ${projectNames.get(filters.projectId) ?? "当前项目"}`
+              : ""}{" "}
+            <button type="button" onClick={() => update({ overdue: false })}>
+              清除逾期筛选
+            </button>
+          </p>
+        )}
+        {/* 2026-09-22（方案 A）一体化控制条：工作状态（带数量）· 搜索 · 项目 / 优先级 /
+            任务范围 · 展示方式收进同一条白底控制条。既有结构全部保留——「更多筛选」仍是
+            `.task-toolbar` 的直接子元素与 `.secondary-button`（设计系统按定案把它常驻
+            display:none，靠 DOM 事件展开面板），间距仍由 `.task-center` 的页头 / 工具栏
+            外边距决定，标题到工具栏与工具栏到卡片的节奏不变。 */}
+        <div className="toolbar task-toolbar task-toolbar-bar">
+          <CalmSegmented
+            label="工作状态"
+            value={filters.status}
+            options={statusOptions(stats)}
+            onChange={(status) => update({ status })}
+          />
+          <span className="task-toolbar-divider" aria-hidden="true" />
+          <div className="task-search">
+            <InpulseIcon name="search" size={16} />
+            <input
+              ref={searchInputRef}
+              value={queryDraft}
+              placeholder="搜索任务编号、标题、描述、归属或负责人"
+              aria-label="搜索任务"
+              disabled={!enabled("filter:query")}
+              onChange={handleQueryChange}
+              onCompositionStart={handleQueryCompositionStart}
+              onCompositionEnd={handleQueryCompositionEnd}
+              onBlur={handleQueryBlur}
+              onKeyDown={handleQueryKeyDown}
+            />
+          </div>
+          {/* 下拉自身已显示「全部项目 / 项目名」，重复的文字标签已按产品要求删除；
+              无障碍定位仍由 CalmSelect 的 aria-label 提供。 */}
+          <CalmSelect
+            ariaLabel="项目"
+            animated
+            value={filters.projectId === null ? "" : String(filters.projectId)}
+            onChange={(next) => {
+              const parsed = typeof next === "number" ? next : Number(next);
+              update({
+                projectId:
+                  Number.isInteger(parsed) && parsed > 0 ? parsed : null,
+              });
+            }}
+            options={[
+              { value: "", label: "全部项目" },
+              ...projects.map((project) => projectSelectOption(project)),
+            ]}
+            appearance="rich"
+          />
+          <CalmSelect
+            ariaLabel="优先级"
+            animated
+            value={filters.priority ?? ""}
+            disabled={!enabled("filter:priority")}
+            appearance="menu"
+            onChange={(next) =>
+              update({
+                priority: next === "" ? null : (next as MyTaskPriority),
+              })
+            }
+            options={[
+              // 收起态直接显示「全部优先级」而不是「全部」，否则单看触发器看不出
+              // 这是哪个维度的筛选；与任务看板 TaskBoardToolbar 的同名选项保持一致。
+              { value: "", label: "全部优先级" },
+              ...priorityOrder.map((priority) => ({
+                value: priority,
+                label: taskPriorityLabel(priority),
+                dotColor: priorityDotColor(priority),
+              })),
+            ]}
+          />
+          <CalmSelect
+            ariaLabel="任务范围"
+            animated
+            value={filters.level ?? ""}
+            appearance="notion"
+            onChange={(next) =>
+              update({
+                level: next === "" ? null : (next as MyTaskLevel),
+              })
+            }
+            options={[
+              { value: "", label: "功能级与模块级" },
+              { value: "FEATURE", label: "功能级任务", emoji: "\u{1F3AF}" },
+              { value: "MODULE", label: "模块级任务", emoji: "\u{1F9E9}" },
+            ]}
+          />
           <button
             type="button"
             className="secondary-button"
-            aria-label={
-              leftoverCount !== null && leftoverCount > 0
-                ? "遗留问题 " + leftoverCount
-                : "遗留问题"
-            }
-            onClick={onOpenIssues}
+            aria-expanded={advancedOpen}
+            onClick={onToggleAdvanced}
           >
-            <InpulseIcon name="alert" size={15} />
-            遗留问题
-            {leftoverCount !== null && leftoverCount > 0 ? (
-              <em className="header-count" aria-hidden="true">
-                {leftoverCount}
-              </em>
-            ) : null}
+            <InpulseIcon name="sliders" size={15} />
+            更多筛选{activeFilterCount > 0 ? " · " + activeFilterCount : ""}
           </button>
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => setCreateOpen(true)}
-          >
-            <InpulseIcon name="plus" size={16} />
-            新建任务
-          </button>
-        </div>
-      </div>
-
-      {activeAdapter.source === "mock" ? (
-        <div className="skeleton-note" data-testid="task-center-mock-notice">
-          <InpulseIcon name="alert" size={16} />
-          <span>
-            <strong>骨架数据：</strong>
-            {activeAdapter.notice}
-          </span>
-        </div>
-      ) : null}
-
-      {filters.overdue && (
-        <p>
-          仅显示已逾期任务
-          {filters.projectId !== null
-            ? ` · ${projectNames.get(filters.projectId) ?? "当前项目"}`
-            : ""}{" "}
-          <button type="button" onClick={() => update({ overdue: false })}>
-            清除逾期筛选
-          </button>
-        </p>
-      )}
-      {/* 2026-09-22（方案 A）一体化控制条：工作状态（带数量）· 搜索 · 项目 / 优先级 /
-          任务范围 · 展示方式收进同一条白底控制条。既有结构全部保留——「更多筛选」仍是
-          `.task-toolbar` 的直接子元素与 `.secondary-button`（设计系统按定案把它常驻
-          display:none，靠 DOM 事件展开面板），间距仍由 `.task-center` 的页头 / 工具栏
-          外边距决定，标题到工具栏与工具栏到卡片的节奏不变。 */}
-      <div className="toolbar task-toolbar task-toolbar-bar">
-        <CalmSegmented
-          label="工作状态"
-          value={filters.status}
-          options={statusOptions(stats)}
-          onChange={(status) => update({ status })}
-        />
-        <span className="task-toolbar-divider" aria-hidden="true" />
-        <div className="task-search">
-          <InpulseIcon name="search" size={16} />
-          <input
-            ref={searchInputRef}
-            value={queryDraft}
-            placeholder="搜索任务编号、标题、描述、归属或负责人"
-            aria-label="搜索任务"
-            disabled={!enabled("filter:query")}
-            onChange={handleQueryChange}
-            onCompositionStart={handleQueryCompositionStart}
-            onCompositionEnd={handleQueryCompositionEnd}
-            onBlur={handleQueryBlur}
-            onKeyDown={handleQueryKeyDown}
-          />
-        </div>
-        {/* 下拉自身已显示「全部项目 / 项目名」，重复的文字标签已按产品要求删除；
-            无障碍定位仍由 CalmSelect 的 aria-label 提供。 */}
-        <CalmSelect
-          ariaLabel="项目"
-          animated
-          value={filters.projectId === null ? "" : String(filters.projectId)}
-          onChange={(next) => {
-            const parsed = typeof next === "number" ? next : Number(next);
-            update({
-              projectId: Number.isInteger(parsed) && parsed > 0 ? parsed : null,
-            });
-          }}
-          options={[
-            { value: "", label: "全部项目" },
-            ...projects.map((project) => projectSelectOption(project)),
-          ]}
-          appearance="rich"
-        />
-        <CalmSelect
-          ariaLabel="优先级"
-          animated
-          value={filters.priority ?? ""}
-          disabled={!enabled("filter:priority")}
-          appearance="menu"
-          onChange={(next) =>
-            update({
-              priority: next === "" ? null : (next as MyTaskPriority),
-            })
-          }
-          options={[
-            // 收起态直接显示「全部优先级」而不是「全部」，否则单看触发器看不出
-            // 这是哪个维度的筛选；与任务看板 TaskBoardToolbar 的同名选项保持一致。
-            { value: "", label: "全部优先级" },
-            ...priorityOrder.map((priority) => ({
-              value: priority,
-              label: taskPriorityLabel(priority),
-              dotColor: priorityDotColor(priority),
-            })),
-          ]}
-        />
-        <CalmSelect
-          ariaLabel="任务范围"
-          animated
-          value={filters.level ?? ""}
-          appearance="notion"
-          onChange={(next) =>
-            update({
-              level: next === "" ? null : (next as MyTaskLevel),
-            })
-          }
-          options={[
-            { value: "", label: "功能级与模块级" },
-            { value: "FEATURE", label: "功能级任务", emoji: "\u{1F3AF}" },
-            { value: "MODULE", label: "模块级任务", emoji: "\u{1F9E9}" },
-          ]}
-        />
-        <button
-          type="button"
-          className="secondary-button"
-          aria-expanded={advancedOpen}
-          onClick={onToggleAdvanced}
-        >
-          <InpulseIcon name="sliders" size={15} />
-          更多筛选{activeFilterCount > 0 ? " · " + activeFilterCount : ""}
-        </button>
-        <div className="task-toolbar-view">
-          <CalmSegmented
-            label="展示方式"
-            value={filters.display}
-            options={displayOptions}
-            onChange={(display) => update({ display })}
-          />
+          <div className="task-toolbar-view">
+            <CalmSegmented
+              label="展示方式"
+              value={filters.display}
+              options={displayOptions}
+              onChange={(display) => update({ display })}
+            />
+          </div>
         </div>
       </div>
 

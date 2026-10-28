@@ -71,14 +71,12 @@ html,
   font-variation-settings: normal;
   -webkit-tap-highlight-color: transparent;
 }
-/* 根滚动条槽常驻（2026-09-23）：内容长短切换（展开项目树、进长列表、短页回退）时，主内容区
-   不再被滚动条槽挤窄，整页版式不跳动。不用 `scrollbar-gutter: stable`：常驻槽在
-   Chromium 下 `100vw` 只到初始包含块（实测槽宽 15px 时 100vw=1143、遮罩同为 1143），
-   弹窗遮罩、命令面板与右侧任务抽屉都到不了窗口边缘，会在右缘留一条未变暗的亮带；
-   `overflow-y: scroll` 占的是视口滚动条的槽，固定覆盖层几何与「页面上本来有滚动条」时一致。
+/* 根滚动条按需出现（2026-10-28）：内容能在一屏内完整展示时不再常驻根滚动容器，
+   页面不会出现没有实际内容可到达的下滑区域；只有内容真正超出视口时才启用根滚动条。
+   此前为稳定长短页宽度使用 overflow-y: scroll，但短页也会一直保留滚动条槽。
    槽里的 thumb 自 2026-09-24 起默认透明，只有滚动中才显形，见下一条。 */
 html {
-  overflow-y: scroll;
+  overflow-y: auto;
 }
 /* 滚动条按需显形（2026-09-24 产品要求「所有的滚轮条不用的时候是隐藏的」）：槽宽统一 8px
    （不再被系统默认的 15px 挤窄），thumb 默认透明，只有正在滚动（或指针停在滚动条上）的容器
@@ -4722,23 +4720,36 @@ td.due-overdue {
   margin-top: 14px;
 }
 
-/* 遗留问题页项目筛选：与迭代记录页同口径（全部项目 / 单项目）；
-   2026-09-24 起与「回到迭代记录」并排放在页头动作区，不再独占一行工具栏；
-   2026-10-09 用户指示去掉筛选框前的灰色「项目」文字后，外层 label 与
-   .issues-project-field 一并删除，间距由 .catalog-actions 的 gap 承担。 */
+/* 遗留问题页项目筛选：与迭代记录页同口径（全部项目 / 单项目）。
+   2026-10-28 用户要求两页布局统一：筛选与返回入口放进标题下方的工具栏，
+   返回操作靠右；工具栏的折行与间距沿用迭代记录页节奏。 */
+.issues-toolbar {
+  flex-wrap: wrap;
+  margin: 18px 0 10px;
+}
+.issues-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
 /* 「问题不是任务」说明：同一日按产品要求从页面顶部移到底部，紧跟已闭环折叠区。 */
 .issues-callout {
   margin: 24px 0 0;
 }
 
-/* 2026-10-20 用户反馈「页面布局怪怪的」：此前只有卡片列表与已闭环折叠区
- * 是 1020px 居中，页头标题、项目筛选和底部说明仍占满 1450px 内容区，三条轨道
- * 左右都不对齐。现在整页收进同一条 1020px 阅读列，页头动作区随该列右缘对齐；
- * 窄于 1020px 时宽度仍由容器决定。 */
+/* 2026-10-28 与迭代记录共用 1200px 内容宽度，使两页标题、工具栏与卡片的
+   左右边界保持一致；窄于 1200px 时宽度仍由容器决定。 */
 .issues-page {
   width: 100%;
-  max-width: 1020px;
+  max-width: 1200px;
   margin-inline: auto;
+}
+@media (min-width: 701px) {
+  .issues-page .sticky-page-band {
+    padding-bottom: 10px;
+  }
 }
 .issue-list {
   display: flex;

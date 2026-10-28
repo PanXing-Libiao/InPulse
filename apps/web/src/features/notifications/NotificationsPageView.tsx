@@ -253,8 +253,7 @@ export const NotificationsPageView: React.FC<NotificationsPageViewProps> = ({
           <Badge count={unreadCount} overflowCount={99} showZero={false} />
         </Space>
         <Paragraph type="secondary" style={{ margin: 0 }}>
-          通知只展示当前登录用户的站内消息；已读与未读操作会携带 CSRF 与幂等
-          Key，不会影响其他用户。
+          集中查看与你相关的站内通知；标记已读或未读只会更新你的通知状态。
         </Paragraph>
         <Space wrap>
           <Button

@@ -1,6 +1,6 @@
 import React from "react";
 import { ConfigProvider } from "antd";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -29,6 +29,15 @@ function CurrentLocationProbe() {
 }
 
 describe("AppLayout", () => {
+  beforeEach(() => {
+    vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    Object.defineProperty(window.history, "scrollRestoration", {
+      configurable: true,
+      writable: true,
+      value: "auto",
+    });
+  });
+
   const notificationClient = {
     getNotificationUnreadCount: vi.fn().mockResolvedValue({ unreadCount: 1 }),
     getNotifications: vi.fn().mockResolvedValue({
@@ -323,6 +332,34 @@ describe("AppLayout", () => {
 
     await user.click(screen.getByText("项目列表"));
     expect(await screen.findByText("Projects content")).toBeInTheDocument();
+  });
+
+  it("resets the page scroll position when the route path changes", async () => {
+    const user = userEvent.setup();
+    renderLayout(
+      <MemoryRouter initialEntries={["/records"]}>
+        <Routes>
+          <Route
+            path="/"
+            element={<AppLayout notificationClient={notificationClient} />}
+          >
+            <Route path="records" element={<div>Records content</div>} />
+            <Route path="activity" element={<div>Activity content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    document.documentElement.scrollTop = 1200;
+    document.body.scrollTop = 1200;
+    const nav = screen.getByRole("navigation", { name: "工作区导航" });
+    await user.click(within(nav).getByRole("button", { name: /项目动态/ }));
+
+    expect(await screen.findByText("Activity content")).toBeInTheDocument();
+    expect(window.history.scrollRestoration).toBe("manual");
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+    expect(document.documentElement.scrollTop).toBe(0);
+    expect(document.body.scrollTop).toBe(0);
   });
 
   it("opens the global command palette from the sidebar search button", async () => {

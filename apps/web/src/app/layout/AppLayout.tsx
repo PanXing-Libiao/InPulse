@@ -1,4 +1,11 @@
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { InpulseApiClient } from "@generated/api";
 import { useAuth } from "@features/auth/auth-context";
@@ -240,6 +247,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         ),
     [user?.isAdmin, projectScopeId],
   );
+  useLayoutEffect(() => {
+    // 关闭浏览器自动恢复历史滚动位置：短页从长页返回时，浏览器可能在本次 React
+    // 渲染后再次写回旧 scrollTop，表现为内容已完整展示却仍停在页面底部。
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+    // 路径切换后新页面从顶部开始；查询参数变化（筛选、分页）不打断当前阅读位置。
+    // scrollTo 覆盖以 body 或 documentElement 为滚动元素的浏览器差异。
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [location.pathname]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
