@@ -6,8 +6,8 @@
 
 ## 目录
 
-- `app/`：桥接脚本。`runner.mjs` 拉起两个子进程——`long-conn.mjs`（企业微信长连接：绑定码兑换、
-  主动推送、项目群投递消费；按目标通道发送智能机器人或 Webhook）与 `bridge.mjs`（轮询 `app.notifications` 推送个人通知，并按 MEMBER 可见项目动态物化项目群投递）。
+- `app/`：桥接脚本。`runner.mjs` 拉起两个子进程——`long-conn.mjs`（企业微信长连接：个人绑定码兑换、
+  个人推送，以及项目群 Webhook 投递消费）与 `bridge.mjs`（轮询 `app.notifications` 推送个人通知，并按 MEMBER 可见项目动态物化项目群 Webhook 投递）。
 - `Dockerfile`：`FROM` 本地 registry 的 api 镜像（复用其 node 24）；`COPY app /opt/wecom-bridge`。
 - `bridge.env`、`app/bridge-config.json`、`app/config.json`、`test-bridge-config.json`：运行配置
   （不含任何 Secret；密钥与密码由 VM 上只读挂载）。
@@ -44,49 +44,40 @@
   避免未来的 `TASK` 动态被误归到任务派发。新增业务事件时应同步补映射和测试。
 - 生效边界：开关只影响此后新写入的 PENDING 行；关闭期间游标照常前进，重新开启
   不补发，历史、已排队和已发送消息都不回溯。个人单聊与个人通知偏好不受影响。
-- 两级分工：`bridge.mjs` 按独立动态游标物化——在「该项目当前 ACTIVE 群绑定」下插入
-  `app.wecom_group_deliveries` 的 `PENDING` 行（按「绑定行 + 来源类型 + 来源 id」去重；
-  只物化绑定时间之后发生的来源）；`long-conn.mjs` 消费 PENDING 队列，按 id 升序用
-  `aibot_send_msg` + `chat_type:2` 发送模板卡片（封箱文案仍为 Markdown，图片分段仍为 image），发送结果以响应帧 `errcode` 为准回写：
-  成功 -> `SENT` + `sent_at`（并清空绑定行 `last_delivery_error`），失败 -> `FAILED` +
-  `attempts` + `last_error`（同时截断回写绑定行 `last_delivery_error`，≤500 字符）。
-- 群动态展示（2026-10-21）：`group-message.mjs` 生成与个人通知一致的 `text_notice` 模板卡片，包含来源、主标题、编号、项目副标题、最多 6 行关键字段和 `cardActionUrl` 跳转；任务展示负责人、进度、截止、功能或模块，项目状态使用“进入维护 / 重新开工”等事件语义。真实群投递已验证 `chat_type:2` 接受卡片并返回 `errcode=0`。展示层不改变五类开关、来源收敛或发送限速。
-- 兼容：升级前已排队且未发送的 `NOTIFICATION` 行仍由 `long-conn.mjs` 兼容消费，
-  避免升级丢失旧 PENDING 消息；新物化不再生成该来源类型。
-- 限速与重试：BOT 投递 30 条/分钟、1000 条/小时；Webhook 每目标独立 20 条/分钟（均为内存窗口，超限自动退避并限频打日志）；
+- 两级分工：`bridge.mjs` 按独立动态游标物化——只为「该项目当前 ACTIVE Webhook 目标」插入
+  `app.wecom_group_deliveries` 的 `PENDING` 行（按「目标行 + 来源类型 + 来源 id」去重；
+  只物化绑定时间之后发生的来源）；`long-conn.mjs` 消费 PENDING 队列，按 id 升序向每个目标
+  独立发送 Markdown、模板卡片或图片；成功 -> `SENT` + `sent_at`（并清空目标行 `last_delivery_error`），
+  失败 -> `FAILED` + `attempts` + `last_error`（同时截断回写目标行 `last_delivery_error`，≤500 字符）。
+- 群动态展示：`group-message.mjs` 生成 `text_notice` 模板卡片，包含来源、主标题、编号、项目副标题、最多 6 行关键字段和 `cardActionUrl` 跳转；任务展示负责人、进度、截止、功能或模块，项目状态使用“进入维护 / 重新开工”等事件语义。展示层不改变五类开关、来源收敛或发送限速。
+- 限速与重试：每个 Webhook 目标独立 20 条/分钟（内存滑动窗口，超限时该目标保持 `PENDING` 并让出其他目标）；
   识别为限速/临时错误的响应保持 `PENDING` 并退避 60 秒重试；15 秒无响应按超时保持
   `PENDING` 稍后重试（响应迟到时可能重复，PoC 取舍）；其余错误直接 `FAILED` 不自动重试；
-  解绑后残留的 `PENDING` 行按「群绑定已解绑」置 FAILED；重启后从 PENDING 断点续传。
+  目标删除后残留的 `PENDING` 行按「群绑定已解绑」置 FAILED；重启后从 PENDING 断点续传。
 - 游标与配置：状态文件保留 `lastActivityId` 作为群动态游标，首次运行从当前最大动态
   id 之后开始（不回补历史）；可选键 `groupDeliveries=false` 关闭物化、
-  `startFromActivityId` 指定游标初值。旧状态文件中的 `lastGroupNotificationId` 会被忽略，
-  `groupNotificationTypes` / `startFromGroupNotificationId` 不再参与群投递。
-  `config.json` 可选键 `groupDeliveries=false`、`groupDeliveryPollMs`、
-  `groupDeliveriesPerMinute`、`groupDeliveriesPerHour`。
+  `startFromActivityId` 指定游标初值。`config.json` 可选键 `groupDeliveries=false`、`groupDeliveryPollMs`。
 - 分类单元测试：`node --test deploy/test-vm/wecom-bridge/app/notification-categories.test.mjs`
   覆盖任务创建、真实改派、普通编辑跳过、五类映射、未知动态默认放行、缺行全开与
   显式 FALSE 关闭。
-- 历史实测（2026-10-16，旧版双来源）：任务指派与 MEMBER 动态各 1 条真实送达
-  （errcode=0，投递行 `SENT`）；同批 ADMIN_ONLY 动态未产生投递行；假 chatid 绑定验证
-  失败回写（`errcode 93006 invalid chatid` -> `FAILED` + 绑定行 `last_delivery_error`）；
-  long-conn 停机期间 PENDING 行保留、重启后续传送达。联调合成数据已清理。
-  ADR-093 收敛来源后的改动需重新同步 VM 后再做真实群投递验证。
+- 历史实测：2026-10-16 与 2026-10-21 的真实群投递属于已下线的 BOT 通道，只保留为历史记录；
+  ADR-106 收敛为 Webhook-only 后，测试 VM 尚未同步，需按新实现重新做真实 Webhook 投递验证。
 
-## Webhook 群通道（ADR-105，2026-10-28）
+## 项目群 Webhook（ADR-106，2026-10-29）
 
-- 数据：`app.project_wecom_groups.channel_type` 区分 `BOT` / `WEBHOOK`。一个项目仍最多一个 ACTIVE 智能机器人目标；Webhook 允许一个项目多个 ACTIVE 目标（上限 20），但同一规范化 URL 全局只允许一个 ACTIVE 目标。
-- 配置：项目成员页「企业微信项目群」可添加官方群机器人 Webhook。完整 URL 使用机器人 keyring 加密，AAD 为 `app.project_wecom_groups.webhook_url`；数据库只保存密文、密钥版本、SHA-256 指纹与 Key 尾号，页面、审计、日志和错误都不回显完整 URL。Webhook URL 属于 Secret。
-- 发送：`bridge.mjs` 仍只物化 MEMBER 可见项目动态；同一投递队列按目标 `channel_type` 分流。Webhook 解密 URL 后直接 HTTP POST 现有 markdown / template_card / image，成功以响应 `errcode = 0` 为准，不依赖长连接订阅。
-- 限速：每个 Webhook 目标独立 20 条/分钟；达到窗口时该目标保持 `PENDING` 并让出队列，不阻塞其他目标。BOT 继续使用 30 条/分钟、1000 条/小时。
-- 兼容：五类项目群通知开关对 BOT 与 Webhook 统一生效；管理员更换机器人只撤销 BOT，Webhook 保持绑定。若同一项目同时配置智能机器人和指向同一群的 Webhook，该群会收到重复消息，界面负责提示。
+- 数据：`app.project_wecom_groups.channel_type` 仅允许新的 WEBHOOK 目标进入 ACTIVE；历史 BOT 目标在迁移 0064 中置为 REVOKED，只保留审计与追溯。单个项目最多 20 个 ACTIVE Webhook，同一规范化 URL 全局只允许一个 ACTIVE 目标。
+- 配置：项目主页顶部的企微入口可添加官方群机器人 Webhook。完整 URL 使用机器人 keyring 加密，AAD 为 `app.project_wecom_groups.webhook_url`；数据库只保存密文、密钥版本、SHA-256 指纹与 Key 尾号，页面、审计、日志和错误都不回显完整 URL。Webhook URL 属于 Secret。
+- 发送：`bridge.mjs` 只为 ACTIVE WEBHOOK 物化 MEMBER 可见项目动态；`long-conn.mjs` 在数据库事务外解密 URL，直接 HTTP POST 现有 markdown / template_card / image，成功以响应 `errcode = 0` 为准，不依赖长连接订阅，也不发送 `chat_type:2`。
+- 限速：每个 Webhook 目标独立 20 条/分钟；达到窗口时该目标保持 `PENDING` 并让出队列，不阻塞其他目标。
+- 隔离：五类项目群通知开关只对 ACTIVE Webhook 生效；管理员更换机器人只撤销个人单聊绑定，Webhook 保持绑定。项目群绑定码、群内兑换和项目群解绑入口均已下线。
 - 测试：`node --test deploy/test-vm/wecom-bridge/app/wecom-webhook.test.mjs` 覆盖加密 AAD、消息体收窄、图片 2 MB 限制、独立限速与 HTTP / errcode 分类。
 
 ## 项目封箱彩蛋（ADR-091，2026-10-20）
 
 - 来源：项目第一次从进行中进入维护中、存在有效完成任务且没有未收尾任务时，API 在状态变更事务内写一次 `app.project_wraps` 冻结快照，并写 `project.wrapped` 个人通知与 `PROJECT_WRAPPED` / MEMBER 项目动态。重复进入维护中不重复生成。
-- 个人单聊：`bridge.mjs` 读取快照和收件人姓名，先发 Markdown「这一箱，有你的名字。」，再发带署名的 1080 × 1350 JPEG 海报。海报失败时只保留文字；快照缺失时降级为普通通知卡片。
-- 项目群：`long-conn.mjs` 消费 `PROJECT_WRAPPED` 动态，发送「叮——最后一盏灯灭了。」与无个人署名的海报。该动态归入 `project.member`，受项目群「项目与成员变化」开关控制。
-- 图片协议：图片先经 `aibot_upload_media_init` → `aibot_upload_media_chunk` → `aibot_upload_media_finish` 取得 `media_id`，再以 `aibot_send_msg` 的 `msgtype=image` 发送；不使用普通 HTTP 素材上传接口。
+- 个人单聊：`bridge.mjs` 读取快照和收件人姓名，先发 Markdown「这一箱，有你的名字。」，再发带个人署名的 1080 × 1350 JPEG 海报。海报失败时只保留文字；快照缺失时降级为普通通知卡片。
+- 项目群：`long-conn.mjs` 消费 `PROJECT_WRAPPED` 动态，通过项目 Webhook 发送「叮——最后一盏灯灭了。」与无个人署名的海报。该动态归入 `project.member`，受项目群「项目与成员变化」开关控制。
+- 图片协议：项目群 Webhook 图片以 `image.base64` + `image.md5` 发送，单图不超过 2 MB；不再使用智能机器人 `aibot_upload_media_*` 协议。
 - 分段续传：`app.wecom_group_deliveries.delivered_step_count` 记录已成功的文字 / 图片段数。图片失败或进程重启后从下一段继续，两段都成功才置 `SENT`。
 - 渲染依赖：`app/wrap-poster.mjs` 使用 `@napi-rs/canvas`；海报字体在 `app/assets/fonts`（Noto Sans SC Regular / Black，SIL OFL 1.1），Windows 与容器加载同一组文件，避免微软雅黑、黑体或 Arial 的许可风险。Dockerfile 仍安装 `fonts-noto-cjk` 作为系统兜底；字体资产缺失时海报渲染 fail closed，桥接只发文字。
 - 测试：`npm test` 同时运行通知分类与海报用例；海报测试会实际生成 JPEG 并校验尺寸、文件头和 MD5 / base64 一致性。

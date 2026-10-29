@@ -151,7 +151,7 @@ export const permissionMatrixRows: readonly PermissionMatrixRow[] = [
     key: "projectWecomGroup",
     feature: "项目企业微信群",
     capability: "projectWecomGroup",
-    note: "签发绑定码、解绑并调整群消息开关；关闭只影响之后的新群消息",
+    note: "添加、删除群 Webhook 并调整群消息开关；关闭只影响之后的新群消息",
   },
   {
     key: "record-lifecycle",

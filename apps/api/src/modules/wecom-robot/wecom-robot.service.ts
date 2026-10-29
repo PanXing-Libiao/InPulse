@@ -145,8 +145,8 @@ export class WecomRobotConfigService {
     });
 
     // ADR-078：botId 与已存值不同即「更换机器人」。企业微信智能机器人要求
-    // 成员先主动对话激活，换机器人后旧绑定必然投递失败，因此在同一事务内
-    // 解除全部 ACTIVE 绑定（个人 + 项目群），让成员重新走绑定码流程。
+    // 成员先主动对话激活，换机器人后旧个人绑定必然投递失败，因此在同一事务内
+    // 只解除 ACTIVE 个人绑定；项目群 Webhook 不依赖机器人凭据，保持绑定。
     const robotChanged = current !== undefined && current.botId !== botId;
     let revocation: WecomRobotBindingRevocation | null = null;
     if (robotChanged) {

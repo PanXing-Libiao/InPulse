@@ -119,6 +119,7 @@
 | [ADR-103](ADR-103.md) | Accepted | 成员与角色页取消未分类筛选页签（修订 ADR-098 §2.3）：无组织成员回到“全部”平铺列表，行内徽章、批量移出与项目选择器文案保持不变；不涉及路由、契约、迁移与权限 |
 | [ADR-104](ADR-104.md) | Accepted | 全平台项目成员权限三档配置：系统管理员统一设置 11 项能力为全部成员 / 仅组长 / 仅系统管理员，固定开放查看、创建项目、个人设置与整项目导入，固定管理员记录作废/恢复与系统管理；新增读取/保存两条路由（131 → 133）与迁移 `0062_project_member_permissions.sql`；配置实时生效、不缓存 Session，保存要求完整管理员 Session、CSRF、If-Match、数据库级幂等与同事务 SYSTEM 审计 |
 | [ADR-105](ADR-105.md) | Accepted | 企业微信 Webhook 项目群通知通道：扩展项目群目标为 BOT / WEBHOOK（133 → 135），一个项目可有多个 Webhook、同一 URL 全局仅一个 ACTIVE；URL 严格限制为企业微信官方群机器人地址并以独立 AAD 加密，API / 审计 / 日志只暴露标签与 Key 尾号；新增创建 / 删除两条路由，沿用 projectWecomGroup、CSRF、数据库级幂等与审计；桥接按目标通道发送，Webhook 不依赖长连接激活且每个目标 20 条/分钟；更换机器人只撤销 BOT，迁移 0063 |
+| [ADR-106](ADR-106.md) | Accepted | 项目群通知收敛为 Webhook-only（部分取代 ADR-105）：删除项目群绑定码签发与项目群解绑两条路由（135 → 133），GET 状态只由 ACTIVE Webhook 决定，通知开关保存与重放要求至少一个 ACTIVE Webhook；迁移 0064 将历史 BOT 目标置 REVOKED、作废绑定码、终止 PENDING BOT 投递并禁止新的 ACTIVE BOT；更换机器人只撤销个人绑定且 revoked_project_groups 固定为 0；桥接只消费 WEBHOOK，不再使用 chat_type 2 或项目群绑定码 |
 
 ## 关联基线
 

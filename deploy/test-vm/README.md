@@ -20,7 +20,7 @@ Compose + 本地 registry 的测试环境，不是生产发布流程：生产镜
 | SSO           | Casdoor 测试环境 `https://authtest.libiaorobot.com`                                                            |
 | TLS           | 公司 ALLinSSL 下发 `*.libiaorobot.com` 通配符（DigiCert，2026-10-15 生效，自动续签；文件 `secrets/tls_*.pem`） |
 | 部署目录补充  | `backups/`（同步前的 pg_dump）、`compose.yaml.bak-*`、`.env.deploy.bak-*`（回滚用）                            |
-| 企业微信桥接  | 独立容器 `inpulse-wecom-bridge`（非 compose 管理；源码 `deploy/test-vm/wecom-bridge/` 为本地唯一源，用 `deploy/test-vm/update-bridge.ps1` 同步；个人绑定码自助绑定与项目群绑定兑换均已实现，见「企业微信机器人桥接」） |
+| 企业微信桥接  | 独立容器 `inpulse-wecom-bridge`（非 compose 管理；源码 `deploy/test-vm/wecom-bridge/` 为本地唯一源，用 `deploy/test-vm/update-bridge.ps1` 同步；个人绑定码自助绑定与项目群 Webhook 均已实现，见「企业微信机器人桥接」） |
 | AI 辅助转换   | 已启用（`AI_ASSIST_ENABLED=1`）；API Key 已于 2026-10-15 在设置页重填并确认可用（见「AI 辅助转换启用」） |
 | 当前版本      | api 为 `0.1.0-20261022-3e9d5970`，migrate 为 `0.1.0-20261021-4ce04902`，db-bootstrap 为 `0.1.0-20261021-secfix1`，web 为 `0.1.0-20261023-sec1`，ops 为 `0.1.0-20261022-1d0ca6b`；桥接为 `0.1.0-20261021-bridge7cddf14`；`BACKUP_GIT_SHA=1d0ca6b5`（2026-10-23 09:53 最新同步） |
 
@@ -316,7 +316,7 @@ sudo docker exec -i inpulse-deploy-db-1 pg_restore --list < backups/<文件名>.
 48 条站内通知由桥接容器按既有链路推送企业微信（errcode=0）。
 
 注意：本次只改了 VM 数据，本地演示库不含这批内容；且 VM 的用户 / 绑定状态（SSO JIT 账号、
-管理员标记、个人与项目群绑定等）此前已领先本地。两边要完全一致，需要另行做一次 VM → 本地的
+管理员标记、个人绑定与项目群 Webhook 等）此前已领先本地。两边要完全一致，需要另行做一次 VM → 本地的
 镜像恢复（破坏性，执行前先备份两边）。
 ## 企业微信机器人桥接（2026-10-15 部署）
 
@@ -349,12 +349,10 @@ sudo docker exec -i inpulse-deploy-db-1 pg_restore --list < backups/<文件名>.
   普通文本消息（非绑定码）也按绑定状态回复指引，不再回显 PoC 调试文案。限频时间戳写在
   `welcomeStateFile`（默认与命令文件同目录），可用 `config.json` 的 `welcomeUnboundThrottleMs` /
   `welcomeBoundThrottleMs` 调整（毫秒，0 = 该类用户不再自动发）。
-- 项目群消息投递（2026-10-16 本地实现并同步到 VM）：`bridge.mjs` 把新的 `task.assigned`
-  通知与 `MEMBER` 可见项目动态物化为 `app.wecom_group_deliveries` 的 `PENDING` 行，
-  `long-conn.mjs` 按 id 升序经 `chat_type:2` 将项目动态作为 `text_notice` 模板卡片投递到该项目绑定的群，并以响应 errcode
-  回写 `SENT` / `FAILED` 与绑定行 `last_delivery_error`；限速 30 条/分钟、1000 条/小时，
-  重启后从 PENDING 断点续传；`ADMIN_ONLY` 动态不进群；个人单聊与群推送并存。
-  本地联调（真实群）已验证成功投递 / 失败回写 / 停机续传三条路径，合成数据已清理。
+- 项目群消息投递（ADR-106，2026-10-29 起仅 Webhook）：`bridge.mjs` 只把 MEMBER 可见项目动态物化为 ACTIVE WEBHOOK 目标的 `PENDING` 行；
+  `long-conn.mjs` 按 id 升序直接 POST 到解密后的企业微信 Webhook，以响应 errcode 回写 `SENT` / `FAILED` 与目标行 `last_delivery_error`；
+  每个 Webhook 目标独立 20 条/分钟，重启后从 PENDING 断点续传；不发送 `chat_type:2`；`ADMIN_ONLY` 动态不进群；个人单聊与群 Webhook 并存。
+  测试 VM 当前仍是 ADR-106 前的历史镜像，未同步 Webhook-only 桥接；同步前不要按本段新行为做验收。
 
 常用命令（VM 上执行，需 sudo）：
 
@@ -376,15 +374,9 @@ sudo docker start inpulse-wecom-bridge            # 恢复
 失败按 WBC01/02/04/05/06 分类回复。`smoke-redeem.mjs`（镜像内 `/opt/wecom-bridge/`）
 可在临时容器自检兑换链路（全程事务、结束回滚，不产生历史数据残留）。
 
-项目群绑定兑换（2026-10-15 已实现，镜像 bridge4）：项目组长/系统管理员在「项目成员页 → 企业微信项目群」
-生成一次性项目绑定码（10 分钟有效；发送者需已完成个人绑定，系统管理员豁免成员校验）。在目标群里
-@机器人 发送该码（形如「@内部研发项目管理系统 XXXX-XXXX-XXXX-XXXX」）即完成群绑定；桥接从群消息文本中
-提取绑定码（容忍「@机器人 」前缀），调用 `app.redeem_project_wecom_binding_code`（SECURITY DEFINER，
-单事务消费），结果用 `chat_type:2` 主动推送回该群，失败按 PWG01～PWG08 分类回复；群里的非绑定码消息保持
-安静，不再触发私聊回声。`smoke-project-group-redeem.mjs`（镜像内 `/opt/wecom-bridge/`）自检 16 项
-（提取 / 首次绑定 / 幂等 / 换绑 / PWG01～PWG06）。**群消息投递**（任务派发与项目动态推送进项目群）已按 ADR-077 第二批在本地实现并通过真实群联调（成功投递 / 失败回写 / 停机续传），**已于 2026-10-16 同步到 VM**。
+项目群绑定兑换（历史，ADR-106 已下线）：2026-10-15 的旧版桥接曾在「项目成员页 → 企业微信项目群」生成一次性项目绑定码，并在目标群里 @机器人 发送后走 `chat_type:2` 绑定；ADR-106 起该路径、兑换函数授权和 `smoke-project-group-redeem.mjs` 已删除，群消息保持安静。不要再按旧文档生成项目群绑定码。
 
-当前部署 Tag 为内容哈希 `0.1.0-20261021-bridge7cddf14`（2026-10-21 10:33 同步；源码以仓库 `deploy/test-vm/wecom-bridge/` 为唯一源，个人绑定、项目群绑定、欢迎语/限频、群投递、ADR-090 通知开关与项目封箱海报均含）。历史 Tag（bridge1～bridge4、`bridgee7cda2f`、`bridgedd2084d`）都保留在 registry，可用 `-RollbackTo` 回滚。
+当前测试 VM 部署 Tag 为内容哈希 `0.1.0-20261021-bridge7cddf14`（2026-10-21 10:33 同步），属于 ADR-106 前的历史镜像；个人绑定、欢迎语/限频、旧 BOT 群投递、ADR-090 通知开关与项目封箱海报均含在内，但尚未包含 Webhook-only 收敛。历史 Tag（bridge1～bridge4、`bridgee7cda2f`、`bridgedd2084d`）都保留在 registry，可用 `-RollbackTo` 回滚。
 
 ## AI 辅助转换启用（2026-10-15）
 

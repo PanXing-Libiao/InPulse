@@ -147,12 +147,16 @@ function taskBoard(
 
 const wecomStatus = {
   state: "BOUND",
-  codeExpiresAt: null,
-  boundAt: "2026-10-01T00:00:00.000Z",
-  boundByName: "开发者 C",
-  lastDeliveryError: null,
-  botProfileUrl: null,
-  webhookTargets: [],
+  webhookTargets: [
+    {
+      id: 1,
+      label: "研发项目群",
+      urlHint: "WXYZ",
+      boundAt: "2026-10-01T00:00:00.000Z",
+      boundByName: "开发者 C",
+      lastDeliveryError: null,
+    },
+  ],
   notificationOptions: { disabledCategories: [] },
 } as const;
 

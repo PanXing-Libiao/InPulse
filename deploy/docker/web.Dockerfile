@@ -32,7 +32,11 @@ FROM nginxinc/nginx-unprivileged:1.30.4@sha256:cb92301e719d6639028de775fe8b28e15
 # nginx-unprivileged 镜像默认已以 UID/GID 101 启动。只有 root 才能写
 # /var/lib/apt/lists/partial，因此安装 curl 前临时切回 root，装完再恢复非 root。
 USER root
-RUN apt-get update \
+# 测试与正式 VM 访问 deb.debian.org 的 HTTP 源会建立连接但收不到数据，
+# 改用可访问的阿里云 Debian 镜像；Debian GPG 签名校验不变。
+RUN grep -rIl "http://deb.debian.org" /etc/apt \
+      | xargs -r sed -i "s|http://deb.debian.org|http://mirrors.aliyun.com|g" \
+ && apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 

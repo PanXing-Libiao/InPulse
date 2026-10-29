@@ -7276,6 +7276,8 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 
 **未执行 / 已知边界**：已向真实企业微信群 Webhook 发送 4 条消息并全部返回 errcode=0，但未用企业微信后台核验群内展示效果；未运行 Playwright E2E 与测试 VM 部署。本地桥接需持续运行，停止后新动态不会自动发送。真实 Webhook URL 属于 Secret，不进入仓库、审计、日志或测试夹具。
 
+> 2026-10-29 后续（[ADR-106](adr/ADR-106.md)）：本节中项目群 BOT 与 Webhook 并存、项目群绑定码和 BOT 投递部分已被取代；当前项目群只保留 Webhook，个人单聊 BOT 不受影响。本节测试结果是 ADR-105 落地时点的历史记录。
+
 ## 2026-10-28 项目主页企微入口与群绑定迁移（界面调整）
 
 用户要求“添加一个企微的小图标，然后将群机器人绑定等工作放这里面”。本批只调整入口位置与弹窗承载，不改变绑定、Webhook、通知策略或服务端权限。
@@ -7288,3 +7290,18 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | WECOM-ENTRY-GATE-001    | 静态门禁与回归 | 前端质量             | Web 全量 123 文件 1083 例通过；定向 4 文件 44 例通过；`pnpm --filter @inpulse/web typecheck`、`pnpm lint`、Prettier `--check`、Web build 与 `check:frontend:boundaries` 通过 | 本地通过（2026-10-28）                                                           |
 
 **执行边界**：未运行 Playwright E2E、真实设备浏览器视觉复核、API / 数据库集成、测试 VM 或正式环境发布；本批不改变服务端行为与权限矩阵。
+
+## 2026-10-29 项目群通知收敛为 Webhook-only（ADR-106）
+
+用户要求以后项目群通知只使用企业微信 Webhook，移除项目群智能机器人 BOT 通道。本批保留个人单聊机器人、个人绑定码、管理员机器人配置与个人通知，只收敛项目群通道。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR106-API-001 | API 集成（真实 PostgreSQL + HTTP） | 旧路由下线、Webhook-only 状态与门禁 | `project-wecom-group.integration.test.ts` 与 `wecom-robot.integration.test.ts` 覆盖旧绑定码 / 项目群解绑路由 404，GET 仅由 ACTIVE WEBHOOK 决定绑定状态，通知开关与同 Key 重放要求至少一个 ACTIVE WEBHOOK，Webhook 加密脱敏、重复与删除隔离、审计，以及更换个人机器人不撤销 Webhook；定向 2 文件 21 例通过 | 本地通过（2026-10-29） |
+| ADR106-WEB-001 | Web 单元 | 项目群卡片与权限文案 | `ProjectWecomGroupCard.test.tsx`、`WecomRobotSettingsPanel.test.tsx` 覆盖普通成员只读、Webhook 添加 / 删除、旧绑定码与解绑入口不再出现、五类通知开关和更换机器人只影响个人绑定；与项目成员、项目主页相关定向测试同批通过 | 本地通过（2026-10-29） |
+| ADR106-BRIDGE-001 | Bridge 单元与静态检查 | 只消费 Webhook | 正式与测试 VM 桥接均不再处理项目群绑定码或发送 `chat_type: 2`；Webhook PENDING 查询限定 ACTIVE WEBHOOK，个人单聊 `chat_type: 1` 保留；桥接套件 29/29 通过，正式与测试 VM 各 3 个桥接脚本 `node --check` 通过 | 本地通过（2026-10-29） |
+| ADR106-DB-001 | 数据库迁移与真实 PostgreSQL | 历史保留、禁止新 BOT | 迁移 `0064_project_wecom_webhook_only.sql` 已应用：ACTIVE BOT 置 REVOKED、未消费项目群绑定码作废、PENDING BOT 投递置 FAILED，数据库约束拒绝新的 ACTIVE BOT，`app_runtime` 失去项目群绑定码写权限与兑换函数执行权限；database 集成 31/31 通过 | 本地通过（2026-10-29） |
+| ADR106-SMOKE-001 | 本地运行时冒烟 | 迁移与服务重启 | 演示库应用 `0064`（1 applied / 62 already present）；API / Web 重启后 `/api/v1/health/ready` 200、Web 首页 200、新 GET 接口未认证 401、旧项目群绑定码 POST 与旧项目群解绑 DELETE 均 404；数据库 ACTIVE BOT 为 0，`channel_type` 默认值已是 `WEBHOOK` | 本地通过（2026-10-29） |
+| ADR106-GATE-001 | 静态门禁与全量回归 | 契约、权限、类型与单测 | `contract:generate` 与 `contract:drift`（6 个产物一致）通过；`contract:validate` 133 条路由；`permissions:check` 133/133；全工作区 `typecheck` 8 个 workspace；`db:migrations:check` 63 个 SQL 迁移；Web 全量 123 文件 1078 例；API 单元 91 文件 623 例；`pnpm lint`、`format:check`、`check:frontend:boundaries`（394 模块 / 2062 依赖）与 `check:docs`（159 个 Markdown 文件）通过 | 本地通过（2026-10-29） |
+
+**未执行 / 已知边界**：未运行 Playwright E2E、真实企业微信新 Webhook 联调、测试 VM 同步或正式环境发布。完整 `pnpm test:integration:local` 已执行到数据库集成阶段，database 31/31 通过且迁移 0064 成功应用，但整条命令仍因既有 `apps/ops` 恢复演练的 `user_organizations_user_fk` 夹具外键错误退出 1；该失败与本批改动无关。

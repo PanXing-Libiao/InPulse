@@ -224,7 +224,7 @@ describe("WecomRobotSettingsPanel（ADR-070）", () => {
         ...configured,
         botId: "aib-new-bot",
         revokedUserBindings: 2,
-        revokedProjectGroups: 1,
+        revokedProjectGroups: 0,
       },
     });
     await screen.findByText(/已配置，桥接可用/);
@@ -239,7 +239,7 @@ describe("WecomRobotSettingsPanel（ADR-070）", () => {
     );
     expect(
       await screen.findByText(
-        /已更换机器人：解除了 2 个成员绑定、1 个项目群绑定/,
+        /已更换机器人：解除了 2 个成员企业微信绑定；项目群 Webhook 不受影响/,
       ),
     ).toBeInTheDocument();
   });

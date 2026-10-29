@@ -52,7 +52,11 @@ WORKDIR /app
 # HIGH 使 CI 失败）。此镜像只带 Node，没有需要按版本确认的服务器二进制，因此
 # 直接升级全部已安装的包；`upgrade`（不是 dist-upgrade）只升级已安装的包，
 # 不安装新包、不删除任何包。该层放在启用 PGDG 源之前，只取 Debian 源的基础包。
-RUN apt-get update \
+# 测试与正式 VM 访问 deb.debian.org 的 HTTP 源会建立连接但收不到数据，
+# 改用可访问的阿里云 Debian 镜像；Debian GPG 签名校验不变。
+RUN grep -rIl "http://deb.debian.org" /etc/apt \
+      | xargs -r sed -i "s|http://deb.debian.org|http://mirrors.aliyun.com|g" \
+ && apt-get update \
  && apt-get upgrade -y \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*

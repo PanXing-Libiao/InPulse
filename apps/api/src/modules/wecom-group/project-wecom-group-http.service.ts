@@ -24,9 +24,7 @@ import {
 
 export type ProjectWecomGroupOperation =
   | "getProjectWecomGroup"
-  | "createProjectWecomGroupCode"
   | "updateProjectWecomGroupNotificationOptions"
-  | "deleteProjectWecomGroup"
   | "createProjectWecomWebhook"
   | "deleteProjectWecomWebhook";
 
@@ -56,9 +54,9 @@ class ProjectWecomGroupInputError extends Error {
 }
 
 /**
- * ADR-077 / ADR-090 / ADR-105 项目企微群 HTTP 编排：
- * 读路径独立事务；绑定码 securityFlow 单事务执行；其余写命令由幂等 runner
- * 持有单事务，并在重放前重新执行能力与资源门禁。
+ * ADR-090 / ADR-106 项目企微群 HTTP 编排：项目群只处理 Webhook。
+ * 读路径独立事务；写命令由幂等 runner 持有单事务，并在重放前重新执行
+ * 能力与资源门禁。个人单聊机器人绑定与配置不经过本服务。
  */
 @Injectable()
 export class ProjectWecomGroupHttpService {
@@ -108,18 +106,6 @@ export class ProjectWecomGroupHttpService {
           "CSRF_ORIGIN_REJECTED",
           "请求未通过同源安全校验",
         );
-      }
-
-      if (operation === "createProjectWecomGroupCode") {
-        const path = this.parseProjectPath(request.params);
-        const body = await this.uow.run(async (tx) => {
-          const actorId = await this.resolveWriteActor(tx, request.headers);
-          return this.groups.createCode(tx, {
-            actorId,
-            projectId: path.projectId,
-          });
-        });
-        return { status: 201, body };
       }
 
       if (operation === "updateProjectWecomGroupNotificationOptions") {
@@ -195,62 +181,31 @@ export class ProjectWecomGroupHttpService {
         };
       }
 
-      if (operation === "deleteProjectWecomWebhook") {
-        const path = this.parseWebhookPath(request.params);
-        const result = await this.idempotency.run({
-          operationId: operation,
-          actorId: (tx) => this.resolveWriteActor(tx, request.headers),
-          request: {
-            method: route.method,
-            path: route.path,
-            pathParams: {
-              projectId: String(path.projectId),
-              bindingId: String(path.bindingId),
-            },
-            query: {},
-            headers: request.headers,
-            body: undefined,
-          },
-          execute: (tx, actorId) =>
-            this.groups.deleteWebhook(tx, {
-              actorId,
-              projectId: path.projectId,
-              bindingId: path.bindingId,
-              requestId,
-            }),
-          replayAuthorizer: async (record, tx) => {
-            const actorId = await this.resolveWriteActor(tx, request.headers);
-            await this.groups.deleteWebhookReplayAuthorizer(
-              tx,
-              actorId,
-              record.replayAuthContext,
-            );
-          },
-        });
-        return { status: result.responseStatus, body: undefined };
-      }
-
-      const path = this.parseProjectPath(request.params);
+      const path = this.parseWebhookPath(request.params);
       const result = await this.idempotency.run({
         operationId: operation,
         actorId: (tx) => this.resolveWriteActor(tx, request.headers),
         request: {
           method: route.method,
           path: route.path,
-          pathParams: { projectId: String(path.projectId) },
+          pathParams: {
+            projectId: String(path.projectId),
+            bindingId: String(path.bindingId),
+          },
           query: {},
           headers: request.headers,
           body: undefined,
         },
         execute: (tx, actorId) =>
-          this.groups.unbind(tx, {
+          this.groups.deleteWebhook(tx, {
             actorId,
             projectId: path.projectId,
+            bindingId: path.bindingId,
             requestId,
           }),
         replayAuthorizer: async (record, tx) => {
           const actorId = await this.resolveWriteActor(tx, request.headers);
-          await this.groups.replayAuthorizer(
+          await this.groups.deleteWebhookReplayAuthorizer(
             tx,
             actorId,
             record.replayAuthContext,
@@ -372,7 +327,7 @@ export class ProjectWecomGroupHttpService {
       return errorBody(
         422,
         "PROJECT_WECOM_GROUP_VALIDATION_FAILED",
-        "请检查项目企微群绑定请求字段",
+        "请检查项目企微群 Webhook 请求字段",
         requestId,
         { ...error.fields },
       );
@@ -380,7 +335,7 @@ export class ProjectWecomGroupHttpService {
     return errorBody(
       500,
       "INTERNAL_ERROR",
-      "服务器无法完成项目企微群绑定操作",
+      "服务器无法完成项目企微群 Webhook 操作",
       requestId,
     );
   }

@@ -20,7 +20,11 @@ ARG LIBGROONGA_DEBIAN_VERSION=16.1.0-1
 # 不做整体 upgrade：官方 postgres 镜像已配置 PGDG 源，整体 upgrade 会在 PGDG
 # 发布新补丁时把 PostgreSQL 18.6 基线悄悄带走。`--only-upgrade` 只升级已安装
 # 的包：未安装的包跳过、已是最新的包不动，不安装新包、不删除任何包。
-RUN apt-get update \
+# 测试与正式 VM 访问 deb.debian.org 的 HTTP 源会建立连接但收不到数据，
+# 改用可访问的阿里云 Debian 镜像；Debian GPG 签名校验不变。
+RUN grep -rIl "http://deb.debian.org" /etc/apt \
+      | xargs -r sed -i "s|http://deb.debian.org|http://mirrors.aliyun.com|g" \
+ && apt-get update \
  && apt-get install -y --only-upgrade libssl3t64 openssl openssl-provider-legacy \
  && apt-get install -y --only-upgrade \
       gzip libpcre2-8-0 libsqlite3-0 libssh2-1t64 \

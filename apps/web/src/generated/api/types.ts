@@ -1402,11 +1402,6 @@ export type ProjectVersionHeaders = {
   readonly "if-match": string;
 };
 
-export type ProjectWecomGroupCode = {
-  readonly code: string;
-  readonly expiresAt: string;
-};
-
 export type ProjectWecomGroupMutationHeaders = {
   readonly "x-csrf-token": string;
 };
@@ -1424,12 +1419,7 @@ export type ProjectWecomGroupReplayContext = {
 };
 
 export type ProjectWecomGroupStatus = {
-  readonly state: ("UNBOUND" | "PENDING" | "BOUND");
-  readonly codeExpiresAt: (string | null);
-  readonly boundAt: (string | null);
-  readonly boundByName: (string | null);
-  readonly lastDeliveryError: (string | null);
-  readonly botProfileUrl: (string | null);
+  readonly state: ("UNBOUND" | "BOUND");
   readonly webhookTargets: readonly ProjectWecomWebhookTarget[];
   readonly notificationOptions: ProjectWecomGroupNotificationOptions;
 };

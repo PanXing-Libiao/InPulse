@@ -16,17 +16,12 @@ export const projectWecomGroupNotificationOptionsSchema = z
   .meta({ id: "ProjectWecomGroupNotificationOptions" });
 
 /**
- * ADR-077 / ADR-105 项目企微群绑定三态：
- * UNBOUND 未绑定且无待用码；PENDING 已生成待用绑定码；BOUND 至少有一个 ACTIVE 目标。
- * 已绑定且同时存在新待用码（准备换绑机器人）时 state 优先 BOUND。
+ * ADR-106 项目企业微信群通知状态：UNBOUND 没有任何 ACTIVE Webhook；
+ * BOUND 至少有一个 ACTIVE Webhook。项目群不再支持智能机器人绑定码通道。
  */
-export const projectWecomGroupStateSchema = z.enum([
-  "UNBOUND",
-  "PENDING",
-  "BOUND",
-]);
+export const projectWecomGroupStateSchema = z.enum(["UNBOUND", "BOUND"]);
 
-/** ADR-105 Webhook 目标的脱敏展示；完整 URL 永不返回客户端。 */
+/** ADR-105 / ADR-106 Webhook 目标的脱敏展示；完整 URL 永不返回客户端。 */
 export const projectWecomWebhookTargetSchema = z
   .object({
     id: id.describe("项目群通知目标 id；删除时使用"),
@@ -48,40 +43,12 @@ export const projectWecomWebhookTargetSchema = z
   .strict()
   .meta({ id: "ProjectWecomWebhookTarget" });
 
-/** 项目企微群绑定状态（GET 响应）。 */
+/** 项目企业微信群 Webhook 状态（GET 响应）。 */
 export const projectWecomGroupStatusSchema = z
   .object({
     state: projectWecomGroupStateSchema.describe(
-      "UNBOUND 无任何 ACTIVE 目标且无待用码；PENDING 有待用绑定码；BOUND 至少有一个 ACTIVE 智能机器人或 Webhook 目标",
+      "UNBOUND 无 ACTIVE Webhook；BOUND 至少有一个 ACTIVE Webhook",
     ),
-    codeExpiresAt: z.iso
-      .datetime()
-      .nullable()
-      .describe("当前待用绑定码的过期时间；无待用码为 null"),
-    boundAt: z.iso
-      .datetime()
-      .nullable()
-      .describe("当前 ACTIVE 智能机器人目标的绑定时间；未绑定为 null"),
-    boundByName: z
-      .string()
-      .min(1)
-      .max(200)
-      .nullable()
-      .describe("完成智能机器人绑定的操作人姓名；未绑定为 null"),
-    lastDeliveryError: z
-      .string()
-      .min(1)
-      .max(500)
-      .nullable()
-      .describe("智能机器人目标最近一次投递失败原因；无异常为 null"),
-    botProfileUrl: z
-      .string()
-      .min(1)
-      .max(512)
-      .nullable()
-      .describe(
-        "管理员配置的机器人资料链接；未配置为 null；用于指引成员在企业微信中打开机器人",
-      ),
     webhookTargets: z
       .array(projectWecomWebhookTargetSchema)
       .max(20)
@@ -93,21 +60,7 @@ export const projectWecomGroupStatusSchema = z
   .strict()
   .meta({ id: "ProjectWecomGroupStatus" });
 
-/** 新签发的一次性项目群绑定码（POST 响应）。 */
-export const projectWecomGroupCodeSchema = z
-  .object({
-    code: z
-      .string()
-      .regex(/^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/)
-      .describe(
-        "16 位 Crockford Base32 绑定码（4 组 4 位，不含易混字符 I / L / O / U）；在项目企微群里 @机器人 发送完成绑定",
-      ),
-    expiresAt: z.iso.datetime(),
-  })
-  .strict()
-  .meta({ id: "ProjectWecomGroupCode" });
-
-/** 项目群绑定路径参数；项目归属由服务端反查，不信任客户端。 */
+/** 项目群路径参数；项目归属由服务端反查，不信任客户端。 */
 export const projectWecomGroupPathSchema = z
   .object({
     projectId: z.coerce.number().int().positive().max(2147483647),
@@ -124,7 +77,7 @@ export const projectWecomWebhookPathSchema = z
   .strict()
   .meta({ id: "ProjectWecomWebhookPath" });
 
-/** 项目群绑定写请求头；CSRF 同步 Token 必填。 */
+/** 项目群通知写请求头；CSRF 同步 Token 必填。 */
 export const projectWecomGroupMutationHeadersSchema = z
   .object({ "x-csrf-token": z.string().length(43) })
   .strict()
@@ -139,13 +92,13 @@ export const projectWecomWebhookCreateRequestSchema = z
   .strict()
   .meta({ id: "ProjectWecomWebhookCreateRequest" });
 
-/** 智能机器人解绑幂等重放授权上下文：只涉及目标项目本身。 */
+/** 项目群通知开关幂等重放授权上下文：只涉及目标项目本身。 */
 export const projectWecomGroupReplayContextSchema = z
   .object({ projectId: id })
   .strict()
   .meta({ id: "ProjectWecomGroupReplayContext" });
 
-/** Webhook 删除幂等重放授权上下文：项目与已撤销目标行。 */
+/** Webhook 创建 / 删除幂等重放授权上下文：项目与目标行。 */
 export const projectWecomWebhookReplayContextSchema = z
   .object({ projectId: id, bindingId: id })
   .strict()
@@ -157,7 +110,6 @@ export type ProjectWecomGroupState = z.infer<
 export type ProjectWecomGroupStatus = z.infer<
   typeof projectWecomGroupStatusSchema
 >;
-export type ProjectWecomGroupCode = z.infer<typeof projectWecomGroupCodeSchema>;
 export type ProjectWecomWebhookTarget = z.infer<
   typeof projectWecomWebhookTargetSchema
 >;
@@ -177,14 +129,8 @@ export type ProjectWecomWebhookReplayContext = z.infer<
 export const projectWecomGroupSchemas = {
   ProjectWecomGroupStatus: {
     schema: projectWecomGroupStatusSchema,
-    summary:
-      "项目企微群绑定状态、智能机器人信息、脱敏 Webhook 目标、投递异常与机器人链接",
+    summary: "项目企微群 Webhook 状态、脱敏目标与项目群通知开关",
     sensitiveFieldPaths: [],
-  },
-  ProjectWecomGroupCode: {
-    schema: projectWecomGroupCodeSchema,
-    summary: "一次性项目群绑定码；明文只返回一次，服务端只存 Hash",
-    sensitiveFieldPaths: ["code"],
   },
   ProjectWecomWebhookTarget: {
     schema: projectWecomWebhookTargetSchema,
@@ -198,7 +144,7 @@ export const projectWecomGroupSchemas = {
   },
   ProjectWecomGroupPath: {
     schema: projectWecomGroupPathSchema,
-    summary: "项目群绑定路由的项目路径参数",
+    summary: "项目群 Webhook 路由的项目路径参数",
     sensitiveFieldPaths: [],
   },
   ProjectWecomWebhookPath: {
@@ -208,7 +154,7 @@ export const projectWecomGroupSchemas = {
   },
   ProjectWecomGroupMutationHeaders: {
     schema: projectWecomGroupMutationHeadersSchema,
-    summary: "项目群绑定写请求头，要求同步 CSRF Token",
+    summary: "项目群 Webhook 写请求头，要求同步 CSRF Token",
     sensitiveFieldPaths: ["x-csrf-token"],
   },
   ProjectWecomWebhookCreateRequest: {
@@ -219,12 +165,12 @@ export const projectWecomGroupSchemas = {
   },
   ProjectWecomGroupReplayContext: {
     schema: projectWecomGroupReplayContextSchema,
-    summary: "智能机器人解绑幂等重放的最小授权上下文（仅目标项目）",
+    summary: "项目群通知选项幂等重放的最小授权上下文（仅目标项目）",
     sensitiveFieldPaths: [],
   },
   ProjectWecomWebhookReplayContext: {
     schema: projectWecomWebhookReplayContextSchema,
-    summary: "Webhook 删除幂等重放的最小授权上下文（项目与目标 id）",
+    summary: "Webhook 创建 / 删除幂等重放的最小授权上下文（项目与目标 id）",
     sensitiveFieldPaths: [],
   },
 } satisfies Record<

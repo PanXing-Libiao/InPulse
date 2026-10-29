@@ -536,17 +536,12 @@ describe("项目主页企微群入口", () => {
     currentUserRole: "MEMBER" as const,
   };
 
-  it("点击顶部企微消息通知入口打开项目群绑定弹窗", async () => {
+  it("点击顶部企微消息通知入口打开项目群 Webhook 设置弹窗", async () => {
     const client = {
       listModules: vi.fn().mockResolvedValue({ items: [] }),
       getProject: vi.fn().mockResolvedValue(projectDetail),
       getProjectWecomGroup: vi.fn().mockResolvedValue({
         state: "UNBOUND",
-        codeExpiresAt: null,
-        boundAt: null,
-        boundByName: null,
-        lastDeliveryError: null,
-        botProfileUrl: null,
         webhookTargets: [],
         notificationOptions: { disabledCategories: [] },
       }),
@@ -558,7 +553,9 @@ describe("项目主页企微群入口", () => {
       await screen.findByRole("dialog", { name: "企业微信项目群" }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText("只有项目组长或系统管理员可以生成绑定码或解绑。"),
+      await screen.findByText(
+        "只有项目组长或系统管理员可以添加或删除 Webhook 目标。",
+      ),
     ).toBeInTheDocument();
   });
 });

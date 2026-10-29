@@ -99,10 +99,8 @@ function ProjectMemberSummary({
     : wecom.query.isError
       ? "暂不可用"
       : wecom.query.data?.state === "BOUND"
-        ? "已绑定"
-        : wecom.query.data?.state === "PENDING"
-          ? "待绑定"
-          : "未绑定";
+        ? "已配置"
+        : "未配置";
 
   const toggle = (): void => {
     onToggle();

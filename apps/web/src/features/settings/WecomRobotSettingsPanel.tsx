@@ -75,9 +75,7 @@ export const WecomRobotSettingsPanel: React.FC<
         setSuccess(
           "已更换机器人：解除了 " +
             (result.revokedUserBindings ?? 0) +
-            " 个成员绑定、" +
-            (result.revokedProjectGroups ?? 0) +
-            " 个项目群绑定；相关成员与企业微信群需要重新绑定（新机器人需要先在企业微信里对话一次激活）。",
+            " 个成员企业微信绑定；项目群 Webhook 不受影响，相关成员需要重新绑定（新机器人需要先在企业微信里对话一次激活）。",
         );
       } else {
         setSuccess(
@@ -205,7 +203,8 @@ export const WecomRobotSettingsPanel: React.FC<
               <small role="alert">{errors.botId.message}</small>
             ) : (
               <small className="form-hint">
-                在企业微信管理后台的机器人详情页复制；更换机器人（填写新机器人的值）保存时会自动解除全部成员绑定与项目群绑定，相关成员需重新绑定。
+                在企业微信管理后台的机器人详情页复制；更换机器人（填写新机器人的值）保存时只会解除个人成员绑定，项目群
+                Webhook 不受影响，相关成员需重新绑定。
               </small>
             )}
           </div>

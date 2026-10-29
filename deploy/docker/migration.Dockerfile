@@ -36,6 +36,20 @@ FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd
 ENV NODE_ENV=production
 WORKDIR /app
 
+# Debian 会持续为系统包发布安全更新，而 digest 固定的官方 Node 镜像不会因此
+# 立即重建；不刷新就会被新公告卡住 Trivy 镜像门禁（实测 libpcre2-8-0 的两个
+# HIGH 使 CI 失败）。此镜像只带 Node，没有需要按版本确认的服务器二进制，因此
+# 直接升级全部已安装的包；apt-get upgrade（不是 dist-upgrade）只升级已安装的包，
+# 不安装新包、不删除任何包。该层放在复制应用产物之前，业务代码更新不会让它失效。
+# 测试与正式 VM 访问 deb.debian.org 的 HTTP 源会建立连接但收不到数据，
+# 改用可访问的阿里云 Debian 镜像；Debian GPG 签名校验不变。
+RUN grep -rIl "http://deb.debian.org" /etc/apt \
+      | xargs -r sed -i "s|http://deb.debian.org|http://mirrors.aliyun.com|g" \
+ && apt-get update \
+ && apt-get upgrade -y \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /out/package.json ./package.json
 COPY --from=builder /out/dist ./dist
 COPY --from=builder /out/node_modules ./node_modules
@@ -44,16 +58,6 @@ COPY --from=builder /out/migrations ./dist/migrations
 # 官方 Node 镜像自带 npm/corepack，Trivy 会在 runtime 中报告其全局工具链漏洞；
 # Migration 只运行编译后的 Node 入口，不需要任何包管理器，因此从运行时删除。
 RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
-
-# Debian 会持续为系统包发布安全更新，而 digest 固定的官方 Node 镜像不会因此
-# 立即重建；不刷新就会被新公告卡住 Trivy 镜像门禁（实测 libpcre2-8-0 的两个
-# HIGH 使 CI 失败）。此镜像只带 Node，没有需要按版本确认的服务器二进制，因此
-# 直接升级全部已安装的包；`upgrade`（不是 dist-upgrade）只升级已安装的包，
-# 不安装新包、不删除任何包。
-RUN apt-get update \
- && apt-get upgrade -y \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 10001 app \
  && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app \

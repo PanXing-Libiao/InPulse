@@ -17,7 +17,6 @@ import {
 } from "../src/modules/wecom-robot/wecom-robot-secret-keyring.js";
 import {
   connect,
-  createProject,
   createUser,
   testUrls,
   type TestUrls,
@@ -768,20 +767,9 @@ describe("企业微信机器人配置（真实 PostgreSQL + 真实 HTTP）", () 
       INSERT INTO app.user_wecom_bindings (user_id, wecom_userid, status)
       VALUES (${memberTwo}, 'test-switch-member-two', 'ACTIVE')
     `;
-    const leader = await createUser(sql);
-    const project = await createProject(sql, leader);
-    await sql`
-      INSERT INTO app.project_wecom_groups (
-        project_id,
-        wecom_chat_id,
-        bound_by_user_id,
-        status
-      )
-      VALUES (${project.projectId}, 'test-switch-chat', ${leader}, 'ACTIVE')
-    `;
     expect(await countActiveBindings(sql)).toEqual({
       userBindings: 2,
-      projectGroups: 1,
+      projectGroups: 0,
     });
 
     const created = await putConfig({
@@ -805,7 +793,7 @@ describe("企业微信机器人配置（真实 PostgreSQL + 真实 HTTP）", () 
     expect(switched.status).toBe(200);
     const switchedBody = (await switched.json()) as Record<string, unknown>;
     expect(switchedBody["revokedUserBindings"]).toBe(2);
-    expect(switchedBody["revokedProjectGroups"]).toBe(1);
+    expect(switchedBody["revokedProjectGroups"]).toBe(0);
     expect(await countActiveBindings(sql)).toEqual({
       userBindings: 0,
       projectGroups: 0,
@@ -825,16 +813,6 @@ describe("企业微信机器人配置（真实 PostgreSQL + 真实 HTTP）", () 
     expect(revokedRows[0]?.status).toBe("REVOKED");
     expect(revokedRows[0]?.revokedAt).not.toBeNull();
     expect(revokedRows[0]?.rowVersion).toBe(2);
-
-    const groupRows = (await sql`
-      SELECT status, revoked_at AS "revokedAt"
-        FROM app.project_wecom_groups
-       WHERE project_id = ${project.projectId}
-       ORDER BY id DESC
-       LIMIT 1
-    `) as unknown as readonly { status: string; revokedAt: Date | null }[];
-    expect(groupRows[0]?.status).toBe("REVOKED");
-    expect(groupRows[0]?.revokedAt).not.toBeNull();
 
     // 同 Key 重放返回原响应（含解绑计数），不再次执行解绑。
     const replay = await putConfig({
@@ -866,7 +844,7 @@ describe("企业微信机器人配置（真实 PostgreSQL + 真实 HTTP）", () 
     const payload = JSON.stringify(audits[0]?.payload);
     expect(payload).toContain('"robotChanged":true');
     expect(payload).toContain('"revokedUserBindings":2');
-    expect(payload).toContain('"revokedProjectGroups":1');
+    expect(payload).toContain('"revokedProjectGroups":0');
   });
 
   test("同一 botId 仅轮换 Secret 不触发解绑（ADR-078）", async () => {

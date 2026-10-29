@@ -131,7 +131,7 @@ export const ProjectWorkspaceModals: React.FC<ProjectWorkspaceModalsProps> = ({
                 <ProjectWecomGroupCard
                   projectId={projectId}
                   projectName={projectName}
-                  heading="绑定与通知设置"
+                  heading="群 Webhook 与通知设置"
                   canManage={canManageWecom}
                   client={client}
                 />

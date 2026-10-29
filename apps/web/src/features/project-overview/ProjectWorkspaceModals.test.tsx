@@ -44,11 +44,6 @@ const member: CurrentUserResponse = {
 
 const wecomStatus = {
   state: "UNBOUND",
-  codeExpiresAt: null,
-  boundAt: null,
-  boundByName: null,
-  lastDeliveryError: null,
-  botProfileUrl: null,
   webhookTargets: [],
   notificationOptions: { disabledCategories: [] },
 };
@@ -122,12 +117,14 @@ describe("ProjectWorkspaceModals", () => {
       await screen.findByRole("dialog", { name: "企业微信项目群" }),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText("只有项目组长或系统管理员可以生成绑定码或解绑。"),
+      await screen.findByText(
+        "只有项目组长或系统管理员可以添加或删除 Webhook 目标。",
+      ),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "生成绑定码" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "添加 Webhook" })).toBeNull();
   });
 
-  it("在项目主页企微弹窗中为组长显示绑定操作", async () => {
+  it("在项目主页企微弹窗中为组长显示 Webhook 管理操作", async () => {
     const leaderClient = {
       getProjectWecomGroup: vi.fn().mockResolvedValue(wecomStatus),
       getProject: vi.fn().mockResolvedValue({
@@ -157,7 +154,7 @@ describe("ProjectWorkspaceModals", () => {
     renderModals({ open: "wecom", modalClient: leaderClient });
 
     expect(
-      await screen.findByRole("button", { name: "生成绑定码" }),
+      await screen.findByRole("button", { name: "添加 Webhook" }),
     ).toBeInTheDocument();
   });
 });

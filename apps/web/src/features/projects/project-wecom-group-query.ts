@@ -5,7 +5,6 @@ import {
   ApiError,
   createApiClient,
   type InpulseApiClient,
-  type ProjectWecomGroupCode,
   type ProjectWecomGroupNotificationOptions,
   type ProjectWecomGroupStatus,
   type ProjectWecomWebhookCreateRequest,
@@ -15,18 +14,14 @@ import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
 /**
- * ADR-077 项目企微群绑定数据层：GET 读取三态（UNBOUND / PENDING / BOUND）；
- * POST 签发一次性绑定码（securityFlow：只签发 CSRF、重新生成立即作废旧码）；
- * PUT 保存项目群通知开关（先签发 CSRF，再携带一次性 Idempotency-Key）；
- * DELETE 解绑智能机器人；Webhook 目标各自新增 / 删除。所有请求都经生成客户端，
- * 组件不裸写 fetch。签发、保存、解绑与 Webhook 管理的服务端门禁是项目
- * projectWecomGroup 能力（默认组长 / 系统管理员），普通成员只读。
+ * ADR-106 项目企微群 Webhook 数据层：GET 读取 UNBOUND / BOUND；
+ * PUT 保存项目群五类通知开关（先签发 CSRF，再携带一次性 Idempotency-Key）；
+ * POST / DELETE 管理项目 Webhook 目标。所有请求都经生成客户端，组件不裸写 fetch。
+ * 项目群能力默认由组长 / 系统管理员持有，普通成员只读；个人机器人绑定使用设置页
+ * 的独立数据层，不经过本文件。
  */
 export const projectWecomGroupQueryKey = (projectId: number) =>
   ["project-wecom-group", projectId] as const;
-
-/** 存在待用绑定码时的轮询间隔：群里发送绑定码后自动发现「已绑定」。 */
-const PENDING_POLL_INTERVAL_MS = 5000;
 
 export function projectWecomGroupErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -75,43 +70,6 @@ export function useProjectWecomGroup(
       api.getProjectWecomGroup(projectId, { signal }),
     enabled,
     retry: false,
-    refetchInterval: (current) =>
-      current.state.data?.state === "PENDING"
-        ? PENDING_POLL_INTERVAL_MS
-        : false,
-  });
-
-  const issueCode = useMutation({
-    retry: false,
-    mutationFn: async (): Promise<ProjectWecomGroupCode> => {
-      const csrf = await api.issueCsrfToken();
-      return api.createProjectWecomGroupCode(projectId, {
-        headers: { "x-csrf-token": csrf.csrfToken },
-      });
-    },
-    onSuccess: async () => {
-      await cache.invalidateQueries({
-        queryKey: projectWecomGroupQueryKey(projectId),
-      });
-    },
-  });
-
-  const unbind = useMutation({
-    retry: false,
-    mutationFn: async (): Promise<void> => {
-      // DELETE 重复执行结果一致；每次点击使用新的 Idempotency-Key，不跨点击
-      // 复用，避免重放旧的成功结果掩盖期间的重新绑定。
-      const key = createIdempotencyKey("pwg-unbind");
-      const csrf = await api.issueCsrfToken();
-      await api.deleteProjectWecomGroup(projectId, {
-        headers: { "x-csrf-token": csrf.csrfToken, "Idempotency-Key": key },
-      });
-    },
-    onSuccess: async () => {
-      await cache.invalidateQueries({
-        queryKey: projectWecomGroupQueryKey(projectId),
-      });
-    },
   });
 
   const createWebhook = useMutation({
@@ -186,9 +144,7 @@ export function useProjectWecomGroup(
 
   return {
     query,
-    issueCode,
     updateNotificationOptions,
-    unbind,
     createWebhook,
     deleteWebhook,
   };

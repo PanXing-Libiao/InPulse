@@ -483,16 +483,15 @@ export const permissionMatrix = [
       },
     },
   },
-  // ADR-077：项目企微群绑定。读路径对本项目全体活跃成员开放（非成员 404）；
-  // 签发绑定码与解绑是新增的组长/系统管理员专属门禁（ADR-039 例外清单）；
-  // 绑定兑换发生在桥接侧，要求发送者是项目成员或系统管理员并已绑定个人账号。
+  // ADR-106：项目群只保留 Webhook。读路径对本项目全体活跃成员开放（非成员 404）；
+  // 通知选项与 Webhook 增删沿用 projectWecomGroup 能力门禁（ADR-039 例外清单）。
   {
     operationId: "getProjectWecomGroup",
     outcomes: {
       匿名: { kind: "deny", status: 401 },
       活跃成员: {
         kind: "conditional",
-        allowedWhen: "ADR-077：目标项目当前活跃成员（实时成员关系）",
+        allowedWhen: "ADR-106：目标项目当前活跃成员（实时成员关系）",
         deniedWith: 404,
       },
       其他项目成员: { kind: "deny", status: 404 },
@@ -502,34 +501,13 @@ export const permissionMatrix = [
     },
   },
   {
-    operationId: "createProjectWecomGroupCode",
-    outcomes: {
-      匿名: { kind: "deny", status: 401 },
-      活跃成员: {
-        kind: "conditional",
-        allowedWhen:
-          "ADR-077：系统管理员或本项目组长可签发一次性绑定码（普通成员 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与同源必填；ADR-023 allowlist securityFlow，每次调用重签并立即作废旧码",
-        deniedWith: 403,
-      },
-      其他项目成员: { kind: "deny", status: 404 },
-      已移除成员: { kind: "deny", status: 404 },
-      停用用户: { kind: "deny", status: 401 },
-      系统管理员: {
-        kind: "conditional",
-        allowedWhen:
-          "完整系统管理员 Session；CSRF 与同源必填；ADR-023 allowlist securityFlow（不进入通用幂等记录）",
-        deniedWith: 403,
-      },
-    },
-  },
-  {
     operationId: "updateProjectWecomGroupNotificationOptions",
     outcomes: {
       匿名: { kind: "deny", status: 401 },
       活跃成员: {
         kind: "conditional",
         allowedWhen:
-          "ADR-090：系统管理员或本项目组长可保存项目群通知开关（普通成员 403 PROJECT_WECOM_GROUP_FORBIDDEN）；项目必须已绑定 ACTIVE 群（409）；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.notificationOptions.update",
+          "ADR-106：系统管理员或本项目组长可保存项目群通知开关（普通成员 403 PROJECT_WECOM_GROUP_FORBIDDEN）；项目必须至少有一个 ACTIVE Webhook（409）；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.notificationOptions.update",
         deniedWith: 403,
       },
       其他项目成员: { kind: "deny", status: 404 },
@@ -538,28 +516,7 @@ export const permissionMatrix = [
       系统管理员: {
         kind: "conditional",
         allowedWhen:
-          "完整系统管理员 Session；CSRF 与 Idempotency-Key 必填；项目必须已绑定 ACTIVE 群；写审计 project.wecomGroup.notificationOptions.update",
-        deniedWith: 403,
-      },
-    },
-  },
-  {
-    operationId: "deleteProjectWecomGroup",
-    outcomes: {
-      匿名: { kind: "deny", status: 401 },
-      活跃成员: {
-        kind: "conditional",
-        allowedWhen:
-          "ADR-077：系统管理员或本项目组长可解绑（普通成员 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与 Idempotency-Key 必填；作废待用码并把 ACTIVE 绑定置 REVOKED（不物理删除），写审计 project.wecomGroup.unbind",
-        deniedWith: 403,
-      },
-      其他项目成员: { kind: "deny", status: 404 },
-      已移除成员: { kind: "deny", status: 404 },
-      停用用户: { kind: "deny", status: 401 },
-      系统管理员: {
-        kind: "conditional",
-        allowedWhen:
-          "完整系统管理员 Session；CSRF 与 Idempotency-Key 必填；写审计 project.wecomGroup.unbind",
+          "完整系统管理员 Session；CSRF 与 Idempotency-Key 必填；项目必须至少有一个 ACTIVE Webhook；写审计 project.wecomGroup.notificationOptions.update",
         deniedWith: 403,
       },
     },
@@ -571,7 +528,7 @@ export const permissionMatrix = [
       活跃成员: {
         kind: "conditional",
         allowedWhen:
-          "ADR-105：当前 projectWecomGroup 能力档位允许写 Webhook 目标（默认系统管理员或组长；不允许时 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与 Idempotency-Key 必填；仅接受企业微信官方 Webhook URL，URL 加密落库且不进入审计、日志或响应；同 URL 409，单项目上限 20",
+          "ADR-106：当前 projectWecomGroup 能力档位允许写 Webhook 目标（默认系统管理员或组长；不允许时 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与 Idempotency-Key 必填；仅接受企业微信官方 Webhook URL，URL 加密落库且不进入审计、日志或响应；同 URL 409，单项目上限 20",
         deniedWith: 403,
       },
       其他项目成员: { kind: "deny", status: 404 },
@@ -592,7 +549,7 @@ export const permissionMatrix = [
       活跃成员: {
         kind: "conditional",
         allowedWhen:
-          "ADR-105：当前 projectWecomGroup 能力档位允许删除 Webhook 目标（默认系统管理员或组长；不允许时 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与 Idempotency-Key 必填；目标必须属于当前项目且为 ACTIVE WEBHOOK；状态流转 REVOKED，写审计 project.wecomGroup.webhook.delete",
+          "ADR-106：当前 projectWecomGroup 能力档位允许删除 Webhook 目标（默认系统管理员或组长；不允许时 403 PROJECT_WECOM_GROUP_FORBIDDEN）；CSRF 与 Idempotency-Key 必填；目标必须属于当前项目且为 ACTIVE WEBHOOK；状态流转 REVOKED，写审计 project.wecomGroup.webhook.delete",
         deniedWith: 403,
       },
       其他项目成员: { kind: "deny", status: 404 },

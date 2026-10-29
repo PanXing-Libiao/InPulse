@@ -27,7 +27,7 @@ interface ProjectWecomGroupControllerResponse {
   setHeader(name: string, value: string | readonly string[]): unknown;
 }
 
-/** ADR-077 项目企微群绑定 HTTP 入口；只绑定 Route Registry，不直接访问数据库。 */
+/** ADR-106 项目企微群 Webhook HTTP 入口；只绑定 Route Registry，不直接访问数据库。 */
 @Controller("projects")
 export class ProjectWecomGroupController {
   constructor(
@@ -43,24 +43,6 @@ export class ProjectWecomGroupController {
     @ContractPath("getProjectWecomGroup") params: unknown,
   ) {
     return this.respond("getProjectWecomGroup", request, response, params);
-  }
-
-  @Post(":projectId/wecom-group/codes")
-  @UseGuards(StrictSameOriginGuard)
-  @Operation("createProjectWecomGroupCode")
-  async createCode(
-    @Req() request: ProjectWecomGroupHttpRequest,
-    @Res({ passthrough: true }) response: ProjectWecomGroupControllerResponse,
-    @ContractPath("createProjectWecomGroupCode") params: unknown,
-    @ContractHeaders("createProjectWecomGroupCode")
-    _headers: unknown = undefined,
-  ) {
-    return this.respond(
-      "createProjectWecomGroupCode",
-      request,
-      response,
-      params,
-    );
   }
 
   @Put(":projectId/wecom-group/notification-options")
@@ -113,17 +95,6 @@ export class ProjectWecomGroupController {
     @ContractHeaders("deleteProjectWecomWebhook") _headers: unknown = undefined,
   ) {
     return this.respond("deleteProjectWecomWebhook", request, response, params);
-  }
-  @Delete(":projectId/wecom-group")
-  @UseGuards(StrictSameOriginGuard)
-  @Operation("deleteProjectWecomGroup")
-  async unbind(
-    @Req() request: ProjectWecomGroupHttpRequest,
-    @Res({ passthrough: true }) response: ProjectWecomGroupControllerResponse,
-    @ContractPath("deleteProjectWecomGroup") params: unknown,
-    @ContractHeaders("deleteProjectWecomGroup") _headers: unknown = undefined,
-  ) {
-    return this.respond("deleteProjectWecomGroup", request, response, params);
   }
 
   private async respond(

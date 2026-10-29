@@ -6,7 +6,7 @@
 
 ## 组成
 
-- `app/long-conn.mjs`：企业微信智能机器人长连接、绑定码兑换、个人推送和项目群投递消费；按目标通道发送智能机器人或 Webhook。
+- `app/long-conn.mjs`：企业微信智能机器人长连接、个人绑定码兑换、个人推送，以及项目群 Webhook 投递消费。
 - `app/wecom-webhook.mjs`：企业微信 Webhook 消息体、URL 解密、HTTP 发送与每目标 20 条/分钟限速。
 - `app/bridge.mjs`：轮询正式库通知、把个人通知转换为命令，并物化项目群投递。
 - `app/runner.mjs`：同时拉起上述两个子进程，任一异常退出则让容器重启。
@@ -44,12 +44,12 @@
 
 这表示部署已就绪、等待管理员填写，不代表企业微信订阅已建立。
 
-## 项目群 Webhook（ADR-105）
+## 项目群 Webhook（ADR-106）
 
 - 项目组长或系统管理员可在正式站点项目成员页添加企业微信官方群机器人 Webhook；每个项目最多 20 个 ACTIVE 目标，同一规范化 URL 全局只允许一个 ACTIVE 目标。
 - API 使用同一把 `wecom_robot_encryption_key` 加密完整 Webhook URL，AAD 独立为 `app.project_wecom_groups.webhook_url`。数据库只保存密文、密钥版本、URL 指纹和 Key 尾号；页面、审计、日志与错误体不得出现完整 URL。
-- Webhook 不依赖智能机器人长连接订阅；桥接仍从同一 PENDING 队列按 `channel_type` 分流，每个 Webhook 目标独立限速 20 条/分钟。更换机器人只撤销 BOT 目标，Webhook 保持绑定。
-- Webhook 与智能机器人共用项目级五类通知开关。同一项目同时配置智能机器人和指向同一群的 Webhook 会重复投递，配置界面会提示。
+- Webhook 不依赖智能机器人长连接订阅；桥接从同一 PENDING 队列只读取 `channel_type = WEBHOOK` 的 ACTIVE 目标，每个目标独立限速 20 条/分钟。管理员更换机器人只撤销个人单聊绑定，Webhook 保持绑定。
+- 同一项目的全部 ACTIVE Webhook 共用项目级五类通知开关。项目群不再接受新的智能机器人 BOT 目标；历史 BOT 行只保留审计与追溯，不参与投递。
 - 发布 API 后必须同时发布包含 `wecom-webhook.mjs` 的正式桥接；否则旧桥接无法发送 Webhook 目标。
 
 ## 发布

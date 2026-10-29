@@ -36,10 +36,9 @@ const permissionFields = {
   recordWrite: projectMemberPermissionLevelSchema.describe(
     "迭代记录、遗留问题与 GitHub 链接写入",
   ),
-  projectWecomGroup:
-    projectMemberPermissionLevelSchema.describe(
-      "项目企业微信群绑定、解绑与群消息开关",
-    ),
+  projectWecomGroup: projectMemberPermissionLevelSchema.describe(
+    "项目企业微信群 Webhook 添加、删除与群消息开关",
+  ),
 } as const;
 
 /** 全局项目成员权限配置（GET / PUT 响应）。 */

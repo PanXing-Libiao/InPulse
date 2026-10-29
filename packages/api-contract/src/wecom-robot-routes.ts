@@ -97,7 +97,7 @@ export const wecomRobotRoutes: readonly RouteDefinition[] = [
     path: "/admin/wecom-robot",
     operationId: "updateWecomRobotConfig",
     summary:
-      "系统管理员保存企业微信机器人配置（botId 必填，secret 缺省表示保持已存密钥，botProfileUrl 缺省保持、null 清空），密钥经 AES-256-GCM 加密落库、明文永不入库；botId 与已存值不同（更换机器人）时同一事务解除全部企业微信绑定（个人 + 项目群）并在响应返回解绑计数；写审计（不含密钥）。",
+      "系统管理员保存企业微信机器人配置（botId 必填，secret 缺省表示保持已存密钥，botProfileUrl 缺省保持、null 清空），密钥经 AES-256-GCM 加密落库、明文永不入库；botId 与已存值不同（更换机器人）时同一事务只解除个人企业微信绑定，项目群 Webhook 不受影响；响应保留解绑计数，其中 revokedProjectGroups 固定为 0；写审计（不含密钥）。",
     request: {
       path: "none",
       query: "none",

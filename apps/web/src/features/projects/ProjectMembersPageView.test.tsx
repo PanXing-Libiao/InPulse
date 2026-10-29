@@ -145,19 +145,9 @@ function baseClient() {
     issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "csrf-token" }),
     getProjectWecomGroup: vi.fn().mockResolvedValue({
       state: "UNBOUND",
-      codeExpiresAt: null,
-      boundAt: null,
-      boundByName: null,
-      lastDeliveryError: null,
-      botProfileUrl: null,
       webhookTargets: [],
       notificationOptions: { disabledCategories: [] },
     }),
-    createProjectWecomGroupCode: vi.fn().mockResolvedValue({
-      code: "ABCD-EFGH-JKMN-PQRS",
-      expiresAt: "2099-01-01T00:00:00.000Z",
-    }),
-    deleteProjectWecomGroup: vi.fn().mockResolvedValue(undefined),
   };
 }
 

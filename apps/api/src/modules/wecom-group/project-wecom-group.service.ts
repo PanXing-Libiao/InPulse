@@ -1,7 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import type {
-  ProjectWecomGroupCode,
   ProjectWecomGroupNotificationOptions,
   ProjectWecomGroupStatus,
   ProjectWecomWebhookTarget,
@@ -20,11 +19,6 @@ import {
   ProjectRoleGateService,
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
-import {
-  WECOM_BINDING_CODE_TTL_MS,
-  generateWecomBindingCode,
-  hashWecomBindingCode,
-} from "../wecom-binding/index.js";
 import {
   WecomRobotEncryptionUnavailableError,
   encryptWecomWebhookUrl,
@@ -85,14 +79,6 @@ function notificationOptionsFromRow(
   };
 }
 
-interface BotStatusRow extends NotificationOptionRow {
-  readonly bound_at: string | null;
-  readonly bound_by_name: string | null;
-  readonly code_expires_at: string | null;
-  readonly last_delivery_error: string | null;
-  readonly bot_profile_url: string | null;
-}
-
 interface WebhookTargetRow {
   readonly id: number;
   readonly label: string;
@@ -102,8 +88,6 @@ interface WebhookTargetRow {
   readonly lastDeliveryError: string | null;
 }
 
-/** 绑定码有效期沿用 ADR-069 的 10 分钟（ADR-077 复用同一编码与哈希规则）。 */
-const CODE_TTL_SECONDS = Math.floor(WECOM_BINDING_CODE_TTL_MS / 1000);
 const MAX_ACTIVE_WEBHOOKS_PER_PROJECT = 20;
 
 export class ProjectWecomGroupError extends Error {
@@ -118,12 +102,10 @@ export class ProjectWecomGroupError extends Error {
 }
 
 /**
- * ADR-077 / ADR-090 / ADR-105 项目企微群通知目标服务：
- * - 读取智能机器人与 Webhook 目标状态；
- * - 签发智能机器人一次性绑定码；
- * - 解绑只撤销 BOT，不影响 Webhook；
+ * ADR-106 项目企微群通知目标服务（Webhook-only）：
+ * - 读取 ACTIVE Webhook 目标与项目级通知开关；
  * - 创建 / 删除 Webhook 目标，URL 加密且只返回尾号；
- * - 项目级通知开关对全部目标统一生效。
+ * - 项目群不再支持智能机器人绑定码通道；个人单聊机器人不经过本服务。
  * 所有写命令显式接收同一个 TransactionContext，本服务不做网络请求。
  */
 @Injectable()
@@ -141,78 +123,16 @@ export class ProjectWecomGroupService {
     input: { readonly actorId: number; readonly projectId: number },
   ): Promise<ProjectWecomGroupStatus> {
     await this.requireReadableProject(tx, input);
-    const botRows = (await tx.sql`
+    const optionRows = (await tx.sql`
       SELECT
-        (
-          SELECT to_char(
-                   g.bound_at AT TIME ZONE 'UTC',
-                   'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-                 )
-            FROM app.project_wecom_groups AS g
-           WHERE g.project_id = ${input.projectId}
-             AND g.channel_type = 'BOT'
-             AND g.status = 'ACTIVE'
-           LIMIT 1
-        ) AS bound_at,
-        (
-          SELECT g.bound_by_snapshot->>'name'
-            FROM app.project_wecom_groups AS g
-           WHERE g.project_id = ${input.projectId}
-             AND g.channel_type = 'BOT'
-             AND g.status = 'ACTIVE'
-           LIMIT 1
-        ) AS bound_by_name,
-        (
-          SELECT to_char(
-                   c.expires_at AT TIME ZONE 'UTC',
-                   'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-                 )
-            FROM app.project_wecom_binding_codes AS c
-           WHERE c.project_id = ${input.projectId}
-             AND c.consumed_at IS NULL
-             AND c.expires_at > now()
-           LIMIT 1
-        ) AS code_expires_at,
-        (
-          SELECT g.last_delivery_error
-            FROM app.project_wecom_groups AS g
-           WHERE g.project_id = ${input.projectId}
-             AND g.channel_type = 'BOT'
-             AND g.status = 'ACTIVE'
-           LIMIT 1
-        ) AS last_delivery_error,
-        (
-          SELECT o.task_assign_enabled
-            FROM app.project_wecom_group_notification_options AS o
-           WHERE o.project_id = ${input.projectId}
-        ) AS "taskAssignEnabled",
-        (
-          SELECT o.task_status_enabled
-            FROM app.project_wecom_group_notification_options AS o
-           WHERE o.project_id = ${input.projectId}
-        ) AS "taskStatusEnabled",
-        (
-          SELECT o.record_enabled
-            FROM app.project_wecom_group_notification_options AS o
-           WHERE o.project_id = ${input.projectId}
-        ) AS "recordEnabled",
-        (
-          SELECT o.project_member_enabled
-            FROM app.project_wecom_group_notification_options AS o
-           WHERE o.project_id = ${input.projectId}
-        ) AS "projectMemberEnabled",
-        (
-          SELECT o.scope_delete_enabled
-            FROM app.project_wecom_group_notification_options AS o
-           WHERE o.project_id = ${input.projectId}
-        ) AS "scopeDeleteEnabled",
-        (
-          SELECT r.bot_profile_url
-            FROM app.wecom_robot_config AS r
-           WHERE r.id = 1
-        ) AS bot_profile_url
-    `) as unknown as readonly BotStatusRow[];
-    const bot = botRows[0];
+        task_assign_enabled AS "taskAssignEnabled",
+        task_status_enabled AS "taskStatusEnabled",
+        record_enabled AS "recordEnabled",
+        project_member_enabled AS "projectMemberEnabled",
+        scope_delete_enabled AS "scopeDeleteEnabled"
+        FROM app.project_wecom_group_notification_options
+       WHERE project_id = ${input.projectId}
+    `) as unknown as readonly NotificationOptionFlags[];
     const webhookRows = (await tx.sql`
       SELECT
         g.id,
@@ -240,130 +160,14 @@ export class ProjectWecomGroupService {
         lastDeliveryError: row.lastDeliveryError,
       }),
     );
-    const boundAt = bot?.bound_at ?? null;
-    const codeExpiresAt = bot?.code_expires_at ?? null;
-    const hasActiveTarget = boundAt !== null || webhookTargets.length > 0;
     return {
-      state: hasActiveTarget
-        ? "BOUND"
-        : codeExpiresAt !== null
-          ? "PENDING"
-          : "UNBOUND",
-      codeExpiresAt,
-      boundAt,
-      boundByName: bot?.bound_by_name ?? null,
-      lastDeliveryError: bot?.last_delivery_error ?? null,
-      botProfileUrl: bot?.bot_profile_url ?? null,
+      state: webhookTargets.length === 0 ? "UNBOUND" : "BOUND",
       webhookTargets,
-      notificationOptions: notificationOptionsFromRow(bot),
+      notificationOptions: notificationOptionsFromRow(optionRows[0]),
     };
   }
 
-  async createCode(
-    tx: TransactionContext,
-    input: { readonly actorId: number; readonly projectId: number },
-  ): Promise<ProjectWecomGroupCode> {
-    await this.requireBinderRole(tx, input);
-    const code = generateWecomBindingCode();
-    const codeHash = hashWecomBindingCode(code);
-    const rows = (await tx.sql`
-      INSERT INTO app.project_wecom_binding_codes AS c
-        (
-          project_id,
-          code_hash,
-          expires_at,
-          consumed_at,
-          consumed_by_wecom_userid,
-          consumed_by_user_id
-        )
-      VALUES
-        (
-          ${input.projectId},
-          ${codeHash},
-          now() + make_interval(secs => ${CODE_TTL_SECONDS}),
-          NULL,
-          NULL,
-          NULL
-        )
-      ON CONFLICT (project_id) DO UPDATE
-         SET code_hash = EXCLUDED.code_hash,
-             expires_at = EXCLUDED.expires_at,
-             consumed_at = NULL,
-             consumed_by_wecom_userid = NULL,
-             consumed_by_user_id = NULL,
-             created_at = now()
-      RETURNING to_char(
-                 c.expires_at AT TIME ZONE 'UTC',
-                 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
-               ) AS expires_at
-    `) as unknown as readonly { expires_at: string }[];
-    const row = rows[0];
-    if (row === undefined) {
-      throw new Error("project wecom group code upsert returned no row");
-    }
-    return { code, expiresAt: row.expires_at };
-  }
-
-  async unbind(
-    tx: TransactionContext,
-    input: {
-      readonly actorId: number;
-      readonly projectId: number;
-      readonly requestId: string;
-    },
-  ): Promise<IdempotencyExecutionResult> {
-    await this.requireBinderRole(tx, input);
-    const pendingCodes = (await tx.sql`
-      UPDATE app.project_wecom_binding_codes
-         SET consumed_at = now(),
-             consumed_by_wecom_userid = NULL,
-             consumed_by_user_id = NULL
-       WHERE project_id = ${input.projectId}
-         AND consumed_at IS NULL
-      RETURNING project_id
-    `) as unknown as readonly { project_id: number }[];
-    const revoked = (await tx.sql`
-      UPDATE app.project_wecom_groups
-         SET status = 'REVOKED',
-             revoked_at = now(),
-             updated_at = now(),
-             row_version = row_version + 1
-       WHERE project_id = ${input.projectId}
-         AND channel_type = 'BOT'
-         AND status = 'ACTIVE'
-      RETURNING id, wecom_chat_id AS "wecomChatId"
-    `) as unknown as readonly { id: number; wecomChatId: string }[];
-    const binding = revoked[0];
-    await this.audit.append(tx, {
-      projectId: input.projectId,
-      actorType: "USER",
-      actorId: input.actorId,
-      action: "project.wecomGroup.unbind",
-      targetType: "PROJECT",
-      targetId: String(input.projectId),
-      eventPayload: {
-        projectId: input.projectId,
-        hadActiveBinding: binding !== undefined,
-        groupBindingId: binding?.id ?? null,
-        wecomChatId: binding?.wecomChatId ?? null,
-        pendingCodeRevoked: pendingCodes.length > 0,
-      },
-      requestId: input.requestId,
-      occurredAt: new Date(),
-    });
-    return {
-      responseStatus: 204,
-      responseSchemaRef: null,
-      responseHasBody: false,
-      responseBody: null,
-      replayAuthContext: { projectId: input.projectId },
-    };
-  }
-
-  /**
-   * ADR-090 / ADR-105：整组替换项目群通知开关。锁定任一 ACTIVE 目标即可，
-   * 智能机器人与 Webhook 共用同一项目级配置。
-   */
+  /** ADR-090 / ADR-106：整组替换项目群通知开关；只有 ACTIVE Webhook 时允许保存。 */
   async updateNotificationOptions(
     tx: TransactionContext,
     input: {
@@ -378,6 +182,7 @@ export class ProjectWecomGroupService {
       SELECT id
         FROM app.project_wecom_groups
        WHERE project_id = ${input.projectId}
+         AND channel_type = 'WEBHOOK'
          AND status = 'ACTIVE'
        ORDER BY id ASC
        FOR UPDATE
@@ -387,7 +192,7 @@ export class ProjectWecomGroupService {
       throw new ProjectWecomGroupError(
         409,
         "PROJECT_WECOM_GROUP_NOT_BOUND",
-        "项目尚未绑定企业微信群或 Webhook，无法保存群通知选项",
+        "项目尚未添加 ACTIVE Webhook 群目标，无法保存群通知选项",
       );
     }
 
@@ -701,6 +506,7 @@ export class ProjectWecomGroupService {
       SELECT id
         FROM app.project_wecom_groups
        WHERE project_id = ${parsed.data.projectId}
+         AND channel_type = 'WEBHOOK'
          AND status = 'ACTIVE'
        LIMIT 1
     `) as unknown as readonly { id: number }[];
@@ -708,7 +514,7 @@ export class ProjectWecomGroupService {
       throw new ProjectWecomGroupError(
         409,
         "PROJECT_WECOM_GROUP_NOT_BOUND",
-        "项目尚未绑定企业微信群或 Webhook，无法重放群通知选项保存请求",
+        "项目尚未添加 ACTIVE Webhook 群目标，无法重放群通知选项保存请求",
       );
     }
   }
@@ -772,25 +578,6 @@ export class ProjectWecomGroupService {
         "Webhook 目标不存在，不能重放旧解绑响应",
       );
     }
-  }
-
-  /**
-   * 智能机器人解绑幂等重放门禁：重新读取实时成员关系、项目可写状态与
-   * projectWecomGroup 能力；配置或成员关系变化后不得回放旧成功结果。
-   */
-  async replayAuthorizer(
-    tx: TransactionContext,
-    actorId: number,
-    context: unknown,
-  ): Promise<void> {
-    const parsed = projectWecomGroupReplayContextSchema.safeParse(context);
-    if (!parsed.success) {
-      throw new Error("invalid project wecom group replay context");
-    }
-    await this.requireBinderRole(tx, {
-      actorId,
-      projectId: parsed.data.projectId,
-    });
   }
 
   private async requireReadableProject(

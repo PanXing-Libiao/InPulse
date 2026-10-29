@@ -361,7 +361,7 @@ async function insertGroupDelivery(kind, sourceId, projectId, sourceAt) {
       "insert into app.wecom_group_deliveries (group_binding_id, source_kind, source_id)",
       "select g.id, $1, $2",
       "from app.project_wecom_groups g",
-      "where g.project_id = $3 and g.status = 'ACTIVE' and g.bound_at <= $4",
+      "where g.project_id = $3 and g.channel_type = 'WEBHOOK' and g.status = 'ACTIVE' and g.bound_at <= $4",
       "on conflict (group_binding_id, source_kind, source_id) do nothing",
     ].join(" "),
     [kind, sourceId, projectId, sourceAt],
