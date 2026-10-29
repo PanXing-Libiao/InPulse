@@ -196,6 +196,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const accountRootRef = useRef<HTMLDivElement>(null);
   const projectMenuRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const { status, user, logout } = useAuth();
   const selectedKey = resolveSelectedKey(location.pathname);
   const catalogScope = useMemo(
@@ -314,8 +315,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     if (!projectMenuOpen) {
       return;
     }
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!projectMenuRef.current?.contains(event.target as Node)) {
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      const insideSidebar = sidebarRef.current?.contains(target) ?? false;
+      const insideProjectMenu =
+        projectMenuRef.current?.contains(target) ?? false;
+      if (insideSidebar && !insideProjectMenu) {
         setProjectMenuOpen(false);
       }
     };
@@ -324,10 +332,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         setProjectMenuOpen(false);
       }
     };
-    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("click", handleClick);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("click", handleClick);
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [projectMenuOpen]);
@@ -537,6 +545,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           </button>
         ) : null}
         <aside
+          ref={sidebarRef}
           id="app-sidebar"
           className={`sidebar${mobileNavOpen ? " sidebar-open" : ""}`}
         >

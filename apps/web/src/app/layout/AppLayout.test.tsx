@@ -1,7 +1,13 @@
 import React from "react";
 import { ConfigProvider } from "antd";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -269,7 +275,14 @@ describe("AppLayout", () => {
               />
             }
           >
-            <Route path="projects" element={<div>项目列表内容</div>} />
+            <Route
+              path="projects"
+              element={
+                <div>
+                  项目列表内容<button type="button">编辑项目</button>
+                </div>
+              }
+            />
           </Route>
         </Routes>
       </MemoryRouter>,
@@ -294,6 +307,11 @@ describe("AppLayout", () => {
     ).toBeInTheDocument();
     // 项目编码小字已删除，行内只保留标识与项目名称。
     expect(document.querySelector(".tree-code")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "编辑项目" }));
+    expect(document.querySelector(".project-tree")).not.toBeNull();
+    await userEvent.keyboard("{Escape}");
+    expect(document.querySelector(".project-tree")).toBeNull();
+
     unmount();
 
     // 项目路由之外（如任务中心）默认不渲染项目抽屉。
@@ -316,22 +334,50 @@ describe("AppLayout", () => {
 
   it("navigates to a registered workspace route", async () => {
     const user = userEvent.setup();
+    const projectClient = {
+      listProjects: vi.fn().mockResolvedValue({
+        items: [
+          {
+            id: 7,
+            code: "AGV",
+            name: "AGV 智能搬运平台",
+            status: "ACTIVE",
+          },
+        ],
+      }),
+    } as unknown as InpulseApiClient;
+
     renderLayout(
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={["/projects"]}>
         <Routes>
           <Route
             path="/"
-            element={<AppLayout notificationClient={notificationClient} />}
+            element={
+              <AppLayout
+                notificationClient={notificationClient}
+                projectClient={projectClient}
+              />
+            }
           >
-            <Route index element={<div>Home content</div>} />
             <Route path="projects" element={<div>Projects content</div>} />
+            <Route path="records" element={<div>Records content</div>} />
           </Route>
         </Routes>
       </MemoryRouter>,
     );
 
-    await user.click(screen.getByText("项目列表"));
-    expect(await screen.findByText("Projects content")).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "工作区导航" });
+    await user.click(within(nav).getByRole("button", { name: /项目列表/ }));
+    expect(
+      await within(nav).findByRole("button", { name: /AGV 智能搬运平台/ }),
+    ).toBeInTheDocument();
+
+    const records = within(nav).getByRole("button", { name: "迭代记录" });
+    fireEvent.pointerDown(records);
+    expect(document.querySelector(".project-tree")).not.toBeNull();
+    await user.click(records);
+    expect(await screen.findByText("Records content")).toBeInTheDocument();
+    expect(document.querySelector(".project-tree")).toBeNull();
   });
 
   it("resets the page scroll position when the route path changes", async () => {
