@@ -7215,6 +7215,8 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 
 **已知边界**：测试环境没有正式 Permission 配置，必须保持 `CASDOOR_IMPORT_PERMISSION` 为空；正式环境的 Permission / Role / 群组读取失败时导入 503 fail closed。本次没有用正式环境执行批量导入 smoke，不能表述为正式目录联调或发布验证已完成。
 
+> 2026-10-29 后续（[ADR-107](adr/ADR-107.md)）：本节“同时裁剪候选账号部门”的验证口径已被修订。Permission 仍只筛候选账号；候选账号的全部启用 Physical 实体组都会解析并展示。以上结果是 ADR-101 落地时点的历史记录。
+
 ## 2026-10-27 Casdoor 导入无变化分类与审计中文化（ADR-102）
 
 用户要求已导入账号在没有资料或组织变化时不要再次默认导入，并按新建、刷新等分类筛选；同时审计日志中的 Casdoor 导入、组织同步动作码与目标类型显示中文。
@@ -7305,3 +7307,15 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR106-GATE-001 | 静态门禁与全量回归 | 契约、权限、类型与单测 | `contract:generate` 与 `contract:drift`（6 个产物一致）通过；`contract:validate` 133 条路由；`permissions:check` 133/133；全工作区 `typecheck` 8 个 workspace；`db:migrations:check` 63 个 SQL 迁移；Web 全量 123 文件 1078 例；API 单元 91 文件 623 例；`pnpm lint`、`format:check`、`check:frontend:boundaries`（394 模块 / 2062 依赖）与 `check:docs`（159 个 Markdown 文件）通过 | 本地通过（2026-10-29） |
 
 **未执行 / 已知边界**：未运行 Playwright E2E、真实企业微信新 Webhook 联调、测试 VM 同步或正式环境发布。完整 `pnpm test:integration:local` 已执行到数据库集成阶段，database 31/31 通过且迁移 0064 成功应用，但整条命令仍因既有 `apps/ops` 恢复演练的 `user_organizations_user_fk` 夹具外键错误退出 1；该失败与本批改动无关。
+
+## 2026-10-29 Casdoor 导入候选账号保留全部 Physical 实体组（ADR-107）
+
+用户指出，部分账号虽然所属实体组没有 InPulse 应用权限，但账号通过 Permission 的直接用户授权仍可登录；此类账号在预览中被错误显示为“未分类（无实体组）”。本批要求 Permission 只筛候选账号，账号命中后保留其全部 Physical 实体组。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR107-UNIT-001 | API 单元 | 权限只筛账号并保留实体组 | `casdoor-import.service.test.ts` 覆盖群组授权命中、直接用户授权命中、未授权账号排除；候选账号的非 scope Physical 组仍传给组织解析，直接授权账号最终保留 Domestic Sales Dept，而 Virtual / 无目录记录组不进入组织路径；定向 6/6 通过 | 本地通过（2026-10-29） |
+| ADR107-WEB-001 | Web 单元 | 导入说明与预览回归 | `CasdoorImportModal.test.tsx` 定向 3/3 通过；说明文案改为“按应用权限收窄候选账号，但保留候选账号关联的全部启用 Physical 实体组” | 本地通过（2026-10-29） |
+| ADR107-GATE-001 | 静态门禁 | 类型、格式、权限与文档 | API 与 Web TypeScript 检查通过；变更文件 Prettier 检查通过；`permissions:check` 133 条操作 / 133 条路由通过；`check:docs` 检查 160 个 Markdown 文件的链接与锚点通过；`git diff --check` 通过 | 本地通过（2026-10-29） |
+
+**未执行 / 已知边界**：尚未部署到测试 VM，也未用真实 Casdoor 重新预览或执行批量导入 smoke；不能据此声称截图中两个账号已在测试环境恢复实体组展示。未运行全量 Playwright、生产镜像、Trivy 或 GitHub Actions。

@@ -290,7 +290,7 @@ describe("PostgresCasdoorImportService", () => {
     expect(hasSsoMembershipChanges).toHaveBeenCalledTimes(3);
   });
 
-  test("配置 Casdoor Permission 时只用有权限的账号参与组织解析", async () => {
+  test("配置 Casdoor Permission 时只收窄候选账号，并保留候选账号的实体组", async () => {
     const loaded = snapshot([
       directoryUser("allowed-group", "allowed-group", [
         ORGANIZATION + "/Software Project 1",
@@ -299,22 +299,26 @@ describe("PostgresCasdoorImportService", () => {
       directoryUser("allowed-access", "allowed-access", [
         ORGANIZATION + "/Inpulse Group Access",
       ]),
-      directoryUser("allowed-direct", "allowed-direct", []),
+      directoryUser("allowed-direct", "allowed-direct", [
+        ORGANIZATION + "/Domestic Sales Dept",
+      ]),
       directoryUser("denied", "denied", [
         ORGANIZATION + "/Domestic Sales Dept",
       ]),
     ]);
     const directory = { load: vi.fn().mockResolvedValue(loaded) };
-    const resolvePhysicalImportGroups = vi
-      .fn()
-      .mockResolvedValue(
-        new Map([
-          [
-            ORGANIZATION + "/Software Project 1",
-            ORGANIZATION + "/Software Project 1",
-          ],
-        ]),
-      );
+    const resolvePhysicalImportGroups = vi.fn().mockResolvedValue(
+      new Map([
+        [
+          ORGANIZATION + "/Software Project 1",
+          ORGANIZATION + "/Software Project 1",
+        ],
+        [
+          ORGANIZATION + "/Domestic Sales Dept",
+          ORGANIZATION + "/Domestic Sales Dept",
+        ],
+      ]),
+    );
     const permission = {
       resolveScope: vi.fn().mockResolvedValue({
         groupIds: new Set([
@@ -339,6 +343,7 @@ describe("PostgresCasdoorImportService", () => {
     expect(permission.resolveScope).toHaveBeenCalledWith(ORGANIZATION);
     expect(resolvePhysicalImportGroups).toHaveBeenCalledWith(ORGANIZATION, [
       ORGANIZATION + "/Software Project 1",
+      ORGANIZATION + "/Domestic Sales Dept",
       ORGANIZATION + "/Inpulse Group Access",
     ]);
     expect(result.users.map((entry) => entry.casdoorId)).toEqual([
@@ -347,9 +352,12 @@ describe("PostgresCasdoorImportService", () => {
       "allowed-direct",
     ]);
     expect(result.users.map((entry) => entry.groups)).toEqual([
-      [ORGANIZATION + "/Software Project 1"],
+      [
+        ORGANIZATION + "/Domestic Sales Dept",
+        ORGANIZATION + "/Software Project 1",
+      ],
       [],
-      [],
+      [ORGANIZATION + "/Domestic Sales Dept"],
     ]);
   });
 });

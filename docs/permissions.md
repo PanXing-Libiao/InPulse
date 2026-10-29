@@ -402,10 +402,10 @@ ADR-106 起项目群只保留 Webhook。createProjectWecomGroupCode 与 deletePr
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---:|---:|---:|---:|---:|---:|---|
-| `previewCasdoorUserImport` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；实时读取 `CASDOOR_IMPORT_ORGANIZATION` 下启用、未删除账号；配置 `CASDOOR_IMPORT_PERMISSION` 时先按该 Permission（含角色继承）的 groups/users 收窄候选账号，并只解析 scope 内群组。只返回脱敏身份与 Physical 组预览；只读、无 CSRF、无幂等，响应 `no-store`；SSO 关闭、组织未配置、Permission 无效或目录不可用时 503 |
+| `previewCasdoorUserImport` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；实时读取 `CASDOOR_IMPORT_ORGANIZATION` 下启用、未删除账号；配置 `CASDOOR_IMPORT_PERMISSION` 时先按该 Permission（含角色继承）的 groups/users 收窄候选账号，并保留候选账号的全部组引用，不再按 scope 裁剪 Physical 实体组。只返回脱敏身份与 Physical 组预览；只读、无 CSRF、无幂等，响应 `no-store`；SSO 关闭、组织未配置、Permission 无效或目录不可用时 503 |
 | `importCasdoorUsers` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + 同源 + 同步 CSRF + 数据库级幂等（1.0.0）；`casdoorUserIds` 1～1000 去重；确认时重新读取当前目录，所选账号在预览后消失、停用或改组时 409；身份冲突逐账号跳过；单事务写入账号、Physical 组织成员关系与一条 `admin.user.casdoorImport` 审计，网络读取在事务外 |
 
-**目录与实体组口径**：未配置 `CASDOOR_IMPORT_PERMISSION` 时，账号候选范围是配置 Casdoor organization 下启用且未删除的账号；配置后，候选账号与进入组织解析的群组都必须命中该 Permission（含角色继承）的 groups/users，且不把 Casdoor 权限映射为 InPulse 权限。管理员在预览中最终勾选后才导入。`/api/get-users` 的 `groups` 仅视为 `owner/name` 组引用；确认前分页读取同一组织的 `GET /api/get-groups`，按 `parentId` 还原完整路径并严格校验 owner、name、type、isEnabled、isTopGroup 与父级。只把启用中的 `Physical` 组写入 CASDOOR 成员关系；Virtual、停用组和目录中已不存在的陈旧引用忽略。互不为祖先的真实 Physical 组全部保留，同一路径族仍只直接归属最深实体组；无实体组不建立组织关系，页面归入“未分类”。
+**目录与实体组口径**：未配置 `CASDOOR_IMPORT_PERMISSION` 时，账号候选范围是配置 Casdoor organization 下启用且未删除的账号；配置后，只按该 Permission（含角色继承）的 groups/users 收窄候选账号，不把 Casdoor 权限映射为 InPulse 权限。账号命中后，其全部组引用都进入实体组解析，即使某个 Physical 组本身不在 Permission scope 内；这样直接用户授权但组无应用权限的账号仍能正确归类。管理员在预览中最终勾选后才导入。`/api/get-users` 的 `groups` 仅视为 `owner/name` 组引用；确认前分页读取同一组织的 `GET /api/get-groups`，按 `parentId` 还原完整路径并严格校验 owner、name、type、isEnabled、isTopGroup 与父级。只把启用中的 `Physical` 组写入 CASDOOR 成员关系；Virtual、停用组和目录中已不存在的陈旧引用忽略。互不为祖先的真实 Physical 组全部保留，同一路径族仍只直接归属最深实体组；无实体组不建立组织关系，页面归入“未分类”。
 
 **身份与事务**：`sso_subject` 命中则刷新；登录名命中、未绑定且邮箱一致时绑定；其余 JIT 新建。新账号固定 `password_hash=NULL`、`is_admin=false`，无项目成员关系；导入路径显式关闭 ADR-075 首管理员授予。目录读取、身份写入、组织创建、成员关系替换与审计共享同一事务；导入不自动停用、删除或重新启用平台账号。组目录读取失败、字段非法、父级缺失或成环时整批 503 fail closed。
 
@@ -465,3 +465,9 @@ ADR-106 起项目群只保留 Webhook。createProjectWecomGroupCode 与 deletePr
 GET /projects/{projectId}/wecom-group 只返回 ACTIVE Webhook 的脱敏列表和通知选项，state 只按 Webhook 返回 UNBOUND / BOUND。旧 POST /projects/{projectId}/wecom-group/codes 与 DELETE /projects/{projectId}/wecom-group 不注册，返回 404。管理员更换机器人只撤销个人绑定，revoked_project_groups 固定为 0；五类群通知开关由全部 ACTIVE Webhook 共用。
 
 **验证边界**：真实 PostgreSQL + HTTP 集成覆盖旧路由 404、Webhook 加密 / 去重 / 删除隔离、通知开关门禁、重放门禁、机器人更换零撤销和数据库拒绝 ACTIVE BOT；真实企业微信 Webhook 冒烟、测试 VM 与正式部署同步尚未执行。
+
+## ADR-107 Casdoor 导入权限只筛账号（2026-10-29）
+
+本节按 [ADR-107](adr/ADR-107.md)（Accepted）修订 ADR-101 的群组二次收窄口径，不新增或删除路由，路由总数保持 133。`CASDOOR_IMPORT_PERMISSION` 仍只决定哪些 Casdoor 账号进入导入预览；候选账号命中后，其关联的全部启用 Physical 实体组均进入组织解析和成员同步，不再要求实体组本身命中 Permission scope。未授权账号仍被排除，Virtual / 停用 / 陈旧组仍忽略，组元数据失败仍 503 fail closed。该变化只影响组织归类，不把 Casdoor Permission、Role、群组或应用授权映射为 InPulse 项目权限或管理员权限。
+
+**验证**：API 单元覆盖直接用户授权命中的账号保留非 scope 的 Physical 组，同时未授权账号仍不进入候选；后续真实 Casdoor 预览与导入 smoke 单独记录。

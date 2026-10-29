@@ -23,7 +23,7 @@ import type {
   SsoIdentityClaims,
 } from "./sso-user.repository.js";
 
-/** ADR-100：把脱敏目录快照、既有 SSO 身份映射和 Physical 组织同步串成单事务导入。 */
+/** ADR-100 / ADR-107：权限只收窄候选账号；Physical 组织由候选账号自己的组引用解析。 */
 export class PostgresCasdoorImportService implements CasdoorImportPort {
   constructor(
     private readonly users: PostgresSsoUserRepository,
@@ -42,20 +42,13 @@ export class PostgresCasdoorImportService implements CasdoorImportPort {
     const scopedUsers =
       scope === undefined
         ? loaded.users
-        : loaded.users
-            .filter((user) => {
-              const userResourceId = loaded.organization + "/" + user.loginName;
-              return (
-                user.groups.some((groupId) => scope.groupIds.has(groupId)) ||
-                scope.userIds.has(userResourceId)
-              );
-            })
-            .map((user) => ({
-              ...user,
-              groups: user.groups.filter((groupId) =>
-                scope.groupIds.has(groupId),
-              ),
-            }));
+        : loaded.users.filter((user) => {
+            const userResourceId = loaded.organization + "/" + user.loginName;
+            return (
+              user.groups.some((groupId) => scope.groupIds.has(groupId)) ||
+              scope.userIds.has(userResourceId)
+            );
+          });
     const snapshot = {
       ...loaded,
       users: scopedUsers,

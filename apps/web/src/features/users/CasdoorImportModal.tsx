@@ -180,7 +180,7 @@ export function CasdoorImportModal({
       <div className="casdoor-import">
         <p className="casdoor-import-intro">
           {
-            "只读取配置组织下启用中的账号；正式环境会按 InPulse 应用权限收窄候选范围，并仅保留权限内的 Casdoor Physical 实体组。没有实体组的账号会进入未分类；Virtual 组、停用账号和已删除账号不会导入。已导入账号仅在姓名、邮箱或实体组发生变化时标记刷新，无变化账号不会默认勾选。"
+            "只读取配置组织下启用中的账号；正式环境会按 InPulse 应用权限收窄候选账号，但会保留每个候选账号关联的全部启用 Physical 实体组，即使实体组本身没有应用权限。没有实体组的账号会进入未分类；Virtual 组、停用账号和已删除账号不会导入。已导入账号仅在姓名、邮箱或实体组发生变化时标记刷新，无变化账号不会默认勾选。"
           }
         </p>
 
