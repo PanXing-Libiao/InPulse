@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "antd";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -13,6 +13,10 @@ import {
   useAssistAttachments,
   type AssistImageAttachment,
 } from "@features/common/assist-image";
+
+const COMPOSER_MAX_HEIGHT = 116;
+// composer 的上内边距 9 + 上边框 1，避免输入框长高时溢出卡片。
+const COMPOSER_CHROME_HEIGHT = 10;
 
 const PRIORITY_LABELS: Readonly<Record<string, string>> = {
   NORMAL: "普通",
@@ -84,12 +88,27 @@ export function TaskDraftAssistPane({
   onChangeProject,
   onChangeModule,
 }: TaskDraftAssistPaneProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [composer, setComposer] = useState("");
+  const [composerHeight, setComposerHeight] = useState(36);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const { attachments, imageError, addFromClipboard, remove, clear } =
     useAssistAttachments();
+
+  // 输入框从 1 行起随内容长高，到上限后改为内部滚动；发送按钮尺寸不变。
+  useLayoutEffect(() => {
+    const node = inputRef.current;
+    if (node === null) return;
+    // 先归零再量 scrollHeight，避免沿用上一次的内容高度。
+    node.style.height = "0px";
+    const next =
+      composer.length === 0
+        ? 36
+        : Math.max(36, Math.min(node.scrollHeight + 2, COMPOSER_MAX_HEIGHT));
+    node.style.height = next + "px";
+    setComposerHeight(next);
+  }, [composer]);
 
   const mutation = useMutation({
     retry: false,
@@ -333,9 +352,13 @@ export function TaskDraftAssistPane({
         </div>
       ) : null}
 
-      <div className="import-composer">
-        <input
+      <div
+        className="import-composer"
+        style={{ height: composerHeight + COMPOSER_CHROME_HEIGHT }}
+      >
+        <textarea
           ref={inputRef}
+          rows={1}
           aria-label="描述任务"
           value={composer}
           disabled={disabled || busy}
@@ -352,7 +375,11 @@ export function TaskDraftAssistPane({
             void addFromClipboard(event.clipboardData);
           }}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
               event.preventDefault();
               send();
             }
