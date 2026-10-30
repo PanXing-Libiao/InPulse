@@ -257,6 +257,7 @@ export class HealthController {
       "PATCH /api/v1/projects/{projectId}/modules/{moduleId}/tasks/{taskId}/record-drafts/{recordId}",
       "PATCH /api/v1/projects/{projectId}/record-drafts/{recordId}",
       "PATCH /api/v1/projects/{projectId}/status",
+      "POST /api/v1/admin/ai-assist/models",
       "POST /api/v1/admin/ai-assist/test",
       "POST /api/v1/admin/organizations",
       "POST /api/v1/admin/users",

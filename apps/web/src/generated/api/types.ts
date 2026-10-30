@@ -192,6 +192,18 @@ export type AiAssistImage = {
   readonly data: string;
 };
 
+export type AiAssistModelsRequest = {
+  readonly endpoint: string;
+  readonly timeoutMs: number;
+  readonly apiKey?: (string | null);
+};
+
+export type AiAssistModelsResponse = {
+  readonly ok: boolean;
+  readonly reason: (("KILL_SWITCH" | "NOT_ENABLED" | "CONFIG_INVALID" | "ENCRYPTION_KEY_UNAVAILABLE" | "AUTH" | "RATE_LIMITED" | "TIMEOUT" | "NETWORK" | "CONTEXT_LIMIT" | "INVALID_RESPONSE") | null);
+  readonly models: readonly string[];
+};
+
 export type AiAssistSettings = {
   readonly enabled: boolean;
   readonly source: ("DATABASE" | "ENVIRONMENT" | "NONE");

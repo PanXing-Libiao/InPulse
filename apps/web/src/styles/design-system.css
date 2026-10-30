@@ -8730,7 +8730,8 @@ div.ant-popover.wecom-unbind-popconfirm
   font-size: var(--text-sm);
 }
 
-.ai-assist-field .ant-input-number {
+.ai-assist-field .ant-input-number,
+.ai-assist-field .ant-select {
   width: 100%;
 }
 

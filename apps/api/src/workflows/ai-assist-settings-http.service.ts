@@ -4,6 +4,7 @@ import {
   aiAssistSettingsReplayContextSchema,
   routeRegistry,
   schemaRegistry,
+  type AiAssistModelsRequest,
   type AiAssistSettingsUpdateRequest,
 } from "@inpulse/api-contract";
 
@@ -28,7 +29,10 @@ import {
 import { AiAssistSettingsService } from "../modules/document-import/ai-assist-settings.service.js";
 
 export type AiAssistSettingsOperation =
-  "getAiAssistSettings" | "updateAiAssistSettings" | "testAiAssistSettings";
+  | "getAiAssistSettings"
+  | "updateAiAssistSettings"
+  | "listAiAssistModels"
+  | "testAiAssistSettings";
 
 export interface AiAssistSettingsHttpRequest {
   readonly headers: HttpHeaderBag;
@@ -48,7 +52,7 @@ class AiAssistSettingsHttpError extends Error {
 
 /**
  * ADR-068 管理员配置 HTTP 编排：GET 只读短事务；PUT 由幂等 runner 持有单事务；
- * 测试连接的上游网络调用严格在数据库事务之外。
+ * 测试连接与模型发现的上游网络调用严格在数据库事务之外。
  */
 @Injectable()
 export class AiAssistSettingsHttpService {
@@ -67,6 +71,9 @@ export class AiAssistSettingsHttpService {
     request: AiAssistSettingsHttpRequest,
   ): Promise<{ readonly status: number; readonly body: unknown }> {
     const requestId = randomUUID();
+    const route = routeRegistry.find(
+      (entry) => entry.operationId === operation,
+    )!;
     try {
       if (operation === "getAiAssistSettings") {
         const item = await this.uow.run((tx) =>
@@ -75,6 +82,18 @@ export class AiAssistSettingsHttpService {
         return {
           status: 200,
           body: schemaRegistry.AiAssistSettings.schema.parse(item),
+        };
+      }
+      if (operation === "listAiAssistModels") {
+        // 只读管理员门禁；请求体是一次性表单配置，上游 GET 在事务之外执行。
+        await this.uow.run((tx) =>
+          this.highRisk.verifyRead(tx, request.headers),
+        );
+        const body = this.parseJsonBody<AiAssistModelsRequest>(route, request);
+        const result = await this.settings.listModels(body);
+        return {
+          status: 200,
+          body: schemaRegistry.AiAssistModelsResponse.schema.parse(result),
         };
       }
       if (operation === "testAiAssistSettings") {
@@ -97,10 +116,10 @@ export class AiAssistSettingsHttpService {
           "请求未通过同源安全校验",
         );
       }
-      const route = routeRegistry.find(
-        (entry) => entry.operationId === operation,
-      )!;
-      const body = this.parseWriteBody(route, request);
+      const body = this.parseJsonBody<AiAssistSettingsUpdateRequest>(
+        route,
+        request,
+      );
       const result = await this.idempotency.run({
         operationId: operation,
         actorId: async (tx) => {
@@ -164,10 +183,10 @@ export class AiAssistSettingsHttpService {
     }
   }
 
-  private parseWriteBody(
+  private parseJsonBody<T>(
     route: (typeof routeRegistry)[number],
     request: AiAssistSettingsHttpRequest,
-  ): AiAssistSettingsUpdateRequest {
+  ): T {
     if ("noBody" in route.request.body) {
       throw new AiAssistSettingsHttpError(
         400,
@@ -198,7 +217,7 @@ export class AiAssistSettingsHttpService {
         ),
       );
     }
-    return parsed.data as AiAssistSettingsUpdateRequest;
+    return parsed.data as T;
   }
 
   private mapError(

@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ApiError,
   createApiClient,
+  type AiAssistModelsRequest,
+  type AiAssistModelsResponse,
   type AiAssistSettingsTestResponse,
   type AiAssistSettingsUpdateRequest,
   type InpulseApiClient,
@@ -16,7 +18,8 @@ import {
 /**
  * ADR-068 管理员 AI 辅助转换配置数据层：GET 读取当前生效状态；PUT 先签发
  * CSRF Token 再携带一次性 Idempotency-Key 保存；POST test 只做上游探测，
- * 不写任何持久化状态。所有请求都经生成客户端，组件不裸写 fetch。
+ * POST models 用表单当前配置探测可用模型，二者都不写任何持久化状态。
+ * 所有请求都经生成客户端，组件不裸写 fetch。
  */
 export const AI_ASSIST_SETTINGS_QUERY_KEY = ["ai-assist-settings"] as const;
 
@@ -34,6 +37,13 @@ export function aiAssistSettingsErrorMessage(error: unknown): string {
     if (error.status === 503) return "服务暂时不可用，请稍后重试。";
   }
   return "AI 辅助转换配置服务暂时不可用，请重试。";
+}
+
+export function aiAssistModelsErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 422) {
+    return "请检查服务端点、超时与 API 密钥字段。";
+  }
+  return aiAssistSettingsErrorMessage(error);
 }
 
 const DISABLED_REASON_TEXT: Readonly<Record<string, string>> = {
@@ -108,5 +118,12 @@ export function useAiAssistSettings(client?: InpulseApiClient) {
       api.testAiAssistSettings(),
   });
 
-  return { query, save, test };
+  const discoverModels = useMutation({
+    retry: false,
+    mutationFn: (
+      body: AiAssistModelsRequest,
+    ): Promise<AiAssistModelsResponse> => api.listAiAssistModels(body),
+  });
+
+  return { query, save, test, discoverModels };
 }

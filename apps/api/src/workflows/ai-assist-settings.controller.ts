@@ -37,6 +37,15 @@ export class AiAssistSettingsController {
     return this.respond("updateAiAssistSettings", request, response);
   }
 
+  @Post("models")
+  @Operation("listAiAssistModels")
+  async listModels(
+    @Req() request: AiAssistSettingsHttpRequest,
+    @Res({ passthrough: true }) response: AiAssistSettingsControllerResponse,
+  ) {
+    return this.respond("listAiAssistModels", request, response);
+  }
+
   @Post("test")
   @Operation("testAiAssistSettings")
   async test(

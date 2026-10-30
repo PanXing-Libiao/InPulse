@@ -245,4 +245,25 @@ describe("AiAssistRuntimeService.resolve（经 UnitOfWork 读取）", () => {
     expect(resolution.source).toBe("DATABASE");
     expect(resolution.config.apiKey).toBe(PLAINTEXT);
   });
+  test("resolveApiKey：配置关闭的数据库行仍可复用密钥，密文损坏则 fail closed", async () => {
+    process.env["AI_ASSIST_ENABLED"] = "1";
+    const disabled = serviceWithRow(rowOf({ enabled: false }));
+    expect(await disabled.service.resolveApiKey()).toEqual({
+      kind: "READY",
+      apiKey: PLAINTEXT,
+      source: "DATABASE",
+    });
+
+    const broken = rowOf();
+    const tampered = Buffer.from(broken.apiKeyCiphertext);
+    tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 0x01;
+    const invalid = serviceWithRow({
+      ...broken,
+      apiKeyCiphertext: tampered,
+    });
+    expect(await invalid.service.resolveApiKey()).toMatchObject({
+      kind: "DISABLED",
+      reason: "CONFIG_INVALID",
+    });
+  });
 });

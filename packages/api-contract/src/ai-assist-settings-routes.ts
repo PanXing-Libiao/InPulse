@@ -11,6 +11,14 @@ const readErrors = {
   "500": json("ErrorResponse"),
 };
 
+const modelsErrors = {
+  "400": json("ErrorResponse"),
+  "401": json("ErrorResponse"),
+  "403": json("ErrorResponse"),
+  "422": json("ErrorResponse"),
+  "500": json("ErrorResponse"),
+};
+
 const writeErrors = {
   "400": json("ErrorResponse"),
   "401": json("ErrorResponse"),
@@ -61,8 +69,9 @@ const settingsReplayAuthorization = {
 
 /**
  * ADR-068：AI 辅助转换管理员在线配置。
- * GET 读取当前生效状态；PUT 加密保存密钥并写审计；POST test 为纯校验探测。
- * 三条路由都只服务完整管理员 Session（ADR-031 起不要求 TOTP 重认证）。
+ * GET 读取当前生效状态；PUT 加密保存密钥并写审计；POST test 为纯校验探测；
+ * POST models 用当前表单的一次性配置读取上游可用模型，密钥不落库。
+ * 四条路由都只服务完整管理员 Session（ADR-031 起不要求 TOTP 重认证）。
  */
 export const aiAssistSettingsRoutes: readonly RouteDefinition[] = [
   {
@@ -134,6 +143,40 @@ export const aiAssistSettingsRoutes: readonly RouteDefinition[] = [
         "单行配置 SELECT ... FOR UPDATE 显式行锁，更新成功后递增 row_version；不自动重试",
     },
     auditAction: "admin.aiAssistSettings.update",
+  },
+  {
+    method: "POST",
+    path: "/admin/ai-assist/models",
+    operationId: "listAiAssistModels",
+    summary:
+      "系统管理员用设置页当前填写的端点、超时与一次性密钥向 OpenAI 兼容上游请求 /v1/models，返回当前令牌可用的模型 ID；apiKey 留空时复用已保存密钥。不写任何持久化状态、不发送用户数据、不写审计。",
+    request: {
+      path: "none",
+      query: "none",
+      headers: "none",
+      body: {
+        contentTypes: [
+          {
+            contentType: "application/json",
+            schemaRef: "AiAssistModelsRequest",
+          },
+        ],
+      },
+    },
+    responses: { "200": json("AiAssistModelsResponse"), ...modelsErrors },
+    authPolicy: "adminSession",
+    csrfPolicy: "none",
+    idempotencyPolicy: "none",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "none",
+    idempotencyFingerprintVersion: "none",
+    behaviorHeaders: "none",
+    idempotencyReplayPolicy: "none",
+    replayAuthorizationPolicy: "none",
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "none",
   },
   {
     method: "POST",

@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type {
+  AiAssistModelsRequest,
+  AiAssistModelsResponse,
   AiAssistSettingsItem,
   AiAssistSettingsTestReason,
   AiAssistSettingsTestResponse,
@@ -19,6 +21,7 @@ import { AiAssistRuntimeService } from "./ai-assist-runtime.service.js";
 import { DocumentImportAiAssistClient } from "./ai-assist.client.js";
 import { AiAssistUpstreamError } from "./ai-assist.client.js";
 import {
+  aiAssistEmergencyStop,
   aiAssistEnabled,
   validateAiAssistEndpoint,
 } from "./ai-assist.config.js";
@@ -52,7 +55,7 @@ const upstreamReasonMap: Readonly<
 };
 
 /**
- * ADR-068 AI 辅助转换管理员配置服务：读视图、保存（加密 + 审计）与测试连接。
+ * ADR-068 AI 辅助转换管理员配置服务：读视图、保存（加密 + 审计）、测试连接与模型发现。
  * 每个写命令显式接收同一 TransactionContext（应用服务约定）。
  */
 @Injectable()
@@ -163,6 +166,57 @@ export class AiAssistSettingsService {
       userAgent: meta.userAgent ?? null,
     });
     return this.toItem(updated);
+  }
+
+  /**
+   * 模型发现：端点与超时使用设置页当前输入；apiKey 留空时只读复用已保存
+   * 密钥。请求只在内存中拼出临时配置，不写任何持久化状态。
+   */
+  async listModels(
+    input: AiAssistModelsRequest,
+  ): Promise<AiAssistModelsResponse> {
+    const env = process.env;
+    if (aiAssistEmergencyStop(env)) {
+      return { ok: false, reason: "KILL_SWITCH", models: [] };
+    }
+    let endpoint: string;
+    try {
+      endpoint = validateAiAssistEndpoint(input.endpoint, env, "endpoint");
+    } catch {
+      throw new AiAssistSettingsInputError({
+        endpoint: "端点必须是绝对 https 地址；回环 http 只允许开发 / 测试环境",
+      });
+    }
+    let apiKey = input.apiKey?.trim();
+    if (apiKey === undefined || apiKey.length === 0) {
+      const saved = await this.runtime.resolveApiKey();
+      if (saved.kind === "DISABLED") {
+        return { ok: false, reason: saved.reason, models: [] };
+      }
+      if (saved.kind === "MISSING") {
+        return { ok: false, reason: "CONFIG_INVALID", models: [] };
+      }
+      apiKey = saved.apiKey;
+    }
+    try {
+      const { models } = await this.client.listModels({
+        endpoint,
+        model: "",
+        apiKey,
+        timeoutMs: input.timeoutMs,
+        maxTokens: 1,
+      });
+      return { ok: true, reason: null, models: [...models] };
+    } catch (error) {
+      if (error instanceof AiAssistUpstreamError) {
+        return {
+          ok: false,
+          reason: upstreamReasonMap[error.reason],
+          models: [],
+        };
+      }
+      throw error;
+    }
   }
 
   /** 测试连接：用当前生效配置发最小探测请求；不写任何持久化状态。 */

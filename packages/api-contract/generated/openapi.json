@@ -362,6 +362,99 @@
         }
       }
     },
+    "/admin/ai-assist/models": {
+      "post": {
+        "operationId": "listAiAssistModels",
+        "summary": "系统管理员用设置页当前填写的端点、超时与一次性密钥向 OpenAI 兼容上游请求 /v1/models，返回当前令牌可用的模型 ID；apiKey 留空时复用已保存密钥。不写任何持久化状态、不发送用户数据、不写审计。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiAssistModelsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或业务参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Session 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "已登录但无全局权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "字段校验错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期错误，不向客户端泄露堆栈",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-inpulse-policy": {
+          "authPolicy": "adminSession",
+          "csrfPolicy": "none",
+          "idempotencyPolicy": "none",
+          "idempotencyExceptionAdr": "none",
+          "idempotencyContractVersion": "none",
+          "idempotencyFingerprintVersion": "none",
+          "behaviorHeaders": "none",
+          "idempotencyReplayPolicy": "none",
+          "replayAuthorizationPolicy": "none",
+          "securityFlowPolicy": "none",
+          "versionPolicy": "none",
+          "concurrencyPolicy": "none",
+          "auditAction": "none"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiAssistModelsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/ai-assist/test": {
       "post": {
         "operationId": "testAiAssistSettings",
@@ -17091,6 +17184,83 @@
         "required": [
           "mimeType",
           "data"
+        ],
+        "additionalProperties": false
+      },
+      "AiAssistModelsRequest": {
+        "type": "object",
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 600000
+          },
+          "apiKey": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "endpoint",
+          "timeoutMs"
+        ],
+        "additionalProperties": false
+      },
+      "AiAssistModelsResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "KILL_SWITCH",
+                  "NOT_ENABLED",
+                  "CONFIG_INVALID",
+                  "ENCRYPTION_KEY_UNAVAILABLE",
+                  "AUTH",
+                  "RATE_LIMITED",
+                  "TIMEOUT",
+                  "NETWORK",
+                  "CONTEXT_LIMIT",
+                  "INVALID_RESPONSE"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "models": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "reason",
+          "models"
         ],
         "additionalProperties": false
       },

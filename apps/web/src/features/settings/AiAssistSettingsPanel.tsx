@@ -1,13 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import { formatBeijingMinute } from "@features/common/beijing-time";
-import { Button, Input, InputNumber, Switch } from "antd";
+import { AutoComplete, Button, Input, InputNumber, Switch } from "antd";
 import { Controller, useForm } from "react-hook-form";
-import type { AiAssistSettings, InpulseApiClient } from "@generated/api";
+import type {
+  AiAssistModelsResponse,
+  AiAssistSettings,
+  InpulseApiClient,
+} from "@generated/api";
 import { CalmBadge, CalmSectionTitle } from "@features/common/components/Calm";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import {
   aiAssistDisabledReasonText,
+  aiAssistModelsErrorMessage,
   aiAssistSettingsErrorMessage,
   aiAssistTestFailureText,
   useAiAssistSettings,
@@ -28,6 +33,19 @@ interface FormValues {
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_TOKENS = 8192;
 
+function discoveredModelsText(result: AiAssistModelsResponse): string {
+  if (!result.ok) {
+    return "获取模型未通过：" + aiAssistTestFailureText(result.reason ?? "");
+  }
+  if (result.models.length === 0) {
+    return "获取成功，但上游没有返回可用模型。";
+  }
+  const names = result.models.slice(0, 20).join("、");
+  const suffix =
+    result.models.length > 20 ? ` 等 ${result.models.length} 个` : "";
+  return `已获取 ${result.models.length} 个可用模型：${names}${suffix}`;
+}
+
 function sourceText(source: AiAssistSettings["source"]): string {
   if (source === "DATABASE") return "在线配置（数据库，优先于环境变量）";
   if (source === "ENVIRONMENT")
@@ -46,18 +64,21 @@ function editableValues(settings: AiAssistSettings): FormValues {
 }
 
 /**
- * ADR-068 「成员与设置 → AI 辅助转换」面板：状态卡 + 表单 + 测试连接。
+ * ADR-068 「成员与设置 → AI 辅助转换」面板：状态卡 + 表单 +
+ * 测试连接 + 上游可用模型发现。
  * 密钥永不回显；留空表示保持已保存的密钥。权限判断全部在服务端完成。
  */
 export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
   client,
 }) => {
-  const { query, save, test } = useAiAssistSettings(client);
+  const { query, save, test, discoverModels } = useAiAssistSettings(client);
   const [success, setSuccess] = useState<string | null>(null);
   // 主开关的即时草稿：null 表示跟随服务端已保存状态。
   const [enabledDraft, setEnabledDraft] = useState<boolean | null>(null);
   const {
+    clearErrors,
     control,
+    getValues,
     handleSubmit,
     reset,
     setError,
@@ -138,6 +159,30 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
     } finally {
       setEnabledDraft(null);
     }
+  };
+
+  const discover = () => {
+    if (settings === undefined) return;
+    const values = getValues();
+    const endpoint = values.endpoint.trim();
+    const apiKey = values.apiKey.trim();
+    discoverModels.reset();
+    clearErrors(["endpoint", "apiKey"]);
+    if (endpoint.length === 0) {
+      setError("endpoint", { message: "请填写 AI 服务端点" });
+      return;
+    }
+    if (!settings.keyConfigured && apiKey.length === 0) {
+      setError("apiKey", { message: "首次配置必须提供 API 密钥" });
+      return;
+    }
+    void discoverModels
+      .mutateAsync({
+        endpoint,
+        timeoutMs: values.timeoutMs,
+        apiKey: apiKey.length === 0 ? null : apiKey,
+      })
+      .catch(() => undefined);
   };
 
   if (query.isPending) {
@@ -281,16 +326,33 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
               control={control}
               rules={{ required: "请填写模型名称" }}
               render={({ field }) => (
-                <Input
+                <AutoComplete
                   id="ai-assist-model"
-                  {...field}
+                  value={field.value}
+                  onChange={(value) => field.onChange(value)}
+                  options={
+                    discoverModels.data?.ok
+                      ? discoverModels.data.models.map((model) => ({
+                          value: model,
+                        }))
+                      : []
+                  }
+                  filterOption={(inputValue, option) =>
+                    String(option?.value ?? "")
+                      .toLowerCase()
+                      .includes(inputValue.toLowerCase())
+                  }
                   placeholder="gpt-4o-mini"
                 />
               )}
             />
             {errors.model ? (
               <small role="alert">{errors.model.message}</small>
-            ) : null}
+            ) : (
+              <small className="form-hint">
+                可直接输入；「获取可用模型」使用当前填写的端点、超时与密钥，密钥留空时使用已保存密钥。
+              </small>
+            )}
           </div>
 
           <div className="ai-assist-field-pair">
@@ -356,6 +418,9 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
             <Button type="primary" htmlType="submit" loading={save.isPending}>
               保存配置
             </Button>
+            <Button onClick={discover} loading={discoverModels.isPending}>
+              获取可用模型
+            </Button>
             <Button
               onClick={() => {
                 test.reset();
@@ -368,6 +433,28 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
           </div>
         </form>
 
+        {discoverModels.isSuccess ? (
+          <div
+            className={
+              discoverModels.data.ok
+                ? "permission-note note-success"
+                : "permission-note"
+            }
+            role="status"
+          >
+            <InpulseIcon
+              name={discoverModels.data.ok ? "check" : "alert"}
+              size={16}
+            />
+            <span>{discoveredModelsText(discoverModels.data)}</span>
+          </div>
+        ) : null}
+        {discoverModels.isError ? (
+          <div className="permission-note" role="alert">
+            <InpulseIcon name="alert" size={16} />
+            <span>{aiAssistModelsErrorMessage(discoverModels.error)}</span>
+          </div>
+        ) : null}
         {test.isSuccess ? (
           <div
             className={

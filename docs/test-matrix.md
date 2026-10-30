@@ -7438,3 +7438,18 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 **部署记录**：测试环境与正式环境均已只更新 `web` 到 `0.1.0-20261030-190103e2`；部署脚本重建 web 容器后，两地 `/health/ready` 与 `/` 返回 200，线上 bundle 核验通过。
 
 **未执行 / 已知边界**：尚未用真实账号在浏览器里重新粘贴一次截图并创建任务；本批未运行 Playwright、完整集成/E2E、Trivy 或 GitHub Actions。
+
+## 2026-10-30 AI 辅助转换可用模型发现
+
+按用户要求为 ADR-068 管理员配置增加 OpenAI 兼容上游模型发现；不改数据库。发现请求使用设置页当前端点、超时和一次性密钥，`apiKey` 留空时回退已保存密钥，解决“模型为空不能保存、未保存又不能发现”的初始化死锁。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| AI-MODELS-CONTRACT-001 | 契约 / 权限 | 第 4 条管理员纯校验路由 | `contract:generate` 更新 OpenAPI、指纹与生成客户端；新增 `AiAssistModelsRequest`（`endpoint` / `timeoutMs` / 可选 `apiKey`），`apiKey` 登记为敏感字段；`contract:validate` **122 条路由**通过；`listAiAssistModels` 位于纯校验 allowlist，权限矩阵新增系统管理员条目；未新增迁移 | 本地通过（2026-10-30） |
+| AI-MODELS-CLIENT-001 | API 单元 | `/v1/models` 适配器 | `ai-assist.client.test.ts` **18 例通过**，新增 2 例：从带 query 的 `chat/completions` 推导 `/v1/models`、GET + Bearer、去重排序、过滤空/非字符串 ID；401 映射 `auth`、空列表合法、缺 `data` 或全部无效映射 `invalid-response` | 本地通过（2026-10-30） |
+| AI-MODELS-INT-001 | API 集成（真实 PostgreSQL + 回环 stub） | 鉴权、已保存配置与固定分类 | `admin-ai-assist-api.integration.test.ts` **14 例通过**：匿名 401、普通成员 403；管理员可用未保存的端点与密钥直接获取模型，且不写配置行、不新增审计；`apiKey: null` 时断言 GET `/v1/models?db=1` 使用解密后的已保存密钥；缺请求体返回 400；上游 401 返回 `{ ok: false, reason: "AUTH", models: [] }` | 本地通过（2026-10-30，`app_ci`） |
+| AI-MODELS-WEB-001 | Web 单元 | 设置页模型下拉与结果展示 | `AiAssistSettingsPanel.test.tsx` **14 例通过**：已保存密钥场景发送 `apiKey: null` 并回退；首次配置在模型为空时用表单端点与密钥获取模型且不触发保存；首次配置密钥为空时不发请求；固定分类失败不展示上游原文 | 本地通过（2026-10-30） |
+| AI-MODELS-E2E-001 | 浏览器 E2E（生产构建 + 回环 stub） | 保存配置 → 获取模型 | `apps/e2e/tests/settings-ai-assist.spec.ts` **3 例通过（10.6 秒）**；首例先清空模型、填写尚未保存的密钥并直接“获取可用模型”，页面显示两个 stub 模型后再选择模型保存；保存后留空密钥再次获取，验证已保存密钥回退；其余主开关与成员导入用例继续通过 | 本地通过（2026-10-30） |
+| AI-MODELS-BUILD-001 | 类型 / 构建门禁 | 契约与前后端接线 | `pnpm lint`、`pnpm format:check`、`pnpm typecheck`、`pnpm build`（8 workspace）通过；全 workspace `pnpm test:unit` **1869 例通过**（API 617 / Web 1068 / Contract 104 / Database 15 / Canonical JSON 5 / Ops 60）；`contract:validate` 122 条通过 | 本地通过（2026-10-30） |
+
+**边界**：自动化测试全部使用本机回环 stub；用户提供的真实中转站密钥只用于前期手工读取模型列表确认，未写入代码、数据库、日志或仓库，但已出现在对话中，应尽快轮换。此次未修改测试 VM / 正式环境，也未执行完整 Playwright 全量套件或 GitHub Actions。

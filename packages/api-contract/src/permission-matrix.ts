@@ -427,6 +427,22 @@ export const permissionMatrix = [
     },
   },
   {
+    operationId: "listAiAssistModels",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: { kind: "deny", status: 403 },
+      其他项目成员: { kind: "deny", status: 403 },
+      已移除成员: { kind: "deny", status: 403 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: {
+        kind: "conditional",
+        allowedWhen:
+          "完整系统管理员 Session；纯校验模型发现（读取已保存配置向上游 /v1/models 发起只读请求，无持久化副作用，不要求 CSRF 与幂等键）",
+        deniedWith: 403,
+      },
+    },
+  },
+  {
     operationId: "testAiAssistSettings",
     outcomes: {
       匿名: { kind: "deny", status: 401 },

@@ -11,6 +11,8 @@ export const pureValidationOperationIds = [
   "assistDocumentImport",
   // ADR-068：测试连接只发最小探测请求，不写任何持久化状态。
   "testAiAssistSettings",
+  // ADR-068：模型发现只读上游 /v1/models，不写任何持久化状态。
+  "listAiAssistModels",
   // ADR-076：迭代总结 AI 改写只返回文本，不写任何持久化状态。
   "assistRecordSummary",
   // 新建任务 AI 识别只返回预填建议，不写任何持久化状态。

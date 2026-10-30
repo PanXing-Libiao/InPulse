@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import type {
+  AiAssistModelsResponse,
   AiAssistSettings,
   AiAssistSettingsUpdateRequest,
   InpulseApiClient,
@@ -45,6 +46,7 @@ function mount(
         }
       | undefined;
     readonly updateError?: unknown;
+    readonly modelsResult?: AiAssistModelsResponse | undefined;
   } = {},
 ) {
   const current = options.settings ?? readySettings;
@@ -70,6 +72,13 @@ function mount(
     .mockResolvedValue(
       options.testResult ?? { ok: true, reason: null, model: "stub-model" },
     );
+  const listAiAssistModels = vi.fn().mockResolvedValue(
+    options.modelsResult ?? {
+      ok: true,
+      reason: null,
+      models: ["stub-model-one", "stub-model-two"],
+    },
+  );
   const issueCsrfToken = vi
     .fn()
     .mockResolvedValue({ csrfToken: "a".repeat(43) });
@@ -77,6 +86,7 @@ function mount(
     getAiAssistSettings,
     updateAiAssistSettings,
     testAiAssistSettings,
+    listAiAssistModels,
     issueCsrfToken,
   } as unknown as InpulseApiClient;
   render(
@@ -94,6 +104,7 @@ function mount(
     getAiAssistSettings,
     updateAiAssistSettings,
     testAiAssistSettings,
+    listAiAssistModels,
     issueCsrfToken,
   };
 }
@@ -269,6 +280,80 @@ describe("AiAssistSettingsPanel（ADR-068）", () => {
     fireEvent.click(screen.getByRole("button", { name: "测试连接" }));
     expect(
       await screen.findByText("测试未通过：上游鉴权失败，请检查 API 密钥"),
+    ).toBeInTheDocument();
+  });
+
+  it("获取可用模型：使用表单端点并回退已保存密钥，同时保留可编辑模型输入框", async () => {
+    const { listAiAssistModels } = mount();
+    await screen.findByText("当前状态");
+    fireEvent.click(screen.getByRole("button", { name: "获取可用模型" }));
+    await waitFor(() => expect(listAiAssistModels).toHaveBeenCalledTimes(1));
+    expect(listAiAssistModels).toHaveBeenCalledWith({
+      endpoint: readySettings.endpoint,
+      timeoutMs: readySettings.timeoutMs,
+      apiKey: null,
+    });
+    expect(
+      await screen.findByText(
+        "已获取 2 个可用模型：stub-model-one、stub-model-two",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("模型")).toHaveValue("gpt-4o-mini");
+    expect(screen.getByRole("combobox", { name: "模型" })).toBeInTheDocument();
+  });
+
+  it("首次配置无需先保存：模型为空时可用表单端点和密钥获取模型", async () => {
+    const { listAiAssistModels, updateAiAssistSettings } = mount({
+      settings: {
+        ...unconfiguredKeySettings,
+        source: "NONE",
+        endpoint: null,
+        model: null,
+        ready: false,
+        disabledReason: "NOT_ENABLED",
+      },
+    });
+    await screen.findByText("当前状态");
+    fireEvent.change(screen.getByLabelText("服务端点"), {
+      target: { value: "https://unsaved.example.com/v1" },
+    });
+    fireEvent.change(screen.getByLabelText("API 密钥"), {
+      target: { value: fakeKey },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "获取可用模型" }));
+    await waitFor(() =>
+      expect(listAiAssistModels).toHaveBeenCalledWith({
+        endpoint: "https://unsaved.example.com/v1",
+        timeoutMs: readySettings.timeoutMs,
+        apiKey: fakeKey,
+      }),
+    );
+    expect(
+      await screen.findByText(
+        "已获取 2 个可用模型：stub-model-one、stub-model-two",
+      ),
+    ).toBeInTheDocument();
+    expect(updateAiAssistSettings).not.toHaveBeenCalled();
+  });
+
+  it("首次配置且密钥为空：不调用模型发现，提示先补密钥", async () => {
+    const { listAiAssistModels } = mount({ settings: unconfiguredKeySettings });
+    await screen.findByText("当前状态");
+    fireEvent.click(screen.getByRole("button", { name: "获取可用模型" }));
+    expect(
+      await screen.findByText("首次配置必须提供 API 密钥"),
+    ).toBeInTheDocument();
+    expect(listAiAssistModels).not.toHaveBeenCalled();
+  });
+
+  it("获取可用模型失败：复用固定分类，不展示上游原文", async () => {
+    mount({
+      modelsResult: { ok: false, reason: "AUTH", models: [] },
+    });
+    await screen.findByText("当前状态");
+    fireEvent.click(screen.getByRole("button", { name: "获取可用模型" }));
+    expect(
+      await screen.findByText("获取模型未通过：上游鉴权失败，请检查 API 密钥"),
     ).toBeInTheDocument();
   });
 });

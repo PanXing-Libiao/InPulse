@@ -60,6 +60,19 @@ export const aiAssistSettingsUpdateRequestSchema = z
   .strict()
   .meta({ id: "AiAssistSettingsUpdateRequest" });
 
+/**
+ * 模型发现请求：端点与超时来自设置页当前输入，无需先保存；apiKey 缺省
+ * 或 null 由服务端复用已保存密钥。该请求体只用于一次上游探测，不落库。
+ */
+export const aiAssistModelsRequestSchema = z
+  .object({
+    endpoint: z.string().trim().min(1).max(2048),
+    timeoutMs: z.number().int().min(1000).max(600000),
+    apiKey: z.string().trim().min(8).max(1024).nullable().optional(),
+  })
+  .strict()
+  .meta({ id: "AiAssistModelsRequest" });
+
 /** 测试连接结果：ok 为 true 时 reason 为 null；否则为固定失败分类。 */
 export const aiAssistSettingsTestReasonSchema = z.enum([
   "KILL_SWITCH",
@@ -83,6 +96,19 @@ export const aiAssistSettingsTestResponseSchema = z
   .strict()
   .meta({ id: "AiAssistSettingsTestResponse" });
 
+/**
+ * 模型发现：向 OpenAI 兼容上游的 /v1/models 发起只读请求。
+ * ok 为 true 时 reason 为 null 且 models 可按字母序直接展示；失败复用测试连接的固定分类。
+ */
+export const aiAssistModelsResponseSchema = z
+  .object({
+    ok: z.boolean(),
+    reason: aiAssistSettingsTestReasonSchema.nullable(),
+    models: z.array(z.string().trim().min(1).max(200)).max(1000),
+  })
+  .strict()
+  .meta({ id: "AiAssistModelsResponse" });
+
 /** 管理员配置写请求头；CSRF 同步 Token 必填。 */
 export const aiAssistSettingsMutationHeadersSchema = z
   .object({ "x-csrf-token": z.string().length(43) })
@@ -105,11 +131,15 @@ export type AiAssistSettingsItem = z.infer<typeof aiAssistSettingsItemSchema>;
 export type AiAssistSettingsUpdateRequest = z.infer<
   typeof aiAssistSettingsUpdateRequestSchema
 >;
+export type AiAssistModelsRequest = z.infer<typeof aiAssistModelsRequestSchema>;
 export type AiAssistSettingsTestReason = z.infer<
   typeof aiAssistSettingsTestReasonSchema
 >;
 export type AiAssistSettingsTestResponse = z.infer<
   typeof aiAssistSettingsTestResponseSchema
+>;
+export type AiAssistModelsResponse = z.infer<
+  typeof aiAssistModelsResponseSchema
 >;
 export type AiAssistSettingsReplayContext = z.infer<
   typeof aiAssistSettingsReplayContextSchema
@@ -129,6 +159,17 @@ export const adminAiAssistSchemas = {
   AiAssistSettingsTestResponse: {
     schema: aiAssistSettingsTestResponseSchema,
     summary: "AI 辅助转换测试连接结果",
+    sensitiveFieldPaths: [],
+  },
+  AiAssistModelsRequest: {
+    schema: aiAssistModelsRequestSchema,
+    summary:
+      "AI 辅助转换模型发现请求；端点 / 超时来自当前表单，apiKey 只用于本次探测且不落库",
+    sensitiveFieldPaths: ["apiKey"],
+  },
+  AiAssistModelsResponse: {
+    schema: aiAssistModelsResponseSchema,
+    summary: "AI 辅助转换上游模型列表；失败时复用固定分类且不返回上游原文",
     sensitiveFieldPaths: [],
   },
   AiAssistSettingsMutationHeaders: {

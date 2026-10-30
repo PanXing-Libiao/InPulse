@@ -53,10 +53,20 @@ test.describe.serial("ADR-068 管理员在线配置", () => {
         panel.getByText("来源：环境变量（遗留模式；保存一次后即转为在线配置）"),
       ).toBeVisible();
 
-      // 端点由环境变量预填；这里只补 API 密钥，验证「保存一次即转为在线配置」。
+      // 端点由环境变量预填；模型先留空，验证首次配置无需保存即可发现模型。
       const endpoint = await panel.getByLabel("服务端点").inputValue();
       expect(endpoint.length).toBeGreaterThan(0);
+      await panel.getByLabel("模型").fill("");
       await panel.getByLabel("API 密钥").fill(SAVED_API_KEY);
+      await panel.getByRole("button", { name: "获取可用模型" }).click();
+      await expect(
+        panel.getByText(
+          "已获取 2 个可用模型：" + STUB_MODEL + "、" + STUB_MODEL + "-alt",
+        ),
+      ).toBeVisible();
+
+      // 选择刚发现的模型后再保存；密钥仍只在本次请求中传输，不会回显。
+      await panel.getByLabel("模型").fill(STUB_MODEL);
       await panel.getByRole("button", { name: "保存配置" }).click();
 
       await expect(panel.getByText("AI 辅助转换配置已保存")).toBeVisible();
@@ -73,6 +83,13 @@ test.describe.serial("ADR-068 管理员在线配置", () => {
       await panel.getByRole("button", { name: "测试连接" }).click();
       await expect(
         panel.getByText("连接成功，上游模型：" + STUB_MODEL),
+      ).toBeVisible();
+
+      await panel.getByRole("button", { name: "获取可用模型" }).click();
+      await expect(
+        panel.getByText(
+          "已获取 2 个可用模型：" + STUB_MODEL + "、" + STUB_MODEL + "-alt",
+        ),
       ).toBeVisible();
     } finally {
       await context.close();

@@ -408,6 +408,62 @@ describe("DocumentImportAiAssistClient", () => {
     ).rejects.toMatchObject({ reason: "invalid-response" });
   });
 
+  test("listModels：从 chat/completions 推导 /v1/models，过滤无效项并去重排序", async () => {
+    const { fetchImpl, calls } = stubFetch(() =>
+      jsonResponse({
+        object: "list",
+        data: [
+          { id: "z-model" },
+          { id: " a-model " },
+          { id: "z-model" },
+          { id: "" },
+          { id: 42 },
+          null,
+        ],
+      }),
+    );
+    const client = new DocumentImportAiAssistClient(fetchImpl);
+    await expect(
+      client.listModels({
+        ...config,
+        endpoint: "https://api.example.com/v1/chat/completions?channel=1",
+      }),
+    ).resolves.toEqual({ models: ["a-model", "z-model"] });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://api.example.com/v1/models?channel=1");
+    expect(calls[0]!.init.method).toBe("GET");
+    expect(calls[0]!.init.body).toBeUndefined();
+    const headers = calls[0]!.init.headers as Record<string, string>;
+    expect(headers["accept"]).toBe("application/json");
+    expect(headers["authorization"]).toBe("Bearer stub");
+  });
+
+  test("listModels：401 → auth，空 data 合法，缺 data / id 全无效 → invalid-response", async () => {
+    const auth = stubFetch(() => jsonResponse({ error: "bad key" }, 401));
+    await expect(
+      new DocumentImportAiAssistClient(auth.fetchImpl).listModels(config),
+    ).rejects.toMatchObject({ reason: "auth" });
+
+    const empty = stubFetch(() => jsonResponse({ object: "list", data: [] }));
+    await expect(
+      new DocumentImportAiAssistClient(empty.fetchImpl).listModels(config),
+    ).resolves.toEqual({ models: [] });
+
+    const missingData = stubFetch(() => jsonResponse({ object: "list" }));
+    await expect(
+      new DocumentImportAiAssistClient(missingData.fetchImpl).listModels(
+        config,
+      ),
+    ).rejects.toMatchObject({ reason: "invalid-response" });
+
+    const wrongItems = stubFetch(() =>
+      jsonResponse({ object: "list", data: [{ name: "not-a-model" }] }),
+    );
+    await expect(
+      new DocumentImportAiAssistClient(wrongItems.fetchImpl).listModels(config),
+    ).rejects.toMatchObject({ reason: "invalid-response" });
+  });
+
   test("失败日志带上游状态码与分类，且不含文档正文", async () => {
     const warn = vi
       .spyOn(Logger.prototype, "warn")

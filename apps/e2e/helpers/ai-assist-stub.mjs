@@ -86,6 +86,22 @@ const server = createServer((request, response) => {
     response.end(JSON.stringify({ status: "ok" }));
     return;
   }
+  if (
+    request.method === "GET" &&
+    new URL(request.url ?? "/", "http://127.0.0.1").pathname === "/v1/models"
+  ) {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        object: "list",
+        data: [
+          { id: model, object: "model", owned_by: "e2e-stub" },
+          { id: model + "-alt", object: "model", owned_by: "e2e-stub" },
+        ],
+      }),
+    );
+    return;
+  }
   if (request.method !== "POST") {
     response.writeHead(405, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: "method not allowed" }));

@@ -27,6 +27,7 @@ import {
 const SESSION_COOKIE_NAME = "__Host-session";
 const KEY_VERSION = 1;
 const ADMIN_PATH = "/api/v1/admin/ai-assist";
+const ADMIN_MODELS_PATH = "/api/v1/admin/ai-assist/models";
 const ADMIN_TEST_PATH = "/api/v1/admin/ai-assist/test";
 const AUDIT_ACTION = "admin.aiAssistSettings.update";
 // 假密钥在运行时拼接，避免 check:secrets 把字面量赋值判为 Secret 泄露。
@@ -41,6 +42,8 @@ interface SessionActor {
 }
 
 interface UpstreamCall {
+  readonly method: string | undefined;
+  readonly url: string | undefined;
   readonly authorization: string | undefined;
   readonly body: Record<string, unknown>;
 }
@@ -69,6 +72,21 @@ let stubResponder: () => { status: number; payload: unknown } = () => ({
   status: 200,
   payload: probePayload(),
 });
+let modelsResponder: () => { status: number; payload: unknown } = () => ({
+  status: 200,
+  payload: modelsPayload(),
+});
+
+function modelsPayload(): Record<string, unknown> {
+  return {
+    object: "list",
+    data: [
+      { id: "stub-model-z", object: "model" },
+      { id: "stub-model-a", object: "model" },
+      { id: "stub-model-z", object: "model" },
+    ],
+  };
+}
 
 function probePayload(model = "stub-chat-model"): Record<string, unknown> {
   return {
@@ -104,11 +122,17 @@ async function startStubServer(): Promise<string> {
       upstreamCalls = [
         ...upstreamCalls,
         {
+          method: request.method,
+          url: request.url,
           authorization: request.headers["authorization"]?.toString(),
           body: parsed as Record<string, unknown>,
         },
       ];
-      const result = stubResponder();
+      const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+      const result =
+        request.method === "GET" && pathname === "/v1/models"
+          ? modelsResponder()
+          : stubResponder();
       response.writeHead(result.status, {
         "content-type": "application/json",
       });
@@ -442,9 +466,69 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
     expect(JSON.stringify(body)).not.toContain("test-ai-key");
   });
 
+  test("模型发现：匿名 401、普通成员 403、管理员可用未保存端点与密钥直接获取模型", async () => {
+    const anonymous = await request(ADMIN_MODELS_PATH, "POST");
+    expect(anonymous.status).toBe(401);
+    expect((await readError(anonymous)).code).toBe("ADMIN_SESSION_REQUIRED");
+
+    const member = await memberActor();
+    const forbidden = await request(ADMIN_MODELS_PATH, "POST", {
+      actor: member,
+    });
+    expect(forbidden.status).toBe(403);
+    expect((await readError(forbidden)).code).toBe("ADMIN_REQUIRED");
+
+    const admin = await adminActor();
+    const auditsBefore = (await auditRows()).length;
+    const missingBody = await request(ADMIN_MODELS_PATH, "POST", {
+      actor: admin,
+    });
+    expect(missingBody.status).toBe(400);
+    expect((await readError(missingBody)).code).toBe(
+      "AI_ASSIST_SETTINGS_CONTENT_TYPE_INVALID",
+    );
+
+    const invalidEndpoint = await request(ADMIN_MODELS_PATH, "POST", {
+      actor: admin,
+      body: {
+        endpoint: "http://example.com/v1/chat/completions",
+        timeoutMs: 15_000,
+        apiKey: ROTATED_KEY,
+      },
+    });
+    expect(invalidEndpoint.status).toBe(422);
+    const invalidError = await readError(invalidEndpoint);
+    expect(invalidError.code).toBe("AI_ASSIST_SETTINGS_VALIDATION_FAILED");
+    expect(String(invalidError.details["endpoint"])).toContain("绝对 https");
+
+    const response = await request(ADMIN_MODELS_PATH, "POST", {
+      actor: admin,
+      body: {
+        endpoint: upstreamEndpoint() + "?unsaved=1",
+        timeoutMs: 15_000,
+        apiKey: ROTATED_KEY,
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({
+      ok: true,
+      reason: null,
+      models: ["stub-model-a", "stub-model-z"],
+    });
+    const call = upstreamCalls[upstreamCalls.length - 1]!;
+    expect(call.method).toBe("GET");
+    expect(call.url).toBe("/v1/models?unsaved=1");
+    expect(call.authorization).toBe("Bearer " + ROTATED_KEY);
+    expect(call.body).toEqual({});
+    expect(await readSettingsRow()).toBeUndefined();
+    expect((await auditRows()).length).toBe(auditsBefore);
+  });
+
   test("PUT：缺 Idempotency-Key 400、缺 CSRF 401、跨域 403、普通成员 403，且不落库", async () => {
     const admin = await adminActor();
     const auditsBefore = (await auditRows()).length;
+    const upstreamBefore = upstreamCalls.length;
     const body = {
       enabled: true,
       endpoint: upstreamEndpoint(),
@@ -488,11 +572,12 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
 
     expect(await readSettingsRow()).toBeUndefined();
     expect((await auditRows()).length).toBe(auditsBefore);
-    expect(upstreamCalls).toHaveLength(0);
+    expect(upstreamCalls.length).toBe(upstreamBefore);
   });
 
   test("PUT：首次配置缺密钥 422，字段级 details.apiKey", async () => {
     const admin = await adminActor();
+    const upstreamBefore = upstreamCalls.length;
     const response = await request(ADMIN_PATH, "PUT", {
       actor: admin,
       body: {
@@ -508,13 +593,14 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
     expect(error.code).toBe("AI_ASSIST_SETTINGS_VALIDATION_FAILED");
     expect(String(error.details["apiKey"])).toContain("首次配置");
     expect(await readSettingsRow()).toBeUndefined();
-    expect(upstreamCalls).toHaveLength(0);
+    expect(upstreamCalls.length).toBe(upstreamBefore);
   });
 
   test("PUT：管理员保存全链路 200（AES-256-GCM 落库 + 审计不含明文）", async () => {
     const admin = await adminActor();
     const secret = KEY_VALUE;
     const auditsBefore = (await auditRows()).length;
+    const upstreamBefore = upstreamCalls.length;
     const endpoint = `${upstreamEndpoint()}?db=1`;
     const response = await request(ADMIN_PATH, "PUT", {
       actor: admin,
@@ -562,10 +648,10 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
     expect(entry.actorId).toBe(admin.userId);
     expect(entry.payload["keyChanged"]).toBe(true);
     expect(JSON.stringify(entry.payload)).not.toContain(secret);
-    expect(upstreamCalls).toHaveLength(0);
+    expect(upstreamCalls.length).toBe(upstreamBefore);
   });
 
-  test("数据库行优先于环境变量：GET 与测试连接都用在线配置与解密密钥", async () => {
+  test("数据库行优先于环境变量：GET、测试连接与模型发现都用在线配置与解密密钥", async () => {
     const admin = await adminActor();
     const before = upstreamCalls.length;
 
@@ -591,6 +677,26 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
     expect(call.authorization).toBe("Bearer " + KEY_VALUE);
     expect(call.body["model"]).toBe("db-model");
     expect(call.body["max_tokens"]).toBe(1);
+
+    const models = await request(ADMIN_MODELS_PATH, "POST", {
+      actor: admin,
+      body: {
+        endpoint: upstreamEndpoint() + "?db=1",
+        timeoutMs: 30_000,
+        apiKey: null,
+      },
+    });
+    expect(models.status).toBe(200);
+    expect(await models.json()).toEqual({
+      ok: true,
+      reason: null,
+      models: ["stub-model-a", "stub-model-z"],
+    });
+    const modelsCall = upstreamCalls[upstreamCalls.length - 1]!;
+    expect(modelsCall.method).toBe("GET");
+    expect(modelsCall.url).toBe("/v1/models?db=1");
+    expect(modelsCall.authorization).toBe("Bearer " + KEY_VALUE);
+    expect(upstreamCalls.length).toBe(before + 2);
   });
 
   test("PUT：apiKey 缺省保持已存密钥（尾号与密文不变）并递增 row_version", async () => {
@@ -772,6 +878,29 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
       ready: true,
       keyHint: "0001",
     });
+  });
+
+  test("模型发现：上游 401 映射 AUTH", async () => {
+    const admin = await adminActor();
+    modelsResponder = () => ({ status: 401, payload: { error: "bad key" } });
+    try {
+      const models = await request(ADMIN_MODELS_PATH, "POST", {
+        actor: admin,
+        body: {
+          endpoint: upstreamEndpoint() + "?db=1",
+          timeoutMs: 30_000,
+          apiKey: null,
+        },
+      });
+      expect(models.status).toBe(200);
+      expect(await models.json()).toEqual({
+        ok: false,
+        reason: "AUTH",
+        models: [],
+      });
+    } finally {
+      modelsResponder = () => ({ status: 200, payload: modelsPayload() });
+    }
   });
 
   test("测试连接：上游 401 映射 AUTH", async () => {

@@ -37,7 +37,7 @@ export class AiAssistUpstreamError extends Error {
  * 不带任何正文，因此可以在同一份日志格式里同时容纳文档草稿与总结改写。
  */
 interface AiAssistCallLabel {
-  readonly kind: "draft" | "summary" | "task-draft";
+  readonly kind: "draft" | "summary" | "task-draft" | "models";
   readonly mode: DocumentImportAssistMode | undefined;
   readonly inputChars: number;
 }
@@ -81,6 +81,8 @@ const MAX_MARKDOWN_CHARS = 200_000;
 const ERROR_BODY_SNIFF_CHARS = 4_000;
 /** 测试连接探测请求的固定内容；不含任何用户数据（ADR-068）。 */
 const PROBE_CONTENT = "ping";
+/** 模型列表最多回传 1000 个 ID；超出部分丢弃，避免异常上游撑大管理端响应。 */
+const MAX_MODEL_COUNT = 1000;
 
 /**
  * OpenAI 兼容 chat/completions 出站适配器（ADR-067 2.2 / ADR-068）：
@@ -240,6 +242,51 @@ export class DocumentImportAiAssistClient {
   }
 
   /**
+   * ADR-068 模型发现：按当前 chat/completions 端点推导 /v1/models，GET 读取
+   * 当前 API Key 可用的模型 ID。只返回 id 字段，不把上游原文透传给调用方。
+   */
+  async listModels(
+    config: AiAssistConfig,
+  ): Promise<{ readonly models: readonly string[] }> {
+    const startedAt = Date.now();
+    const label: AiAssistCallLabel = {
+      kind: "models",
+      mode: undefined,
+      inputChars: 0,
+    };
+    const response = await this.sendUpstream(
+      config,
+      modelsEndpoint(config.endpoint),
+      {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${config.apiKey}`,
+        },
+      },
+      startedAt,
+      label,
+    );
+    try {
+      const models = await this.parseModelListResponse(response);
+      this.logCall(label, config, "ok", startedAt, undefined, response.status);
+      return { models };
+    } catch (error) {
+      if (error instanceof AiAssistUpstreamError) {
+        this.logCall(
+          label,
+          config,
+          "failed",
+          startedAt,
+          error.reason,
+          response.status,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
    * ADR-068 测试连接：max_tokens=1 的最小探测请求；不发送用户数据。
    * 失败抛 AiAssistUpstreamError（HTTP 层映射固定分类）。
    */
@@ -317,15 +364,33 @@ export class DocumentImportAiAssistClient {
     startedAt: number,
     label: AiAssistCallLabel | undefined,
   ): Promise<Response> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(config.endpoint, {
+    return this.sendUpstream(
+      config,
+      config.endpoint,
+      {
         method: "POST",
         headers: {
           "content-type": "application/json",
           authorization: `Bearer ${config.apiKey}`,
         },
         body: JSON.stringify(body),
+      },
+      startedAt,
+      label,
+    );
+  }
+
+  private async sendUpstream(
+    config: AiAssistConfig,
+    endpoint: string,
+    init: Pick<RequestInit, "method" | "headers" | "body">,
+    startedAt: number,
+    label: AiAssistCallLabel | undefined,
+  ): Promise<Response> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(endpoint, {
+        ...init,
         signal: AbortSignal.timeout(config.timeoutMs),
       });
     } catch (error) {
@@ -341,6 +406,43 @@ export class DocumentImportAiAssistClient {
       throw new AiAssistUpstreamError(reason);
     }
     return response;
+  }
+
+  private async parseModelListResponse(
+    response: Response,
+  ): Promise<readonly string[]> {
+    let raw: string;
+    try {
+      raw = await response.text();
+    } catch {
+      throw new AiAssistUpstreamError("invalid-response");
+    }
+    if (raw.length > MAX_RESPONSE_JSON_CHARS) {
+      throw new AiAssistUpstreamError("invalid-response");
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      throw new AiAssistUpstreamError("invalid-response");
+    }
+    const data = isRecord(payload) ? payload["data"] : undefined;
+    if (!Array.isArray(data)) {
+      throw new AiAssistUpstreamError("invalid-response");
+    }
+    const ids = new Set<string>();
+    for (const item of data) {
+      if (!isRecord(item)) continue;
+      const rawId = item["id"];
+      if (typeof rawId !== "string") continue;
+      const id = rawId.trim();
+      if (id.length === 0 || id.length > 200) continue;
+      ids.add(id);
+    }
+    if (data.length > 0 && ids.size === 0) {
+      throw new AiAssistUpstreamError("invalid-response");
+    }
+    return [...ids].sort().slice(0, MAX_MODEL_COUNT);
   }
 
   private async classifyErrorResponse(
@@ -460,6 +562,17 @@ export class DocumentImportAiAssistClient {
       this.logger.warn(line);
     }
   }
+}
+
+/** 从已规范化的 chat/completions 端点推导同源 models 端点，保留 query。 */
+function modelsEndpoint(endpoint: string): string {
+  const url = new URL(endpoint);
+  const path = url.pathname.replace(/\/+$/, "");
+  const suffix = "/chat/completions";
+  url.pathname = path.endsWith(suffix)
+    ? path.slice(0, -suffix.length) + "/models"
+    : path + "/models";
+  return url.toString();
 }
 
 function isAbortLikeError(error: unknown): boolean {
