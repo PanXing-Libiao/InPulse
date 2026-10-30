@@ -17,7 +17,7 @@ import {
   type ModuleTaskItem,
 } from "@generated/api";
 import { AuthStateProvider } from "@features/auth/auth-context";
-import { TasksPanel } from "./TasksPanel";
+import { TasksPanel, taskStatusFilterOptions } from "./TasksPanel";
 import { mergeTask, taskEdit } from "./task-query";
 
 const item: ModuleTaskItem = {
@@ -398,8 +398,11 @@ describe("F-14 task editing", () => {
     for (const title of [item.title, "历史完成", "历史取消", "无效历史"])
       expect(screen.getByText(title)).toBeVisible();
     expect(screen.queryByText(/完成率/)).not.toBeInTheDocument();
-    pickSelectOption("任务状态筛选", "已取消");
-    expect(screen.getByText("历史取消")).toBeVisible();
+    expect(taskStatusFilterOptions.map((option) => option.value)).toEqual([
+      "TODO",
+      "DONE",
+      "ALL",
+    ]);
     pickSelectOption("任务状态筛选", "已完成");
     expect(screen.getByText("历史完成")).toBeVisible();
     expect(screen.getByText("无效历史")).toBeVisible();

@@ -109,7 +109,6 @@ const statusTone = {
 export const taskStatusFilterOptions: readonly CalmSelectOption[] = [
   { value: "TODO", label: "未完成", dotColor: "#1467d8" },
   { value: "DONE", label: "已完成", dotColor: "#4a9278" },
-  { value: "CANCELED", label: "已取消", dotColor: "#a0adb9" },
   { value: "ALL", label: "全部状态" },
 ];
 const empty: TaskDraft = {
@@ -403,8 +402,8 @@ export function TasksPanel({
     if (onViewChange) onViewChange(next);
     else setViewState(next);
   };
-  // 2026-09-18 人工确认：面板进入时默认显示全部状态，未完成 → 已完成 → 已取消
-  // 的分组顺序由服务端排序给出，这里不再默认收敛到待办。
+  // 面板进入时默认显示全部状态，未完成 → 已完成的分组顺序由服务端排序给出；
+  // 取消任务已改为删除，不再提供「已取消」筛选入口。
   const [statusFilterState, setStatusFilterState] = useState("ALL");
   const statusFilter = statusFilterProp ?? statusFilterState;
   const changeStatusFilter = (next: string) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { imageFilesFromClipboard } from "./assist-image";
+import { imageFilesFromClipboard, prepareAssistImage } from "./assist-image";
+import { stubClipboardImagePipeline } from "./assist-image.test-support";
 
 function file(name: string, type: string): File {
   return new File(["stub"], name, { type });
@@ -30,5 +31,20 @@ describe("imageFilesFromClipboard", () => {
 
   it("没有剪贴板数据时返回空数组", () => {
     expect(imageFilesFromClipboard(undefined)).toEqual([]);
+  });
+});
+
+describe("prepareAssistImage", () => {
+  it("通过 data URL 解码截图，不依赖会被生产 CSP 拦截的 blob URL", async () => {
+    const restore = stubClipboardImagePipeline();
+    try {
+      const attachment = await prepareAssistImage(
+        new File(["stub"], "chat.png", { type: "image/png" }),
+      );
+      expect(URL.createObjectURL).not.toHaveBeenCalled();
+      expect(attachment.previewUrl).toBe("data:image/jpeg;base64,AAAA");
+    } finally {
+      restore();
+    }
   });
 });

@@ -45,19 +45,32 @@ export function imageFilesFromClipboard(
   return files;
 }
 
-function loadImage(file: File): Promise<HTMLImageElement> {
+const IMAGE_READ_ERROR = "图片读取失败，请换一张截图。";
+
+function readImageFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === "string" && result.startsWith("data:image/")) {
+        resolve(result);
+        return;
+      }
+      reject(new Error(IMAGE_READ_ERROR));
+    };
+    reader.onerror = () => reject(new Error(IMAGE_READ_ERROR));
+    reader.onabort = () => reject(new Error(IMAGE_READ_ERROR));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function loadImage(file: File): Promise<HTMLImageElement> {
+  const source = await readImageFile(file);
+  return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片读取失败，请换一张截图。"));
-    };
-    image.src = url;
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(IMAGE_READ_ERROR));
+    image.src = source;
   });
 }
 

@@ -6,6 +6,7 @@ import { vi } from "vitest";
  */
 export function stubClipboardImagePipeline(): () => void {
   const originalImage = globalThis.Image;
+  const originalFileReader = globalThis.FileReader;
   const originalCreate = URL.createObjectURL;
   const originalRevoke = URL.revokeObjectURL;
   const originalGetContext = HTMLCanvasElement.prototype.getContext;
@@ -21,10 +22,28 @@ export function stubClipboardImagePipeline(): () => void {
     }
   }
 
+  class FakeFileReader {
+    result: string | ArrayBuffer | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    readAsDataURL(_blob: Blob) {
+      queueMicrotask(() => {
+        this.result = "data:image/png;base64,AAAA";
+        this.onload?.();
+      });
+    }
+  }
+
   Object.defineProperty(globalThis, "Image", {
     configurable: true,
     writable: true,
     value: FakeImage,
+  });
+  Object.defineProperty(globalThis, "FileReader", {
+    configurable: true,
+    writable: true,
+    value: FakeFileReader,
   });
   URL.createObjectURL = vi.fn(() => "blob:mock");
   URL.revokeObjectURL = vi.fn();
@@ -42,6 +61,11 @@ export function stubClipboardImagePipeline(): () => void {
       configurable: true,
       writable: true,
       value: originalImage,
+    });
+    Object.defineProperty(globalThis, "FileReader", {
+      configurable: true,
+      writable: true,
+      value: originalFileReader,
     });
     URL.createObjectURL = originalCreate;
     URL.revokeObjectURL = originalRevoke;

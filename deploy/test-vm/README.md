@@ -22,7 +22,7 @@ Compose + 本地 registry 的测试环境，不是生产发布流程：生产镜
 | 部署目录补充  | `backups/`（同步前的 pg_dump）、`compose.yaml.bak-*`、`.env.deploy.bak-*`（回滚用）                            |
 | 企业微信桥接  | 独立容器 `inpulse-wecom-bridge`（非 compose 管理；源码 `deploy/test-vm/wecom-bridge/` 为本地唯一源，用 `deploy/test-vm/update-bridge.ps1` 同步；个人绑定码自助绑定与项目群 Webhook 均已实现，见「企业微信机器人桥接」） |
 | AI 辅助转换   | 已启用（`AI_ASSIST_ENABLED=1`）；API Key 已于 2026-10-15 在设置页重填并确认可用（见「AI 辅助转换启用」） |
-| 当前版本      | api 为 `0.1.0-20261022-3e9d5970`，migrate 为 `0.1.0-20261021-4ce04902`，db-bootstrap 为 `0.1.0-20261021-secfix1`，web 为 `0.1.0-20261023-sec1`，ops 为 `0.1.0-20261022-1d0ca6b`；桥接为 `0.1.0-20261021-bridge7cddf14`；`BACKUP_GIT_SHA=1d0ca6b5`（2026-10-23 09:53 最新同步） |
+| 当前版本      | api / web / migrate / ops 均为 `0.1.0-20261030-70a94a36`，db-bootstrap 保持 `0.1.0-20261023-132ad0c2`；桥接为 `0.1.0-20261030-bridge73fc9a5`；`BACKUP_GIT_SHA=70a94a36f19548344c8f8ca39805f16146981523`（2026-10-30 17:11 最新同步） |
 
 ## 一次性准备
 
@@ -88,6 +88,8 @@ api 容器内访问 Casdoor discovery 返回 200（`egress` 生效）。
 2026-10-22 10:10 同步远端 Web 三批与本地 web/ops 镜像：`-Targets web,ops -Tag 0.1.0-20261022-1d0ca6b`；未改 api/migrate/db；`.env.deploy.bak-20261022-101020` 已保留；migrate exit=0，api/web/db 全部 healthy；公网 `/health/ready`、`/`、`/login` 200，SSO start 302，恶意 Host 421，`Server: nginx` 无版本。
 
 2026-10-23 09:53 修复 Web 安全回归并同步 `0.1.0-20261023-sec1`：最新 Trivy 库发现旧 web 镜像 `libexpat1 2.8.3` 的 5 个可修复 High，同时实际响应暴露 `Server: nginx/1.30.4` 且恶意 Host 返回 200。重建后 web digest 为 `8e5aedb18d50`，CI 口径 5/5 通过；域名入口复测 `/health/ready` 200、`/` 200、`/login` 200、匿名 `/api/v1/users` 401、SSO start 302、恶意 Host 421、HTTP 首页 308、隐藏路径 404。
+
+2026-10-30 17:11 同步 `0.1.0-20261030-70a94a36`（`-Targets api,web,migrate,ops -FixEol`）：同步前备份 `backups/pre-sync-20261030-164102.dump`（791 项）；`0065` 应用成功（`1 applied, 63 already present`，`0064` 已在），api/web/db 全部 healthy，`/health/ready`、`/`、`/login` 均返回 200，匿名搜索返回 401，SSO start 返回 302。迁移后保留 7 个项目、31 个模块、188 个任务；功能表、功能列与功能搜索投影均为 0，历史审计 161 行、项目动态 160 行保留。按用户要求跳过 `db-bootstrap`，其镜像仍为 `0.1.0-20261023-132ad0c2`。桥接同步至 `0.1.0-20261030-bridge73fc9a5` 并订阅成功。
 
 常用参数：
 
@@ -352,7 +354,7 @@ sudo docker exec -i inpulse-deploy-db-1 pg_restore --list < backups/<文件名>.
 - 项目群消息投递（ADR-106，2026-10-29 起仅 Webhook）：`bridge.mjs` 只把 MEMBER 可见项目动态物化为 ACTIVE WEBHOOK 目标的 `PENDING` 行；
   `long-conn.mjs` 按 id 升序直接 POST 到解密后的企业微信 Webhook，以响应 errcode 回写 `SENT` / `FAILED` 与目标行 `last_delivery_error`；
   每个 Webhook 目标独立 20 条/分钟，重启后从 PENDING 断点续传；不发送 `chat_type:2`；`ADMIN_ONLY` 动态不进群；个人单聊与群 Webhook 并存。
-  测试 VM 当前仍是 ADR-106 前的历史镜像，未同步 Webhook-only 桥接；同步前不要按本段新行为做验收。
+  测试 VM 已于 2026-10-30 同步到 Webhook-only 桥接 `0.1.0-20261030-bridge73fc9a5`，订阅成功；真实 Webhook 投递仍需在项目动态触发后验收。
 
 常用命令（VM 上执行，需 sudo）：
 
@@ -376,7 +378,7 @@ sudo docker start inpulse-wecom-bridge            # 恢复
 
 项目群绑定兑换（历史，ADR-106 已下线）：2026-10-15 的旧版桥接曾在「项目成员页 → 企业微信项目群」生成一次性项目绑定码，并在目标群里 @机器人 发送后走 `chat_type:2` 绑定；ADR-106 起该路径、兑换函数授权和 `smoke-project-group-redeem.mjs` 已删除，群消息保持安静。不要再按旧文档生成项目群绑定码。
 
-当前测试 VM 部署 Tag 为内容哈希 `0.1.0-20261021-bridge7cddf14`（2026-10-21 10:33 同步），属于 ADR-106 前的历史镜像；个人绑定、欢迎语/限频、旧 BOT 群投递、ADR-090 通知开关与项目封箱海报均含在内，但尚未包含 Webhook-only 收敛。历史 Tag（bridge1～bridge4、`bridgee7cda2f`、`bridgedd2084d`）都保留在 registry，可用 `-RollbackTo` 回滚。
+当前测试 VM 部署 Tag 为内容哈希 `0.1.0-20261030-bridge73fc9a5`（2026-10-30 17:11 同步），已包含 Webhook-only 收敛。历史 Tag（bridge1～bridge4、`bridgee7cda2f`、`bridgedd2084d`、`bridge7cddf14`）都保留在 registry，可用 `-RollbackTo` 回滚。
 
 ## AI 辅助转换启用（2026-10-15）
 

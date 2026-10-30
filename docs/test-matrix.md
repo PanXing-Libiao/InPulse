@@ -7394,3 +7394,43 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | TASKAI-FUZZY-GATE-001 | 静态检查 | 本批增量 | `@inpulse/api` typecheck、定向 ESLint、两个改动文件的 `prettier --check` 全部通过 | 本地通过（2026-10-30） |
 
 **未执行 / 已知边界**：本批只改了 API 候选匹配与集成测试，未重跑全量 Web 单测、全量 API 集成、Playwright、契约生成物与 GitHub Actions；前一轮全量结果见上方 TASKAI 小节。本批改动尚未提交、未推送。真实页面实操使用的是本地开发栈（`app` 演示库）与已配置的 AI 上游，未创建任务。
+
+## 2026-10-30 测试环境同步（ADR-109 功能层拆除）
+
+测试 VM 只同步代码、镜像与数据库迁移，不导入本地演示数据。同步前数据库备份为 `backups/pre-sync-20261030-164102.dump`（791 项、1.2 MB），`.env.deploy` 备份为 `.env.deploy.bak-20261030-170041`。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| TESTVM-DEPLOY-001 | 测试环境部署 | 主栈升级与迁移 | `api/web/migrate/ops` 更新为 `0.1.0-20261030-70a94a36`；按用户要求跳过 `db-bootstrap`，其镜像保持 `0.1.0-20261023-132ad0c2`；`migrate` 退出码 0，`0065_contract_remove_feature_layer.sql` 成功应用（`1 applied, 63 already present`，`0064` 已在），`api` / `web` / `db` 全部 healthy | 测试环境通过（2026-10-30） |
+| TESTVM-DATA-001 | 测试环境数据库 | 现有项目与功能层拆除 | 迁移后保留 7 个项目、31 个模块、188 个任务；`app.features`、`app.task_feature_impacts`、`app.change_record_feature_impacts`、`app.feature_external_links` 均为空；任务表无功能列；功能搜索投影 0 行；历史 `FEATURE` 审计 161 行、项目动态 160 行按 ADR-109 保留 | 测试环境通过（2026-10-30） |
+| TESTVM-BRIDGE-001 | 测试环境桥接 | Webhook-only 桥接 | 桥接源码 29/29 测试通过，部署为 `0.1.0-20261030-bridge73fc9a5`，逐文件校验通过，容器在线且订阅成功；项目群只消费 ACTIVE WEBHOOK | 测试环境通过（2026-10-30） |
+| TESTVM-PROBE-001 | 测试环境入口 | 公开探针与认证边界 | `/health/ready`、`/`、`/login` 均返回 200；匿名 `/api/v1/search?q=hello` 返回 401；`/api/v1/auth/sso/start` 返回 302 到 Casdoor 测试环境 | 测试环境通过（2026-10-30） |
+
+**未执行 / 已知边界**：本轮未触发真实项目动态，因此未重新做企业微信 Webhook 的实际群投递验收；未执行 Playwright 或全量 CI。正式环境另行完成同步与基础可用性验证，见下节。
+
+## 2026-10-30 正式环境同步（ADR-109 功能层拆除）
+
+正式环境只同步代码、镜像与数据库迁移，不导入本地演示数据。同步前数据库备份为 `/home/libiao/inpulse-deploy/backups/pre-sync-20261030-171624.dump`（444,912 字节、791 项，`pg_restore --list` 校验通过）；主栈按用户要求排除 `db-bootstrap`。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| PROD-GATE-001 | 发布前门禁 | 静态、契约与构建 | 全 workspace `pnpm test:unit` 通过（240 个文件、1861 例）；typecheck、contract validate（121 条路由）、contract drift、build、frontend boundaries、permissions check（121/121）、lint、format check、deploy static、migrations check（64 条）与 secrets check 全部通过 | 正式环境发布前通过（2026-10-30） |
+| PROD-DEPLOY-001 | 正式环境部署 | 主栈升级与迁移 | `api/web/migrate/ops` 更新为 `0.1.0-20261030-70a94a36`；`db-bootstrap` 保持 `0.1.0-20261023-132ad0c2`；`migrate` 退出码 0，`0065_contract_remove_feature_layer.sql` 成功应用（`1 applied, 63 already present`），迁移总数 64；api/web/db 全部 healthy | 正式环境通过（2026-10-30） |
+| PROD-DATA-001 | 正式环境数据库 | 现有数据与功能层拆除 | 迁移后保留 1 个项目、3 个模块、4 个任务、84 名用户；`app.features`、`app.task_feature_impacts`、`app.change_record_feature_impacts`、`app.feature_external_links` 均不存在；任务与记录无功能列；功能搜索投影与功能序列均为 0；历史 `FEATURE` 审计 23 行、项目动态 7 行按 ADR-109 保留 | 正式环境通过（2026-10-30） |
+| PROD-BRIDGE-001 | 正式环境桥接 | Webhook-only 桥接 | 部署为 `0.1.0-20261030-prod-bridgede58b78@sha256:d70c6b3ef0e03929e92e815bde1d3e58ce2ba04aee47e88d8a57cd69a5cea3cb`，逐文件校验通过，容器在线且连接正式 backend/egress 网络；WebSocket 握手与 `aibot_subscribe` 返回 `errcode=0` | 正式环境通过（2026-10-30） |
+| PROD-PROBE-001 | 正式环境入口 | 公开探针与认证边界 | `/health/ready`、`/`、`/login` 均返回 200；匿名 `/api/v1/search?q=hello` 返回 401；`/api/v1/auth/sso/start` 返回 302 到正式 Casdoor | 正式环境通过（2026-10-30） |
+
+**未执行 / 已知边界**：本轮未执行 Playwright、全量集成/E2E、后端镜像 Trivy、GitHub Actions 或完整管理员登录后的 UI 行为验证；未触发真实企业微信单聊 / Webhook 投递，未重新执行 AI 模型调用；迁移前备份未做异机恢复演练。正式环境已同步并通过基础可用性验证，但不能据此标记完整 Go-Live。
+
+## 2026-10-30 模块任务筛选与 AI 截图 CSP 回归
+
+针对测试/正式环境反馈的“模块任务下拉仍出现已取消”和“新建任务粘贴截图提示图片读取失败”做定点修复；本地开发环境 CSP 与生产入口不同，后者只在带生产 CSP 的部署环境暴露。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| TASKS-FILTER-001 | Web 单元 | 模块任务状态筛选 | `taskStatusFilterOptions` 只保留未完成、已完成、全部状态；历史 `CANCELED` 行仍可在全部状态下读取，但不再提供失效筛选入口；`TasksPanel.test.tsx` 断言选项集合 | 本地通过（2026-10-30） |
+| TASKAI-CSP-001 | Web 单元 | 新建任务 AI 助手截图粘贴 | 截图经 `FileReader.readAsDataURL()` 解码为 `data:` URL，不再调用 `URL.createObjectURL()`，符合生产 `img-src 'self' data:` CSP；回归用例断言预览地址为 data URL 且未创建 blob URL | 本地通过（2026-10-30） |
+
+**验证记录**：`pnpm test:web` 122 个文件 1064 例通过；`pnpm --filter @inpulse/web typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm check:frontend:boundaries` 与 `pnpm --filter @inpulse/web build` 均通过。后端的 `CANCELED` 历史兼容值与契约不变，删除/历史审计口径仍按 [ADR-096](adr/ADR-096.md)。
+
+**未执行 / 已知边界**：本批尚未同步到测试 VM 或正式环境，也尚未在真实浏览器中复验粘贴截图；不据此声称部署已生效。
