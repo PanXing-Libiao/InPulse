@@ -468,7 +468,7 @@ export function TasksPanel({
    * 模块级面板的新建弹窗开关：null 关闭；"page" 由页面固定为模块级
    * （与任务中心同一个弹窗，只是不再让用户选范围）。
    */
-  const [createMode, setCreateMode] = useState<"page" | null>(null);
+  const [createMode, setCreateMode] = useState<"page" | "feature" | null>(null);
   // 聚合组详情与任务中心共用同一弹窗实现；本面板只负责把当前选中组传给它。
   const groupAdapter = useMemo(() => createTaskGroupServerAdapter(api), [api]);
   const current = query.data?.items.find((item) => item.id === selectedId);
@@ -725,12 +725,11 @@ export function TasksPanel({
     if (featureId === null) void features.refetch();
   };
   /**
-   * 新建任务入口：模块级面板直接用任务中心那套弹窗并把范围固定在模块级；
-   * 功能级面板沿用本面板弹窗，归属由页面给定。
+   * 新建任务入口：模块级与功能级面板都用任务中心那套弹窗（含 AI 助手），
+   * 范围分别固定在模块级、功能级，归属由页面给定。
    */
   const startCreate = () => {
-    if (featureId === null) setCreateMode("page");
-    else open();
+    setCreateMode(featureId === null ? "page" : "feature");
   };
   const conflict =
     mutation.error instanceof ApiError && mutation.error.status === 409;
@@ -952,6 +951,30 @@ export function TasksPanel({
                   task.projectId === projectId &&
                   task.moduleId === moduleId &&
                   task.featureId === null
+                ) {
+                  openDetail(task.taskId);
+                  return;
+                }
+                navigate(taskDetailPath(task));
+              }}
+            />
+          )}
+          {featureId !== null && createMode === "feature" && (
+            <GlobalTaskCreateModal
+              open
+              lockedScope="FEATURE"
+              onClose={() => {
+                setCreateMode(null);
+                onCreateClose?.();
+              }}
+              client={client}
+              preset={{ projectId, moduleId, featureId }}
+              onCreatedLocation={(task) => {
+                // 功能级面板与模块级同一口径：归属未变就地打开详情，不写地址栏。
+                if (
+                  task.projectId === projectId &&
+                  task.moduleId === moduleId &&
+                  task.featureId === featureId
                 ) {
                   openDetail(task.taskId);
                   return;

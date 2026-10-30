@@ -153,28 +153,52 @@ function mount(api: InpulseApiClient, writable = true) {
   );
 }
 describe("F-14 功能级任务入口", () => {
-  it("保存成功用浮层气泡提示，不再插入整行成功横幅", async () => {
+  it("功能级新建任务走统一弹窗：固定当前功能归属并带 AI 助手", async () => {
     const createTask = vi
       .fn()
       .mockResolvedValue({ ...item, id: 2, title: "新任务" });
+    const getTask = vi
+      .fn()
+      .mockImplementation((_projectId, _moduleId, _featureId, taskId) =>
+        Promise.resolve({ ...item, id: taskId }),
+      );
     mount(
       client({
         listTasks: vi.fn().mockResolvedValue({ items: [] }),
+        listProjects: vi.fn().mockResolvedValue({
+          items: [
+            { id: 2, code: "PR", name: "退款项目", status: "IN_PROGRESS" },
+          ],
+        }),
+        listModules: vi.fn().mockResolvedValue({
+          items: [{ id: 3, code: "PR-M-1", name: "退款模块" }],
+        }),
+        listFeatures: vi.fn().mockResolvedValue({
+          items: [{ id: 4, code: "PR-F-1", name: "退款功能" }],
+        }),
         createTask,
+        getTask,
       }),
     );
     await screen.findByText("暂无任务");
     fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
-    fireEvent.change(screen.getByLabelText("任务标题"), {
+    const dialog = await screen.findByRole("dialog", { name: "新建任务" });
+    // 归属已由页面固定：不出现任务范围分段和归属选择器，只回显名称。
+    expect(within(dialog).queryByText("任务范围")).toBeNull();
+    expect(await within(dialog).findByText("退款功能")).toBeTruthy();
+    expect(within(dialog).getByText("退款模块")).toBeTruthy();
+    expect(within(dialog).getByText("AI 助手")).toBeTruthy();
+
+    fireEvent.change(within(dialog).getByLabelText("任务标题"), {
       target: { value: "新任务" },
     });
     pickSelectOption("负责人", "项目成员");
-    fireEvent.click(screen.getByRole("button", { name: /创建任务/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /创建任务/ }));
 
-    const toast = await screen.findByTestId("task-save-success");
-    expect(toast).toHaveTextContent("任务已保存");
-    expect(toast).toHaveClass("success-toast");
-    expect(toast.closest(".ant-alert")).toBeNull();
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+    expect(createTask.mock.calls[0]![3]).toMatchObject({
+      title: "新任务",
+    });
   });
 
   it("功能面板只保留固定归属的「新建任务」，没有自定义归属入口", async () => {
@@ -558,15 +582,30 @@ describe("F-14 task editing", () => {
     expect(screen.getByRole("button", { name: "新建任务" })).toBeDisabled();
   });
   it("does not invent selectable global users or default assignee", async () => {
-    mount(client());
+    mount(
+      client({
+        listProjects: vi.fn().mockResolvedValue({
+          items: [
+            { id: 2, code: "PR", name: "退款项目", status: "IN_PROGRESS" },
+          ],
+        }),
+        listModules: vi.fn().mockResolvedValue({
+          items: [{ id: 3, code: "PR-M-1", name: "退款模块" }],
+        }),
+        listFeatures: vi.fn().mockResolvedValue({
+          items: [{ id: 4, code: "PR-F-1", name: "退款功能" }],
+        }),
+      }),
+    );
     await screen.findByText("退款任务");
     fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
-    fireEvent.change(screen.getByLabelText("任务标题"), {
+    const dialog = await screen.findByRole("dialog", { name: "新建任务" });
+    fireEvent.change(within(dialog).getByLabelText("任务标题"), {
       target: { value: "新任务" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /创建任务/ }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "请至少选择一名负责人",
+    fireEvent.click(within(dialog).getByRole("button", { name: /创建任务/ }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "请至少指派一名项目活跃成员作为负责人。",
     );
   });
 });

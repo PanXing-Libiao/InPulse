@@ -158,8 +158,14 @@ export function GlobalTaskCreateModal({
   // 锁定模块级的页面（模块任务列表）已由路由固定模块：与所属项目一样只回显名称，
   // 不再让用户重选（2026-09-24 产品反馈）。
   const lockedModule = lockedScope === "MODULE";
-  const lockedModuleName = lockedModule
-    ? ((modules.query.data?.items ?? []).find((item) => item.id === moduleId)
+  const lockedFeature = lockedScope === "FEATURE";
+  const lockedModuleName =
+    lockedModule || lockedFeature
+      ? ((modules.query.data?.items ?? []).find((item) => item.id === moduleId)
+          ?.name ?? null)
+      : null;
+  const lockedFeatureName = lockedFeature
+    ? ((features.query.data?.items ?? []).find((item) => item.id === featureId)
         ?.name ?? null)
     : null;
 
@@ -537,11 +543,19 @@ export function GlobalTaskCreateModal({
                   </p>
                 </div>
               ) : null}
-              {lockedModule ? (
+              {lockedModule || lockedFeature ? (
                 <div className="calm-field">
                   <span className="field-label">所属模块</span>
                   <p className="task-fixed-project">
                     {lockedModuleName ?? "正在加载模块…"}
+                  </p>
+                </div>
+              ) : null}
+              {lockedFeature ? (
+                <div className="calm-field">
+                  <span className="field-label">所属功能</span>
+                  <p className="task-fixed-project">
+                    {lockedFeatureName ?? "正在加载功能…"}
                   </p>
                 </div>
               ) : null}
@@ -605,8 +619,8 @@ export function GlobalTaskCreateModal({
                 </div>
               )}
 
-              {/* 锁定模块级时模块已由上面的只读行给出，这里不再渲染选择器。 */}
-              {lockedModule ? null : (
+              {/* 锁定归属时模块已由上面的只读行给出，这里不再渲染选择器。 */}
+              {lockedScope ? null : (
                 <div className="calm-field">
                   <label htmlFor="global-task-module">所属模块</label>
                   <CalmSelect
@@ -699,7 +713,7 @@ export function GlobalTaskCreateModal({
                 </div>
               )}
 
-              {scope === "FEATURE" && (
+              {scope === "FEATURE" && !lockedFeature && (
                 <div className="calm-field">
                   <label htmlFor="global-task-feature">所属功能</label>
                   <CalmSelect
