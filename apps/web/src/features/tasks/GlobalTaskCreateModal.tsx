@@ -381,7 +381,7 @@ export function GlobalTaskCreateModal({
   return (
     <Modal
       open={open}
-      className="catalog-modal"
+      className="catalog-modal task-create-ai"
       size="lg"
       eyebrow={projectName ?? "任务中心"}
       title="新建任务"
