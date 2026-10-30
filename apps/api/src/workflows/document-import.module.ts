@@ -20,6 +20,11 @@ import { DocumentImportController } from "./document-import.controller.js";
 import { AiAssistSettingsHttpService } from "./ai-assist-settings-http.service.js";
 import { DocumentImportHttpService } from "./document-import-http.service.js";
 import { RecordSummaryAssistController } from "./record-summary-assist.controller.js";
+import { TaskDraftAssistController } from "./task-draft-assist.controller.js";
+import { TaskDraftAssistStandaloneController } from "./task-draft-assist-standalone.controller.js";
+import { TaskDraftAssistHttpService } from "./task-draft-assist-http.service.js";
+import { TaskDraftAssistCatalogPort } from "./task-draft-assist.catalog.port.js";
+import { PostgresTaskDraftAssistCatalog } from "./postgres-task-draft-assist-catalog.js";
 import { RecordSummaryAssistHttpService } from "./record-summary-assist-http.service.js";
 import { DocumentImportWorkflow } from "./document-import.workflow.js";
 import { ProjectImportController } from "./project-import.controller.js";
@@ -31,6 +36,7 @@ import { ProjectImportController } from "./project-import.controller.js";
  * 在线配置（加密保存、测试连接）。
  * ADR-076：迭代总结 AI 改写复用同一份运行时配置与出站适配器（配置只有一份，
  * 不为同一份配置再建一个解析入口），因此它的控制器也挂在本模块下。
+ * 新建任务 AI 识别同样复用这份配置与出站适配器，候选清单读取走独立只读端口。
  */
 @Module({
   imports: [
@@ -48,6 +54,11 @@ import { ProjectImportController } from "./project-import.controller.js";
     DocumentImportWorkflow,
     DocumentImportHttpService,
     RecordSummaryAssistHttpService,
+    TaskDraftAssistHttpService,
+    {
+      provide: TaskDraftAssistCatalogPort,
+      useClass: PostgresTaskDraftAssistCatalog,
+    },
     DocumentImportRunRepository,
     // ADR-068：配置每次调用实时解析（数据库优先，环境变量急停与遗留回退）。
     AiAssistSettingsRepository,
@@ -61,6 +72,8 @@ import { ProjectImportController } from "./project-import.controller.js";
     ProjectImportController,
     DocumentImportAssistController,
     RecordSummaryAssistController,
+    TaskDraftAssistController,
+    TaskDraftAssistStandaloneController,
     AiAssistSettingsController,
   ],
 })

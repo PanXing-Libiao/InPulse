@@ -471,11 +471,11 @@ GET /projects/{projectId}/wecom-group 只返回 ACTIVE Webhook 的脱敏列表�
 
 本节按 [ADR-109](adr/ADR-109.md)（Accepted）收敛权限与路由口径。层级固定为“项目 → 模块 → 任务 → 迭代记录”，不再保留任何功能层写入口。
 
-- **路由**：删除 `listFeatures`、`findSimilarFeatures`、`getFeature`、`createFeature`、`updateFeature`、`deleteFeature` 六条功能档案路由，并删除旧功能级任务路由族；路由总数由 133 收敛为 119，`securityFlow` 六条不变。旧 `/features/*` 路径不注册，直接返回 404；Web 深链只做同模块 `/tasks` 回落，不恢复旧接口。
+- **路由**：删除 `listFeatures`、`findSimilarFeatures`、`getFeature`、`createFeature`、`updateFeature`、`deleteFeature` 六条功能档案路由，并删除旧功能级任务路由族；路由总数先由 133 收敛为 119；随后合并任务 AI 助手，新增 `assistTaskDraft`、`assistTaskDraftStandalone` 两条只读识别路由，当前为 121 条；`securityFlow` 六条不变。旧 `/features/*` 路径不注册，直接返回 404；Web 深链只做同模块 `/tasks` 回落，不恢复旧接口。
 - **任务**：所有任务直接归属模块；契约与重放上下文只含 `projectId/moduleId/taskId`，不接收 `featureId`、`scopeType` 或 `impactFeatureIds`。`createTaskWithScope` / `createModuleTask` 等现行 operationId 的任务范围仅为模块。
 - **功能权限**：不存在功能创建、编辑、删除、恢复或文档导入目标权限。`moduleEdit` 只控制模块创建与编辑，`moduleDelete` 只控制模块物理删除；三档配置值、默认值、系统管理员始终放行与非成员 404 语义不变。
 - **删除**：`deleteModule` 物理删除模块及其全部任务、任务 / 模块直属迭代记录、版本、遗留项与链接关联，只保留审计、项目动态和 `module.delete` 事件；未分类模块继续返回 409 `MODULE_UNCLASSIFIED_PROTECTED`。不存在 `deleteFeature`。任务删除只验证项目 / 模块真实归属、任务可读、If-Match、CSRF 与幂等。
 - **投影与历史**：搜索实体 FEATURE 与功能搜索导航已删除；外部链接目标只接受 `PROJECT / TASK / CHANGE_RECORD`。历史 FEATURE 审计、项目动态、通知与快照保留只读展示，不得据此授予当前写权限或生成可导航的功能页面。
 - **导入**：文档导入模板版本为 `2`，目标只允许项目根级或模块；历史模板版本 `1` 只读保留。旧“功能”段、功能级任务段和“影响功能”字段返回 `FEATURE_LAYER_REMOVED`，不静默降级。
 
-**验证**：`permissions:check` 与 `contract:validate` 均按 119 条 operationId / 路由通过；真实 PostgreSQL 集成覆盖旧功能路由 404、历史数据上提、模块删除级联、任务直接归属和新权限字段；Web 单测与 Playwright 覆盖旧功能深链、无功能入口、模块任务创建与搜索。最终结果记录在 [测试矩阵](test-matrix.md) 的 ADR-109 小节。
+**验证**：`permissions:check` 与 `contract:validate` 均按当前 121 条 operationId / 路由通过；真实 PostgreSQL 集成覆盖旧功能路由 404、历史数据上提、模块删除级联、任务直接归属和新权限字段；Web 单测与 Playwright 覆盖旧功能深链、无功能入口、模块任务创建与搜索。最终结果记录在 [测试矩阵](test-matrix.md) 的 ADR-109 小节。

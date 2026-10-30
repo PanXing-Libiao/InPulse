@@ -157,6 +157,7 @@ export const permissionMatrix = [
       "updateIndependentRecordDraft",
       "deleteRecordDraft",
       "listActiveProjectMembers",
+      "assistTaskDraft",
       "createTaskWithScope",
       "listModuleTasks",
       "getModuleTask",
@@ -1050,6 +1051,17 @@ export const permissionMatrix = [
           "完整管理员 Session；CSRF、Idempotency-Key 与 If-Match 必填，删除语义与组长一致（物理删除、不可恢复、编码可复用）。目标已不存在时 404，重复删除只得由幂等重放处理",
         deniedWith: 403,
       },
+    },
+  },
+  {
+    operationId: "assistTaskDraftStandalone",
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: { kind: "allow" },
+      其他项目成员: { kind: "allow" },
+      已移除成员: { kind: "allow" },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: { kind: "allow" },
     },
   },
 ] satisfies readonly PermissionMatrixEntry[];

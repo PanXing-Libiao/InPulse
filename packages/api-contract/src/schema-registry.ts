@@ -13,6 +13,7 @@ import {
   casdoorImportRequestSchema,
   casdoorImportResultSchema,
 } from "./contracts/casdoor-import.zod.js";
+import { aiAssistImageSchemas } from "./contracts/ai-assist-image.zod.js";
 import { documentImportSchemas } from "./contracts/document-import.zod.js";
 import {
   auditLogItemSchema,
@@ -62,6 +63,7 @@ import { recordDraftSchemas } from "./contracts/record-drafts.zod.js";
 import { recordFeedSchemas } from "./contracts/record-feed.zod.js";
 import { recordSummarySchemas } from "./contracts/record-summary.zod.js";
 import { recordSummaryAssistSchemas } from "./contracts/record-summary-assist.zod.js";
+import { taskDraftAssistSchemas } from "./contracts/task-draft-assist.zod.js";
 import { publishedRecordSchemas } from "./contracts/published-records.zod.js";
 import { taskSchemas } from "./contracts/tasks.zod.js";
 import type { z } from "zod";
@@ -187,6 +189,7 @@ export const schemaRegistry = {
   ...moduleSchemas,
   ...moduleDeletionSchemas,
   ...taskCreateSchemas,
+  ...aiAssistImageSchemas,
   ...documentImportSchemas,
   ...wecomBindingSchemas,
   ...adminAiAssistSchemas,
@@ -205,6 +208,7 @@ export const schemaRegistry = {
   ...recordFeedSchemas,
   ...recordSummarySchemas,
   ...recordSummaryAssistSchemas,
+  ...taskDraftAssistSchemas,
 
   ...taskGroupSchemas,
   UserRef: {

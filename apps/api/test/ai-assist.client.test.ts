@@ -61,6 +61,36 @@ function completion(
 }
 
 describe("DocumentImportAiAssistClient", () => {
+  test("带截图时 user 内容是文本与 image_url 混排", async () => {
+    const { fetchImpl, calls } = stubFetch(() =>
+      jsonResponse(completion("## 模块：支付")),
+    );
+    const client = new DocumentImportAiAssistClient(fetchImpl);
+    await client.generateDraft(config, {
+      mode: "IN_PROJECT",
+      text: "把截图里的需求整理成模板",
+      images: [{ mimeType: "image/png", data: "aGVsbG8=" }],
+    });
+    const body = JSON.parse(String(calls[0]!.init.body)) as {
+      messages: readonly { role: string; content: unknown }[];
+    };
+    const user = body.messages.find((message) => message.role === "user");
+    expect(Array.isArray(user?.content)).toBe(true);
+    const parts = user?.content as readonly {
+      type: string;
+      text?: string;
+      image_url?: { url: string };
+    }[];
+    expect(parts[0]).toEqual({
+      type: "text",
+      text: "把截图里的需求整理成模板",
+    });
+    expect(parts[1]).toEqual({
+      type: "image_url",
+      image_url: { url: "data:image/png;base64,aGVsbG8=" },
+    });
+  });
+
   test("请求构造：OpenAI 兼容字段与 Bearer 密钥，user 只含原文", async () => {
     const { fetchImpl, calls } = stubFetch(() =>
       jsonResponse(completion("## 模块：支付")),

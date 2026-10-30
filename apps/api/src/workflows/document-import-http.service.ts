@@ -169,6 +169,7 @@ export class DocumentImportHttpService {
         text: input.text,
         creatorName,
         target,
+        images: input.images,
       });
     } catch (error) {
       if (error instanceof AiAssistUpstreamError) {

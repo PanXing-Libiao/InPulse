@@ -5,6 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError, type InpulseApiClient } from "@generated/api";
 import {
+  clipboardWithChatScreenshot,
+  stubClipboardImagePipeline,
+} from "../common/assist-image.test-support";
+import {
   GlobalTaskCreateModal,
   type GlobalTaskCreateModalProps,
 } from "./GlobalTaskCreateModal";
@@ -90,6 +94,8 @@ interface Harness {
   readonly createModuleTask: ReturnType<typeof vi.fn>;
   readonly createTaskWithScope: ReturnType<typeof vi.fn>;
   readonly addExternalLink: ReturnType<typeof vi.fn>;
+  readonly assistTaskDraft: ReturnType<typeof vi.fn>;
+  readonly assistTaskDraftStandalone: ReturnType<typeof vi.fn>;
   readonly onClose: ReturnType<typeof vi.fn>;
   readonly onCreated: ReturnType<typeof vi.fn>;
   readonly onCreatedLocation: ReturnType<typeof vi.fn>;
@@ -109,6 +115,41 @@ function harness(
   );
   const addExternalLink =
     overrides.addExternalLink ?? (() => Promise.resolve({ linkId: 1 }));
+  const assistTaskDraft = vi.fn(() =>
+    Promise.resolve({
+      reply: "识别到 3 项，截止和负责人请再确认。",
+      draft: {
+        title: "修复 MFA 登录超时",
+        description: "定位 MFA 登录偶发超时的原因并修复。",
+        priority: "HIGH",
+        dueAt: "2026-11-06T18:00:00+08:00",
+        assigneeIds: [1],
+        assigneeNames: ["陈晓"],
+        moduleId: 11,
+        moduleName: "访问控制",
+      },
+      confidence: "HIGH",
+      notes: [],
+    }),
+  );
+  const assistTaskDraftStandalone = vi.fn(() =>
+    Promise.resolve({
+      reply: "已按截图整理草稿；还没选项目，归属和负责人先留空。",
+      draft: {
+        title: "修复登录验证码弱网转圈",
+        description:
+          "定位登录页验证码在弱网下持续转圈、现场作业无法进入的问题。",
+        priority: "HIGH",
+        dueAt: null,
+        assigneeIds: [],
+        assigneeNames: [],
+        moduleId: null,
+        moduleName: null,
+      },
+      confidence: "MEDIUM",
+      notes: ["还没选项目，模块与负责人先留空"],
+    }),
+  );
   const onClose = vi.fn(() => undefined);
   const onCreated = vi.fn(() => undefined);
   const onCreatedLocation = vi.fn(() => undefined);
@@ -126,6 +167,8 @@ function harness(
     createTaskWithScope,
     addExternalLink: vi.fn(addExternalLink),
     listExternalLinks: vi.fn().mockResolvedValue({ rowVersion: 1, items: [] }),
+    assistTaskDraft,
+    assistTaskDraftStandalone,
   } as unknown as InpulseApiClient;
 
   return {
@@ -135,6 +178,8 @@ function harness(
     addExternalLink: (
       client as unknown as { addExternalLink: ReturnType<typeof vi.fn> }
     ).addExternalLink,
+    assistTaskDraft,
+    assistTaskDraftStandalone,
     onClose,
     onCreated,
     onCreatedLocation,
@@ -442,4 +487,115 @@ it("creates a custom module and task in one submission and returns the real loca
     moduleId: 21,
     taskId: 903,
   });
+});
+
+it("AI 助手把识别结果填入左侧空字段", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+  await pickOption(user, "所属项目", "InPulse 平台");
+
+  await user.type(
+    screen.getByLabelText("描述任务"),
+    "周五前让陈晓修 MFA 登录超时",
+  );
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  await waitFor(() => expect(test.assistTaskDraft).toHaveBeenCalledTimes(1));
+  const call = test.assistTaskDraft.mock.calls[0] as
+    [number, { message: string; history: readonly unknown[] }] | undefined;
+  expect(call?.[0]).toBe(1);
+  expect(call?.[1].message).toBe("周五前让陈晓修 MFA 登录超时");
+  expect(call?.[1].history).toEqual([]);
+
+  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue("修复 MFA 登录超时");
+  expect(screen.getByLabelText("任务说明")).toHaveValue(
+    "定位 MFA 登录偶发超时的原因并修复。",
+  );
+  expect(screen.getByLabelText("截止时间")).toHaveValue("2026-11-06T18:00");
+  expect(
+    screen.getByLabelText("所属模块").closest(".ant-select"),
+  ).toHaveTextContent("访问控制");
+  expect(screen.getByText(/已填入 6 项/)).toBeInTheDocument();
+});
+
+it("AI 不覆盖用户已经手填的标题", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+  await pickOption(user, "所属项目", "InPulse 平台");
+  await pickOption(user, "所属模块", "访问控制");
+
+  await user.type(screen.getByLabelText("任务标题"), "我自己写的标题");
+  await user.type(screen.getByLabelText("描述任务"), "修一下登录");
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue("我自己写的标题");
+  expect(screen.getByText(/未覆盖已有内容：标题/)).toBeInTheDocument();
+});
+
+it("AI 助手支持只发聊天截图并把图片带给模型", async () => {
+  const restore = stubClipboardImagePipeline();
+  try {
+    const test = harness();
+    mount(test);
+    const user = userEvent.setup();
+    await pickOption(user, "所属项目", "InPulse 平台");
+
+    fireEvent.paste(screen.getByLabelText("描述任务"), {
+      clipboardData: clipboardWithChatScreenshot(),
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("task-assist-attachments")).toBeInTheDocument(),
+    );
+    expect(screen.getByAltText("截图预览")).toBeInTheDocument();
+
+    const send = screen.getByTestId("task-draft-assist-send");
+    expect(send).toBeEnabled();
+    await user.click(send);
+
+    await waitFor(() => expect(test.assistTaskDraft).toHaveBeenCalledTimes(1));
+    const payload = test.assistTaskDraft.mock.calls[0]?.[1] as
+      | {
+          message: string;
+          images?: readonly { mimeType: string; data: string }[];
+        }
+      | undefined;
+    expect(payload?.message).toBe("");
+    expect(payload?.images).toEqual([{ mimeType: "image/jpeg", data: "AAAA" }]);
+    expect(screen.getByText("（截图） · 1 张截图")).toBeInTheDocument();
+  } finally {
+    restore();
+  }
+});
+
+it("未选项目也能先发描述识别，归属留空等用户补", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+
+  await user.type(
+    screen.getByLabelText("描述任务"),
+    "李工说登录验证码一直转圈，优先处理",
+  );
+  const send = screen.getByTestId("task-draft-assist-send");
+  expect(send).toBeEnabled();
+  await user.click(send);
+
+  await waitFor(() =>
+    expect(test.assistTaskDraftStandalone).toHaveBeenCalledTimes(1),
+  );
+  expect(test.assistTaskDraft).not.toHaveBeenCalled();
+  const payload = test.assistTaskDraftStandalone.mock.calls[0]?.[0] as
+    { message: string } | undefined;
+  expect(payload?.message).toContain("登录验证码");
+
+  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue(
+    "修复登录验证码弱网转圈",
+  );
+  expect(screen.getAllByText(/还没选项目/).length).toBeGreaterThan(0);
 });

@@ -1,12 +1,19 @@
 import { Logger } from "@nestjs/common";
 
 import type { AiAssistConfig } from "./ai-assist.config.js";
+import type { AiAssistImage } from "@inpulse/api-contract";
+
 import type { AiAssistTarget } from "./ai-assist-target.js";
 import {
   buildAiAssistMessages,
   type DocumentImportAssistMode,
 } from "./ai-assist.prompt.js";
 import { buildRecordSummaryAssistMessages } from "./record-summary-assist.prompt.js";
+import {
+  buildTaskDraftAssistMessages,
+  TASK_DRAFT_ASSIST_MAX_OUTPUT_TOKENS,
+  type TaskDraftAssistPromptInput,
+} from "./task-draft-assist.prompt.js";
 
 /** ADR-067 的固定上游失败分类：仅进入 details.reason，不泄露上游细节。 */
 export type AiAssistFailureReason =
@@ -30,9 +37,16 @@ export class AiAssistUpstreamError extends Error {
  * 不带任何正文，因此可以在同一份日志格式里同时容纳文档草稿与总结改写。
  */
 interface AiAssistCallLabel {
-  readonly kind: "draft" | "summary";
+  readonly kind: "draft" | "summary" | "task-draft";
   readonly mode: DocumentImportAssistMode | undefined;
   readonly inputChars: number;
+}
+
+/** 结构化草稿请求：返回模型原始 JSON 文本，由调用方按契约解析与校验。 */
+export interface AiAssistTaskDraft {
+  readonly content: string;
+  readonly model: string;
+  readonly truncated: boolean;
 }
 
 export interface AiAssistDraft {
@@ -56,6 +70,8 @@ export interface AiAssistDraftRequest {
    * 只进 system 提示词，不写日志、不落库。
    */
   readonly target?: AiAssistTarget | undefined;
+  /** 聊天记录等截图：随 user message 转发给多模态模型，不写日志、不落库。 */
+  readonly images?: readonly AiAssistImage[] | undefined;
 }
 
 const LOGGER_CONTEXT = "DocumentImportAiAssist";
@@ -165,6 +181,62 @@ export class DocumentImportAiAssistClient {
     }
     this.logCall(label, config, "ok", startedAt, undefined, response.status);
     return draft;
+  }
+
+  /**
+   * 新建任务 AI 识别：要求模型输出固定 JSON 草稿。与总结改写共用运行时配置、
+   * 失败分类与截断判定；这里只负责取回模型内容，JSON 解析、字段裁剪与
+   * 真实 ID 匹配全部交给 HTTP 服务，客户端不信任模型输出。
+   */
+  async generateTaskDraft(
+    config: AiAssistConfig,
+    input: TaskDraftAssistPromptInput,
+  ): Promise<AiAssistTaskDraft> {
+    const startedAt = Date.now();
+    const label: AiAssistCallLabel = {
+      kind: "task-draft",
+      mode: undefined,
+      inputChars:
+        input.message.length +
+        input.history.reduce((total, item) => total + item.text.length, 0),
+    };
+    const response = await this.callUpstream(
+      config,
+      {
+        model: config.model,
+        messages: buildTaskDraftAssistMessages(input),
+        max_tokens: Math.min(
+          config.maxTokens,
+          TASK_DRAFT_ASSIST_MAX_OUTPUT_TOKENS,
+        ),
+        temperature: 0.1,
+        stream: false,
+      },
+      startedAt,
+      label,
+    );
+    let draft: AiAssistDraft;
+    try {
+      draft = await this.parseSuccessResponse(response, config);
+    } catch (error) {
+      if (error instanceof AiAssistUpstreamError) {
+        this.logCall(
+          label,
+          config,
+          "failed",
+          startedAt,
+          error.reason,
+          response.status,
+        );
+      }
+      throw error;
+    }
+    this.logCall(label, config, "ok", startedAt, undefined, response.status);
+    return {
+      content: draft.markdown,
+      model: draft.model,
+      truncated: draft.truncated,
+    };
   }
 
   /**

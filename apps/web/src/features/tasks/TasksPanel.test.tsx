@@ -233,6 +233,7 @@ describe("F-14 模块级任务入口", () => {
     );
     // 归属已锁定为当前模块：弹窗只回显模块名，不再提供范围/模块选择。
     expect(dialog.getByText("所属模块")).toBeInTheDocument();
+    expect(dialog.getByText("AI 助手")).toBeInTheDocument();
     expect(await dialog.findByText("离线与同步")).toBeInTheDocument();
   });
 

@@ -12,6 +12,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  clipboardWithChatScreenshot,
+  stubClipboardImagePipeline,
+} from "../common/assist-image.test-support";
+import {
   ApiError,
   DOCUMENT_IMPORT_TEMPLATE,
   type CurrentUserResponse,
@@ -2108,4 +2112,31 @@ describe("成员字段的账号搜索建议（2026-10-14）", () => {
     });
     expect(screen.queryByTestId("document-import-member-suggest")).toBeNull();
   });
+});
+
+it("空态直接粘贴聊天截图会自动交给 AI 整理并带上图片", async () => {
+  const restore = stubClipboardImagePipeline();
+  try {
+    const { assistDocumentImport } = mount();
+    fireEvent.paste(document.body, {
+      clipboardData: clipboardWithChatScreenshot(),
+    });
+
+    await waitFor(() => expect(assistDocumentImport).toHaveBeenCalledTimes(1));
+    const payload = assistDocumentImport.mock.calls[0]?.[0] as
+      | {
+          text: string;
+          images?: readonly { mimeType: string; data: string }[];
+        }
+      | undefined;
+    expect(payload?.text).toBe("");
+    expect(payload?.images).toEqual([{ mimeType: "image/jpeg", data: "AAAA" }]);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("document-assist-attachments"),
+      ).toBeInTheDocument(),
+    );
+  } finally {
+    restore();
+  }
 });

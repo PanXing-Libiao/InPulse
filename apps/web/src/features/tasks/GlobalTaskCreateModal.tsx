@@ -6,6 +6,7 @@ import {
   ApiError,
   createApiClient,
   type InpulseApiClient,
+  type TaskDraftAssistDraft,
   type TaskEditRequest,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
@@ -21,6 +22,10 @@ import { useProjects } from "@features/projects/project-query";
 import { useModules } from "@features/modules/module-query";
 import { isFirstLoad, taskError } from "./task-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+import {
+  TaskDraftAssistPane,
+  type TaskDraftAssistApplyResult,
+} from "./TaskDraftAssistPane";
 
 type Priority = TaskEditRequest["priority"];
 
@@ -89,6 +94,8 @@ export function GlobalTaskCreateModal({
   const [linkText, setLinkText] = useState("");
   const [invalid, setInvalid] = useState<string | null>(null);
   const [failedLinks, setFailedLinks] = useState<string[]>([]);
+  // 每次重新打开都换一个 key，右侧助手随之清空上一轮对话。
+  const [assistResetToken, setAssistResetToken] = useState(0);
 
   const presetProjectId = preset?.projectId ?? 0;
   const presetModuleId = preset?.moduleId ?? 0;
@@ -96,6 +103,7 @@ export function GlobalTaskCreateModal({
 
   useEffect(() => {
     if (!open) return;
+    setAssistResetToken((token) => token + 1);
     setCreatedLocation(null);
     setProjectId(presetProjectId);
     setModuleId(presetModuleId);
@@ -252,6 +260,85 @@ export function GlobalTaskCreateModal({
     onClose();
   }
 
+  /**
+   * AI 只做预填：空字段直接写，已有内容一律不覆盖，并把冲突字段回报给助手面板。
+   * 归属先于负责人写入，避免模块切换时把刚识别的成员清掉。
+   */
+  function applyAssistDraft(
+    draft: TaskDraftAssistDraft,
+  ): TaskDraftAssistApplyResult {
+    const conflicts: string[] = [];
+    let applied = 0;
+
+    if (draft.title !== null) {
+      const current = title.trim();
+      if (current.length === 0) {
+        setTitle(draft.title);
+        applied += 1;
+      } else if (current !== draft.title) {
+        conflicts.push("标题");
+      }
+    }
+
+    if (draft.description !== null) {
+      const current = description.trim();
+      if (current.length === 0) {
+        setDescription(draft.description);
+        applied += 1;
+      } else if (current !== draft.description.trim()) {
+        conflicts.push("任务说明");
+      }
+    }
+
+    if (draft.priority !== null && draft.priority !== priority) {
+      if (priority === "NORMAL") {
+        setPriority(draft.priority);
+        applied += 1;
+      } else {
+        conflicts.push("优先级");
+      }
+    }
+
+    if (draft.dueAt !== null) {
+      const sameDue =
+        dueAt !== null &&
+        new Date(dueAt).getTime() === new Date(draft.dueAt).getTime();
+      if (!sameDue) {
+        if (dueAt === null) {
+          setDueAt(draft.dueAt);
+          applied += 1;
+        } else {
+          conflicts.push("截止时间");
+        }
+      }
+    }
+
+    if (draft.moduleId !== null) {
+      if (lockedModule || (moduleId !== 0 && moduleId !== draft.moduleId)) {
+        conflicts.push("所属模块");
+      } else if (moduleId === 0) {
+        setModuleId(draft.moduleId);
+        applied += 1;
+      }
+    }
+
+    if (draft.assigneeIds.length > 0) {
+      const sameAssignees =
+        assigneeIds.length === draft.assigneeIds.length &&
+        assigneeIds.every((id) => draft.assigneeIds.includes(id));
+      if (sameAssignees) {
+        // 已经一致，不重复计入。
+      } else if (assigneeIds.length === 0) {
+        setAssigneeIds([...draft.assigneeIds]);
+        applied += 1;
+      } else {
+        conflicts.push("负责人");
+      }
+    }
+
+    return { applied, conflicts };
+  }
+
   function submit(event: FormEvent): void {
     event.preventDefault();
     if (createdLocation || mutation.isPending) return;
@@ -303,222 +390,237 @@ export function GlobalTaskCreateModal({
       closable={!busy}
     >
       <form className="catalog-form calm-form" onSubmit={submit}>
-        <div className="dialog-form">
-          {createError && <Alert type="error" title={createError} />}
-          {failedLinks.length > 0 && (
-            <Alert
-              type="warning"
-              title={`任务已创建，但 ${failedLinks.length} 个 GitHub 链接未能关联：${failedLinks.join("、")}`}
-            />
-          )}
-          {createdLocation && failedLinks.length > 0 && (
-            <a href={taskDetailPath(createdLocation)}>
-              查看已创建任务并管理 GitHub 链接
-            </a>
-          )}
-          {invalid && <Alert type="warning" title={invalid} />}
-
-          <fieldset
-            className="task-form-fields"
-            disabled={busy || createdLocation !== null}
-          >
-            {lockedModule ? (
-              <div className="calm-field">
-                <span className="field-label">所属项目</span>
-                <p className="task-fixed-project">
-                  {projectName ?? "正在加载项目…"}
-                </p>
-              </div>
-            ) : (
-              <div className="calm-field">
-                <label htmlFor="global-task-project">所属项目</label>
-                <CalmSelect
-                  id="global-task-project"
-                  ariaLabel="所属项目"
-                  value={projectId}
-                  appearance="rich"
-                  onChange={(next) => {
-                    setProjectId(Number(next));
-                    setModuleId(0);
-                    setNewModule("");
-                    setAssigneeIds([]);
-                  }}
-                  options={[
-                    { value: 0, label: "请选择项目", disabled: true },
-                    ...(projects.data?.items ?? []).map(projectSelectOption),
-                  ]}
-                  animated
-                />
-                {projects.isError && (
-                  <p role="alert">项目列表加载失败，请稍后重试。</p>
-                )}
-              </div>
+        <div className="dialog-form task-create-layout">
+          <div className="task-create-main">
+            {createError && <Alert type="error" title={createError} />}
+            {failedLinks.length > 0 && (
+              <Alert
+                type="warning"
+                title={`任务已创建，但 ${failedLinks.length} 个 GitHub 链接未能关联：${failedLinks.join("、")}`}
+              />
             )}
+            {createdLocation && failedLinks.length > 0 && (
+              <a href={taskDetailPath(createdLocation)}>
+                查看已创建任务并管理 GitHub 链接
+              </a>
+            )}
+            {invalid && <Alert type="warning" title={invalid} />}
 
-            {lockedModule ? (
-              <div className="calm-field">
-                <span className="field-label">所属模块</span>
-                <p className="task-fixed-project">
-                  {lockedModuleName ?? "正在加载模块…"}
-                </p>
-              </div>
-            ) : (
-              <>
+            <fieldset
+              className="task-form-fields"
+              disabled={busy || createdLocation !== null}
+            >
+              {lockedModule ? (
                 <div className="calm-field">
-                  <label htmlFor="global-task-module">所属模块</label>
+                  <span className="field-label">所属项目</span>
+                  <p className="task-fixed-project">
+                    {projectName ?? "正在加载项目…"}
+                  </p>
+                </div>
+              ) : (
+                <div className="calm-field">
+                  <label htmlFor="global-task-project">所属项目</label>
                   <CalmSelect
-                    id="global-task-module"
-                    ariaLabel="所属模块"
-                    value={moduleId}
-                    disabled={projectId === 0}
-                    appearance="menu"
+                    id="global-task-project"
+                    ariaLabel="所属项目"
+                    value={projectId}
+                    appearance="rich"
                     onChange={(next) => {
-                      setModuleId(Number(next));
+                      setProjectId(Number(next));
+                      setModuleId(0);
+                      setNewModule("");
                       setAssigneeIds([]);
                     }}
                     options={[
-                      {
-                        value: 0,
-                        label: projectId === 0 ? "请先选择项目" : "请选择模块",
-                        disabled: true,
-                      },
-                      { value: -1, label: "自定义 · 创建新模块" },
-                      ...(modules.query.data?.items ?? []).map((module) => ({
-                        value: module.id,
-                        label: module.name,
-                      })),
+                      { value: 0, label: "请选择项目", disabled: true },
+                      ...(projects.data?.items ?? []).map(projectSelectOption),
                     ]}
                     animated
                   />
-                </div>
-                {modules.query.isError && (
-                  <p role="alert">模块加载失败，请重试。</p>
-                )}
-              </>
-            )}
-
-            {moduleId === -1 && (
-              <div className="calm-field">
-                <label htmlFor="new-module-name">新模块名称</label>
-                <input
-                  id="new-module-name"
-                  value={newModule}
-                  maxLength={200}
-                  onChange={(event) => setNewModule(event.target.value)}
-                />
-                <small>提交任务时一起创建。</small>
-              </div>
-            )}
-
-            <div className="calm-field">
-              <label htmlFor="global-task-title">任务标题</label>
-              <input
-                id="global-task-title"
-                value={title}
-                maxLength={500}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </div>
-
-            <div className="calm-field">
-              <label htmlFor="global-task-assignee">指派给</label>
-              <CalmSelect
-                id="global-task-assignee"
-                value={assigneeIds}
-                onChange={(next) => setAssigneeIds(next.map(Number))}
-                options={(assignees.data?.items ?? []).map((member) => ({
-                  value: member.id,
-                  label: member.name,
-                  avatarUrl: member.avatarUrl ?? null,
-                }))}
-                appearance="member"
-                multiple
-                maxTagCount={2}
-                placeholder={
-                  targetReady ? "请选择项目成员（可多选）" : "请先选择任务归属"
-                }
-                disabled={!targetReady}
-                ariaLabel="负责人"
-                animated
-              />
-              {targetReady && isFirstLoad(assignees) && (
-                <CalmSkeleton
-                  variant="list"
-                  rows={2}
-                  compact
-                  label="正在加载项目成员…"
-                />
-              )}
-              {assignees.isError && (
-                <Alert
-                  type="error"
-                  title={taskError(assignees.error)}
-                  action={
-                    <Button
-                      className="secondary-button"
-                      onClick={() => void assignees.refetch()}
-                    >
-                      重试项目成员
-                    </Button>
-                  }
-                />
-              )}
-            </div>
-
-            <div className="form-row">
-              <div className="calm-field">
-                <label htmlFor="global-task-priority">优先级</label>
-                <CalmSelect
-                  id="global-task-priority"
-                  ariaLabel="优先级"
-                  value={priority}
-                  appearance="menu"
-                  onChange={(next) => setPriority(next as Priority)}
-                  options={Object.entries(priorityLabels).map(
-                    ([value, label]) => ({
-                      value,
-                      label,
-                      dotColor: priorityDotColor(value),
-                    }),
+                  {projects.isError && (
+                    <p role="alert">项目列表加载失败，请稍后重试。</p>
                   )}
+                </div>
+              )}
+
+              {lockedModule ? (
+                <div className="calm-field">
+                  <span className="field-label">所属模块</span>
+                  <p className="task-fixed-project">
+                    {lockedModuleName ?? "正在加载模块…"}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="calm-field">
+                    <label htmlFor="global-task-module">所属模块</label>
+                    <CalmSelect
+                      id="global-task-module"
+                      ariaLabel="所属模块"
+                      value={moduleId}
+                      disabled={projectId === 0}
+                      appearance="menu"
+                      onChange={(next) => {
+                        setModuleId(Number(next));
+                        setAssigneeIds([]);
+                      }}
+                      options={[
+                        {
+                          value: 0,
+                          label:
+                            projectId === 0 ? "请先选择项目" : "请选择模块",
+                          disabled: true,
+                        },
+                        { value: -1, label: "自定义 · 创建新模块" },
+                        ...(modules.query.data?.items ?? []).map((module) => ({
+                          value: module.id,
+                          label: module.name,
+                        })),
+                      ]}
+                      animated
+                    />
+                  </div>
+                  {modules.query.isError && (
+                    <p role="alert">模块加载失败，请重试。</p>
+                  )}
+                </>
+              )}
+
+              {moduleId === -1 && (
+                <div className="calm-field">
+                  <label htmlFor="new-module-name">新模块名称</label>
+                  <input
+                    id="new-module-name"
+                    value={newModule}
+                    maxLength={200}
+                    onChange={(event) => setNewModule(event.target.value)}
+                  />
+                  <small>提交任务时一起创建。</small>
+                </div>
+              )}
+
+              <div className="calm-field">
+                <label htmlFor="global-task-title">任务标题</label>
+                <input
+                  id="global-task-title"
+                  value={title}
+                  maxLength={500}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </div>
+
+              <div className="calm-field">
+                <label htmlFor="global-task-assignee">指派给</label>
+                <CalmSelect
+                  id="global-task-assignee"
+                  value={assigneeIds}
+                  onChange={(next) => setAssigneeIds(next.map(Number))}
+                  options={(assignees.data?.items ?? []).map((member) => ({
+                    value: member.id,
+                    label: member.name,
+                    avatarUrl: member.avatarUrl ?? null,
+                  }))}
+                  appearance="member"
+                  multiple
+                  maxTagCount={2}
+                  placeholder={
+                    targetReady
+                      ? "请选择项目成员（可多选）"
+                      : "请先选择任务归属"
+                  }
+                  disabled={!targetReady}
+                  ariaLabel="负责人"
                   animated
                 />
+                {targetReady && isFirstLoad(assignees) && (
+                  <CalmSkeleton
+                    variant="list"
+                    rows={2}
+                    compact
+                    label="正在加载项目成员…"
+                  />
+                )}
+                {assignees.isError && (
+                  <Alert
+                    type="error"
+                    title={taskError(assignees.error)}
+                    action={
+                      <Button
+                        className="secondary-button"
+                        onClick={() => void assignees.refetch()}
+                      >
+                        重试项目成员
+                      </Button>
+                    }
+                  />
+                )}
               </div>
+
+              <div className="form-row">
+                <div className="calm-field">
+                  <label htmlFor="global-task-priority">优先级</label>
+                  <CalmSelect
+                    id="global-task-priority"
+                    ariaLabel="优先级"
+                    value={priority}
+                    appearance="menu"
+                    onChange={(next) => setPriority(next as Priority)}
+                    options={Object.entries(priorityLabels).map(
+                      ([value, label]) => ({
+                        value,
+                        label,
+                        dotColor: priorityDotColor(value),
+                      }),
+                    )}
+                    animated
+                  />
+                </div>
+                <div className="calm-field">
+                  <label htmlFor="global-task-due">截止时间</label>
+                  <CalmDateTimeInput
+                    id="global-task-due"
+                    value={toLocalDateTimeInput(dueAt)}
+                    onChange={(next) =>
+                      setDueAt(
+                        next === "" ? null : new Date(next).toISOString(),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
               <div className="calm-field">
-                <label htmlFor="global-task-due">截止时间</label>
-                <CalmDateTimeInput
-                  id="global-task-due"
-                  value={toLocalDateTimeInput(dueAt)}
-                  onChange={(next) =>
-                    setDueAt(next === "" ? null : new Date(next).toISOString())
-                  }
+                <label htmlFor="global-task-description">任务说明</label>
+                <textarea
+                  id="global-task-description"
+                  rows={4}
+                  maxLength={50000}
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
                 />
               </div>
-            </div>
 
-            <div className="calm-field">
-              <label htmlFor="global-task-description">任务说明</label>
-              <textarea
-                id="global-task-description"
-                rows={4}
-                maxLength={50000}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </div>
-
-            <div className="calm-field">
-              <label htmlFor="global-task-links">GitHub 链接</label>
-              <textarea
-                id="global-task-links"
-                rows={2}
-                placeholder="每行一个链接，可选"
-                value={linkText}
-                onChange={(event) => setLinkText(event.target.value)}
-              />
-              <p>只接受 github.com 的 HTTPS 链接；受限域名会被拒绝。</p>
-            </div>
-          </fieldset>
+              <div className="calm-field">
+                <label htmlFor="global-task-links">GitHub 链接</label>
+                <textarea
+                  id="global-task-links"
+                  rows={2}
+                  placeholder="每行一个链接，可选"
+                  value={linkText}
+                  onChange={(event) => setLinkText(event.target.value)}
+                />
+                <p>只接受 github.com 的 HTTPS 链接；受限域名会被拒绝。</p>
+              </div>
+            </fieldset>
+          </div>
+          <TaskDraftAssistPane
+            key={assistResetToken}
+            api={api}
+            projectId={projectId}
+            moduleId={moduleId}
+            disabled={busy || createdLocation !== null}
+            onApply={applyAssistDraft}
+          />
         </div>
         <div className="calm-action-footer">
           <Button className="secondary-button" onClick={close} disabled={busy}>

@@ -10,6 +10,12 @@ import {
   type UserDirectoryItem,
 } from "@generated/api";
 import { useAuth } from "@features/auth/auth-context";
+import {
+  assistImagePayload,
+  imageFilesFromClipboard,
+  useAssistAttachments,
+  type AssistImageAttachment,
+} from "@features/common/assist-image";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import { CalmSegmented } from "@features/common/components/Calm";
 import {
@@ -744,6 +750,14 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
   // 分析输入用的是当前左栏草稿，两者不共用一份状态。
   const [messages, setMessages] = useState<readonly AssistMessage[]>([]);
   const [composer, setComposer] = useState("");
+  // 聊天记录截图：与补充说明一起发给 AI，只用于本次识别，不落库。
+  const {
+    attachments: assistImages,
+    imageError: assistImageError,
+    addFromClipboard,
+    remove: removeAssistImage,
+    clear: clearAssistImages,
+  } = useAssistAttachments();
   const [supplements, setSupplements] = useState<readonly string[]>([]);
   const [assistSourceText, setAssistSourceText] = useState<string | null>(null);
   const [assistSourceName, setAssistSourceName] = useState<string | null>(null);
@@ -1031,6 +1045,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     baseText: string,
     nextSupplements: readonly string[],
     sourceName: string | null,
+    images: readonly AssistImageAttachment[] = [],
   ): Promise<string | null> => {
     setAssistError(null);
     setAssistIssues([]);
@@ -1045,9 +1060,11 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
               moduleId: targetModuleId,
             }
           : undefined;
-      const result = await assistMutation.mutateAsync(
-        target === undefined ? { text: payload } : { text: payload, target },
-      );
+      const result = await assistMutation.mutateAsync({
+        text: payload,
+        ...(target === undefined ? {} : { target }),
+        ...(images.length === 0 ? {} : { images: assistImagePayload(images) }),
+      });
       setAssistIssues(result.issues);
       setAssistSourceName(sourceName);
       applyDraftText(result.markdown);
@@ -1115,6 +1132,41 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     rememberAssistSource(text);
     await runAssist(text, supplements, assistSourceName);
   };
+
+  /**
+   * 空态粘贴聊天记录截图：图片直接交给 AI 整理，不再要求先粘贴文本。
+   * 与文本粘贴共用同一个窗口事件；剪贴板里没有图片时交给上面那条处理。
+   */
+  useEffect(() => {
+    if (!open || stage !== "INPUT" || hasContent || pasteOpen) return;
+    const handlePaste = (event: ClipboardEvent): void => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) {
+        const tag = active.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || active.isContentEditable) {
+          return;
+        }
+      }
+      const clipboard = event.clipboardData;
+      if (imageFilesFromClipboard(clipboard).length === 0) return;
+      event.preventDefault();
+      void (async () => {
+        const added = await addFromClipboard(clipboard);
+        if (added === null || added.length === 0) return;
+        setMessages((current) => [
+          ...current,
+          { role: "USER", text: "（截图）" },
+        ]);
+        const applied = await runAssist("", supplements, null, added);
+        if (applied !== null) {
+          appendAssistReply(applied, { skipIfSameAs: missingItems });
+        }
+      })();
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+    // 只依赖打开状态与空态：runAssist 等是每次渲染新建的函数，放进依赖会每帧重建监听。
+  }, [open, stage, hasContent, pasteOpen]);
 
   /** 本地读到的文档：已经是模板就直接用，否则交给 AI 整理。 */
   const feedDocument = async (
@@ -1241,21 +1293,41 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
 
   const handleComposerSend = async (): Promise<void> => {
     const text = composer.trim();
-    if (text.length === 0) return;
+    const images = assistImages;
+    if (text.length === 0 && images.length === 0) return;
     const base = documentText;
-    if (base.trim().length === 0) {
+    if (base.trim().length === 0 && images.length === 0) {
       setAssistError("请先选择文档或粘贴内容，再补充说明。");
       return;
     }
-    rememberAssistSource(base);
-    const nextSupplements = [...supplements, text];
+    if (base.trim().length > 0) rememberAssistSource(base);
+    const nextSupplements =
+      text.length === 0 ? supplements : [...supplements, text];
     setComposer("");
+    clearAssistImages();
     setSupplements(nextSupplements);
-    setMessages((current) => [...current, { role: "USER", text }]);
+    setMessages((current) => [
+      ...current,
+      {
+        role: "USER",
+        text:
+          images.length === 0
+            ? text
+            : (text.length === 0 ? "（截图）" : text) +
+              " · " +
+              images.length +
+              " 张截图",
+      },
+    ]);
     // 不再在发送瞬间单独预告缺口：那一句读的是「用户发言前」的草稿，模型落地后又报
     // 「已更新草稿」，同屏两句就是自相矛盾（见 appendAssistReply 的说明）。等待期间由
     // busy 提示「正在让 AI 整理…」顶上，落地结果统一由下面这一条说清。
-    const applied = await runAssist(base, nextSupplements, assistSourceName);
+    const applied = await runAssist(
+      base,
+      nextSupplements,
+      assistSourceName,
+      images,
+    );
     if (applied !== null) {
       appendAssistReply(applied, { skipIfSameAs: missingItems, base });
     }
@@ -1816,7 +1888,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
         <br />
         文件只在浏览器本地抽取文本，原文件不会上传
         <br />
-        也可以按 Ctrl+V 直接粘贴聊天记录、会议纪要或零散想法
+        也可以按 Ctrl+V 直接粘贴聊天记录截图、会议纪要或零散想法
       </p>
       <p className="import-drop-or">
         或者
@@ -2211,19 +2283,50 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
           ))}
         </div>
       ) : null}
+      {assistImages.length > 0 || assistImageError !== null ? (
+        <div
+          className="assist-attachments"
+          data-testid="document-assist-attachments"
+        >
+          {assistImages.map((item) => (
+            <span className="assist-attachment" key={item.id}>
+              <img src={item.previewUrl} alt="截图预览" />
+              <button
+                type="button"
+                aria-label="移除截图"
+                onClick={() => removeAssistImage(item.id)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {assistImageError !== null ? (
+            <span className="assist-attachment-error" role="alert">
+              {assistImageError}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div className="import-composer">
         <input
           aria-label="补充说明"
           value={composer}
-          disabled={!hasContent || assistBusy}
+          disabled={(!hasContent && assistImages.length === 0) || assistBusy}
           placeholder={
-            hasContent
+            hasContent || assistImages.length > 0
               ? "用一句话补充，例如「订单查询要在本周五前完成」"
               : "分析完成后，可以在这里补充说明"
           }
           onChange={(event) => {
             setComposer(event.currentTarget.value);
             setAssistError(null);
+          }}
+          onPaste={(event) => {
+            if (imageFilesFromClipboard(event.clipboardData).length === 0) {
+              return;
+            }
+            event.preventDefault();
+            void addFromClipboard(event.clipboardData);
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
@@ -2236,7 +2339,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
           type="primary"
           data-testid="document-import-assist-run"
           loading={assistBusy}
-          disabled={!hasContent || assistBusy}
+          disabled={(!hasContent && assistImages.length === 0) || assistBusy}
           onClick={() => void handleComposerSend()}
         >
           发送

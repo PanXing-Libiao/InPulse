@@ -196,6 +196,7 @@ export function resolveDocumentImportAssistMode(
 export interface AssistDocumentImportInput {
   readonly text: string;
   readonly target?: DocumentImportAssistTarget | undefined;
+  readonly images?: DocumentImportAssistRequest["images"];
 }
 
 /**
@@ -216,6 +217,7 @@ export function useAssistDocumentImport({
         mode: assistMode,
         text: input.text,
         ...(input.target === undefined ? {} : { target: input.target }),
+        ...(input.images === undefined ? {} : { images: input.images }),
       }),
   });
 }

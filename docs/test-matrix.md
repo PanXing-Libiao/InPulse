@@ -7364,3 +7364,19 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR109-UNIT-001 | 全仓单元测试 | 各 workspace | 根级 `pnpm test:unit` 通过：API 91 文件 613 例、Web 120 文件 1052 例、契约 16 文件 104 例、数据库 1 文件 15 例、Canonical JSON 1 文件 5 例、Ops 9 文件 60 例 | 本地通过（2026-10-30） |
 
 **未执行 / 已知边界**：本轮未部署测试 VM、未同步生产、未运行 GitHub Actions、未执行生产镜像构建或 Trivy；所有验证均指向独立本地测试库 `app_ci`，未写入演示库 `app`。`0065` 是破坏性迁移，当前自动化数据库测试覆盖拆除后的对象与约束，但本轮没有另造一份停在 `0064` 的独立升级 fixture；正式发布仍须先在迁移前备份副本上执行一遍升级、抽样核对历史任务/记录归属和旧记录只读兼容，再按“迁移 → API → Web”的顺序发布。功能层的历史审计、动态、通知和名称快照按 ADR-109 保留，不应被清理脚本误删。 完整 `pnpm check` 已执行到 `deps:audit`：其余门禁通过，但该步报告 12 个漏洞（7 high、5 moderate），已知 high 包括 `zod <4.6.6`、`body-parser >=2.0.0 <2.4.0`、`undici >=8.0.0 <8.12.2`；本轮未修改 `package.json` 或 lockfile，相关依赖升级须按仓库第 4 节作为独立变更由人工确认。
+
+## 2026-10-30 合并任务 AI 助手（ADR-109 兼容）
+
+远端新增的新建任务 AI 识别、聊天截图识别与未选项目先起草能力已移植到模块级任务创建；功能层继续保持移除，当前业务层级仍为项目 → 模块 → 任务 → 迭代记录。合并后路由总数为 121。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| TASKAI-CONTRACT-001 | 契约与权限 | 生成物与路由 | `pnpm contract:generate` 重生成 6 个产物；`pnpm contract:drift` 无漂移；`pnpm contract:validate` 121 条全部通过；`pnpm permissions:check` 121 / 121 通过；任务草稿 Schema 只保留模块归属，不含 `featureId` / `featureName` | 本地通过（2026-10-30） |
+| TASKAI-API-001 | API 单元 | AI 客户端请求构造 | `ai-assist.client.test.ts` 16 例通过，覆盖文本、历史与截图多模态 payload | 本地通过（2026-10-30） |
+| TASKAI-API-002 | API 集成（真实 PostgreSQL） | 草稿识别与归属匹配 | `task-draft-assist.integration.test.ts` 10 例通过：模块与成员按真实清单匹配、未选项目时归属留空、截图透传、编造名称丢弃、LOW 置信度不猜、401 / 404 / 503 与零副作用 | 本地通过（2026-10-30；测试后已清理 app_ci 中 2 个用户、1 个项目，审计新增 0） |
+| TASKAI-WEB-001 | Web 单元 | 任务创建弹窗与模块入口 | `GlobalTaskCreateModal.test.tsx` + `TasksPanel.test.tsx` 共 46 例通过：AI 回填、不覆盖手填内容、只发截图、未选项目先起草、模块固定归属与无功能层入口 | 本地通过（2026-10-30） |
+| TASKAI-TYPE-001 | 类型检查 | 契约删字段后的引用 | `@inpulse/web`、`@inpulse/api` 与 `@inpulse/api-contract` 的 `typecheck` 全部通过 | 本地通过（2026-10-30） |
+
+| TASKAI-GATE-001 | 静态与构建 | 合并后门禁 | `pnpm lint`、`pnpm format:check`、`pnpm build`、`pnpm check:docs`（161 个 Markdown）与 `pnpm check:frontend:boundaries`（388 模块 / 1997 依赖，0 违规）全部通过 | 本地通过（2026-10-30） |
+
+**未执行 / 已知边界**：按用户要求未重跑全量单测、全量 API 集成、Playwright 或 GitHub Actions；本次仅验证任务创建 AI 纵切片、契约与权限、类型检查、静态检查与生产构建。前端 AI 助手仍以模块为唯一归属，不恢复任何功能字段或功能页面。
