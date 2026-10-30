@@ -7,15 +7,16 @@ import {
   type ModuleEditorRequest,
 } from "@features/modules/ModuleEditorModal";
 import { useProjectDetail } from "@features/projects/project-query";
-import {
-  TasksPanel,
-  taskStatusFilterOptions,
-} from "@features/tasks/TasksPanel";
+import { TasksPanel } from "@features/tasks/TasksPanel";
 import type { TaskLocation } from "@features/tasks/task-links";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
-import { CalmSegmented } from "@features/common/components/Calm";
-import { CalmSelect } from "@features/common/components/CalmSelect";
+import { CalmBadge } from "@features/common/components/Calm";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
+import { formatBeijingMinute } from "@features/common/beijing-time";
+import {
+  moduleLifecycleLabel,
+  moduleLifecycleTone,
+} from "@features/common/resource-lifecycle";
 
 /**
  * 聚合组详情里的成员任务就地打开任务详情（与任务中心同一实现：状态推进、编辑、
@@ -39,11 +40,7 @@ export default function ModuleTasksPage() {
   const [taskTarget, setTaskTarget] = useState<TaskLocation | null>(null);
   const [moduleRequest, setModuleRequest] =
     useState<ModuleEditorRequest | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [view, setView] = useState<"cards" | "list">("cards");
-  const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
-  const [taskCount, setTaskCount] = useState(0);
   if (!validScope) return <Alert type="error" title="模块地址无效" />;
   if (query.isPending)
     return <CalmSkeleton variant="list" rows={4} label="正在加载模块任务" />;
@@ -64,94 +61,90 @@ export default function ModuleTasksPage() {
     ) : (
       <Alert type="error" title="模块不存在或无法访问" />
     );
+  const projectName = projectQuery.isPending
+    ? "加载中"
+    : (projectQuery.data?.project?.name ?? "名称暂不可用");
   return (
     <>
-      <div className="page-header">
-        <div>
-          <div className="page-title-row">
-            <button
-              type="button"
-              className="title-back-button"
-              aria-label="返回模块列表"
-              title="返回模块列表"
-              onClick={() => navigate("/projects/" + projectId + "/modules")}
+      <div className="module-document">
+        <header className="module-document-header">
+          <div className="module-document-heading">
+            <div className="module-title-row">
+              <button
+                type="button"
+                className="title-back-button"
+                aria-label="返回模块列表"
+                title="返回模块列表"
+                onClick={() => navigate("/projects/" + projectId + "/modules")}
+              >
+                <InpulseIcon name="chevronLeft" size={20} />
+              </button>
+              <h1>{module.name}</h1>
+            </div>
+            <p className="module-document-description">
+              {module.description || "尚未补充模块说明。"}
+            </p>
+            <div className="task-modal-badges">
+              {module.kind === "UNCLASSIFIED" ? (
+                <CalmBadge tone="violet">未分类</CalmBadge>
+              ) : null}
+              <CalmBadge
+                tone={moduleLifecycleTone(
+                  module.stats.completedTaskCount,
+                  "blue",
+                )}
+              >
+                {moduleLifecycleLabel(module.stats.completedTaskCount)}
+              </CalmBadge>
+              <CalmBadge tone="gray">
+                更新 {formatBeijingMinute(module.updatedAt)}
+              </CalmBadge>
+            </div>
+          </div>
+          <div className="catalog-actions">
+            <Button
+              className="secondary-button"
+              onClick={() =>
+                setModuleRequest({ action: "update", item: module })
+              }
             >
-              <InpulseIcon name="chevronLeft" size={20} />
-            </button>
-            <h1>{module.name}</h1>
+              编辑模块
+            </Button>
           </div>
-          {module.description ? (
-            <p className="module-description">{module.description}</p>
-          ) : null}
-        </div>
-        <div className="catalog-actions">
-          <Button
-            className="secondary-button"
-            onClick={() => setModuleRequest({ action: "update", item: module })}
-          >
-            编辑模块
-          </Button>
-          <Button
-            className="primary-button"
-            onClick={() => setCreateOpen(true)}
-          >
-            <InpulseIcon name="plus" size={15} />
-            新建任务
-          </Button>
-        </div>
-      </div>
-      <div className="module-work-bar">
-        <div className="module-task-summary">
-          <strong>任务</strong>
-          <span>{taskCount} 项</span>
-        </div>
-        <div className="module-view-controls">
-          <CalmSelect
-            className="task-status-filter"
-            value={statusFilter}
-            onChange={(next) => setStatusFilter(String(next))}
-            options={taskStatusFilterOptions}
-            appearance="menu"
-            ariaLabel="任务状态筛选"
-            animated
-          />
-          <CalmSegmented
-            label="任务展示方式"
-            value={view}
-            options={[
-              { value: "cards", label: "卡片" },
-              { value: "list", label: "列表" },
-            ]}
-            onChange={setView}
-          />
-          <div className="task-search">
-            <InpulseIcon name="search" size={15} />
-            <input
-              aria-label="搜索当前模块的任务"
-              placeholder="搜索当前模块的任务"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+        </header>
+        <div className="module-document-content">
+          <div className="module-document-grid">
+            <div className="module-document-main">
+              <section className="module-task-section" aria-label="模块任务">
+                <TasksPanel
+                  projectId={projectId}
+                  moduleId={moduleId}
+                  writable
+                  onOpenTask={setTaskTarget}
+                  search={search}
+                  onSearchChange={setSearch}
+                />
+              </section>
+            </div>
+            <aside className="module-facts" aria-label="模块档案">
+              <h2>模块档案</h2>
+              <dl>
+                <dt>编号</dt>
+                <dd>{module.code}</dd>
+                <dt>所属项目</dt>
+                <dd>{projectName}</dd>
+                <dt>任务</dt>
+                <dd>
+                  {module.stats.openTaskCount} 项待办 ·{" "}
+                  {module.stats.completedTaskCount} 项已完成
+                </dd>
+                <dt>数据版本</dt>
+                <dd>v{module.rowVersion}</dd>
+              </dl>
+            </aside>
           </div>
         </div>
       </div>
-      <TasksPanel
-        projectId={projectId}
-        moduleId={moduleId}
-        writable
-        onOpenTask={setTaskTarget}
-        showHeader={false}
-        view={view}
-        onViewChange={setView}
-        search={search}
-        onSearchChange={setSearch}
-        createOpen={createOpen}
-        onCreateClose={() => setCreateOpen(false)}
-        onCountChange={setTaskCount}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        suppressCreateAction
-      />
       <ModuleEditorModal
         projectId={projectId}
         projectName={projectQuery.data?.project?.name ?? null}

@@ -945,6 +945,17 @@ export function TasksPanel({
                   ]}
                   onChange={changeView}
                 />
+                {onSearchChange !== undefined ? (
+                  <div className="task-search module-task-search">
+                    <InpulseIcon name="search" size={15} />
+                    <input
+                      aria-label="搜索当前模块的任务"
+                      placeholder="搜索当前模块的任务"
+                      value={search}
+                      onChange={(event) => onSearchChange(event.target.value)}
+                    />
+                  </div>
+                ) : null}
                 {suppressCreateAction ||
                 (query.isSuccess && !query.data?.items.length) ? null : (
                   <Button

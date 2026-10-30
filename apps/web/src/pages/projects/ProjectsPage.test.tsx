@@ -125,6 +125,12 @@ describe("ProjectsPage", () => {
       "查看模块",
     );
     expect(screen.getByText("层级说明")).toBeInTheDocument();
+    expect(screen.getByText("项目 / 模块 / 任务")).toBeInTheDocument();
+    expect(screen.queryByText("项目 / 模块 / 任务 / 迭代记录")).toBeNull();
+    expect(
+      screen.queryByText("已经发生的变化，人员与时间自动生成。"),
+    ).toBeNull();
+    expect(screen.queryByText("合并后保留的历史，不删除不覆盖。")).toBeNull();
     expect(
       screen.getByRole("button", { name: /管\s*理\s*成\s*员/ }),
     ).toBeInTheDocument();
