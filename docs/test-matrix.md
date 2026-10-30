@@ -7430,7 +7430,11 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | --- | --- | --- | --- | --- |
 | TASKS-FILTER-001 | Web 单元 | 模块任务状态筛选 | `taskStatusFilterOptions` 只保留未完成、已完成、全部状态；历史 `CANCELED` 行仍可在全部状态下读取，但不再提供失效筛选入口；`TasksPanel.test.tsx` 断言选项集合 | 本地通过（2026-10-30） |
 | TASKAI-CSP-001 | Web 单元 | 新建任务 AI 助手截图粘贴 | 截图经 `FileReader.readAsDataURL()` 解码为 `data:` URL，不再调用 `URL.createObjectURL()`，符合生产 `img-src 'self' data:` CSP；回归用例断言预览地址为 data URL 且未创建 blob URL | 本地通过（2026-10-30） |
+| WEB-HOTFIX-DEPLOY-001 | 测试/正式环境 | web-only 热修发布 | 两端 `web` 均更新为 `0.1.0-20261030-190103e2`（提交 `190103e2`）；api / migrate / ops / db-bootstrap 未变；`/health/ready` 与 `/` 均返回 200，CSP 保持 `img-src 'self' data:` | 两地通过（2026-10-30） |
+| WEB-HOTFIX-ARTIFACT-001 | 发布产物 | 线上 bundle 定点核验 | 测试与正式站点实际拉取 `card-click-*.js` 均包含 `readAsDataURL`、不包含 `createObjectURL`；`TasksPanel-*.js` 的筛选数组只含 TODO / DONE / ALL | 两地通过（2026-10-30） |
 
 **验证记录**：`pnpm test:web` 122 个文件 1064 例通过；`pnpm --filter @inpulse/web typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm check:frontend:boundaries` 与 `pnpm --filter @inpulse/web build` 均通过。后端的 `CANCELED` 历史兼容值与契约不变，删除/历史审计口径仍按 [ADR-096](adr/ADR-096.md)。
 
-**未执行 / 已知边界**：本批尚未同步到测试 VM 或正式环境，也尚未在真实浏览器中复验粘贴截图；不据此声称部署已生效。
+**部署记录**：测试环境与正式环境均已只更新 `web` 到 `0.1.0-20261030-190103e2`；部署脚本重建 web 容器后，两地 `/health/ready` 与 `/` 返回 200，线上 bundle 核验通过。
+
+**未执行 / 已知边界**：尚未用真实账号在浏览器里重新粘贴一次截图并创建任务；本批未运行 Playwright、完整集成/E2E、Trivy 或 GitHub Actions。

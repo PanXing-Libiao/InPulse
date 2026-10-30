@@ -22,7 +22,7 @@ Compose + 本地 registry 的测试环境，不是生产发布流程：生产镜
 | 部署目录补充  | `backups/`（同步前的 pg_dump）、`compose.yaml.bak-*`、`.env.deploy.bak-*`（回滚用）                            |
 | 企业微信桥接  | 独立容器 `inpulse-wecom-bridge`（非 compose 管理；源码 `deploy/test-vm/wecom-bridge/` 为本地唯一源，用 `deploy/test-vm/update-bridge.ps1` 同步；个人绑定码自助绑定与项目群 Webhook 均已实现，见「企业微信机器人桥接」） |
 | AI 辅助转换   | 已启用（`AI_ASSIST_ENABLED=1`）；API Key 已于 2026-10-15 在设置页重填并确认可用（见「AI 辅助转换启用」） |
-| 当前版本      | api / web / migrate / ops 均为 `0.1.0-20261030-70a94a36`，db-bootstrap 保持 `0.1.0-20261023-132ad0c2`；桥接为 `0.1.0-20261030-bridge73fc9a5`；`BACKUP_GIT_SHA=70a94a36f19548344c8f8ca39805f16146981523`（2026-10-30 17:11 最新同步） |
+| 当前版本      | `web` 为 `0.1.0-20261030-190103e2`；api / migrate / ops 保持 `0.1.0-20261030-70a94a36`，db-bootstrap 保持 `0.1.0-20261023-132ad0c2`；桥接为 `0.1.0-20261030-bridge73fc9a5`；`BACKUP_GIT_SHA=70a94a36f19548344c8f8ca39805f16146981523`（2026-10-30 18:16 web-only 同步） |
 
 ## 一次性准备
 
@@ -88,6 +88,8 @@ api 容器内访问 Casdoor discovery 返回 200（`egress` 生效）。
 2026-10-22 10:10 同步远端 Web 三批与本地 web/ops 镜像：`-Targets web,ops -Tag 0.1.0-20261022-1d0ca6b`；未改 api/migrate/db；`.env.deploy.bak-20261022-101020` 已保留；migrate exit=0，api/web/db 全部 healthy；公网 `/health/ready`、`/`、`/login` 200，SSO start 302，恶意 Host 421，`Server: nginx` 无版本。
 
 2026-10-23 09:53 修复 Web 安全回归并同步 `0.1.0-20261023-sec1`：最新 Trivy 库发现旧 web 镜像 `libexpat1 2.8.3` 的 5 个可修复 High，同时实际响应暴露 `Server: nginx/1.30.4` 且恶意 Host 返回 200。重建后 web digest 为 `8e5aedb18d50`，CI 口径 5/5 通过；域名入口复测 `/health/ready` 200、`/` 200、`/login` 200、匿名 `/api/v1/users` 401、SSO start 302、恶意 Host 421、HTTP 首页 308、隐藏路径 404。
+
+2026-10-30 18:16 再同步 `-Targets web` 到 `0.1.0-20261030-190103e2`（提交 `190103e2`）：只重建 web，api / migrate / ops 保持 `0.1.0-20261030-70a94a36`，db-bootstrap 未动；web 重启后 `/health/ready` 与 `/` 返回 200。发布产物核验命中 `FileReader.readAsDataURL`、未命中 `createObjectURL`，任务筛选数组只含 TODO / DONE / ALL。
 
 2026-10-30 17:11 同步 `0.1.0-20261030-70a94a36`（`-Targets api,web,migrate,ops -FixEol`）：同步前备份 `backups/pre-sync-20261030-164102.dump`（791 项）；`0065` 应用成功（`1 applied, 63 already present`，`0064` 已在），api/web/db 全部 healthy，`/health/ready`、`/`、`/login` 均返回 200，匿名搜索返回 401，SSO start 返回 302。迁移后保留 7 个项目、31 个模块、188 个任务；功能表、功能列与功能搜索投影均为 0，历史审计 161 行、项目动态 160 行保留。按用户要求跳过 `db-bootstrap`，其镜像仍为 `0.1.0-20261023-132ad0c2`。桥接同步至 `0.1.0-20261030-bridge73fc9a5` 并订阅成功。
 

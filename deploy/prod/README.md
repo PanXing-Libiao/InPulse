@@ -14,8 +14,8 @@
 | 部署目录 | `/home/libiao/inpulse-deploy` |
 | 镜像目录 | `/home/libiao/inpulse-images` |
 | 本地 registry | `127.0.0.1:5000`，容器 `inpulse-registry`，`unless-stopped` |
-| 当前镜像 | api / web / migrate / ops 均为 `0.1.0-20261030-70a94a36`；db-bootstrap 保持 `0.1.0-20261023-132ad0c2` |
-| Git 基线 | `70a94a36f19548344c8f8ca39805f16146981523` |
+| 当前镜像 | `web` 为 `0.1.0-20261030-190103e2`；api / migrate / ops 保持 `0.1.0-20261030-70a94a36`；db-bootstrap 保持 `0.1.0-20261023-132ad0c2` |
+| Git 基线 | `190103e2764ec5644a66664e32d80a4d55340984`（本次只发布 web；后端镜像仍对应 `70a94a36`） |
 | 数据库 | 1 个项目、3 个模块、4 个任务、84 名用户；迁移 64 条，PGroonga 4.0.8 |
 | SSO | 正式 Casdoor `https://auth.libiaorobot.com` |
 | AI 辅助 | 急停已解除（`AI_ASSIST_ENABLED=1`）；正式库已有 1 条在线配置，本轮未重新验证模型调用 |
@@ -66,6 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy/prod/update-bridge.ps
 ## 2026-10-30 发布记录
 
 - 发布提交 `70a94a36f19548344c8f8ca39805f16146981523`，主栈 Tag `0.1.0-20261030-70a94a36`，更新范围为 `api,web,migrate,ops`；按用户要求不更新 `db-bootstrap`。
+- 2026-10-30 18:17 追加 `-Targets web` 热修到 `0.1.0-20261030-190103e2`（提交 `190103e2`）：只重建 web，其余镜像不变；`/health/ready`、`/` 返回 200，CSP 保持 `img-src 'self' data:`，发布产物确认使用 `FileReader.readAsDataURL` 且任务筛选不再包含 `CANCELED`。
 - 镜像摘要：API `sha256:928d830a7d5d81a55ab238c2cfb26ea402da614a0a25851fa544bdbd8476d5b6`、Web `sha256:46c7cce500a480ebeb188419e8e898bb6cdce8bf15726585fa8a2a140ff6be94`、Migration `sha256:278e6fb50df7a241f880dc4e62eb4b597f0166dec3910c16f3dd60bb5e9b525c`、Ops `sha256:e3186cf19d2d2750401fa49ed6558859fff5e0b59978f4db58abd74a9f4d5bc4`。
 - 数据库迁移前备份 `backups/pre-sync-20261030-171624.dump`（444,912 字节、791 项）；`migrate` 退出码 0，`0065` 应用成功（`1 applied, 63 already present`），迁移总数 64。
 - 数据核验：保留 1 个项目、3 个模块、4 个任务、84 名用户；功能表、功能列、功能搜索投影与功能序列均为 0，历史 `FEATURE` 审计 23 行、项目动态 7 行保留。
