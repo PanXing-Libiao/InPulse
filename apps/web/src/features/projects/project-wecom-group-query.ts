@@ -55,6 +55,43 @@ export function projectWecomGroupErrorMessage(error: unknown): string {
   return "企业微信项目群服务暂时不可用，请重试。";
 }
 
+export async function requestProjectWecomWebhookCreation(
+  api: InpulseApiClient,
+  projectId: number,
+  input: ProjectWecomWebhookCreateRequest,
+): Promise<ProjectWecomWebhookTarget> {
+  const key = createIdempotencyKey("pwg-webhook-create");
+  const csrf = await api.issueCsrfToken();
+  return api.createProjectWecomWebhook(projectId, input, {
+    headers: {
+      "x-csrf-token": csrf.csrfToken,
+      "Idempotency-Key": key,
+    },
+  });
+}
+
+/** 新建项目成功后的可选 Webhook 接入；项目已有独立事务，此处只追加目标。 */
+export function useCreateProjectWecomWebhook(client?: InpulseApiClient) {
+  const api = useMemo(() => client ?? createApiClient(), [client]);
+  const cache = useQueryClient();
+  return useMutation({
+    retry: false,
+    mutationFn: ({
+      projectId,
+      input,
+    }: {
+      readonly projectId: number;
+      readonly input: ProjectWecomWebhookCreateRequest;
+    }): Promise<ProjectWecomWebhookTarget> =>
+      requestProjectWecomWebhookCreation(api, projectId, input),
+    onSuccess: async (_target, variables) => {
+      await cache.invalidateQueries({
+        queryKey: projectWecomGroupQueryKey(variables.projectId),
+      });
+    },
+  });
+}
+
 export function useProjectWecomGroup(
   projectId: number,
   client?: InpulseApiClient,
@@ -74,18 +111,8 @@ export function useProjectWecomGroup(
 
   const createWebhook = useMutation({
     retry: false,
-    mutationFn: async (
-      input: ProjectWecomWebhookCreateRequest,
-    ): Promise<ProjectWecomWebhookTarget> => {
-      const key = createIdempotencyKey("pwg-webhook-create");
-      const csrf = await api.issueCsrfToken();
-      return api.createProjectWecomWebhook(projectId, input, {
-        headers: {
-          "x-csrf-token": csrf.csrfToken,
-          "Idempotency-Key": key,
-        },
-      });
-    },
+    mutationFn: (input: ProjectWecomWebhookCreateRequest) =>
+      requestProjectWecomWebhookCreation(api, projectId, input),
     onSuccess: async () => {
       await cache.invalidateQueries({
         queryKey: projectWecomGroupQueryKey(projectId),

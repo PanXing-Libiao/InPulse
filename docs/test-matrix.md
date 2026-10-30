@@ -7319,3 +7319,15 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR107-GATE-001 | 静态门禁 | 类型、格式、权限与文档 | API 与 Web TypeScript 检查通过；变更文件 Prettier 检查通过；`permissions:check` 133 条操作 / 133 条路由通过；`check:docs` 检查 160 个 Markdown 文件的链接与锚点通过；`git diff --check` 通过 | 本地通过（2026-10-29） |
 
 **未执行 / 已知边界**：尚未部署到测试 VM，也未用真实 Casdoor 重新预览或执行批量导入 smoke；不能据此声称截图中两个账号已在测试环境恢复实体组展示。未运行全量 Playwright、生产镜像、Trivy 或 GitHub Actions。
+
+## 2026-10-30 新建项目可选添加企业微信群 Webhook
+
+新建项目弹窗增加默认折叠的可选 Webhook 入口。项目仍在原事务中创建；项目创建成功后再通过现有 `createProjectWecomWebhook` 路由尝试添加 Webhook，第二步失败不回滚项目。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| CREATE-PROJECT-WEBHOOK-WEB-001 | Web 单元 | 紧凑入口与两步创建 | `CreateProjectModal.test.tsx` + `project-form.test.ts` 定向 2 文件 18 例通过：默认不展开；勾选后显示目标群名称与 Webhook 地址；先创建项目再调用 Webhook；Webhook 403 时仍关闭弹窗、保留项目并向项目列表返回可重试警告；仅接受企业微信官方 send 路径与一个合法 key，错误不包含完整地址 | 本地通过（2026-10-30） |
+| CREATE-PROJECT-WEBHOOK-LAYOUT-001 | Web 手工检查 | 弹窗布局 | 本地 `127.0.0.1:5173/projects` 打开「新建项目」复查：未勾选时复选框、企微图标、文案与「可选」徽标保持同一行，只占描述下方一行；勾选后在原位展开两列字段，不挤压右侧创建规则；API ready 200、Web 200 | 本地通过（2026-10-30） |
+| CREATE-PROJECT-WEBHOOK-GATE-001 | 静态门禁与回归 | 前端范围门禁 | `pnpm --filter @inpulse/web typecheck`；定向测试 2 文件 18 例；完整 Web 单测 123 文件 1083 例；`pnpm lint`；变更文件 Prettier；`check:frontend:boundaries`（394 模块 / 2064 依赖）；`git diff --check` | 本地通过（2026-10-30） |
+
+**未执行 / 已知边界**：未运行 Playwright E2E、真实企业微信 Webhook 发送、完整 `pnpm check`、GitHub Actions 或测试 VM 同步。项目创建与 Webhook 创建是两次 HTTP 请求，不存在跨请求事务；若第二步返回 403 / 422，项目保持已创建，需要在项目「消息通知」中重试。本批未提交。

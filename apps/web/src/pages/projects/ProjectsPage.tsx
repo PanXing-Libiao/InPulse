@@ -21,11 +21,18 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
   const { user } = useAuth();
   const [createdProject, setCreatedProject] =
     useState<CreateProjectResponse | null>(null);
+  const [createdProjectNotice, setCreatedProjectNotice] = useState<
+    string | null
+  >(null);
   const projectList = useProjects({ client });
 
-  const handleCreated = useCallback((response: CreateProjectResponse) => {
-    setCreatedProject(response);
-  }, []);
+  const handleCreated = useCallback(
+    (response: CreateProjectResponse, notice?: string) => {
+      setCreatedProject(response);
+      setCreatedProjectNotice(notice ?? null);
+    },
+    [],
+  );
 
   /** 整项目导入成功后直接进入新项目模块页，导入的模块/功能/任务立即可见。 */
   const handleImportedProject = useCallback(
@@ -38,10 +45,12 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
   /** 重新打开「新建项目」时先撤掉上一次的成功提示，避免旧项目名残留在页面上。 */
   const handleStartCreate = useCallback(() => {
     setCreatedProject(null);
+    setCreatedProjectNotice(null);
   }, []);
 
   const handleDismissCreatedProject = useCallback(() => {
     setCreatedProject(null);
+    setCreatedProjectNotice(null);
   }, []);
 
   const handleOpenActivity = useCallback(
@@ -77,6 +86,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
       creatorUserId={user?.id}
       isAdmin={user?.isAdmin === true}
       createdProject={createdProject}
+      createdProjectNotice={createdProjectNotice}
       onCreated={handleCreated}
       onImportedProject={handleImportedProject}
       onStartCreate={handleStartCreate}

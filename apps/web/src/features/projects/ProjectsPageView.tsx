@@ -78,13 +78,17 @@ export interface ProjectsPageViewProps {
   readonly creatorUserId?: number | undefined;
   readonly isAdmin?: boolean | undefined;
   readonly createdProject?: CreateProjectResponse | null;
+  readonly createdProjectNotice?: string | null;
   /**
    * 打开「新建项目」表单前的清理钩子（2026-09-29 用户指示）：上一次创建成功的卡片
    * 一直挂在页面上，重新点「新建项目」时它仍显示旧项目名，属于「上次残留」，先清掉。
    */
   readonly onStartCreate?: (() => void) | undefined;
   readonly onDismissCreatedProject?: (() => void) | undefined;
-  readonly onCreated?: (response: CreateProjectResponse) => void;
+  readonly onCreated?: (
+    response: CreateProjectResponse,
+    notice?: string,
+  ) => void;
   /** 文档导入成功（整项目或项目内追加）：结果含项目 ID 与计数，去向由调用方决定。 */
   readonly onImportedProject?:
     ((result: ProjectDocumentImportResult) => void) | undefined;
@@ -106,6 +110,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
   creatorUserId,
   isAdmin = false,
   createdProject,
+  createdProjectNotice,
   onStartCreate,
   onDismissCreatedProject,
   onCreated,
@@ -267,7 +272,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
         <SuccessToast
           testId="created-project-success"
           title="项目创建成功"
-          description={`${createdProject.project.name}（${createdProject.project.code}） · 现在可以新增模块，或在新建任务时创建模块和功能。`}
+          description={`${createdProject.project.name}（${createdProject.project.code}） · 现在可以新增模块，或在新建任务时创建模块和功能。${createdProjectNotice ? ` ${createdProjectNotice}` : ""}`}
           onDismiss={onDismissCreatedProject}
           actions={
             <>
@@ -530,8 +535,8 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
         creatorUserId={creatorUserId}
         client={client}
         onClose={() => setCreateOpen(false)}
-        onCreated={(response) => {
-          onCreated?.(response);
+        onCreated={(response, notice) => {
+          onCreated?.(response, notice);
         }}
       />
       <DocumentImportModal

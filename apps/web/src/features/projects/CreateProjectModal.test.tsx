@@ -549,4 +549,135 @@ describe("CreateProjectModal", () => {
     await user.type(nameInput, " 三期");
     expect(codeInput).toHaveValue("SHOP2");
   });
+  it("keeps the optional WeCom Webhook compact until it is selected", async () => {
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    const client = { getUserDirectory } as unknown as InpulseApiClient;
+    renderModal(client);
+
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    const toggle = within(dialog).getByRole("checkbox", {
+      name: /创建后添加企业微信群 Webhook/,
+    });
+    expect(toggle).not.toBeChecked();
+    expect(
+      within(dialog).queryByLabelText("企业微信 Webhook 地址"),
+    ).not.toBeInTheDocument();
+
+    await userEvent.setup().click(toggle);
+    expect(
+      within(dialog).getByLabelText("Webhook 目标群名称"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("企业微信 Webhook 地址"),
+    ).toBeInTheDocument();
+  });
+
+  it("creates the project first, then attaches the selected Webhook", async () => {
+    const issueCsrfToken = vi
+      .fn()
+      .mockResolvedValueOnce({ csrfToken: "csrf-project" })
+      .mockResolvedValueOnce({ csrfToken: "csrf-webhook" });
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    const createProject = vi.fn().mockResolvedValue(createdProject);
+    const createProjectWecomWebhook = vi.fn().mockResolvedValue({
+      id: 9,
+      label: "研发项目群",
+      urlHint: "5678",
+      boundAt: "2026-10-30T00:00:00.000Z",
+      boundByName: "开发者 C",
+      lastDeliveryError: null,
+    });
+    const client = {
+      issueCsrfToken,
+      getUserDirectory,
+      createProject,
+      createProjectWecomWebhook,
+    } as unknown as InpulseApiClient;
+    const { onCreated, onClose } = renderModal(client);
+
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    await fillForm(dialog);
+    const user = userEvent.setup();
+    await user.click(
+      within(dialog).getByRole("checkbox", {
+        name: /创建后添加企业微信群 Webhook/,
+      }),
+    );
+    await user.type(
+      within(dialog).getByLabelText("Webhook 目标群名称"),
+      "研发项目群",
+    );
+    const webhookUrl =
+      "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abcd1234efgh5678";
+    await user.type(
+      within(dialog).getByLabelText("企业微信 Webhook 地址"),
+      webhookUrl,
+    );
+    await user.click(within(dialog).getByRole("button", { name: "创建项目" }));
+
+    await waitFor(() =>
+      expect(createProjectWecomWebhook).toHaveBeenCalledTimes(1),
+    );
+    expect(createProject).toHaveBeenCalledTimes(1);
+    expect(createProjectWecomWebhook).toHaveBeenCalledWith(
+      7,
+      { label: "研发项目群", webhookUrl },
+      {
+        headers: expect.objectContaining({
+          "x-csrf-token": "csrf-webhook",
+          "Idempotency-Key": expect.any(String),
+        }),
+      },
+    );
+    expect(issueCsrfToken).toHaveBeenCalledTimes(2);
+    expect(onCreated).toHaveBeenCalledWith(createdProject);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the created project and reports a warning when Webhook attachment fails", async () => {
+    const issueCsrfToken = vi
+      .fn()
+      .mockResolvedValueOnce({ csrfToken: "csrf-project" })
+      .mockResolvedValueOnce({ csrfToken: "csrf-webhook" });
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    const createProject = vi.fn().mockResolvedValue(createdProject);
+    const createProjectWecomWebhook = vi.fn().mockRejectedValue(
+      new ApiError(403, {
+        code: "PROJECT_WECOM_GROUP_FORBIDDEN",
+        message: "internal",
+        details: {},
+        requestId: "request-1",
+      }),
+    );
+    const client = {
+      issueCsrfToken,
+      getUserDirectory,
+      createProject,
+      createProjectWecomWebhook,
+    } as unknown as InpulseApiClient;
+    const { onCreated, onClose } = renderModal(client);
+
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    await fillForm(dialog);
+    const user = userEvent.setup();
+    await user.click(
+      within(dialog).getByRole("checkbox", {
+        name: /创建后添加企业微信群 Webhook/,
+      }),
+    );
+    await user.type(
+      within(dialog).getByLabelText("企业微信 Webhook 地址"),
+      "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abcd1234efgh5678",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "创建项目" }));
+
+    await waitFor(() =>
+      expect(onCreated).toHaveBeenCalledWith(
+        createdProject,
+        expect.stringContaining("项目已创建，但企业微信群 Webhook 未添加"),
+      ),
+    );
+    expect(createProject).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

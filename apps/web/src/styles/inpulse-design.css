@@ -504,6 +504,78 @@
   accent-color: #1467d8;
 }
 
+.create-project-webhook {
+  margin: -4px 0 12px;
+}
+
+.create-project-webhook .ant-checkbox-wrapper {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  color: #455e76;
+  font-size: var(--text-md);
+}
+
+.create-project-webhook .ant-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+}
+
+.create-project-webhook-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.create-project-webhook-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #eef4fa;
+  color: #667d93;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.create-project-webhook-fields {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.34fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #dbe5f0;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.create-project-webhook-fields .ant-input {
+  width: 100%;
+}
+
+.create-project-webhook-note {
+  margin: 6px 0 0;
+  color: #6f8295;
+  font-size: var(--text-sm);
+}
+
+.create-project-webhook-error {
+  margin: 6px 0 0;
+  color: #b42318;
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 700px) {
+  .create-project-webhook-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 .writing-context strong {
   display: block;
   color: #344b63;

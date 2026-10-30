@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Form, Input, Typography } from "antd";
+import { Alert, Button, Checkbox, Form, Input, Typography } from "antd";
 import { Controller, useForm } from "react-hook-form";
 import type { CreateProjectResponse, InpulseApiClient } from "@generated/api";
 import { AppModal as Modal } from "@features/common/components/AppModal";
+import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import {
   organizationDisplayName,
   organizationDisplayPath,
@@ -23,10 +24,17 @@ import {
   PROJECT_CODE_MAX_LENGTH,
   PROJECT_DESCRIPTION_MAX_LENGTH,
   PROJECT_NAME_MAX_LENGTH,
+  PROJECT_WECOM_WEBHOOK_LABEL_MAX_LENGTH,
+  PROJECT_WECOM_WEBHOOK_URL_MAX_LENGTH,
   toCreateProjectRequest,
+  validateProjectWecomWebhookUrl,
   type ProjectFormValues,
 } from "./project-form";
 import { describeCreateProjectError, useCreateProject } from "./project-query";
+import {
+  projectWecomGroupErrorMessage,
+  useCreateProjectWecomWebhook,
+} from "./project-wecom-group-query";
 
 const { Text } = Typography;
 
@@ -36,7 +44,10 @@ export interface CreateProjectModalProps {
   readonly creatorUserId?: number | undefined;
   readonly client?: InpulseApiClient | undefined;
   readonly onClose: () => void;
-  readonly onCreated: (response: CreateProjectResponse) => void;
+  readonly onCreated: (
+    response: CreateProjectResponse,
+    notice?: string,
+  ) => void;
 }
 
 const defaultValues: ProjectFormValues = {
@@ -67,10 +78,16 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     mode: "onSubmit",
   });
   const mutation = useCreateProject({ client });
+  const webhookMutation = useCreateProjectWecomWebhook(client);
+  const submitting = mutation.isPending || webhookMutation.isPending;
   const formId = React.useId();
   const directory = useUserDirectoryQuery({ client, enabled: open });
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
   const [manualMemberIds, setManualMemberIds] = useState<number[]>([]);
+  const [webhookEnabled, setWebhookEnabled] = useState(false);
+  const [webhookLabel, setWebhookLabel] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookError, setWebhookError] = useState<string | null>(null);
   // 用户手动填过编码就不再被名称推导覆盖；清空编码视为交回自动推导。
   const codeManuallyEditedRef = useRef(false);
   const code = watch("code") ?? "";
@@ -173,8 +190,13 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       reset(defaultValues);
       setManualMemberIds([]);
       setSelectedGroupKeys([]);
+      setWebhookEnabled(false);
+      setWebhookLabel("");
+      setWebhookUrl("");
+      setWebhookError(null);
       codeManuallyEditedRef.current = false;
       mutation.reset();
+      webhookMutation.reset();
     }
   }, [open]);
 
@@ -189,12 +211,44 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       }
       return;
     }
+    const urlError = webhookEnabled
+      ? validateProjectWecomWebhookUrl(webhookUrl)
+      : null;
+    if (urlError !== null) {
+      setWebhookError(urlError);
+      return;
+    }
+    setWebhookError(null);
     try {
       const response = await mutation.mutateAsync(
         toCreateProjectRequest(parsed.data, selectedMemberIds),
       );
+      let notice: string | undefined;
+      if (webhookEnabled) {
+        try {
+          await webhookMutation.mutateAsync({
+            projectId: response.project.id,
+            input: {
+              label:
+                webhookLabel
+                  .trim()
+                  .slice(0, PROJECT_WECOM_WEBHOOK_LABEL_MAX_LENGTH) || "项目群",
+              webhookUrl: webhookUrl.trim(),
+            },
+          });
+        } catch (error) {
+          notice =
+            "项目已创建，但企业微信群 Webhook 未添加：" +
+            projectWecomGroupErrorMessage(error) +
+            "可稍后在项目「消息通知」中重试。";
+        }
+      }
       mutation.reset();
-      onCreated(response);
+      if (notice === undefined) {
+        onCreated(response);
+      } else {
+        onCreated(response, notice);
+      }
       onClose();
     } catch {
       // 错误由 mutation.error 展示，服务器内部消息不下发到界面。
@@ -210,7 +264,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   };
 
   const handleCancel = () => {
-    if (!mutation.isPending) {
+    if (!submitting) {
       onClose();
     }
   };
@@ -226,14 +280,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       onCancel={handleCancel}
       footer={
         <>
-          <Button disabled={mutation.isPending} onClick={handleCancel}>
+          <Button disabled={submitting} onClick={handleCancel}>
             取消
           </Button>
           <Button
             type="primary"
             htmlType="submit"
             form={formId}
-            loading={mutation.isPending}
+            loading={submitting}
           >
             创建项目
           </Button>
@@ -264,7 +318,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     aria-label="项目名称"
                     maxLength={PROJECT_NAME_MAX_LENGTH}
                     placeholder="例如：商城系统"
-                    disabled={mutation.isPending}
+                    disabled={submitting}
                     onChange={(event) => {
                       const nextName = event.currentTarget.value;
                       field.onChange(nextName);
@@ -296,7 +350,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                       aria-label="项目编码"
                       maxLength={PROJECT_CODE_MAX_LENGTH}
                       placeholder="SHOP"
-                      disabled={mutation.isPending}
+                      disabled={submitting}
                       onChange={(event) => {
                         const nextCode = normalizeProjectCode(
                           event.currentTarget.value,
@@ -364,7 +418,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                               " 人）"
                             }
                             title={group.fullPath}
-                            disabled={mutation.isPending}
+                            disabled={submitting}
                             onClick={() => toggleOrganization(group.key)}
                           >
                             <span className="member-org-pick-name">
@@ -399,7 +453,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                         setSelectedGroupKeys([]);
                       }}
                       placeholder="输入姓名或组织搜索，可一次选择多位启用用户"
-                      disabled={mutation.isPending}
+                      disabled={submitting}
                       options={memberOptions}
                       animated
                       forcePopupBelow
@@ -448,7 +502,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     rows={3}
                     maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
                     placeholder="描述项目目标、交付范围与现场背景"
-                    disabled={mutation.isPending}
+                    disabled={submitting}
                     onChange={(event) => {
                       field.onChange(event.currentTarget.value);
                       clearErrors("description");
@@ -457,6 +511,73 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 </Form.Item>
               )}
             />
+            <div
+              className={
+                "create-project-webhook" + (webhookEnabled ? " is-open" : "")
+              }
+              role="group"
+              aria-label="创建后添加企业微信群 Webhook"
+            >
+              <Checkbox
+                checked={webhookEnabled}
+                disabled={submitting}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setWebhookEnabled(next);
+                  setWebhookError(null);
+                  if (!next) {
+                    setWebhookLabel("");
+                    setWebhookUrl("");
+                  }
+                }}
+              >
+                <span className="create-project-webhook-title">
+                  <InpulseIcon name="wecom" size={15} />
+                  <span>创建后添加企业微信群 Webhook</span>
+                  <span className="create-project-webhook-badge">可选</span>
+                </span>
+              </Checkbox>
+              {webhookEnabled ? (
+                <>
+                  <div className="create-project-webhook-fields">
+                    <Input
+                      id="project-webhook-label"
+                      aria-label="Webhook 目标群名称"
+                      placeholder="目标群名称（可选）"
+                      maxLength={PROJECT_WECOM_WEBHOOK_LABEL_MAX_LENGTH}
+                      value={webhookLabel}
+                      disabled={submitting}
+                      onChange={(event) => {
+                        setWebhookLabel(event.currentTarget.value);
+                        setWebhookError(null);
+                      }}
+                    />
+                    <Input
+                      id="project-webhook-url"
+                      aria-label="企业微信 Webhook 地址"
+                      placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+                      maxLength={PROJECT_WECOM_WEBHOOK_URL_MAX_LENGTH}
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={webhookUrl}
+                      disabled={submitting}
+                      onChange={(event) => {
+                        setWebhookUrl(event.currentTarget.value);
+                        setWebhookError(null);
+                      }}
+                    />
+                  </div>
+                  <p className="create-project-webhook-note">
+                    项目先完成创建；Webhook 添加失败不会回滚项目。
+                  </p>
+                </>
+              ) : null}
+              {webhookError ? (
+                <p className="create-project-webhook-error" role="alert">
+                  {webhookError}
+                </p>
+              ) : null}
+            </div>
           </div>
           <aside className="writing-context">
             <strong>创建规则</strong>
