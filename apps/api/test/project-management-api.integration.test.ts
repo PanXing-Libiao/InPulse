@@ -248,7 +248,6 @@ describe("F-06.1 project edit API", () => {
       memberCount: 1,
       stats: {
         activeModuleCount: 1,
-        activeFeatureCount: 0,
         openTaskCount: 0,
         completedTaskCount: 0,
       },
@@ -666,12 +665,11 @@ describe("F-06.3 项目状态变更 API", () => {
     const [pending] = await client.sql<Array<{ id: number }>>`
       WITH created AS (
         INSERT INTO app.tasks (
-          project_id, module_id, scope_type, code, title, creator_id
+          project_id, module_id, code, title, creator_id
         )
         VALUES (
           ${value.project.projectId},
           ${value.project.moduleId},
-          'MODULE',
           ${`${value.project.code}-T-1`},
           '未完成任务',
           ${value.owner.userId}
@@ -750,7 +748,7 @@ describe("F-06.3 项目状态变更 API", () => {
     expect(wraps).toHaveLength(1);
     expect(wraps[0]).toMatchObject({
       sealedBy: value.owner.userId,
-      templateVersion: 1,
+      templateVersion: 2,
       snapshot: {
         stats: { completedTaskCount: 1, openTaskCount: 0 },
       },
@@ -800,13 +798,12 @@ describe("F-06.3 项目状态变更 API", () => {
     await client.sql`
       WITH created AS (
         INSERT INTO app.tasks (
-          project_id, module_id, scope_type, code, title, work_status,
+          project_id, module_id, code, title, work_status,
           lifecycle_status, creator_id
         )
         VALUES (
           ${value.project.projectId},
           ${value.project.moduleId},
-          'MODULE',
           ${`${value.project.code}-T-1`},
           '已取消任务',
           'CANCELED',
@@ -824,13 +821,12 @@ describe("F-06.3 项目状态变更 API", () => {
     await client.sql`
       WITH created AS (
         INSERT INTO app.tasks (
-          project_id, module_id, scope_type, code, title, work_status,
+          project_id, module_id, code, title, work_status,
           completion_note, completed_at, creator_id
         )
         VALUES (
           ${value.project.projectId},
           ${value.project.moduleId},
-          'MODULE',
           ${`${value.project.code}-T-2`},
           '已完成任务',
           'DONE',

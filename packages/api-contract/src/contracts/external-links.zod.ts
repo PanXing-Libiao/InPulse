@@ -2,7 +2,6 @@ import { z } from "zod";
 const id = z.number().int().positive().max(2147483647);
 export const externalLinkTargetTypeSchema = z.enum([
   "PROJECT",
-  "FEATURE",
   "TASK",
   "CHANGE_RECORD",
 ]);

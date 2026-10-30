@@ -16,10 +16,6 @@ const base = {
   metadata: { moduleId: 12 },
   module_code: "SHOP-M-3",
   module_name: "支付",
-  feature_code: null,
-  feature_name: null,
-  feature_module_code: null,
-  feature_module_name: null,
   task_code: null,
   task_title: null,
   priority: null,
@@ -33,13 +29,9 @@ test("builds a layered task completion message with task and scope context", () 
     ...base,
     activity_type: "task.complete",
     summary: "任务完成：支付回调",
-    metadata: { taskId: 99, moduleId: 12, featureId: 38 },
+    metadata: { taskId: 99, moduleId: 12 },
     task_code: "SHOP-T-99",
     task_title: "支付回调",
-    feature_code: "SHOP-F-8",
-    feature_name: "退款",
-    feature_module_code: "SHOP-M-3",
-    feature_module_name: "支付",
     priority: "HIGH",
     work_status: "DONE",
     due_at: "2026-10-23T10:00:00.000Z",
@@ -53,8 +45,8 @@ test("builds a layered task completion message with task and scope context", () 
   assert.match(markdown, /编号 SHOP-T-99 ｜ 优先级 高 ｜ 状态 已完成/);
   assert.match(markdown, /负责人 邵晨宇、林雨研/);
   assert.match(markdown, /截止 2026-10-23 18:00/);
-  assert.match(markdown, /功能 SHOP-F-8 · 退款/);
-  assert.match(markdown, /所属模块 SHOP-M-3 · 支付/);
+  assert.match(markdown, /模块 SHOP-M-3 · 支付/);
+  assert.doesNotMatch(markdown, /功能|所属模块/);
   assert.match(markdown, /操作人 邵晨宇 ｜ 2026-10-21 13:58/);
   assert.doesNotMatch(markdown, /任务完成：/);
 });
@@ -88,22 +80,17 @@ test("renders a module event as a clean subject and identifier", () => {
   assert.doesNotMatch(markdown, /模块创建：/);
 });
 
-test("adds feature and parent module codes to feature messages", () => {
+test("renders a historical feature event without a live feature lookup", () => {
   const markdown = buildGroupActivityMarkdown({
     ...base,
     activity_type: "feature.create",
     summary: "功能创建：退款",
-    feature_code: "SHOP-F-8",
-    feature_name: "退款",
-    feature_module_code: "SHOP-M-3",
-    feature_module_name: "支付",
   });
 
   assert.match(markdown, /\*\*INPULSE · 功能\*\*/);
   assert.match(markdown, /\*\*新建功能\*\*/);
   assert.match(markdown, /「退款」/);
-  assert.match(markdown, /编号 SHOP-F-8/);
-  assert.match(markdown, /所属模块 SHOP-M-3 · 支付/);
+  assert.doesNotMatch(markdown, /SHOP-F-8|所属模块/);
 });
 
 test("shows project status transitions without duplicating the project name", () => {
@@ -141,13 +128,9 @@ test("builds the same text notice card structure as personal notifications", () 
       ...base,
       activity_type: "task.complete",
       summary: "任务完成：支付回调",
-      metadata: { taskId: 99, moduleId: 12, featureId: 38 },
+      metadata: { taskId: 99, moduleId: 12 },
       task_code: "SHOP-T-99",
       task_title: "支付回调",
-      feature_code: "SHOP-F-8",
-      feature_name: "退款",
-      feature_module_code: "SHOP-M-3",
-      feature_module_name: "支付",
       priority: "HIGH",
       work_status: "DONE",
       due_at: "2026-10-23T10:00:00.000Z",
@@ -170,7 +153,7 @@ test("builds the same text notice card structure as personal notifications", () 
   );
   assert.deepEqual(
     message.template_card.horizontal_content_list.map((row) => row.keyname),
-    ["负责人", "进度", "截止", "功能", "操作人", "时间"],
+    ["负责人", "进度", "截止", "模块", "操作人", "时间"],
   );
   assert.equal(
     message.template_card.card_action.url,
@@ -178,21 +161,17 @@ test("builds the same text notice card structure as personal notifications", () 
   );
 });
 
-test("keeps module and feature context in card fields", () => {
+test("renders a historical feature card with module context only", () => {
   const message = buildGroupActivityCard({
     ...base,
     activity_type: "feature.create",
     summary: "功能创建：退款",
-    feature_code: "SHOP-F-8",
-    feature_name: "退款",
-    feature_module_code: "SHOP-M-3",
-    feature_module_name: "支付",
   });
 
   assert.equal(message.template_card.main_title.title, "新建功能：退款");
-  assert.equal(message.template_card.main_title.desc, "编号 SHOP-F-8");
+  assert.equal(message.template_card.main_title.desc, "编号 SHOP");
   assert.deepEqual(message.template_card.horizontal_content_list[0], {
-    keyname: "所属模块",
+    keyname: "模块",
     value: "SHOP-M-3 · 支付",
   });
   assert.equal(message.template_card.card_action, undefined);

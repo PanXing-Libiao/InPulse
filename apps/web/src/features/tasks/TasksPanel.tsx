@@ -24,7 +24,6 @@ import { LeftoverTaskSource } from "./LeftoverTaskSource";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { TaskStatusPanel } from "./TaskStatusPanel";
 import { useTaskMarks, type TaskMark } from "./task-marks";
-import { prefetchFeatureRoute } from "@features/features/feature-query";
 import { prefetchModulesRoute } from "@features/modules/module-query";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Input } from "antd";
@@ -88,7 +87,6 @@ const labels: Record<TaskField, string> = {
   priority: "优先级",
   assigneeIds: "负责人",
   dueAt: "截止时间",
-  impactFeatureIds: "影响功能",
 };
 const priorityLabels = {
   NORMAL: "普通",
@@ -336,12 +334,11 @@ function MergeIntoTargetModal({
 
 /**
  * 任务详情的来源行与状态弹层的归属面包屑统一由 `./task-origin` 提供，
- * 两处都从只读契约解析项目 / 模块 / 功能名称，不显示编号。
+ * 两处都从只读契约解析项目 / 模块名称，不显示编号。
  */
 export function TasksPanel({
   projectId,
   moduleId,
-  featureId,
   writable,
   client,
   mode = "panel",
@@ -365,22 +362,22 @@ export function TasksPanel({
   /**
    * `detail`：只渲染任务详情弹窗及其子弹窗，不渲染面板头部、任务列表与新建入口，
    * 供任务中心等跨项目页在当前页面就地打开完整任务详情（含写操作）；
-   * 缺省 `panel` 保持功能档案与模块任务页的完整面板。
+   * 缺省 `panel` 保持模块任务页的完整面板。
    */
   mode?: "panel" | "detail";
-  /** `detail` 模式初始选中的任务；缺省回退 URL 的 `?taskId=`（功能档案深链）。 */
+  /** `detail` 模式初始选中的任务；缺省回退 URL 的 `?taskId=`。 */
   initialTaskId?: number | null;
   /** 详情弹窗关闭后的回调；`detail` 模式由宿主卸载本组件，回到触发页面。 */
   onDetailClose?: () => void;
   /**
    * 聚合组详情里点击成员任务标题时就地打开任务详情：由宿主页面提供（与任务中心
-   * 同一实现），缺省时成员标题按纯文本渲染。成员任务可能属于其他功能或模块，
+   * 同一实现），缺省时成员标题按纯文本渲染。成员任务可能属于其他模块，
    * 因此不能复用本面板自己那份按范围读取的详情弹窗。
    */
   onOpenTask?: ((location: TaskLocation) => void) | undefined;
   /**
    * 宿主页面把「卡片/列表」、状态筛选与搜索放到页面级工具条时，用受控属性传入；
-   * 不传则沿用面板内的本地状态，功能档案等既有调用无需改动。
+   * 不传则沿用面板内的本地状态。
    */
   view?: "cards" | "list" | undefined;
   onViewChange?: ((view: "cards" | "list") => void) | undefined;
@@ -398,8 +395,8 @@ export function TasksPanel({
   /** 任务总数回传给宿主，用于标签上的计数。 */
   onCountChange?: ((count: number) => void) | undefined;
 }) {
-  const scope = { projectId, moduleId, featureId };
-  const { api, query, members, mutation, features } = useTasks(scope, client);
+  const scope = { projectId, moduleId };
+  const { api, query, members, mutation } = useTasks(scope, client);
   const [viewState, setViewState] = useState<"cards" | "list">("cards");
   const view = viewProp ?? viewState;
   const changeView = (next: "cards" | "list") => {
@@ -465,8 +462,7 @@ export function TasksPanel({
   } = useForm<TaskDraft>({ defaultValues: empty });
   const navigate = useNavigate();
   /**
-   * 模块级面板的新建弹窗开关：null 关闭；"page" 由页面固定为模块级
-   * （与任务中心同一个弹窗，只是不再让用户选范围）。
+   * 面板新建弹窗开关：null 关闭；"page" 由页面固定模块归属。
    */
   const [createMode, setCreateMode] = useState<"page" | null>(null);
   // 聚合组详情与任务中心共用同一弹窗实现；本面板只负责把当前选中组传给它。
@@ -490,29 +486,16 @@ export function TasksPanel({
       : taskDetailPath({
           projectId: current.projectId,
           moduleId: current.moduleId,
-          featureId: current.featureId,
           taskId: current.id,
         });
   /**
    * 任务详情打开时预取「在项目中打开」的落地页数据：弹窗至少会停留几秒，
-   * 足够把项目详情、模块目录与功能目录取好，点击后在旧页仍可见的同一帧内
-   * 直接渲染完整页面，不再先空一帧再补骨架。
+   * 足够把项目详情与模块目录取好，点击后在旧页仍可见的同一帧内直接渲染
+   * 完整页面，不再先空一帧再补骨架。
    */
   useEffect(() => {
     if (current === undefined) return;
-    if (current.featureId === null) {
-      prefetchModulesRoute(queryClient, current.projectId, client);
-      return;
-    }
-    prefetchFeatureRoute(
-      queryClient,
-      {
-        projectId: current.projectId,
-        moduleId: current.moduleId,
-        featureId: current.featureId,
-      },
-      client,
-    );
+    prefetchModulesRoute(queryClient, current.projectId, client);
   }, [current, client, queryClient]);
   // 迭代记录标签页按设计师稿直接列出本任务的已发布记录与草稿：两者都是既有
   // 只读契约（listChangeRecords / getTaskRecordDrafts），客户端按 taskId 过滤，不新增路由。
@@ -552,10 +535,7 @@ export function TasksPanel({
     currentMark.groupId !== null
       ? { groupId: currentMark.groupId, role: currentMark.groupRole }
       : null;
-  const taskWritable =
-    writable &&
-    current?.lifecycleStatus === "ACTIVE" &&
-    !(featureId !== null && current.scopeType === "MODULE");
+  const taskWritable = writable && current?.lifecycleStatus === "ACTIVE";
   const searchKeyword = search.trim().toLocaleLowerCase();
   const visibleItems =
     query.data?.items.filter((item) => {
@@ -722,15 +702,10 @@ export function TasksPanel({
     setReloadError(null);
     setSuccess(false);
     void members.refetch();
-    if (featureId === null) void features.refetch();
   };
-  /**
-   * 新建任务入口：模块级面板直接用任务中心那套弹窗并把范围固定在模块级；
-   * 功能级面板沿用本面板弹窗，归属由页面给定。
-   */
+  /** 新建任务入口：归属固定为当前模块。 */
   const startCreate = () => {
-    if (featureId === null) setCreateMode("page");
-    else open();
+    setCreateMode("page");
   };
   const conflict =
     mutation.error instanceof ApiError && mutation.error.status === 409;
@@ -765,22 +740,13 @@ export function TasksPanel({
           "If-Match": `"${item.rowVersion}"`,
         },
       };
-      return item.featureId === null
-        ? api.deleteModuleTask(
-            projectId,
-            moduleId,
-            item.id,
-            { reason: null },
-            init,
-          )
-        : api.deleteTask(
-            projectId,
-            moduleId,
-            item.featureId,
-            item.id,
-            { reason: null },
-            init,
-          );
+      return api.deleteModuleTask(
+        projectId,
+        moduleId,
+        item.id,
+        { reason: null },
+        init,
+      );
     },
     retry: false,
     onSuccess: () => {
@@ -802,7 +768,6 @@ export function TasksPanel({
           ["my-tasks"],
           ["my-task-groups"],
           ["modules"],
-          ["features"],
           ["project-overview"],
           ["projects"],
           ["activity"],
@@ -834,10 +799,7 @@ export function TasksPanel({
    * ADR-096：页脚第一枚已由「取消任务」改为「删除任务」（二次确认后物理删除），
    * 条件由 `deletion.isPending` 承担。
    */
-  const editorTaskOpsEnabled =
-    selection?.item !== undefined &&
-    !editReadOnly &&
-    !(featureId !== null && selection.item.scopeType === "MODULE");
+  const editorTaskOpsEnabled = selection?.item !== undefined && !editReadOnly;
   const handOffToDetail = (): boolean => {
     if (saving.current || reloading) return false;
     const id = selection?.item?.id ?? null;
@@ -888,10 +850,7 @@ export function TasksPanel({
     const draft = getValues();
     setReloading(true);
     try {
-      const latest =
-        featureId === null
-          ? await api.getModuleTask(projectId, moduleId, base.id)
-          : await api.getTask(projectId, moduleId, featureId, base.id);
+      const latest = await api.getModuleTask(projectId, moduleId, base.id);
       if (stamp !== generation.current) return;
       if (stamp !== generation.current) return;
       if (latest.lifecycleStatus !== "ACTIVE") {
@@ -926,16 +885,12 @@ export function TasksPanel({
     setReloadError(null);
   };
   return (
-    <section
-      aria-label={featureId === null ? "模块任务" : "功能任务"}
-      className="tasks-panel"
-    >
+    <section aria-label="模块任务" className="tasks-panel">
       {mode === "detail" ? null : (
         <>
-          {featureId === null && (createMode !== null || createOpen) && (
+          {(createMode !== null || createOpen) && (
             <GlobalTaskCreateModal
               open
-              lockedScope="MODULE"
               onClose={() => {
                 setCreateMode(null);
                 onCreateClose?.();
@@ -944,14 +899,12 @@ export function TasksPanel({
               preset={{ projectId, moduleId }}
               onCreatedLocation={(task) => {
                 // 2026-09-28：模块级面板的「新建任务」改用任务中心同一弹窗后，创建
-                // 成功只会改写地址栏；已经挂载的面板不会再读 URL 的 ?taskId=，就地
-                // 打开详情的旧口径因此丢失。归属已由页面固定为模块级时，与功能级
-                // 面板一致：就地打开详情且不写地址栏——留下 ?taskId= 会让刷新后重新
-                // 弹出详情，与「刷新回到列表」的既有口径冲突。
+                // 成功只会改写地址栏；已经挂载的面板不会再读 URL 的 ?taskId=。
+                // 就地打开详情且不写地址栏——留下 ?taskId= 会让刷新后重新弹出详情，
+                // 与「刷新回到列表」的既有口径冲突。
                 if (
                   task.projectId === projectId &&
-                  task.moduleId === moduleId &&
-                  task.featureId === null
+                  task.moduleId === moduleId
                 ) {
                   openDetail(task.taskId);
                   return;
@@ -963,18 +916,15 @@ export function TasksPanel({
           {showHeader ? (
             <div className="calm-section-title">
               <div className="task-panel-heading">
-                <h3>{featureId === null ? "模块任务" : "功能任务"}</h3>
+                <h3>模块任务</h3>
                 {/* 计数与筛选合并进标题行：不再单起一行「任务数：…」与筛选行。 */}
                 {query.data && (
-                  <CalmBadge
-                    tone="gray"
-                    title="按唯一任务计：同一任务关联多个功能时只计一次"
-                  >
+                  <CalmBadge tone="gray" title="当前模块的任务总数">
                     {query.data.items.length} 个任务
                   </CalmBadge>
                 )}
               </div>
-              <div className="feature-view-controls">
+              <div className="module-view-controls">
                 {query.data && (
                   <CalmSelect
                     className="task-status-filter"
@@ -1041,11 +991,7 @@ export function TasksPanel({
             <CalmEmptyState
               icon="zap"
               title="暂无任务"
-              description={
-                featureId === null
-                  ? "为当前模块创建一项可影响一个或多个功能的执行工作。"
-                  : "为当前功能创建一项具体执行工作。"
-              }
+              description="为当前模块创建一项具体执行工作。"
             >
               {suppressCreateAction ? null : (
                 <Button
@@ -1080,12 +1026,11 @@ export function TasksPanel({
               ) : null}
             </CalmEmptyState>
           ) : view === "list" ? (
-            <div className="feature-list-scroll">
-              <table className="feature-list-table">
+            <div className="module-task-list-scroll">
+              <table className="module-task-list-table">
                 <caption className="sr-only">任务列表</caption>
                 <thead>
                   <tr>
-                    <th scope="col">范围</th>
                     <th scope="col">编号</th>
                     <th scope="col">任务</th>
                     <th scope="col">负责人</th>
@@ -1115,19 +1060,12 @@ export function TasksPanel({
                         )}
                       >
                         <td>
-                          {item.scopeType === "MODULE" ? (
-                            <span className="task-scope">模块级任务</span>
-                          ) : (
-                            <span className="task-scope">功能级任务</span>
-                          )}
-                        </td>
-                        <td>
                           <span className="task-id">{item.code}</span>
                         </td>
                         <td>
                           <button
                             type="button"
-                            className="feature-list-open"
+                            className="module-task-list-open"
                             aria-label={item.title}
                             onClick={() => openDetail(item.id)}
                           >
@@ -1193,8 +1131,7 @@ export function TasksPanel({
                     {/* 与任务中心卡片同款：编号与「未完成」都不占徽章位；
                         标签落到分隔线以下的左下角，负责人移到横线上方右侧。 */}
                     <h3>{item.title}</h3>
-                    {/* 卡片正文是任务介绍；归属由页面语境与「模块级」徽标表达，
-                        不再重复一遍功能名。 */}
+                    {/* 卡片正文是任务介绍；归属由页面语境表达。 */}
                     <p
                       className={
                         "task-card-desc" +
@@ -1229,9 +1166,6 @@ export function TasksPanel({
                         >
                           {priorityLabels[item.priority]}
                         </CalmBadge>
-                        {item.scopeType === "MODULE" && (
-                          <CalmBadge tone="violet">模块级</CalmBadge>
-                        )}
                         {badge !== null && (
                           <CalmBadge tone={badge.tone} title={badge.title}>
                             {badge.label}
@@ -1560,62 +1494,6 @@ export function TasksPanel({
                     <p role="alert">{errors.description.message}</p>
                   )}
                 </div>
-                {featureId === null && (
-                  // 2026-09-28 产品反馈：与「指派给」「优先级」统一交互，原生复选框换成多选下拉，并支持按名称搜索。
-                  <div className="calm-field">
-                    <label htmlFor="task-impact-features">影响功能</label>
-                    {features.isPending ? (
-                      <CalmSkeleton
-                        variant="lines"
-                        rows={2}
-                        compact
-                        label="正在加载影响功能…"
-                      />
-                    ) : features.isError ? (
-                      <Alert
-                        type="error"
-                        title={taskError(features.error)}
-                        action={
-                          <Button
-                            className="secondary-button"
-                            onClick={() => void features.refetch()}
-                          >
-                            重试影响功能
-                          </Button>
-                        }
-                      />
-                    ) : (
-                      <Controller
-                        name="impactFeatureIds"
-                        control={control}
-                        render={({ field }) => (
-                          <CalmSelect
-                            id="task-impact-features"
-                            ariaLabel="影响功能"
-                            value={field.value ?? []}
-                            multiple
-                            maxTagCount={2}
-                            appearance="menu"
-                            searchable
-                            placeholder="输入功能名称搜索，可多选，可为空"
-                            onChange={(next) =>
-                              field.onChange(
-                                [...new Set(next.map(Number))].sort(
-                                  (a, b) => a - b,
-                                ),
-                              )
-                            }
-                            options={(features.data?.items ?? []).map((f) => ({
-                              value: f.id,
-                              label: f.name,
-                            }))}
-                            animated
-                          />
-                        )}
-                      />
-                    )}
-                  </div>
-                )}
               </fieldset>
             </div>
             <div className="calm-action-footer">
@@ -1792,12 +1670,11 @@ export function TasksPanel({
                     triggerClassName="secondary-button"
                   />
                   {/* 任务中心等跨项目页打开详情时页面里看不到项目结构：
-                      这里给一条回项目侧任务位置的入口（功能档案或模块任务页，
-                      落地后由 ?taskId= 打开同一个任务的详情）。 */}
+                      这里给一条回模块任务页的入口，落地后由 ?taskId= 打开同一个任务。 */}
                   {mode === "detail" && (
                     <Button
                       className="secondary-button"
-                      title="跳转到该项目中此任务所在的功能档案 / 模块任务页"
+                      title="跳转到该任务所在的模块任务页"
                       {...(currentTaskPath === null
                         ? {}
                         : routePreloadHandlers(currentTaskPath))}
@@ -1874,8 +1751,7 @@ export function TasksPanel({
                         </section>
                         <div className="task-modal-links">
                           {/* 2026-09-24 产品要求删除「打开模块任务」：任务中心详情动作行
-                              的「在项目中打开」与功能页头部的「模块级任务」标签都指向同
-                              一地址（taskDetailPath），正文里重复。 */}
+                              的「在项目中打开」已指向同一地址，正文里重复。 */}
                           <a
                             href={`/records?projectId=${projectId}&moduleId=${moduleId}&taskId=${current.id}`}
                           >
@@ -2081,7 +1957,6 @@ export function TasksPanel({
                       <TaskOriginFacts
                         projectId={current.projectId}
                         moduleId={current.moduleId}
-                        featureId={current.featureId}
                         client={client}
                       />
                       <dt>负责人</dt>
@@ -2103,21 +1978,6 @@ export function TasksPanel({
                       <dd>{formatDate(current.updatedAt)}</dd>
                       <dt>数据版本</dt>
                       <dd>v{current.rowVersion}</dd>
-                      {current.scopeType === "MODULE" && (
-                        <>
-                          <dt>影响功能</dt>
-                          <dd>
-                            影响功能：
-                            {current.impactFeatureIds
-                              .map(
-                                (id) =>
-                                  features.data?.items.find((f) => f.id === id)
-                                    ?.name ?? "功能 #" + id,
-                              )
-                              .join("、") || "未选择"}
-                          </dd>
-                        </>
-                      )}
                     </dl>
                   </aside>
                 </div>

@@ -40,7 +40,7 @@ export interface AppModalProps extends Omit<
   "width" | "centered" | "footer"
 > {
   /**
-   * 宽度分档。默认 `md`，对应设计稿的模块/功能编辑与各类操作弹层；
+   * 宽度分档。默认 `md`，对应设计稿的模块/任务编辑与各类操作弹层；
    * 带侧栏说明（`.writing-context`）的表单弹层（如新建项目）用 `lg`，
    * 宽屏下说明列才会落到字段右侧（design-system.css 的两列规则只挂 lg/xl）。
    */

@@ -15,7 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { prefetchRecordPath } from "@features/records/records-route-prefetch";
 
 /**
- * 任务类通知在当前通知页就地打开与功能档案一致的任务详情弹窗；
+ * 任务类通知在当前通知页就地打开与模块任务页一致的任务详情弹窗；
  * 关闭弹窗只清空本地状态，地址栏仍停留在 /notifications。
  */
 const TaskDetailOverlay = lazy(loadTaskDetailOverlay);

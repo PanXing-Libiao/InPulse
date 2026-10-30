@@ -318,12 +318,7 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
       "## 模块：支付",
       "- 说明：支付能力",
       "",
-      "### 功能：微信支付退款回调",
-      "- 当前说明：回调会重复处理",
-      "- 验收标准：重复回调只入账一次",
-      "- 标签：支付, 高优先",
-      "",
-      "#### 任务：修复重复回调",
+      "### 任务：修复重复回调",
       `- 负责人：${assigneeLogin}`,
       "- 优先级：高",
       "- 截止：2026-12-31",
@@ -340,15 +335,12 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
     expect(result.digest).toBe(documentDigest(document));
     expect(result.counts).toEqual({
       modules: 1,
-      features: 1,
       tasks: 1,
       reusedModules: 0,
-      reusedFeatures: 0,
       // ADR-073：创建者默认算项目成员，成员行数=创建者+项目成员+任务负责人。
       addedMembers: 3,
     });
     expect(result.modules).toHaveLength(1);
-    expect(result.features).toHaveLength(1);
     expect(result.tasks).toHaveLength(1);
 
     const projectId = result.projectId;
@@ -378,23 +370,21 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
     expect(members.every((row) => row.status === "ACTIVE")).toBe(true);
 
     const tasks = (await sql`
-      SELECT id, title, priority, scope_type, feature_id
+      SELECT id, title, priority, module_id
         FROM app.tasks
        WHERE project_id = ${projectId}
     `) as unknown as readonly {
       id: number;
       title: string;
       priority: string;
-      scope_type: string;
-      feature_id: number | null;
+      module_id: number;
     }[];
     expect(tasks).toHaveLength(1);
     expect(tasks[0]).toMatchObject({
       title: "修复重复回调",
       priority: "HIGH",
-      scope_type: "FEATURE",
+      module_id: result.modules[0]!.id,
     });
-    expect(tasks[0]!.feature_id).toBe(result.tasks[0]!.featureId);
 
     const taskAssignees = (await sql`
       SELECT user_id FROM app.task_assignees WHERE task_id = ${tasks[0]!.id}
@@ -418,7 +408,7 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
        WHERE project_id = ${projectId}
     `) as unknown as readonly { entity_type: string }[];
     expect(new Set(projectionTypes.map((row) => row.entity_type))).toEqual(
-      new Set(["PROJECT", "MODULE", "FEATURE", "TASK"]),
+      new Set(["PROJECT", "MODULE", "TASK"]),
     );
 
     // 同摘要文档换幂等键再次导入：409 且不新增批次行。
@@ -467,7 +457,6 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
       `- 项目成员：${actor.loginName}, ${memberLogin}`,
       "",
       "## 模块：账户",
-      "### 功能：登录",
     ].join("\n");
 
     const preview = await post({
@@ -495,7 +484,6 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
     ]);
     expect(plan.summary).toMatchObject({
       moduleCount: 1,
-      featureCount: 1,
       taskCount: 0,
       memberAddCount: 2,
     });
@@ -728,7 +716,7 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
     `) as unknown as readonly { count: number }[];
     expect(projects[0]!.count).toBe(0);
   });
-  test("项目内导入：同名模块与功能复用且不覆盖，警告不阻断，模块级任务引用既有功能", async () => {
+  test("项目内导入：同名模块复用且不覆盖，警告不阻断，任务直接归属模块", async () => {
     const sql = runtime!;
     const creator = await sessionActor(sql, await createUser(sql));
     const memberId = await createUser(sql);
@@ -743,10 +731,7 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
       "## 模块：支付",
       "- 说明：既有说明",
       "",
-      "### 功能：微信支付退款回调",
-      "- 当前说明：既有行为",
-      "",
-      "#### 任务：修复重复回调",
+      "### 任务：修复重复回调",
       `- 负责人：${memberLogin}`,
     ].join("\n");
     const first = await postDocument(
@@ -760,19 +745,14 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
     );
     expect(firstResult.counts).toEqual({
       modules: 1,
-      features: 1,
       tasks: 1,
       reusedModules: 0,
-      reusedFeatures: 0,
       addedMembers: 0,
     });
 
     const secondDocument = [
       "## 模块：支付",
       "- 说明：文档里的新说明（不应覆盖）",
-      "",
-      "### 功能：微信支付退款回调",
-      "- 当前说明：文档里的新行为（不应覆盖）",
     ].join("\n");
     const secondPreview = await post({
       path: `/api/v1/projects/${project.projectId}/document-imports/preview`,
@@ -785,11 +765,9 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
       await secondPreview.json(),
     );
     expect(secondPlan.modules.map((item) => item.action)).toEqual(["REUSE"]);
-    expect(secondPlan.features.map((item) => item.action)).toEqual(["REUSE"]);
     expect(secondPlan.canApply).toBe(true);
     const warningCodes = secondPlan.issues.map((issue) => issue.code);
     expect(warningCodes).toContain("MODULE_REUSE_DIFFERS");
-    expect(warningCodes).toContain("FEATURE_REUSE_DIFFERS");
 
     const second = await postDocument(
       `/api/v1/projects/${project.projectId}/document-imports`,
@@ -802,14 +780,11 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
     );
     expect(secondResult.counts).toEqual({
       modules: 0,
-      features: 0,
       tasks: 0,
       reusedModules: 1,
-      reusedFeatures: 1,
       addedMembers: 0,
     });
     expect(secondResult.modules[0]!.id).toBe(firstResult.modules[0]!.id);
-    expect(secondResult.features[0]!.id).toBe(firstResult.features[0]!.id);
 
     const modules = (await sql`
       SELECT description
@@ -817,18 +792,11 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
        WHERE id = ${firstResult.modules[0]!.id}
     `) as unknown as readonly { description: string }[];
     expect(modules[0]!.description).toBe("既有说明");
-    const features = (await sql`
-      SELECT current_behavior
-        FROM app.features
-       WHERE id = ${firstResult.features[0]!.id}
-    `) as unknown as readonly { current_behavior: string }[];
-    expect(features[0]!.current_behavior).toBe("既有行为");
     const thirdDocument = [
       "## 模块：支付",
       "",
       "### 任务：归档旧回调",
       `- 负责人：${memberLogin}`,
-      "- 影响功能：微信支付退款回调",
     ].join("\n");
     const third = await postDocument(
       `/api/v1/projects/${project.projectId}/document-imports`,
@@ -841,23 +809,16 @@ describe("ADR-064 文档导入（真实 HTTP + PostgreSQL）", () => {
     );
     expect(thirdResult.counts).toEqual({
       modules: 0,
-      features: 0,
       tasks: 1,
       reusedModules: 1,
-      reusedFeatures: 0,
       addedMembers: 0,
     });
-    const impacts = (await sql`
-      SELECT feature_id, module_id
-        FROM app.task_feature_impacts
-       WHERE task_id = ${thirdResult.tasks[0]!.id}
-    `) as unknown as readonly { feature_id: number; module_id: number }[];
-    expect(impacts).toEqual([
-      {
-        feature_id: firstResult.features[0]!.id,
-        module_id: firstResult.modules[0]!.id,
-      },
-    ]);
+    const importedTasks = (await sql`
+      SELECT module_id
+        FROM app.tasks
+       WHERE id = ${thirdResult.tasks[0]!.id}
+    `) as unknown as readonly { module_id: number }[];
+    expect(importedTasks).toEqual([{ module_id: firstResult.modules[0]!.id }]);
 
     const auditRows = (await auditReader!`
       SELECT count(*)::int AS "count"

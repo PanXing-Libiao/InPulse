@@ -20,7 +20,6 @@ export const taskDeletionResponseSchema = z
     id,
     projectId: id,
     moduleId: id,
-    featureId: id.nullable(),
     code: z.string().min(1).max(64),
     title: z.string().min(1).max(500),
     /** 删除时刻的工作状态快照：删除不改变状态，只把它从可见范围移除。 */
@@ -43,7 +42,6 @@ export const taskDeletionReplayContextSchema = z
   .object({
     projectId: id,
     moduleId: id,
-    featureId: id.nullable(),
     taskId: id,
   })
   .strict()

@@ -158,9 +158,7 @@ export class TaskRecordDraftHttpService {
               projectId: body.projectId,
               recordId: body.id,
               moduleId: body.moduleId,
-              featureId: body.featureId,
               taskId: body.taskId,
-              impactFeatureIds: body.impactFeatureIds,
             },
           };
         },

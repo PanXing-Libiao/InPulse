@@ -56,7 +56,6 @@ vi.mock(
                 props.onOpenTask?.({
                   projectId: 1,
                   moduleId: 2,
-                  featureId: 3,
                   taskId: 105,
                 })
               }
@@ -84,8 +83,6 @@ const openItem: LeftoverListItem = {
   projectName: "AGV 智能搬运平台",
   moduleId: 2,
   moduleName: "任务调度",
-  featureId: 3,
-  featureName: "充电任务编排",
   author: { userId: 3, name: "陈晓", avatarUrl: null },
   publishedAt: "2026-08-18T03:00:00.000Z",
   content: "高峰期多车同时等待充电的调度策略仍需优化。",
@@ -95,7 +92,6 @@ const openItem: LeftoverListItem = {
     code: "T-105",
     projectId: 1,
     moduleId: 2,
-    featureId: 3,
   },
   followupTask: null,
 };
@@ -109,7 +105,6 @@ const followupItem: LeftoverListItem = {
     code: "T-140",
     projectId: 1,
     moduleId: 2,
-    featureId: null,
   },
 };
 
@@ -139,7 +134,6 @@ const closedItem: LeftoverListItem = {
     code: "T-141",
     projectId: 1,
     moduleId: 2,
-    featureId: 3,
   },
 };
 
@@ -170,10 +164,7 @@ const publishedRecord: PublishedRecord = {
   id: 7,
   projectId: 1,
   moduleId: 2,
-  featureId: 3,
-  scopeType: "FEATURE",
   taskId: 105,
-  impactFeatureIds: [],
   handlerId: 3,
   authorId: 3,
   status: "PUBLISHED",
@@ -315,11 +306,11 @@ describe("IssuesPageView", () => {
     expect(
       within(row).getByText("高峰期多车同时等待充电的调度策略仍需优化。"),
     ).toBeInTheDocument();
-    // 2026-10-10：来源行改为「[项目标识] 项目名 · 记录「…」 · 模块 / 功能 · 作者 · 日期」，
+    // 2026-10-10：来源行改为「[项目标识] 项目名 · 记录「…」 · 模块 · 作者 · 日期」，
     // 标识取项目编码前两位（listProjects 返回 code "AGV" → "AG"）。
     const origin = row.querySelector(".issue-origin");
     expect(origin).toHaveTextContent(
-      "AGV 智能搬运平台 · 记录「充电策略支持参数配置」 · 任务调度 / 充电任务编排 · 陈晓 · 2026-08-18",
+      "AGV 智能搬运平台 · 记录「充电策略支持参数配置」 · 任务调度 · 陈晓 · 2026-08-18",
     );
     expect(origin?.querySelector(".project-logo")?.textContent).toBe("AG");
     expect(
@@ -351,7 +342,6 @@ describe("IssuesPageView", () => {
     expect(onOpenTask).toHaveBeenLastCalledWith({
       projectId: 1,
       moduleId: 2,
-      featureId: 3,
       taskId: 105,
     });
 
@@ -362,7 +352,6 @@ describe("IssuesPageView", () => {
     expect(onOpenTask).toHaveBeenLastCalledWith({
       projectId: 1,
       moduleId: 2,
-      featureId: null,
       taskId: 140,
     });
   });

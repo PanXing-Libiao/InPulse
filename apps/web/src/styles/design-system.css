@@ -2353,7 +2353,7 @@ a:focus-visible {
 /*
  * 任务程度配色（卡片 / 列表共用）：优先级决定底色与色条，已完成 / 已取消按状态
  * 覆盖（状态类写在优先级之后）。色值与 priority-select-option.ts 的优先级圆点同源，
- * 消费方：.tb-card / .tb-row / .calm-task-card / .feature-list-table 行。
+ * 消费方：.tb-card / .tb-row / .calm-task-card / :is(.feature-list-table, .module-task-list-table) 行。
  */
 /* 2026-09-23 四次定案（产品要求「把这个模式下的颜色也改一改，和卡片对应」）把列表行 / 表格行改成
    按卡片色派生：色条取卡片实色、底色是卡片色的极浅调、标题是同色系深字。同日五次定案（产品要求
@@ -3780,7 +3780,8 @@ a:focus-visible {
   }
 }
 
-.feature-view-controls {
+.feature-view-controls,
+.module-view-controls {
   display: flex;
   gap: 14px;
   align-items: center;
@@ -3810,19 +3811,20 @@ a:focus-visible {
   outline: 2px solid #2b82b8;
   outline-offset: 1px;
 }
-.feature-list-scroll {
+.feature-list-scroll,
+.module-task-list-scroll {
   overflow-x: auto;
   background: white;
   border: 1px solid #e2eaf2;
   border-radius: 12px;
 }
-.feature-list-table {
+:is(.feature-list-table, .module-task-list-table) {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
   font-size: var(--text-base);
 }
-.feature-list-table th {
+:is(.feature-list-table, .module-task-list-table) th {
   padding: 15px 20px;
   background: #f8fafd;
   font-size: var(--text-md);
@@ -3830,13 +3832,13 @@ a:focus-visible {
   color: #788ba0;
   white-space: nowrap;
 }
-.feature-list-table td {
+:is(.feature-list-table, .module-task-list-table) td {
   padding: 16px 20px;
   border-top: 1px solid #edf1f6;
   color: #526a82;
   white-space: nowrap;
 }
-.feature-list-table th:first-child {
+:is(.feature-list-table, .module-task-list-table) th:first-child {
   width: 48%;
 }
 /*
@@ -3867,10 +3869,10 @@ a:focus-visible {
 .task-center-table tbody tr {
   cursor: pointer;
 }
-.task-center-table .feature-list-open strong {
+.task-center-table :is(.feature-list-open, .module-task-list-open) strong {
   line-height: 1.5;
 }
-.task-center-table .feature-list-open span {
+.task-center-table :is(.feature-list-open, .module-task-list-open) span {
   max-width: 100%;
 }
 .task-center-table th:nth-child(1) {
@@ -3907,17 +3909,17 @@ a:focus-visible {
  * 不带 tone 类的功能 / 记录列表回退到原样式（透明底、浅蓝悬停），互不影响。
  * 悬停只加深底色，不做位移，避免表格列错位。
  */
-.feature-list-table tbody tr {
+:is(.feature-list-table, .module-task-list-table) tbody tr {
   background: var(--task-bg, transparent);
   transition: background 0.15s ease;
 }
-.feature-list-table tbody tr td:first-child {
+:is(.feature-list-table, .module-task-list-table) tbody tr td:first-child {
   box-shadow: inset 3px 0 0 0 var(--task-c, transparent);
 }
-.feature-list-table tbody tr:hover {
+:is(.feature-list-table, .module-task-list-table) tbody tr:hover {
   background: var(--task-hov, #f9fbfe);
 }
-.feature-list-open {
+:is(.feature-list-open, .module-task-list-open) {
   display: block;
   width: 100%;
   border: 0;
@@ -3926,12 +3928,12 @@ a:focus-visible {
   text-align: left;
   color: #284663;
 }
-.feature-list-open strong {
+:is(.feature-list-open, .module-task-list-open) strong {
   display: block;
   font-size: var(--text-lg);
   font-weight: 600;
 }
-.feature-list-open span {
+:is(.feature-list-open, .module-task-list-open) span {
   display: block;
   color: #7c8fa3;
   font-size: var(--text-md);
@@ -3940,10 +3942,10 @@ a:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.feature-list-open:hover strong {
+:is(.feature-list-open, .module-task-list-open):hover strong {
   color: #247bd2;
 }
-.feature-list-open:focus-visible {
+:is(.feature-list-open, .module-task-list-open):focus-visible {
   outline: 2px solid #2d84e6;
   outline-offset: 5px;
   border-radius: 3px;
@@ -3956,21 +3958,30 @@ a:focus-visible {
     .tone-prio-done,
     .tone-prio-canceled
   )
-  .feature-list-open
+  :is(.feature-list-open, .module-task-list-open)
   strong {
   color: var(--task-fg, #284663);
 }
 /* 已完成 / 已取消行：标题降一档字重或加删除线，与看板列表一致。 */
-.feature-list-table tbody tr.tone-prio-done .feature-list-open strong {
+:is(.feature-list-table, .module-task-list-table)
+  tbody
+  tr.tone-prio-done
+  :is(.feature-list-open, .module-task-list-open)
+  strong {
   font-weight: 500;
 }
-.feature-list-table tbody tr.tone-prio-canceled .feature-list-open strong {
+:is(.feature-list-table, .module-task-list-table)
+  tbody
+  tr.tone-prio-canceled
+  :is(.feature-list-open, .module-task-list-open)
+  strong {
   font-weight: 500;
   text-decoration: line-through;
   text-decoration-color: #b6c2cd;
 }
 @media (max-width: 700px) {
-  .feature-view-controls {
+  .feature-view-controls,
+  .module-view-controls {
     width: 100%;
   }
   .feature-view-controls > input {
@@ -3978,10 +3989,10 @@ a:focus-visible {
     flex: 1;
     width: 150px;
   }
-  .feature-list-table {
+  :is(.feature-list-table, .module-task-list-table) {
     min-width: 620px;
   }
-  .feature-list-open span {
+  :is(.feature-list-open, .module-task-list-open) span {
     max-width: 240px;
   }
 }
@@ -6349,12 +6360,6 @@ td.due-overdue {
 .tb-dot-sep {
   color: #cfd9e3;
 }
-.tb-meta-feature {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 96px;
-}
 .tb-meta-name {
   white-space: nowrap;
   overflow: hidden;
@@ -6421,9 +6426,7 @@ td.due-overdue {
 }
 .tb-list-head {
   display: grid;
-  grid-template-columns:
-    64px minmax(320px, 620px) 150px 116px 48px 80px 100px
-    minmax(0, 1fr);
+  grid-template-columns: 64px minmax(320px, 1fr) 116px 48px 80px 100px;
   gap: 10px;
   padding: 6px 14px;
   background: #fff;
@@ -6491,9 +6494,7 @@ td.due-overdue {
 .tb-row {
   position: relative;
   display: grid;
-  grid-template-columns:
-    64px minmax(320px, 620px) 150px 116px 48px 80px 100px
-    minmax(0, 1fr);
+  grid-template-columns: 64px minmax(320px, 1fr) 116px 48px 80px 100px;
   gap: 10px;
   align-items: center;
   padding: 5px 14px;
@@ -6595,13 +6596,6 @@ td.due-overdue {
 }
 .tb-row--canceled .tb-row-title-text {
   text-decoration: line-through;
-}
-.tb-row-sub {
-  color: var(--tb-sub);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .tb-row-owner {
   display: flex;
@@ -6734,7 +6728,7 @@ td.due-overdue {
    因此卡片整卡铺色：紧急 / 遗留问题用白字，「高」与「已完成」两张浅底卡各用自己的
    --task-ink 深字，「普通」白底卡与「已取消」浅灰底都继承页面深色正文。
    覆盖范围：任务中心与项目任务面板的 .calm-task-card、任务看板的 .tb-card。
-   列表行 / 表格行（.feature-list-table tbody tr 与 .tb-row--tone-*）继续用上面 .tone-prio-* 的
+   列表行 / 表格行（:is(.feature-list-table, .module-task-list-table) tbody tr 与 .tb-row--tone-*）继续用上面 .tone-prio-* 的
    浅色底与色条：表格里深底配深字读不出来，因此不做实色。
    2026-09-22 定色口径（产品在「红色取中 / 全色统一 / 全色样板」三轮样板上拍板）：实色卡饱和度
    封顶 78%、感知明度对齐 L* 53，档位靠色相区分而不是靠明度；实色卡描边统一取「底色压暗 14%」。

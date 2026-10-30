@@ -23,7 +23,7 @@ vi.mock("@features/notifications/NotificationsPageView", () => ({
       <button
         type="button"
         onClick={() =>
-          props.onOpenTarget?.("/projects/1/modules/2/features/3?taskId=4")
+          props.onOpenTarget?.("/projects/1/modules/2/tasks?taskId=4")
         }
       >
         打开任务通知
@@ -139,7 +139,7 @@ describe("NotificationsPage", () => {
     renderPage({
       pathname: "/notifications",
       state: {
-        notificationTaskPath: "/projects/1/modules/2/features/3?taskId=4",
+        notificationTaskPath: "/projects/1/modules/2/tasks?taskId=4",
       },
     });
 

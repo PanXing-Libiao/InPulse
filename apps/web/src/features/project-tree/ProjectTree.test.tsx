@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import type {
   CurrentUserResponse,
-  FeatureItem,
   InpulseApiClient,
   ModuleItem,
 } from "@generated/api";
@@ -37,12 +36,6 @@ const moduleItem = {
   status: "ACTIVE",
 } as unknown as ModuleItem;
 
-const featureItem = {
-  id: 5,
-  name: "车辆调度",
-  status: "ACTIVE",
-} as unknown as FeatureItem;
-
 const signedInUser: CurrentUserResponse = {
   id: 7,
   loginName: "viewer",
@@ -68,7 +61,6 @@ function createClient() {
       .mockResolvedValue({ items: [projectItem, otherProjectItem] }),
     getProject: vi.fn().mockResolvedValue({ project: projectItem }),
     listModules: vi.fn().mockResolvedValue({ items: [moduleItem] }),
-    listFeatures: vi.fn().mockResolvedValue({ items: [featureItem] }),
   } as unknown as InpulseApiClient;
 }
 
@@ -161,7 +153,7 @@ describe("ProjectTree", () => {
     expect(screen.queryByRole("button", { name: /调度模块/ })).toBeNull();
 
     // 点击进入项目（真实路由停在 /projects/2/modules）：当前项目默认铺开，
-    // 「模块与功能」子页行随之自动展开，模块列表随后加载。
+    // 「项目与模块」子页行随之自动展开，模块列表随后加载。
     fireEvent.click(screen.getByRole("button", { name: /AGV 智能搬运平台/ }));
     expect(onNavigate).toHaveBeenCalledWith("/projects/2/modules");
     expect(
@@ -188,7 +180,7 @@ describe("ProjectTree", () => {
     );
     expect(scrollArea?.contains(moduleButton)).toBe(true);
     expect(
-      scrollArea?.contains(screen.getByRole("button", { name: "模块与功能" })),
+      scrollArea?.contains(screen.getByRole("button", { name: "项目与模块" })),
     ).toBe(false);
   });
 
@@ -212,7 +204,7 @@ describe("ProjectTree", () => {
     fireEvent.click(agv);
     expect(branch).toHaveAttribute("data-open", "false");
     expect(branch).toHaveAttribute("aria-hidden", "true");
-    expect(screen.queryByRole("button", { name: "模块与功能" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "项目与模块" })).toBeNull();
   });
 
   it("keeps every project row listed while one project is expanded", async () => {
@@ -280,7 +272,7 @@ describe("ProjectTree", () => {
     // 也不会出现两个项目同时铺开。
     view.rerender(tree(null));
     expect(projectRow().getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByRole("button", { name: "模块与功能" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "项目与模块" })).toBeNull();
     expect(screen.queryByRole("button", { name: /调度模块/ })).toBeNull();
   });
 
@@ -288,13 +280,9 @@ describe("ProjectTree", () => {
     const onNavigate = vi.fn();
     mount(createClient(), onNavigate);
 
-    // 当前项目作用域自动铺开子页行；模块列表要点开「模块与功能」。
-    fireEvent.click(await screen.findByRole("button", { name: "模块与功能" }));
+    fireEvent.click(await screen.findByRole("button", { name: "项目与模块" }));
     fireEvent.click(await screen.findByRole("button", { name: /调度模块/ }));
-    expect(onNavigate).toHaveBeenCalledWith("/projects/2/modules/3/features");
-
-    fireEvent.click(await screen.findByRole("button", { name: /车辆调度/ }));
-    expect(onNavigate).toHaveBeenCalledWith("/projects/2/modules/3/features/5");
+    expect(onNavigate).toHaveBeenCalledWith("/projects/2/modules/3/tasks");
   });
 
   it("auto-expands the chain of the active project scope", async () => {
@@ -312,9 +300,6 @@ describe("ProjectTree", () => {
       name: /调度模块/,
     });
     expect(moduleButton.getAttribute("aria-current")).toBe("true");
-    expect(
-      await screen.findByRole("button", { name: /车辆调度/ }),
-    ).toBeTruthy();
   });
 
   it("keeps the expanded chain when returning to the project overview", async () => {
@@ -335,26 +320,23 @@ describe("ProjectTree", () => {
       </TestAuthProvider>
     );
     const view = render(
-      tree(scopeOf({ kind: "feature", moduleId: 3, featureId: 5 }), "modules"),
+      tree(scopeOf({ kind: "module", moduleId: 3 }), "modules"),
     );
-    expect(
-      (await screen.findByRole("button", { name: /调度模块/ })).getAttribute(
-        "aria-expanded",
-      ),
-    ).toBe("true");
-    await screen.findByRole("button", { name: /车辆调度/ });
+    const moduleButton = await screen.findByRole("button", {
+      name: /调度模块/,
+    });
+    expect(moduleButton.getAttribute("aria-current")).toBe("true");
 
-    // 面包屑回到项目概况（系统级作用域）后，已展开的模块与功能保持可见。
+    // 面包屑回到项目概况（系统级作用域）后，已加载的模块目录仍保持可见。
     view.rerender(tree(scopeOf({ kind: "project" }), "overview"));
     expect(
       screen
         .getByRole("button", { name: /调度模块/ })
-        .getAttribute("aria-expanded"),
-    ).toBe("true");
-    expect(screen.getByRole("button", { name: /车辆调度/ })).toBeTruthy();
+        .getAttribute("aria-current"),
+    ).toBeNull();
   });
 
-  it("keeps the module branch expanded while its features load", async () => {
+  it("highlights the module row under its project", async () => {
     mount(
       createClient(),
       vi.fn(),
@@ -364,28 +346,11 @@ describe("ProjectTree", () => {
     const moduleButton = await screen.findByRole("button", {
       name: /调度模块/,
     });
-    expect(moduleButton.getAttribute("aria-expanded")).toBe("true");
-    expect(
-      await screen.findByRole("button", { name: /车辆调度/ }),
-    ).toBeTruthy();
-    fireEvent.click(moduleButton);
-    expect(moduleButton.getAttribute("aria-expanded")).toBe("false");
-  });
-
-  it("highlights the feature row and keeps its module in path", async () => {
-    mount(
-      createClient(),
-      vi.fn(),
-      scopeOf({ kind: "feature", moduleId: 3, featureId: 5 }),
-      "modules",
-    );
-    const featureButton = await screen.findByRole("button", {
-      name: /车辆调度/,
+    expect(moduleButton.getAttribute("aria-current")).toBe("true");
+    const projectButton = screen.getByRole("button", {
+      name: /AGV 智能搬运平台/,
     });
-    expect(featureButton.getAttribute("aria-current")).toBe("true");
-    const moduleButton = screen.getByRole("button", { name: /调度模块/ });
-    expect(moduleButton.getAttribute("aria-expanded")).toBe("true");
-    expect(moduleButton.classList.contains("in-path")).toBe(true);
+    expect(projectButton.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("marks the project node when the project main page is active", async () => {
@@ -415,7 +380,6 @@ describe("ProjectTree 分档过滤", () => {
     return {
       listProjects: vi.fn().mockResolvedValue({ items }),
       listModules: vi.fn().mockResolvedValue({ items: [] }),
-      listFeatures: vi.fn().mockResolvedValue({ items: [] }),
     } as unknown as InpulseApiClient;
   }
 

@@ -6,6 +6,10 @@ import {
   pickCalmSelectOption,
   pickFirstCalmSelectOption,
 } from "../helpers/calm-select.js";
+import {
+  createTaskInOpenModule,
+  openFirstModuleTasks,
+} from "../helpers/module-tasks.js";
 test("F18 独立发布、修订、明确解决遗留与不可变历史对比", async ({
   browser,
 }) => {
@@ -100,30 +104,18 @@ test("F18 独立发布、修订、明确解决遗留与不可变历史对比", a
     await context.close();
   }
 });
-test("F18 已完成 FEATURE 来源任务的记录发布和历史查看", async ({ browser }) => {
+test("F18 已完成模块任务的记录发布和历史查看", async ({ browser }) => {
   test.setTimeout(120000);
   const runtime = await loadRuntime(),
     { context, page } = await createAuthenticatedContext(browser, runtime);
   try {
     const suffix = Date.now();
-    await page.goto(`/projects/${runtime.projectId}/modules`);
-    await page.locator(".module-card").first().click();
-    await page.getByRole("button", { name: "新增功能" }).click();
-    const feature = page.getByRole("dialog", { name: "新增功能" });
-    await feature.getByLabel("功能名称").fill(`发布功能-${suffix}`);
-    await feature.getByRole("button", { name: /保\s*存/ }).click();
-    await expect(feature).toBeHidden();
-    await page
-      .locator(".calm-feature-card")
-      .filter({ hasText: `发布功能-${suffix}` })
-      .click();
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
-    const taskForm = page.getByRole("dialog", { name: "新建任务" });
-    await taskForm.getByLabel("任务标题").fill(`发布来源-${suffix}`);
-    await pickCalmSelectOption(taskForm, "负责人", runtime.user.name);
-    await taskForm.getByRole("button", { name: /创建任务/ }).click();
-    await expect(taskForm).toBeHidden();
-    const task = page.getByRole("dialog", { name: "任务详情" });
+    await openFirstModuleTasks(page, runtime.projectId);
+    const task = await createTaskInOpenModule(
+      page,
+      runtime.user.name,
+      `发布来源-${suffix}`,
+    );
     await task.getByRole("button", { name: "完成任务", exact: true }).click();
     const complete = page.getByRole("dialog", {
       name: "完成任务",
@@ -184,30 +176,18 @@ test("F18 未完成任务的迭代记录可以直接发布且任务状态不变�
     { context, page } = await createAuthenticatedContext(browser, runtime);
   try {
     const suffix = Date.now();
-    await page.goto(`/projects/${runtime.projectId}/modules`);
-    await page.locator(".module-card").first().click();
-    await page.getByRole("button", { name: "新增功能" }).click();
-    const feature = page.getByRole("dialog", { name: "新增功能" });
-    await feature.getByLabel("功能名称").fill(`直发功能-${suffix}`);
-    await feature.getByRole("button", { name: /保\s*存/ }).click();
-    await expect(feature).toBeHidden();
-    await page
-      .locator(".calm-feature-card")
-      .filter({ hasText: `直发功能-${suffix}` })
-      .click();
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
-    const taskForm = page.getByRole("dialog", { name: "新建任务" }),
-      taskTitle = `直发来源-${suffix}`;
-    await taskForm.getByLabel("任务标题").fill(taskTitle);
-    await pickCalmSelectOption(taskForm, "负责人", runtime.user.name);
-    await taskForm.getByRole("button", { name: /创建任务/ }).click();
-    await expect(taskForm).toBeHidden();
-    const task = page.getByRole("dialog", { name: "任务详情" });
+    const taskTitle = `直发来源-${suffix}`;
+    await openFirstModuleTasks(page, runtime.projectId);
+    const task = await createTaskInOpenModule(
+      page,
+      runtime.user.name,
+      taskTitle,
+    );
     await task.getByRole("tab", { name: "迭代记录" }).click();
     await task.getByRole("button", { name: "记录一次迭代" }).click();
     const modal = page.getByRole("dialog", { name: "新建任务迭代" });
     // 与迭代记录页同一套排版：归属按来源快照只读呈现，页脚直接给发布入口。
-    await expect(modal.getByText("所属功能")).toBeVisible();
+    await expect(modal.getByText("所属模块")).toBeVisible();
     await expect(modal.getByLabel("迭代标题")).toHaveValue(taskTitle);
     await modal.getByLabel("改动原因").fill("未完成任务也要记录本次迭代");
     await modal.getByLabel("具体改动").fill("发布与任务完成解耦");

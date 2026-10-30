@@ -22,10 +22,7 @@ test("F-32 从文档导入整项目：预览、创建、模块可见与重复导
     "## 模块：文档导入模块",
     "- 说明：整项目导入的模块。",
     "",
-    "### 功能：文档导入功能",
-    "- 当前说明：导入时写入的初始说明。",
-    "",
-    "#### 任务：文档导入任务",
+    "### 任务：文档导入任务",
     `- 负责人：${runtime.member.loginName}`,
   ].join("\n");
 
@@ -59,13 +56,15 @@ test("F-32 从文档导入整项目：预览、创建、模块可见与重复导
     page.getByRole("heading", { name: "文档导入模块", exact: true }),
   ).toBeVisible();
 
-  // 功能落在模块内：点击模块卡片进入功能列表。
+  // 任务落在模块内：点击模块卡片直接进入模块任务页。
   await page
     .getByRole("heading", { name: "文档导入模块", exact: true })
     .click();
+  await expect(page).toHaveURL(/\/modules\/\d+\/tasks$/);
   await expect(
-    page.getByRole("heading", { name: "文档导入功能", exact: true }),
+    page.getByRole("heading", { name: "文档导入模块", exact: true }),
   ).toBeVisible();
+  await expect(page.getByText("文档导入任务", { exact: true })).toBeVisible();
 
   // 同一文档再次导入：预览给出重复提示，确认按钮禁用。
   await page.goto("/projects");
@@ -81,7 +80,7 @@ test("F-32 从文档导入整项目：预览、创建、模块可见与重复导
   await context.close();
 });
 
-test("F-32 项目内从文档导入多个模块与功能", async ({ browser }) => {
+test("F-32 项目内从文档导入多个模块与任务", async ({ browser }) => {
   const runtime = await loadRuntime();
   const { context, page } = await createAuthenticatedContext(browser, runtime);
 
@@ -92,10 +91,7 @@ test("F-32 项目内从文档导入多个模块与功能", async ({ browser }) =
     `## 模块：${moduleA}`,
     "- 说明：批量导入的模块甲。",
     "",
-    "### 功能：批次功能甲",
-    "- 当前说明：批量导入的功能甲。",
-    "",
-    "#### 任务：批次任务甲",
+    "### 任务：批次任务甲",
     // 项目内导入（模式 A）要求负责人已是项目活跃成员：夹具项目里只有 E2E 用户本人。
     `- 负责人：${runtime.user.loginName}`,
     "",
@@ -213,8 +209,7 @@ test("F-32 文档导入右栏输入行贴底：高窗口下不留悬空空隙（
   const document = Array.from({ length: 10 }, (_, index) =>
     [
       "## 模块：模块 " + String(index + 1),
-      "### 功能：功能 " + String(index + 1),
-      "#### 任务：任务 " + String(index + 1),
+      "### 任务：任务 " + String(index + 1),
     ].join("\n"),
   ).join("\n");
   await dialog.getByLabel("导入文档内容").fill(document);
@@ -249,8 +244,6 @@ test("F-32 文档导入拥挤时不越界压字：草稿区留在自己的栏里
       return [
         "## 模块：模块 " + order,
         "- 说明：该模块覆盖售前规划到验收的全流程数据记录与展示。",
-        "### 功能：功能 " + order,
-        "- 当前说明：字段包含任务描述、项目经理、任务负责人、任务状态。",
       ].join("\n");
     }),
   ].join("\n");
@@ -323,7 +316,7 @@ test("F-32 成员字段按姓名筛账号：选完成一个标签、候选常驻
     "",
     "## 模块：成员建议模块",
     "",
-    "#### 任务：成员建议任务",
+    "### 任务：成员建议任务",
     `- 负责人：${runtime.user.name}`,
   ].join("\n");
 

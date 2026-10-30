@@ -219,13 +219,12 @@ describe("F-12 real HTTP + PostgreSQL", () => {
     await client.sql`
       WITH created AS (
         INSERT INTO app.tasks (
-          project_id, module_id, scope_type, code, title, work_status,
+          project_id, module_id, code, title, work_status,
           completion_note, completed_at, creator_id
         )
         VALUES (
           ${project.projectId},
           ${started.id},
-          'MODULE',
           ${`${project.code}-T-1`},
           '已完成任务',
           'DONE',

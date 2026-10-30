@@ -29,11 +29,6 @@ test("R-8 任务看板展示完成程度并支持视图切换与筛选", async (
     await page.getByRole("button", { name: "新建任务" }).click();
     const create = page.getByRole("dialog", { name: "新建任务" });
     await create.getByLabel("任务标题").fill(title);
-    // 默认档位是「功能级」，模块级任务要先切换范围再选模块与负责人。
-    await create
-      .getByRole("group", { name: "任务范围" })
-      .getByRole("button", { name: "模块级" })
-      .click();
     await pickCalmSelectOption(create, "所属模块", "未分类");
     // 该下拉的可见标签是「指派给」，无障碍名称沿用统一的「负责人」。
     await pickCalmSelectOption(create, "负责人", runtime.user.name);

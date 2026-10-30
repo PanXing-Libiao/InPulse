@@ -2,10 +2,11 @@ import { expect, test } from "@playwright/test";
 import { createAuthenticatedContext } from "../helpers/auth-context.js";
 import { fillLeftovers } from "../helpers/record-leftovers.js";
 import { loadRuntime } from "../helpers/runtime.js";
+import { pickFirstCalmSelectOption } from "../helpers/calm-select.js";
 import {
-  pickCalmSelectOption,
-  pickFirstCalmSelectOption,
-} from "../helpers/calm-select.js";
+  createTaskInOpenModule,
+  openFirstModuleTasks,
+} from "../helpers/module-tasks.js";
 test("F-17 独立草稿保存、继续编辑和刷新持久化", async ({ browser }) => {
   test.setTimeout(90000);
   const runtime = await loadRuntime();
@@ -107,105 +108,76 @@ test("F-17 未保存就离开先确认，放弃后不留痕迹", async ({ browse
   }
 });
 
-for (const moduleScope of [false, true])
-  test(`F-17 ${moduleScope ? "MODULE" : "FEATURE"} 来源多草稿选择与不完成任务`, async ({
-    browser,
-  }) => {
-    test.setTimeout(90000);
-    const runtime = await loadRuntime();
-    const { context, page } = await createAuthenticatedContext(
-      browser,
-      runtime,
-    );
-    try {
-      await page.goto(`/projects/${runtime.projectId}/modules`);
-      const suffix = Date.now();
-      if (moduleScope) {
-        await page.locator(".module-card").first().click();
-        await page.getByRole("tab", { name: /模块级任务/ }).click();
-      } else {
-        await page.locator(".module-card").first().click();
-        await page.getByRole("button", { name: "新增功能" }).click();
-        const feature = page.getByRole("dialog", { name: "新增功能" });
-        await feature.getByLabel("功能名称").fill(`草稿功能-${suffix}`);
-        await feature.getByRole("button", { name: /保\s*存/ }).click();
-        await expect(feature).toBeHidden();
-        await page
-          .locator(".calm-feature-card")
-          .filter({ hasText: `草稿功能-${suffix}` })
-          .click();
-      }
-      await page.getByRole("button", { name: "新建任务", exact: true }).click();
-      const createTask = page.getByRole("dialog", { name: "新建任务" });
-      const title = `草稿任务-${suffix}`;
-      await createTask.getByLabel("任务标题").fill(title);
-      await pickCalmSelectOption(createTask, "负责人", runtime.user.name);
-      await createTask.getByRole("button", { name: /创建任务/ }).click();
-      await expect(createTask).toBeHidden();
-      const task = page.getByRole("dialog", { name: "任务详情" });
-      await task.getByRole("button", { name: "完成任务", exact: true }).click();
-      const complete = page.getByRole("dialog", {
-        name: "完成任务",
+test("F-17 模块任务来源多草稿选择与不完成任务", async ({ browser }) => {
+  test.setTimeout(90000);
+  const runtime = await loadRuntime();
+  const { context, page } = await createAuthenticatedContext(browser, runtime);
+  try {
+    await openFirstModuleTasks(page, runtime.projectId);
+    const suffix = Date.now();
+    const title = `草稿任务-${suffix}`;
+    const task = await createTaskInOpenModule(page, runtime.user.name, title);
+    await task.getByRole("button", { name: "完成任务", exact: true }).click();
+    const complete = page.getByRole("dialog", {
+      name: "完成任务",
+      exact: true,
+    });
+    await complete.getByRole("button", { name: /有，填写迭代记录/ }).click();
+    await expect(
+      complete.getByRole("button", { name: "发布并完成任务" }),
+    ).toBeDisabled();
+    await complete.getByRole("link", { name: "选择或新建草稿" }).click();
+    for (let i = 1; i <= 2; i++) {
+      await page.getByRole("button", { name: "新建来源草稿" }).click();
+      const create = page.getByRole("dialog", { name: "新建任务迭代" });
+      await expect(create.getByLabel("迭代标题")).toHaveValue(title);
+      if (i === 2) await create.getByLabel("迭代标题").fill(title + "第二条");
+      await create.getByLabel("改动原因").fill("来源问题" + i);
+      await create.getByLabel("具体改动").fill("方案" + i);
+      await create.getByLabel("改动效果").fill("验证" + i);
+      await create.getByRole("button", { name: "保存草稿" }).click();
+      await expect(create).toBeHidden();
+      const detail = page.getByRole("dialog", {
+        name: "草稿详情",
         exact: true,
       });
-      await complete.getByRole("button", { name: /有，填写迭代记录/ }).click();
-      await expect(
-        complete.getByRole("button", { name: "发布并完成任务" }),
-      ).toBeDisabled();
-      await complete.getByRole("link", { name: "选择或新建草稿" }).click();
-      for (let i = 1; i <= 2; i++) {
-        await page.getByRole("button", { name: "新建来源草稿" }).click();
-        const create = page.getByRole("dialog", { name: "新建任务迭代" });
-        await expect(create.getByLabel("迭代标题")).toHaveValue(title);
-        if (i === 2) await create.getByLabel("迭代标题").fill(title + "第二条");
-        await create.getByLabel("改动原因").fill("来源问题" + i);
-        await create.getByLabel("具体改动").fill("方案" + i);
-        await create.getByLabel("改动效果").fill("验证" + i);
-        await create.getByRole("button", { name: "保存草稿" }).click();
-        await expect(create).toBeHidden();
-        const detail = page.getByRole("dialog", {
-          name: "草稿详情",
-          exact: true,
-        });
-        await expect(detail).toBeVisible();
-        await detail.getByRole("button", { name: "关闭", exact: true }).click();
-        await expect(detail).toBeHidden();
-        await expect(
-          page.getByRole("button", { name: /继续编辑/ }),
-        ).toHaveCount(i);
-      }
-      await page
-        .locator(".draft-card")
-        .filter({ hasText: title + "第二条" })
-        .click();
-      await page.getByRole("button", { name: "继续编辑", exact: true }).click();
-      const edit = page.getByRole("dialog", { name: "编辑草稿" });
-      await fillLeftovers(edit, ["来源草稿补充"]);
-      await edit.getByRole("button", { name: "保存草稿" }).click();
-      await expect(edit).toBeHidden();
-      await page.reload();
-      await expect(
-        page
-          .getByRole("region", { name: "草稿详情" })
-          .getByText("来源草稿补充"),
-      ).toBeVisible();
-      await page.screenshot({
-        path: `test-results/f17-${moduleScope ? "module" : "feature"}-drafts.png`,
-        fullPage: true,
-      });
-      await page
-        .getByRole("dialog", { name: "草稿详情", exact: true })
-        .getByRole("button", { name: "关闭", exact: true })
-        .click();
-      await page.getByRole("link", { name: "返回来源任务" }).click();
-      await expect(
-        task.getByRole("button", { name: "完成任务", exact: true }),
-      ).toBeEnabled();
-      await expect(task.locator(".task-status-history > li")).toHaveCount(1);
-    } finally {
-      await context.close();
+      await expect(detail).toBeVisible();
+      await detail.getByRole("button", { name: "关闭", exact: true }).click();
+      await expect(detail).toBeHidden();
+      await expect(page.getByRole("button", { name: /继续编辑/ })).toHaveCount(
+        i,
+      );
     }
-  });
+    await page
+      .locator(".draft-card")
+      .filter({ hasText: title + "第二条" })
+      .click();
+    await page.getByRole("button", { name: "继续编辑", exact: true }).click();
+    const edit = page.getByRole("dialog", { name: "编辑草稿" });
+    await fillLeftovers(edit, ["来源草稿补充"]);
+    await edit.getByRole("button", { name: "保存草稿" }).click();
+    await expect(edit).toBeHidden();
+    await page.reload();
+    await expect(
+      page.getByRole("region", { name: "草稿详情" }).getByText("来源草稿补充"),
+    ).toBeVisible();
+    await page.screenshot({
+      path: `test-results/f17-module-task-drafts.png`,
+      fullPage: true,
+    });
+    await page
+      .getByRole("dialog", { name: "草稿详情", exact: true })
+      .getByRole("button", { name: "关闭", exact: true })
+      .click();
+    await page.getByRole("link", { name: "返回来源任务" }).click();
+    await expect(
+      task.getByRole("button", { name: "完成任务", exact: true }),
+    ).toBeEnabled();
+    await expect(task.locator(".task-status-history > li")).toHaveCount(1);
+  } finally {
+    await context.close();
+  }
+});
 
 test("F-17 草稿箱里的迭代记录可以删除", async ({ browser }) => {
   test.setTimeout(90000);

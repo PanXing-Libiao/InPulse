@@ -49,7 +49,7 @@
   只物化绑定时间之后发生的来源）；`long-conn.mjs` 消费 PENDING 队列，按 id 升序向每个目标
   独立发送 Markdown、模板卡片或图片；成功 -> `SENT` + `sent_at`（并清空目标行 `last_delivery_error`），
   失败 -> `FAILED` + `attempts` + `last_error`（同时截断回写目标行 `last_delivery_error`，≤500 字符）。
-- 群动态展示：`group-message.mjs` 生成 `text_notice` 模板卡片，包含来源、主标题、编号、项目副标题、最多 6 行关键字段和 `cardActionUrl` 跳转；任务展示负责人、进度、截止、功能或模块，项目状态使用“进入维护 / 重新开工”等事件语义。展示层不改变五类开关、来源收敛或发送限速。
+- 群动态展示：`group-message.mjs` 生成 `text_notice` 模板卡片，包含来源、主标题、编号、项目副标题、最多 6 行关键字段和 `cardActionUrl` 跳转；任务展示负责人、进度、截止、所属模块，项目状态使用“进入维护 / 重新开工”等事件语义。展示层不改变五类开关、来源收敛或发送限速。
 - 限速与重试：每个 Webhook 目标独立 20 条/分钟（内存滑动窗口，超限时该目标保持 `PENDING` 并让出其他目标）；
   识别为限速/临时错误的响应保持 `PENDING` 并退避 60 秒重试；15 秒无响应按超时保持
   `PENDING` 稍后重试（响应迟到时可能重复，PoC 取舍）；其余错误直接 `FAILED` 不自动重试；

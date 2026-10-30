@@ -19,13 +19,12 @@ describe("SearchPage", () => {
       items: [
         {
           projectId: 1,
-          entityType: "FEATURE",
+          entityType: "MODULE",
           entityId: 3,
           moduleId: 2,
-          featureId: 3,
           recordId: null,
-          title: "InPulse 功能",
-          summary: "功能摘要",
+          title: "InPulse 模块",
+          summary: "模块摘要",
         } satisfies SearchItem,
       ],
       nextCursor: null,
@@ -43,7 +42,7 @@ describe("SearchPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText("InPulse 功能")).toBeInTheDocument();
+    expect(await screen.findByText("InPulse 模块")).toBeInTheDocument();
     expect(getSearch).toHaveBeenCalledWith({
       q: "inpulse",
       cursor: undefined,
@@ -57,13 +56,12 @@ describe("SearchPage", () => {
       items: [
         {
           projectId: 1,
-          entityType: "FEATURE",
+          entityType: "MODULE",
           entityId: 3,
           moduleId: 2,
-          featureId: 3,
           recordId: null,
-          title: "InPulse 功能",
-          summary: "功能摘要",
+          title: "InPulse 模块",
+          summary: "模块摘要",
         } satisfies SearchItem,
       ],
       nextCursor: null,
@@ -77,15 +75,15 @@ describe("SearchPage", () => {
           <Routes>
             <Route path="/search" element={<SearchPage client={client} />} />
             <Route
-              path="/projects/:projectId/modules/:moduleId/features/:featureId"
-              element={<div>功能档案落地页</div>}
+              path="/projects/:projectId/modules/:moduleId/tasks"
+              element={<div>模块任务落地页</div>}
             />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
     );
 
-    await user.click(await screen.findByRole("link", { name: /InPulse 功能/ }));
-    expect(await screen.findByText("功能档案落地页")).toBeInTheDocument();
+    await user.click(await screen.findByRole("link", { name: /InPulse 模块/ }));
+    expect(await screen.findByText("模块任务落地页")).toBeInTheDocument();
   });
 });

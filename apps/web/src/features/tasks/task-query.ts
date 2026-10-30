@@ -4,19 +4,17 @@ import {
   ApiError,
   createApiClient,
   type InpulseApiClient,
-  type TaskEditRequest,
-  type TaskItem,
   type ModuleTaskItem,
+  type TaskEditRequest,
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 
-export type TaskViewItem = TaskItem | ModuleTaskItem;
-export type TaskDraft = TaskEditRequest & { impactFeatureIds?: number[] };
+export type TaskViewItem = ModuleTaskItem;
+export type TaskDraft = TaskEditRequest;
 export interface TaskScope {
   projectId: number;
   moduleId: number;
-  featureId: number | null;
 }
 export const taskFields = [
   "title",
@@ -24,7 +22,6 @@ export const taskFields = [
   "priority",
   "assigneeIds",
   "dueAt",
-  "impactFeatureIds",
 ] as const;
 export type TaskField = (typeof taskFields)[number];
 export function taskEdit(item: TaskViewItem): TaskDraft {
@@ -34,9 +31,6 @@ export function taskEdit(item: TaskViewItem): TaskDraft {
     priority: item.priority,
     assigneeIds: [...item.assigneeIds],
     dueAt: item.dueAt,
-    ...(item.scopeType === "MODULE"
-      ? { impactFeatureIds: [...item.impactFeatureIds] }
-      : {}),
   };
 }
 export function mergeTask(
@@ -60,7 +54,7 @@ export function mergeTask(
 export function taskError(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
-    if (error.status === 404) return "任务或功能不存在，或你已无权访问。";
+    if (error.status === 404) return "任务或模块不存在，或你已无权访问。";
     if (error.status === 403) return "权限或安全校验未通过，请重新登录后重试。";
     if (error.status === 409)
       return `${error.message}。输入已保留，请加载最新版本后继续编辑。`;
@@ -81,39 +75,21 @@ export function isFirstLoad(query: {
 }): boolean {
   return query.isPending && query.isFetching;
 }
-export function useTasks(
-  scope: TaskScope,
-  client?: InpulseApiClient,
-  options: { impactOptions?: boolean } = {},
-) {
-  const impactOptions = options.impactOptions ?? true;
+export function useTasks(scope: TaskScope, client?: InpulseApiClient) {
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const cache = useQueryClient();
   const retry = useRef<{ signature: string; key: string } | null>(null);
-  const args = [scope.projectId, scope.moduleId, scope.featureId] as const;
+  const args = [scope.projectId, scope.moduleId] as const;
   const query = useQuery({
     queryKey: ["tasks", ...args],
     queryFn: ({ signal }) =>
-      scope.featureId === null
-        ? api.listModuleTasks(scope.projectId, scope.moduleId, { signal })
-        : api.listTasks(scope.projectId, scope.moduleId, scope.featureId, {
-            signal,
-          }),
+      api.listModuleTasks(scope.projectId, scope.moduleId, { signal }),
     retry: false,
   });
   const members = useQuery({
     queryKey: ["task-assignees", ...args],
     queryFn: ({ signal }) =>
-      scope.featureId === null
-        ? api.listModuleTaskAssignees(scope.projectId, scope.moduleId, {
-            signal,
-          })
-        : api.listTaskAssignees(
-            scope.projectId,
-            scope.moduleId,
-            scope.featureId,
-            { signal },
-          ),
+      api.listModuleTaskAssignees(scope.projectId, scope.moduleId, { signal }),
     retry: false,
   });
   const mutation = useMutation({
@@ -125,17 +101,12 @@ export function useTasks(
       item?: TaskViewItem;
       edit: TaskDraft;
     }) => {
-      const { impactFeatureIds, ...fields } = edit;
-      const body = { ...fields, title: edit.title.trim() };
-      const impacts = [...new Set(impactFeatureIds ?? [])].sort(
-        (a, b) => a - b,
-      );
+      const body = { ...edit, title: edit.title.trim() };
       const signature = JSON.stringify([
         ...args,
         item?.id,
         item?.rowVersion,
         body,
-        ...(scope.featureId === null ? [impacts] : []),
       ]);
       if (retry.current?.signature !== signature)
         retry.current = { signature, key: createIdempotencyKey("task") };
@@ -147,53 +118,23 @@ export function useTasks(
           ...(item ? { "If-Match": `"${item.rowVersion}"` } : {}),
         },
       };
-      if (scope.featureId === null)
-        return item
-          ? api.updateModuleTask(
-              scope.projectId,
-              scope.moduleId,
-              item.id,
-              { ...body, impactFeatureIds: impacts },
-              init,
-            )
-          : api.createModuleTask(
-              scope.projectId,
-              scope.moduleId,
-              { ...body, impactFeatureIds: impacts },
-              init,
-            );
       return item
-        ? api.updateTask(
+        ? api.updateModuleTask(
             scope.projectId,
             scope.moduleId,
-            scope.featureId,
             item.id,
             body,
             init,
           )
-        : api.createTask(
-            scope.projectId,
-            scope.moduleId,
-            scope.featureId,
-            body,
-            init,
-          );
+        : api.createModuleTask(scope.projectId, scope.moduleId, body, init);
     },
-    onSuccess: async () => {
+    onSuccess: () => {
       retry.current = null;
-      await Promise.all(
-        // my-tasks / my-task-groups / task-marks：任务中心与聚合视图按这些键缓存，
-        // 编辑（含负责人变化）后必须同批失效，否则中心列表停留旧数据。
-        // task-group / task-group-records：聚合组详情的成员块正是这些字段（标题、
-        // 负责人、状态、优先级、记录数），编辑后若不失效会一直显示旧值，
-        // 只能靠手动刷新（2026-09-22 修）。
-        // modules / features / project-overview：新建任务改变待办计数，编辑影响
-        // 功能关联会改变统计归属口径（2026-09-24 修）。
+      void Promise.all(
         [
           "tasks",
           "task-board",
           "modules",
-          "features",
           "project-overview",
           "activity",
           "search",
@@ -207,12 +148,5 @@ export function useTasks(
       );
     },
   });
-  const features = useQuery({
-    queryKey: ["task-impact-options", scope.projectId, scope.moduleId],
-    queryFn: ({ signal }) =>
-      api.listFeatures(scope.projectId, scope.moduleId, { signal }),
-    retry: false,
-    enabled: impactOptions && scope.featureId === null,
-  });
-  return { api, query, members, mutation, features };
+  return { api, query, members, mutation };
 }

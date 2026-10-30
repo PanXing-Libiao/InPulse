@@ -75,7 +75,6 @@ export function RecordDraftEditorModal({
   target,
   projectId,
   defaultModuleId = 0,
-  defaultFeatureId = 0,
   writable,
   onClose,
   onSaved,
@@ -86,9 +85,8 @@ export function RecordDraftEditorModal({
   target: RecordDraftEditorTarget | null;
   /** 页面锁定的项目；0 表示独立草稿在弹窗内选择目标项目。 */
   projectId: number;
-  /** 打开独立草稿时的预选模块与功能（来自 URL 上下文）。 */
+  /** 打开独立草稿时的预选模块（来自 URL 上下文）。 */
   defaultModuleId?: number | undefined;
-  defaultFeatureId?: number | undefined;
   /** 调用方附加的可写条件（如来源任务已归档）；弹窗内部再叠加目标项目状态。 */
   writable: boolean;
   onClose: () => void;
@@ -116,11 +114,6 @@ export function RecordDraftEditorModal({
   const source = editor?.kind === "source" ? editor.source : undefined;
   const independent = editor?.kind === "independent";
   const [moduleId, setModuleId] = useState(defaultModuleId);
-  const [featureId, setFeatureId] = useState(defaultFeatureId);
-  const [scopeType, setScopeType] = useState<"FEATURE" | "MODULE">(
-    defaultFeatureId ? "FEATURE" : "MODULE",
-  );
-  const [impacts, setImpacts] = useState<number[]>([]);
   /**
    * 「全部项目」视图（projectId 为 0）下，在弹窗里选择的目标项目；
    * 页面已锁定项目时以页面为准，该状态不参与。
@@ -174,13 +167,6 @@ export function RecordDraftEditorModal({
     queryKey: ["modules", formProjectId],
     queryFn: ({ signal }) => api.listModules(formProjectId, { signal }),
     enabled: formProjectId > 0,
-    retry: false,
-  });
-  const features = useQuery({
-    queryKey: ["features", formProjectId, moduleId],
-    queryFn: ({ signal }) =>
-      api.listFeatures(formProjectId, moduleId, { signal }),
-    enabled: formProjectId > 0 && moduleId > 0,
     retry: false,
   });
   /** 保存后的后续步骤失败时切到这条草稿的编辑态：重试走更新，不会再建一条。 */
@@ -264,15 +250,7 @@ export function RecordDraftEditorModal({
           }
         : item
           ? normalized
-          : {
-              ...normalized,
-              ...(scopeType === "FEATURE"
-                ? { scopeType, featureId }
-                : {
-                    scopeType,
-                    impactFeatureIds: [...impacts].sort((a, b) => a - b),
-                  }),
-            };
+          : normalized;
       const signature = JSON.stringify([
         formProjectId,
         moduleId,
@@ -473,26 +451,17 @@ export function RecordDraftEditorModal({
     if (target.kind === "item") {
       reset(content(target.item));
       setModuleId(target.item.moduleId);
-      setFeatureId(target.item.featureId ?? 0);
-      setScopeType(target.item.scopeType);
-      setImpacts([...target.item.impactFeatureIds]);
       return;
     }
     if (target.kind === "source") {
-      // 来源快照同时驱动归属行的只读展示：模块与功能名称按它的 moduleId 走既有只读契约。
+      // 来源快照同时驱动归属行的只读展示：模块名称按它的 moduleId 走既有只读契约。
       reset({ ...empty, title: target.source.title });
       setModuleId(target.source.moduleId);
-      setFeatureId(target.source.featureId ?? 0);
-      setScopeType(target.source.scopeType);
-      setImpacts([...target.source.impactFeatureIds]);
       return;
     }
     reset(empty);
     setModuleId(defaultModuleId);
-    setFeatureId(defaultFeatureId);
-    setScopeType(defaultFeatureId ? "FEATURE" : "MODULE");
-    setImpacts([]);
-  }, [target, reset, mutation, defaultModuleId, defaultFeatureId]);
+  }, [target, reset, mutation, defaultModuleId]);
   // ADR-043：项目只有未开始 / 进行中 / 维护中且都可写；目标项目状态未知时不可写。
   const formProjectStatus = projects.data?.items.find(
     (p) => p.id === formProjectId,
@@ -603,9 +572,6 @@ export function RecordDraftEditorModal({
     module: (id: number) =>
       modules.data?.items.find((entry) => entry.id === id)?.name ??
       `模块 #${id}`,
-    feature: (id: number) =>
-      features.data?.items.find((entry) => entry.id === id)?.name ??
-      `功能 #${id}`,
   };
   /** 两个页脚动作共用同一套禁用条件：不可写、有冲突或范围没选全都不能提交。 */
   const submitBlocked =
@@ -615,9 +581,7 @@ export function RecordDraftEditorModal({
     !!merge ||
     reloading ||
     !!reloadError ||
-    (!item &&
-      !source &&
-      (!formProjectId || !moduleId || (scopeType === "FEATURE" && !featureId)));
+    (!item && !source && (!formProjectId || !moduleId));
   /**
    * 未保存内容：表单被改过、链接小节里还有没落库的内容、冲突合并未选完，
    * 这些一律算作「离开会丢」。
@@ -640,7 +604,7 @@ export function RecordDraftEditorModal({
           ? "草稿 · " + item.title
           : source
             ? "任务 · " + source.title
-            : "项目与功能 / 迭代记录"
+            : "项目与模块 / 迭代记录"
       }
       title={item ? "编辑草稿" : source ? "新建任务迭代" : "新建迭代记录"}
       className="catalog-modal"
@@ -738,27 +702,6 @@ export function RecordDraftEditorModal({
                   <dt>所属模块</dt>
                   <dd>{nameOf.module(moduleId)}</dd>
                 </div>
-                <div className="record-scope-fact">
-                  <dt>记录范围</dt>
-                  <dd>{source.scopeType === "FEATURE" ? "功能" : "模块"}</dd>
-                </div>
-                {source.scopeType === "FEATURE" ? (
-                  <div className="record-scope-fact">
-                    <dt>所属功能</dt>
-                    <dd>{nameOf.feature(featureId)}</dd>
-                  </div>
-                ) : (
-                  <div className="record-scope-fact">
-                    <dt>影响功能</dt>
-                    <dd>
-                      {source.impactFeatureIds.length === 0
-                        ? "未选择"
-                        : source.impactFeatureIds
-                            .map((id) => nameOf.feature(id))
-                            .join("、")}
-                    </dd>
-                  </div>
-                )}
               </dl>
             </section>
           )}
@@ -775,8 +718,6 @@ export function RecordDraftEditorModal({
                     onChange={(next) => {
                       setCreateProjectId(Number(next));
                       setModuleId(0);
-                      setFeatureId(0);
-                      setImpacts([]);
                     }}
                     options={(projects.data?.items ?? []).map((p) => ({
                       ...projectSelectOption(p),
@@ -799,8 +740,6 @@ export function RecordDraftEditorModal({
                   }
                   onChange={(next) => {
                     setModuleId(Number(next));
-                    setFeatureId(0);
-                    setImpacts([]);
                   }}
                   // ADR-044：模块已无归档只读态，模块选项全部可选。
                   options={(modules.data?.items ?? []).map((m) => ({
@@ -810,62 +749,10 @@ export function RecordDraftEditorModal({
                   animated
                 />
               </label>
-              <label>
-                记录范围
-                <CalmSelect
-                  ariaLabel="记录范围"
-                  value={scopeType}
-                  appearance="notion"
-                  onChange={(next) => setScopeType(next as typeof scopeType)}
-                  options={[
-                    { value: "MODULE", label: "模块", emoji: "\u{1F9E9}" },
-                    { value: "FEATURE", label: "功能", emoji: "\u{1F3AF}" },
-                  ]}
-                  animated
-                />
-              </label>
-              {scopeType === "FEATURE" ? (
-                <label>
-                  所属功能
-                  <CalmSelect
-                    ariaLabel="所属功能"
-                    value={featureId || ""}
-                    appearance="rich"
-                    searchable
-                    width="100%"
-                    placeholder="输入功能名称搜索"
-                    onChange={(next) => setFeatureId(Number(next))}
-                    options={(features.data?.items ?? []).map((f) => ({
-                      value: f.id,
-                      label: f.name,
-                    }))}
-                    animated
-                  />
-                </label>
-              ) : (
-                <fieldset>
-                  <legend>影响功能（选填）</legend>
-                  <CalmSelect
-                    ariaLabel="影响功能"
-                    multiple
-                    searchable
-                    appearance="rich"
-                    width="100%"
-                    value={impacts}
-                    placeholder="输入功能名称搜索，可多选"
-                    onChange={(next) => setImpacts(next.map(Number))}
-                    options={(features.data?.items ?? []).map((f) => ({
-                      value: f.id,
-                      label: f.name,
-                    }))}
-                    animated
-                  />
-                </fieldset>
-              )}
-              {(modules.isError || features.isError) && (
+              {modules.isError && (
                 <Alert
                   type="error"
-                  title="所属范围加载失败，请重新选择或刷新。"
+                  title="所属模块加载失败，请重新选择或刷新。"
                 />
               )}
             </>

@@ -41,7 +41,7 @@ fetch 后将 dev/b 从 `58abb40` 快进至实际 origin/main `8b895e1`，创建 
 
 创建/编辑只接受 `name/currentBehavior/tags`，分别遵守 500 字、50000 字和 50 个标签上限。状态操作只接受 `reason`（1–2000 字）。不存在、非成员、已移除成员或完整归属不符统一 404；匿名/停用 Session 401；普通成员管理员操作 403；版本、状态或编号冲突 409；字段错误 422。
 
-[features.zod.ts](../packages/api-contract/src/contracts/features.zod.ts)、[feature-routes.ts](../packages/api-contract/src/feature-routes.ts)、可执行权限矩阵和 Controller 绑定同步；OpenAPI、客户端、指纹只通过 `pnpm contract:generate` 生成，5 个生成物漂移检查通过。
+`features.zod.ts`、`feature-routes.ts`（ADR-109 已移除）、可执行权限矩阵和 Controller 绑定同步；OpenAPI、客户端、指纹只通过 `pnpm contract:generate` 生成，5 个生成物漂移检查通过。
 
 ## 数据库、事务和公开能力
 
@@ -51,7 +51,7 @@ fetch 后将 dev/b 从 `58abb40` 快进至实际 origin/main `8b895e1`，创建 
 
 - A 现有 ProjectAccessQueryPort 提供实时成员/管理员授权及父项目 FOR SHARE。新增 [ProjectCodePort](../apps/api/src/modules/projects/project-code.port.ts) / [适配器](../apps/api/src/modules/projects/postgres-project-code-port.ts) 是项目编号基础设施公开入口：从真实项目取前缀，复用 code_sequences 的事务内原子 UPSERT。它不创建事务、不改变项目业务状态；编号碰撞返回安全 409，整个命令回滚，由管理员核对导入历史与序列表。
 - B 复用 ModuleQueryPort 获取父模块 FOR SHARE；新增 [ModuleReadPort](../apps/api/src/modules/modules/module-read.port.ts) 查询历史归属，不施加 ACTIVE 写门禁。既有 FeatureQueryPort 不变；Tasks/ChangeRecords 可继续使用其归档拒绝能力。
-- C 复用 AuditWritePort、ActivityWritePort、SearchProjectionWritePort；新增 [FeatureCandidatesQueryPort](../apps/api/src/modules/search/feature-candidates.port.ts) 在 SQL LIMIT 前按服务端授权的当前项目、FEATURE/MEMBER 过滤，使用规范化文本与转义 PGroonga 查询，不提供模糊语义或正则匹配。
+- C 复用 AuditWritePort、ActivityWritePort、SearchProjectionWritePort；新增 `FeatureCandidatesQueryPort`（ADR-109 已移除） 在 SQL LIMIT 前按服务端授权的当前项目、FEATURE/MEMBER 过滤，使用规范化文本与转义 PGroonga 查询，不提供模糊语义或正则匹配。
 - 一个命令由 IdempotencyHttpService 创建一个外层 UnitOfWork；同一 tx 传到 Session/CSRF、授权、编号、功能行、审计、活动、搜索及幂等。项目 → 模块 → 功能依次加锁；功能 UPDATE 使用 FOR UPDATE 与条件 row_version 并递增。没有事务内网络请求，也没有访问其他领域内部 Repository。
 - 重放重查 Session/CSRF、当前权限、结果真实归属、父级可写性及必要重认证；重复归档的原成功可以重放，不重复执行状态迁移。活动使用审计链来源去重；搜索索引编号、名称和当前说明，标签保存展示但不纳入本轮搜索承诺。投影状态随归档/恢复更新，历史仍可读。
 
@@ -83,10 +83,10 @@ fetch 后将 dev/b 从 `58abb40` 快进至实际 origin/main `8b895e1`，创建 
 
 审核重点：
 
-1. [FeaturesManagementService](../apps/api/src/modules/features/features-management.service.ts) 与 [HTTP 服务](../apps/api/src/modules/features/features-http.service.ts)：锁序、错误优先级、重放门禁、快照和投影整体回滚。
+1. `FeaturesManagementService` 与 `features-http.service.ts`（ADR-109 已移除）：锁序、错误优先级、重放门禁、快照和投影整体回滚。
 2. A 审查新增项目编号公开基础设施和 ProjectsModule 装配；无数据库迁移待审。
-3. C 审查搜索公开候选端口、AppModule 装配、生成客户端以及 [Edge E2E](../apps/e2e/tests/features.spec.ts)；没有公共布局或设计系统重构。
-4. [前端页面](../apps/web/src/features/features/FeaturesPageView.tsx) / [数据层](../apps/web/src/features/features/feature-query.ts)：三方冲突、标签保留、幂等 Key 与状态操作；[相似提示](../apps/web/src/features/features/SimilarFeatures.tsx) 的过期请求隔离。
+3. C 审查搜索公开候选端口、AppModule 装配、生成客户端以及 `features.spec.ts` 浏览器路径（ADR-109 已移除）；没有公共布局或设计系统重构。
+4. `FeaturesPageView.tsx` / `feature-query.ts`（ADR-109 已移除）：三方冲突、标签保留、幂等 Key 与状态操作；`SimilarFeatures.tsx` 相似提示（ADR-109 已移除） 的过期请求隔离。
 5. 当前列表沿用全列表返回，未引入分页或规模性能承诺；关联统计/任务/记录/链接/遗留业务和对应 E2E 仍由后续功能完成。
 
 原用户修改 `README.md`（仍为原 1 行导航增量）与 `docs/three-person-ai-delivery-plan-v2.md`（原未跟踪文件）没有改写。所有 F-13 修改仍未暂存、未提交，等待审核对话接手。

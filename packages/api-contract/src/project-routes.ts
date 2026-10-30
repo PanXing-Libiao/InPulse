@@ -29,7 +29,6 @@ const projectDetailFields = [
   "project.updatedAt",
   "project.memberCount",
   "project.stats.activeModuleCount",
-  "project.stats.activeFeatureCount",
   "project.stats.openTaskCount",
   "project.stats.completedTaskCount",
   "currentUserRole",
@@ -105,7 +104,7 @@ export const projectRoutes: readonly RouteDefinition[] = [
     // 2026-09-17：项目四态改造后 ProjectItem 新增 hasCompletedTask，重放安全字段变化，旧 Key 409。
     // 2026-09-22：ADR-039 移除 PROJECT_ADMIN，currentUserRole 枚举收窄，旧 Key 409。
     // 2026-09-23：项目三态改造，project.status 取值域收窄（去掉 ARCHIVED），旧 Key 409。
-    idempotencyContractVersion: "1.6.0",
+    idempotencyContractVersion: "2.0.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: replayPolicy,
@@ -150,7 +149,7 @@ export const projectRoutes: readonly RouteDefinition[] = [
     // 2026-09-22：ADR-039 门禁改为任意活跃成员且 currentUserRole 枚举收窄，旧 Key 409。
     // 2026-09-23：新增维护中任务收尾门禁与 project.status 取值域收窄，旧 Key 409。
     // 2026-10-21：ADR-092 状态变更不再推进 row_version，响应版本语义变化，旧 Key 409。
-    idempotencyContractVersion: "1.3.0",
+    idempotencyContractVersion: "2.0.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: replayPolicy,
@@ -173,7 +172,7 @@ export const projectRoutes: readonly RouteDefinition[] = [
     path: "/projects/{projectId}",
     operationId: "deleteProject",
     summary:
-      "F-06.4 删除项目（ADR-062，项目审计链保留口径由 ADR-085 修订，替代 ADR-049/ADR-051 的软删除与彻底删除两步）：只有本项目组长与系统管理员可以删除，普通成员 403 PROJECT_DELETE_FORBIDDEN，非成员与不存在一律 404。删除是物理删除——项目行、模块、功能、任务、聚合组、迭代记录、遗留项、外部链接、成员关系、通知、动态与搜索投影在同一事务内一并清空，不可撤销且没有还原入口；项目自己的 PROJECT 审计日志与链头保留为只读历史，项目编码随之释放、可以被新建项目复用。SYSTEM 审计链新增一条 project.delete（操作者、项目编码与名称、删除行数与保留审计行数），只对系统管理员可见。If-Match 版本不符 409 PROJECT_VERSION_CONFLICT，CSRF 与数据库幂等必填，同 Key 重放直接返回已存的 204。",
+      "F-06.4 删除项目（ADR-062，项目审计链保留口径由 ADR-085 修订，替代 ADR-049/ADR-051 的软删除与彻底删除两步）：只有本项目组长与系统管理员可以删除，普通成员 403 PROJECT_DELETE_FORBIDDEN，非成员与不存在一律 404。删除是物理删除——项目行、模块、任务、聚合组、迭代记录、遗留项、外部链接、成员关系、通知、动态与搜索投影在同一事务内一并清空，不可撤销且没有还原入口；项目自己的 PROJECT 审计日志与链头保留为只读历史，项目编码随之释放、可以被新建项目复用。SYSTEM 审计链新增一条 project.delete（操作者、项目编码与名称、删除行数与保留审计行数），只对系统管理员可见。If-Match 版本不符 409 PROJECT_VERSION_CONFLICT，CSRF 与数据库幂等必填，同 Key 重放直接返回已存的 204。",
     request: {
       path: "ProjectPath",
       query: "none",

@@ -2,7 +2,6 @@ import type { TransactionContext } from "../../database/transaction-context.js";
 import type { ExternalLinkTargetType } from "@inpulse/api-contract";
 export const linkAssociation = {
   PROJECT: { table: "project_external_links", column: "project_id" },
-  FEATURE: { table: "feature_external_links", column: "feature_id" },
   TASK: { table: "task_external_links", column: "task_id" },
   CHANGE_RECORD: {
     table: "change_record_external_links",

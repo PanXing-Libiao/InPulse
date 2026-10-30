@@ -260,7 +260,6 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
                   setConvertTarget({
                     projectId: item.projectId,
                     moduleId: item.moduleId,
-                    featureId: item.featureId,
                     recordId: item.recordId,
                     recordTitle: item.recordTitle,
                     leftoverItemId: item.leftoverItemId,
@@ -279,7 +278,6 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
                 onOpenTask?.({
                   projectId: followupTask.projectId,
                   moduleId: followupTask.moduleId,
-                  featureId: followupTask.featureId,
                   taskId: followupTask.taskId,
                 })
               }
@@ -429,7 +427,7 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
         <div>
           <strong>问题不是任务</strong>
           <p>
-            转为任务时系统会自动带入来源项目、模块、功能与遗留问题描述，并把来源问题标记为已处理；原记录内容不会被修改。删除只会把问题移入已处理，来源记录与历史版本同样保留。
+            转为任务时系统会自动带入来源项目、模块与遗留问题描述，并把来源问题标记为已处理；原记录内容不会被修改。删除只会把问题移入已处理，来源记录与历史版本同样保留。
           </p>
         </div>
       </div>
@@ -456,7 +454,6 @@ export const IssuesPageView: React.FC<IssuesPageViewProps> = ({
             onOpenTask?.({
               projectId: created.projectId,
               moduleId: created.moduleId,
-              featureId: created.featureId,
               taskId: created.taskId,
             });
           }}

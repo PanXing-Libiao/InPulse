@@ -8,18 +8,16 @@ const input = {
   recordVersion: 2,
   expectedRowVersion: 3,
   leftoverExpectedRowVersion: 1,
-  expectedImpactFeatureIds: [4],
   title: "跟进",
   assigneeIds: [5],
   priority: "NORMAL",
   dueAt: null,
 };
-it("requires stable item, current record and item versions and explicit impact confirmation", () => {
+it("requires stable item, current record and item versions", () => {
   expect(leftoverTaskRequestSchema.safeParse(input).success).toBe(true);
   for (const body of [
     { ...input, leftoverItemId: 0 },
     { ...input, recordVersion: 0 },
-    { ...input, expectedImpactFeatureIds: [4, 4] },
     { ...input, projectId: 10 },
     { ...input, workStatus: "DONE" },
     { ...input, assigneeIds: [] },

@@ -307,10 +307,6 @@ export async function cleanupFixtures(
           WHERE project_id IN (SELECT id FROM _cleanup_projects)`,
       );
       await remove(
-        `DELETE FROM app.feature_external_links
-          WHERE project_id IN (SELECT id FROM _cleanup_projects)`,
-      );
-      await remove(
         `DELETE FROM app.change_record_external_links
           WHERE project_id IN (SELECT id FROM _cleanup_projects)`,
       );
@@ -343,18 +339,10 @@ export async function cleanupFixtures(
              OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
-        `DELETE FROM app.change_record_feature_impacts
-          WHERE project_id IN (SELECT id FROM _cleanup_projects)`,
-      );
-      await remove(
         `DELETE FROM app.change_records
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
              OR author_id IN (SELECT id FROM _cleanup_subjects)
              OR handler_id IN (SELECT id FROM _cleanup_subjects)`,
-      );
-      await remove(
-        `DELETE FROM app.task_feature_impacts
-          WHERE project_id IN (SELECT id FROM _cleanup_projects)`,
       );
       await remove(
         `DELETE FROM app.task_status_history
@@ -381,11 +369,6 @@ export async function cleanupFixtures(
         `DELETE FROM app.tasks
           WHERE project_id IN (SELECT id FROM _cleanup_projects)
              OR creator_id IN (SELECT id FROM _cleanup_subjects)`,
-      );
-      await remove(
-        `DELETE FROM app.features
-          WHERE project_id IN (SELECT id FROM _cleanup_projects)
-             OR created_by IN (SELECT id FROM _cleanup_subjects)`,
       );
       await remove(
         `DELETE FROM app.modules

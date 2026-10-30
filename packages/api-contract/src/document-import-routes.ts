@@ -32,21 +32,14 @@ const documentResultFields = [
   "projectCode",
   "digest",
   "counts.modules",
-  "counts.features",
   "counts.tasks",
   "counts.reusedModules",
-  "counts.reusedFeatures",
   "counts.addedMembers",
   "modules[].id",
   "modules[].code",
-  "features[].id",
-  "features[].code",
-  "features[].moduleId",
   "tasks[].id",
   "tasks[].code",
   "tasks[].moduleId",
-  "tasks[].featureId",
-  "tasks[].scopeType",
 ];
 
 const documentRequestBody = {
@@ -128,7 +121,8 @@ const applyRoute = (input: {
   csrfPolicy: "required",
   idempotencyPolicy: "idempotencyRequired",
   idempotencyExceptionAdr: "none",
-  idempotencyContractVersion: "1.0.0",
+  // ADR-109：结果移除功能统计、功能 ID 与任务 scope，破坏性契约变更。
+  idempotencyContractVersion: "2.0.0",
   idempotencyFingerprintVersion: "1.0.0",
   behaviorHeaders: [],
   idempotencyReplayPolicy: {
@@ -154,7 +148,7 @@ const applyRoute = (input: {
   versionPolicy: "none",
   concurrencyPolicy: {
     rowVersion: "none",
-    lockOrder: ["project", "module", "feature", "task"],
+    lockOrder: ["project", "module", "task"],
     retry:
       "none; single transaction; project row FOR UPDATE reserved before any sequence or effect write",
   },
@@ -165,14 +159,14 @@ const applyRoute = (input: {
  * ADR-067 AI 辅助转换：`POST /document-imports/assist`。
  * 纯校验接口（无任何持久化副作用）：会话认证、无 CSRF、无幂等；调用管理员
  * 配置的 OpenAI 兼容端点把用户文档转成模板草稿。ADR-094 起，携带 target
- * 时先用一个只读短事务校验项目写权限与模块 / 功能归属，上游调用仍在事务外。
+ * 时先用一个只读短事务校验项目写权限与模块归属，上游调用仍在事务外。
  */
 const assistRoute: RouteDefinition = {
   method: "POST",
   path: "/document-imports/assist",
   operationId: "assistDocumentImport",
   summary:
-    "把用户自己的项目文档（任意结构）交给服务端配置的 OpenAI 兼容端点转成固定模板草稿，返回解析器预检问题；可选 target 在服务端校验项目写权限与模块 / 功能归属。不写任何持久化状态，无 CSRF 与幂等记录。",
+    "把用户自己的项目文档（任意结构）交给服务端配置的 OpenAI 兼容端点转成固定模板草稿，返回解析器预检问题；可选 target 在服务端校验项目写权限与模块归属。不写任何持久化状态，无 CSRF 与幂等记录。",
   request: {
     path: "none",
     query: "none",
@@ -221,14 +215,14 @@ export const documentImportRoutes: readonly RouteDefinition[] = [
     path: "/projects/{projectId}/document-imports/preview",
     operationId: "previewProjectDocumentImport",
     summary:
-      "解析固定模板文档并返回模块/功能/任务计划、行级问题与重复导入提示；不写任何持久化状态，执行时整笔重放校验。",
+      "解析固定模板文档并返回模块/任务计划、行级问题与重复导入提示；不写任何持久化状态，执行时整笔重放校验。",
     hasProject: true,
   }),
   applyRoute({
     path: "/projects/{projectId}/document-imports",
     operationId: "importProjectDocument",
     summary:
-      "在单个事务内按文档创建/复用模块与功能并创建任务，写审计、活动、通知与搜索投影；同摘要文档禁止重复导入，整笔幂等。",
+      "在单个事务内按文档创建/复用模块并创建任务，写审计、活动、通知与搜索投影；同摘要文档禁止重复导入，整笔幂等。",
     hasProject: true,
   }),
   previewRoute({
@@ -242,7 +236,7 @@ export const documentImportRoutes: readonly RouteDefinition[] = [
     path: "/project-imports",
     operationId: "importProject",
     summary:
-      "单事务创建整个项目：项目、项目成员（含任务负责人自动加入）、模块、功能与任务，写审计、活动、通知与搜索投影；项目编码全局唯一，同摘要文档禁止重复导入。",
+      "单事务创建整个项目：项目、项目成员（含任务负责人自动加入）、模块与任务，写审计、活动、通知与搜索投影；项目编码全局唯一，同摘要文档禁止重复导入。",
     hasProject: false,
   }),
   assistRoute,

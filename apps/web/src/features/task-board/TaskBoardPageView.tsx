@@ -42,7 +42,7 @@ export interface TaskBoardPageViewProps {
   readonly onFiltersChange: (next: TaskBoardFilters) => void;
   readonly adapter: TaskBoardAdapter;
   readonly client?: InpulseApiClient | undefined;
-  /** 空态引导：项目还没有任务时跳转模块与功能。 */
+  /** 空态引导：项目还没有任务时跳转模块。 */
   readonly onOpenModules?: (() => void) | undefined;
 }
 
@@ -119,7 +119,6 @@ export const TaskBoardPageView: React.FC<TaskBoardPageViewProps> = ({
     setDetailTarget({
       projectId,
       moduleId: card.moduleId,
-      featureId: card.featureId,
       taskId: card.taskId,
     });
   };
@@ -204,13 +203,13 @@ export const TaskBoardPageView: React.FC<TaskBoardPageViewProps> = ({
           </p>
           <p className="tb-empty-sub">
             {allCount === 0
-              ? "在模块与功能下创建第一个任务后，这里会按模块展示完成程度。"
+              ? "在模块下创建第一个任务后，这里会按模块展示完成程度。"
               : "调整筛选条件，或清除筛选查看全部任务。"}
           </p>
           {allCount === 0 ? (
             onOpenModules ? (
               <button type="button" className="tb-link" onClick={onOpenModules}>
-                前往模块与功能
+                前往模块
               </button>
             ) : null
           ) : (

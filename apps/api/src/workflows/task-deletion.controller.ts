@@ -18,33 +18,6 @@ export class TaskDeletionController {
     @Inject(TaskDeletionHttpService)
     private readonly service: TaskDeletionHttpService,
   ) {}
-  @Post(":projectId/modules/:moduleId/features/:featureId/tasks/:taskId/delete")
-  @Operation("deleteTask")
-  async deleteTask(
-    @Req() request: CompletionHttpRequest,
-    @Res({ passthrough: true }) response: Response,
-    @ContractPath("deleteTask") params: unknown,
-    @ContractQuery("deleteTask") query: unknown,
-    @ContractBody("deleteTask") body: unknown,
-    @ContractHeaders("deleteTask") _headers: unknown,
-  ) {
-    const result = await this.service.handle("deleteTask", {
-      ...request,
-      headers: request.headers,
-      params,
-      query,
-      body,
-    });
-    response.status(result.status);
-    response.setHeader("Cache-Control", "no-store");
-    if (result.status >= 400)
-      response.setHeader(
-        "X-Request-Id",
-        (result.body as { requestId: string }).requestId,
-      );
-    return result.body;
-  }
-
   @Post(":projectId/modules/:moduleId/tasks/:taskId/delete")
   @Operation("deleteModuleTask")
   async deleteModuleTask(

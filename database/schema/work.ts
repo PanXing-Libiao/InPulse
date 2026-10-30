@@ -90,93 +90,12 @@ export const modules = appSchema.table(
   ],
 );
 
-export const features = appSchema.table(
-  "features",
-  {
-    id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
-    projectId: integer("project_id").notNull(),
-    moduleId: integer("module_id").notNull(),
-    code: text("code").notNull(),
-    name: text("name").notNull(),
-    currentBehavior: text("current_behavior").notNull().default(""),
-    acceptanceCriteria: text("acceptance_criteria").notNull().default(""),
-    tags: text("tags").array().notNull().default(sql.raw("'{}'::text[]")),
-    /** ADR-045：功能层面下线归档，`status` 只有 `ACTIVE`（见 features_status_check）。 */
-    status: text("status").notNull().default("ACTIVE"),
-    createdBy: integer("created_by").notNull(),
-    createdBySnapshot: jsonb("created_by_snapshot").notNull(),
-    rowVersion: integer("row_version").notNull().default(1),
-    createdAt: timestamptz("created_at").notNull().defaultNow(),
-    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
-    /** ADR-045：归档时代的只读历史列，功能侧恒为空（见 features_archived_at_null_check）。 */
-    archivedAt: timestamptz("archived_at"),
-    /**
-     * ADR-059 软删除：非空表示功能已退出全部可见范围。任务、迭代记录与审计链
-     * 全部保留，只从列表、详情、统计、搜索与读写路径中排除。
-     */
-    deletedAt: timestamptz("deleted_at"),
-    /** 执行删除的用户；与 deleted_at 成对写入（见 features_deleted_state_check）。 */
-    deletedBy: integer("deleted_by"),
-    deletedBySnapshot: jsonb("deleted_by_snapshot"),
-  },
-  (table) => [
-    unique("features_project_code_unique").on(table.projectId, table.code),
-    unique("features_id_project_unique").on(table.id, table.projectId),
-    unique("features_id_module_project_unique").on(
-      table.id,
-      table.moduleId,
-      table.projectId,
-    ),
-    foreignKey({
-      name: "features_module_project_fk",
-      columns: [table.moduleId, table.projectId],
-      foreignColumns: [modules.id, modules.projectId],
-    }).onDelete("restrict"),
-    index("features_module_id_idx").on(
-      table.projectId,
-      table.moduleId,
-      table.id,
-    ),
-    check(
-      "features_code_check",
-      sql.raw(
-        "code ~ '^[A-Z][A-Z0-9_]{1,31}-F-[1-9][0-9]*$' AND length(code) <= 64",
-      ),
-    ),
-    check(
-      "features_name_check",
-      sql.raw("length(btrim(name)) BETWEEN 1 AND 500"),
-    ),
-    check(
-      "features_behavior_check",
-      sql.raw("length(current_behavior) <= 50000"),
-    ),
-    check(
-      "features_acceptance_check",
-      sql.raw("length(acceptance_criteria) <= 50000"),
-    ),
-    check(
-      "features_tags_check",
-      sql.raw("cardinality(tags) <= 50 AND array_position(tags, NULL) IS NULL"),
-    ),
-    check("features_status_check", sql.raw("status = 'ACTIVE'")),
-    check("features_row_version_check", sql.raw("row_version > 0")),
-    check("features_archived_at_null_check", sql.raw("archived_at IS NULL")),
-    check(
-      "features_deleted_state_check",
-      sql.raw("(deleted_at IS NULL) = (deleted_by IS NULL)"),
-    ),
-  ],
-);
-
 export const tasks = appSchema.table(
   "tasks",
   {
     id: integer("id").primaryKey().generatedByDefaultAsIdentity(),
     projectId: integer("project_id").notNull(),
     moduleId: integer("module_id").notNull(),
-    featureId: integer("feature_id"),
-    scopeType: text("scope_type").notNull(),
     code: text("code").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
@@ -208,11 +127,6 @@ export const tasks = appSchema.table(
       columns: [table.moduleId, table.projectId],
       foreignColumns: [modules.id, modules.projectId],
     }).onDelete("restrict"),
-    foreignKey({
-      name: "tasks_feature_module_project_fk",
-      columns: [table.featureId, table.moduleId, table.projectId],
-      foreignColumns: [features.id, features.moduleId, features.projectId],
-    }).onDelete("restrict"),
     index("tasks_project_status_idx").on(
       table.projectId,
       table.lifecycleStatus,
@@ -223,13 +137,6 @@ export const tasks = appSchema.table(
       table.creatorId,
       table.workStatus,
       table.id,
-    ),
-    check("tasks_scope_check", sql.raw("scope_type IN ('FEATURE', 'MODULE')")),
-    check(
-      "tasks_scope_feature_check",
-      sql.raw(
-        "(scope_type = 'FEATURE' AND feature_id IS NOT NULL) OR (scope_type = 'MODULE' AND feature_id IS NULL)",
-      ),
     ),
     check(
       "tasks_code_check",
@@ -267,38 +174,6 @@ export const tasks = appSchema.table(
       ),
     ),
     check("tasks_row_version_check", sql.raw("row_version > 0")),
-  ],
-);
-
-export const taskFeatureImpacts = appSchema.table(
-  "task_feature_impacts",
-  {
-    taskId: integer("task_id").notNull(),
-    featureId: integer("feature_id").notNull(),
-    moduleId: integer("module_id").notNull(),
-    projectId: integer("project_id").notNull(),
-    relationType: text("relation_type").notNull().default("IMPACT"),
-    createdAt: timestamptz("created_at").notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({
-      name: "task_feature_impacts_pk",
-      columns: [table.taskId, table.featureId],
-    }),
-    foreignKey({
-      name: "task_feature_impacts_task_fk",
-      columns: [table.taskId, table.moduleId, table.projectId],
-      foreignColumns: [tasks.id, tasks.moduleId, tasks.projectId],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "task_feature_impacts_feature_fk",
-      columns: [table.featureId, table.moduleId, table.projectId],
-      foreignColumns: [features.id, features.moduleId, features.projectId],
-    }).onDelete("restrict"),
-    check(
-      "task_feature_impacts_type_check",
-      sql.raw("relation_type = 'IMPACT'"),
-    ),
   ],
 );
 

@@ -16,8 +16,6 @@ export type MyTaskStatusFilter = "open" | "done" | "all";
 
 export type MyTaskPriority = "NORMAL" | "HIGH" | "URGENT";
 
-export type MyTaskLevel = "FEATURE" | "MODULE";
-
 export type MyTaskRelation = "STANDALONE" | "MAIN" | "SOURCE";
 
 export type MyTaskRecordFilter = "yes" | "no";
@@ -37,7 +35,6 @@ export interface MyTaskFilters {
   readonly projectId: number | null;
   readonly status: MyTaskStatusFilter;
   readonly priority: MyTaskPriority | null;
-  readonly level: MyTaskLevel | null;
   readonly relation: MyTaskRelation | null;
   readonly hasRecord: MyTaskRecordFilter | null;
   readonly hasGithub: MyTaskGithubFilter | null;
@@ -62,9 +59,6 @@ export interface MyTaskListItem {
   readonly projectName: string;
   readonly moduleId: number;
   readonly moduleName: string;
-  readonly featureId: number | null;
-  readonly featureName: string | null;
-  readonly scopeType: MyTaskLevel;
   readonly workStatus: MyTaskWorkStatus;
   readonly lifecycleStatus: "ACTIVE" | "INVALID";
   readonly priority: MyTaskPriority;
@@ -82,7 +76,7 @@ export interface MyTaskListItem {
   readonly hasPublishedRecord: boolean;
   /**
    * 该任务的 PUBLISHED 正式记录条数（裁决修订 D-1，与 hasPublishedRecord 同源同口径：
-   * 按 change_records 计数，不按版本计数、不按影响功能去重），恒有
+   * 按 change_records 计数，不按版本计数），恒有
    * hasPublishedRecord === publishedRecordCount > 0；F-25 步骤 3 的「迭代记录 n 条」。
    */
   readonly publishedRecordCount: number;

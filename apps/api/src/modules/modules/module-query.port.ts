@@ -10,12 +10,12 @@ export interface ModuleForWriteResource extends CheckModuleForWriteInput {
 }
 
 /**
- * 与 Module/Feature 的其他 WriteCheckResult 同语义：
+ * 与其他写前检查的 WriteCheckResult 同语义：
  * - `not-found`：模块不存在或项目归属不匹配。
  * - `allowed`：已通过归属校验，模块可写。
  *
  * ADR-044：模块层面下线归档，模块不再有只读态，因此本 Port 不再返回
- * `parent-not-active`；功能仍保留该 kind（`feature.status = ARCHIVED`）。
+ * `parent-not-active`；模块当前仅有 ACTIVE 状态。
  * Port 只返回类型化结果，不抛出 HTTP 异常；HTTP 映射由 Use Case/Workflow 负责。
  */
 export type ModuleWriteCheckResult =

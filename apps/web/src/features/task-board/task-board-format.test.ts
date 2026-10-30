@@ -25,9 +25,6 @@ function cardOf(overrides: Partial<TaskBoardCard> = {}): TaskBoardCard {
     code: "T-1001",
     title: "实现任务看板",
     moduleId: 3,
-    featureId: 5,
-    featureName: "任务看板",
-    scopeType: "FEATURE",
     priority: "NORMAL",
     workStatus: "TODO",
     dueAt: "2026-09-17T18:30:00.000Z",
@@ -48,7 +45,6 @@ const stats: TaskBoardStats = {
   dueToday: 2,
   completedThisWeek: 5,
   completionRate: 69,
-  featureCount: 8,
   memberCount: 4,
 };
 
@@ -207,7 +203,6 @@ describe("统计派生", () => {
       laneProgressOf({
         moduleId: 3,
         name: "调度模块",
-        featureCount: 2,
         stats: {
           total: 30,
           done: 25,

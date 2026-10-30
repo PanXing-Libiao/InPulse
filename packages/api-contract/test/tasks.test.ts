@@ -5,14 +5,14 @@ import { taskRoutes } from "../src/task-routes.js";
 describe("F-14 task input", () => {
   it("registers task routes and requires explicit replay/version/lock policies for writes", () => {
     expect(taskRoutes.map((route) => route.operationId)).toEqual([
-      "listTasks",
-      "getTask",
-      "listTaskAssignees",
-      "createTask",
-      "updateTask",
-      "getTaskStatusHistory",
-      "transitionTask",
-      "deleteTask",
+      "listModuleTasks",
+      "listModuleTaskAssignees",
+      "getModuleTask",
+      "createModuleTask",
+      "updateModuleTask",
+      "transitionModuleTask",
+      "getModuleTaskStatusHistory",
+      "deleteModuleTask",
     ]);
     for (const route of taskRoutes) {
       if (route.method === "GET") expect(route.idempotencyPolicy).toBe("none");
@@ -20,7 +20,7 @@ describe("F-14 task input", () => {
         expect(route.csrfPolicy).toBe("required");
         expect(route.idempotencyPolicy).toBe("idempotencyRequired");
         expect(route.replayAuthorizationPolicy).not.toBe("none");
-        if (route.operationId === "updateTask")
+        if (route.operationId === "updateModuleTask")
           expect(route.behaviorHeaders).toEqual(["If-Match"]);
       }
     }
@@ -42,15 +42,9 @@ describe("F-14 task input", () => {
       { ...valid, description: "x".repeat(50001) },
       { ...valid, priority: "INVALID" },
       { ...valid, dueAt: "tomorrow" },
-      ...[
-        "code",
-        "scopeType",
-        "featureId",
-        "projectId",
-        "creatorId",
-        "workStatus",
-        "rowVersion",
-      ].map((key) => ({ ...valid, [key]: 1 })),
+      ...["code", "projectId", "creatorId", "workStatus", "rowVersion"].map(
+        (key) => ({ ...valid, [key]: 1 }),
+      ),
     ])
       expect(taskEditRequestSchema.safeParse(invalid).success).toBe(false);
   });

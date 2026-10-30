@@ -45,10 +45,7 @@ function buildContent(mode, text, creatorName) {
   lines.push("## 模块：AI 导入模块 " + marker);
   lines.push("- 说明：E2E stub 生成的模块。");
   lines.push("");
-  lines.push("### 功能：AI 导入功能");
-  lines.push("- 当前说明：E2E stub 生成的功能。");
-  lines.push("");
-  lines.push("#### 任务：AI 导入任务");
+  lines.push("### 任务：AI 导入任务");
   lines.push("- 负责人：" + owner);
   return lines.join("\n");
 }

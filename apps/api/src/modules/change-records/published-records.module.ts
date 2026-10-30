@@ -32,7 +32,6 @@ import {
   PostgresMyTaskQueryPort,
 } from "./my-task-query.port.js";
 import { ModulesModule } from "../modules/index.js";
-import { FeaturesModule } from "../features/index.js";
 import { TasksManagementModule } from "../tasks/index.js";
 import { AuditModule } from "../../audit/audit.module.js";
 import { IdempotencyModule } from "../../idempotency/idempotency.module.js";
@@ -56,7 +55,6 @@ import { PublishedRecordsController } from "./published-records.controller.js";
     DatabaseModule,
     ProjectsModule,
     ModulesModule,
-    FeaturesModule,
     TasksManagementModule,
     AuditModule,
     IdempotencyModule,

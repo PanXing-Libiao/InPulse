@@ -9,15 +9,14 @@
 export type DocumentDraftLineKind =
   "BLANK" | "IGNORED" | "TITLE" | "FIELD" | "UNKNOWN";
 
-export type DocumentDraftTitleKind =
-  "PROJECT" | "MODULE" | "FEATURE" | "FEATURE_TASK" | "MODULE_TASK";
+export type DocumentDraftTitleKind = "PROJECT" | "MODULE" | "MODULE_TASK";
 
 export interface DocumentDraftLine {
   readonly kind: DocumentDraftLineKind;
   /** 原始行文本；TITLE 与 FIELD 由结构字段重建，其余按 raw 原样写回。 */
   readonly raw: string;
   readonly titleKind?: DocumentDraftTitleKind;
-  /** 标题行的「#」个数，以及原文里用的层级词（项目 / 模块 / 功能 / 任务）。 */
+  /** 标题行的「#」个数，以及原文里用的层级词（项目 / 模块 / 任务）。 */
   readonly headingDepth?: number;
   readonly headingWord?: string;
   readonly title?: string;
@@ -33,23 +32,14 @@ export interface DocumentDraftFieldView {
 
 export interface DocumentDraftTaskView {
   readonly lineIndex: number;
-  readonly scope: "FEATURE" | "MODULE";
   readonly title: string;
   readonly fields: readonly DocumentDraftFieldView[];
-}
-
-export interface DocumentDraftFeatureView {
-  readonly lineIndex: number;
-  readonly name: string;
-  readonly fields: readonly DocumentDraftFieldView[];
-  readonly tasks: readonly DocumentDraftTaskView[];
 }
 
 export interface DocumentDraftModuleView {
   readonly lineIndex: number;
   readonly name: string;
   readonly fields: readonly DocumentDraftFieldView[];
-  readonly features: readonly DocumentDraftFeatureView[];
   readonly tasks: readonly DocumentDraftTaskView[];
 }
 
@@ -61,7 +51,6 @@ export interface DocumentDraftProjectView {
 
 export interface DocumentDraftCounts {
   readonly modules: number;
-  readonly features: number;
   readonly tasks: number;
 }
 
@@ -76,9 +65,7 @@ export interface DocumentDraftView {
 const TITLE_KINDS: Readonly<Record<string, DocumentDraftTitleKind>> = {
   "1:项目": "PROJECT",
   "2:模块": "MODULE",
-  "3:功能": "FEATURE",
   "3:任务": "MODULE_TASK",
-  "4:任务": "FEATURE_TASK",
 };
 
 const FIELD_NAME_MAX_LENGTH = 50;
@@ -231,7 +218,7 @@ export function lastNodeLineIndex(
   );
 }
 
-/** 逗号 / 顿号分隔的字段值（负责人、项目成员、标签、影响功能）。 */
+/** 逗号 / 顿号分隔的字段值（负责人、项目成员）。 */
 export function splitDocumentDraftList(value: string): readonly string[] {
   return value
     .split(/[,，、]/)
@@ -254,23 +241,14 @@ interface MutableField {
 
 interface MutableTask {
   lineIndex: number;
-  scope: "FEATURE" | "MODULE";
   title: string;
   fields: MutableField[];
-}
-
-interface MutableFeature {
-  lineIndex: number;
-  name: string;
-  fields: MutableField[];
-  tasks: MutableTask[];
 }
 
 interface MutableModule {
   lineIndex: number;
   name: string;
   fields: MutableField[];
-  features: MutableFeature[];
   tasks: MutableTask[];
 }
 
@@ -288,7 +266,6 @@ export function buildDocumentDraftView(
   let project: MutableProject | null = null;
   const modules: MutableModule[] = [];
   let currentModule: MutableModule | null = null;
-  let currentFeature: MutableFeature | null = null;
   let currentTask: MutableTask | null = null;
 
   lines.forEach((line, lineIndex) => {
@@ -302,7 +279,6 @@ export function buildDocumentDraftView(
           }
           project = { lineIndex, name: title, fields: [] };
           currentModule = null;
-          currentFeature = null;
           currentTask = null;
           return;
         case "MODULE": {
@@ -310,44 +286,11 @@ export function buildDocumentDraftView(
             lineIndex,
             name: title,
             fields: [],
-            features: [],
             tasks: [],
           };
           modules.push(next);
           currentModule = next;
-          currentFeature = null;
           currentTask = null;
-          return;
-        }
-        case "FEATURE": {
-          if (currentModule === null) {
-            looseLineIndexes.push(lineIndex);
-            return;
-          }
-          const next: MutableFeature = {
-            lineIndex,
-            name: title,
-            fields: [],
-            tasks: [],
-          };
-          currentModule.features.push(next);
-          currentFeature = next;
-          currentTask = null;
-          return;
-        }
-        case "FEATURE_TASK": {
-          if (currentFeature === null) {
-            looseLineIndexes.push(lineIndex);
-            return;
-          }
-          const next: MutableTask = {
-            lineIndex,
-            scope: "FEATURE",
-            title,
-            fields: [],
-          };
-          currentFeature.tasks.push(next);
-          currentTask = next;
           return;
         }
         case "MODULE_TASK": {
@@ -357,12 +300,10 @@ export function buildDocumentDraftView(
           }
           const next: MutableTask = {
             lineIndex,
-            scope: "MODULE",
             title,
             fields: [],
           };
           currentModule.tasks.push(next);
-          currentFeature = null;
           currentTask = next;
           return;
         }
@@ -378,29 +319,18 @@ export function buildDocumentDraftView(
         value: line.fieldValue ?? "",
       };
       if (currentTask !== null) currentTask.fields.push(field);
-      else if (currentFeature !== null) currentFeature.fields.push(field);
       else if (currentModule !== null) currentModule.fields.push(field);
       else if (project !== null) project.fields.push(field);
       else looseLineIndexes.push(lineIndex);
     }
   });
 
-  const features = modules.reduce(
-    (total, item) => total + item.features.length,
-    0,
-  );
-  const tasks = modules.reduce(
-    (total, item) =>
-      total +
-      item.tasks.length +
-      item.features.reduce((inner, feature) => inner + feature.tasks.length, 0),
-    0,
-  );
+  const tasks = modules.reduce((total, item) => total + item.tasks.length, 0);
 
   return {
     project,
     modules,
-    counts: { modules: modules.length, features, tasks },
+    counts: { modules: modules.length, tasks },
     looseLineIndexes,
   };
 }

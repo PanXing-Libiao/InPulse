@@ -13,8 +13,8 @@ export interface ProjectMemberPermissionSettingsRecord {
   readonly projectLeaderTransfer: ProjectMemberPermissionLevel;
   readonly projectDelete: ProjectMemberPermissionLevel;
   readonly projectDocumentImport: ProjectMemberPermissionLevel;
-  readonly moduleFeatureEdit: ProjectMemberPermissionLevel;
-  readonly moduleFeatureDelete: ProjectMemberPermissionLevel;
+  readonly moduleEdit: ProjectMemberPermissionLevel;
+  readonly moduleDelete: ProjectMemberPermissionLevel;
   readonly taskEdit: ProjectMemberPermissionLevel;
   readonly taskLifecycle: ProjectMemberPermissionLevel;
   readonly recordWrite: ProjectMemberPermissionLevel;
@@ -30,8 +30,8 @@ interface SettingsRow {
   readonly projectLeaderTransfer: ProjectMemberPermissionLevel;
   readonly projectDelete: ProjectMemberPermissionLevel;
   readonly projectDocumentImport: ProjectMemberPermissionLevel;
-  readonly moduleFeatureEdit: ProjectMemberPermissionLevel;
-  readonly moduleFeatureDelete: ProjectMemberPermissionLevel;
+  readonly moduleEdit: ProjectMemberPermissionLevel;
+  readonly moduleDelete: ProjectMemberPermissionLevel;
   readonly taskEdit: ProjectMemberPermissionLevel;
   readonly taskLifecycle: ProjectMemberPermissionLevel;
   readonly recordWrite: ProjectMemberPermissionLevel;
@@ -55,8 +55,8 @@ const toRecord = (row: SettingsRow): ProjectMemberPermissionSettingsRecord => ({
   projectLeaderTransfer: row.projectLeaderTransfer,
   projectDelete: row.projectDelete,
   projectDocumentImport: row.projectDocumentImport,
-  moduleFeatureEdit: row.moduleFeatureEdit,
-  moduleFeatureDelete: row.moduleFeatureDelete,
+  moduleEdit: row.moduleEdit,
+  moduleDelete: row.moduleDelete,
   taskEdit: row.taskEdit,
   taskLifecycle: row.taskLifecycle,
   recordWrite: row.recordWrite,
@@ -80,8 +80,8 @@ export class ProjectMemberPermissionRepository {
              project_leader_transfer AS "projectLeaderTransfer",
              project_delete AS "projectDelete",
              project_document_import AS "projectDocumentImport",
-             module_feature_edit AS "moduleFeatureEdit",
-             module_feature_delete AS "moduleFeatureDelete",
+             module_edit AS "moduleEdit",
+             module_delete AS "moduleDelete",
              task_edit AS "taskEdit",
              task_lifecycle AS "taskLifecycle",
              record_write AS "recordWrite",
@@ -108,8 +108,8 @@ export class ProjectMemberPermissionRepository {
              project_leader_transfer = ${values.projectLeaderTransfer},
              project_delete = ${values.projectDelete},
              project_document_import = ${values.projectDocumentImport},
-             module_feature_edit = ${values.moduleFeatureEdit},
-             module_feature_delete = ${values.moduleFeatureDelete},
+             module_edit = ${values.moduleEdit},
+             module_delete = ${values.moduleDelete},
              task_edit = ${values.taskEdit},
              task_lifecycle = ${values.taskLifecycle},
              record_write = ${values.recordWrite},
@@ -134,8 +134,8 @@ export function projectMemberPermissionToContract(
     projectLeaderTransfer: record.projectLeaderTransfer,
     projectDelete: record.projectDelete,
     projectDocumentImport: record.projectDocumentImport,
-    moduleFeatureEdit: record.moduleFeatureEdit,
-    moduleFeatureDelete: record.moduleFeatureDelete,
+    moduleEdit: record.moduleEdit,
+    moduleDelete: record.moduleDelete,
     taskEdit: record.taskEdit,
     taskLifecycle: record.taskLifecycle,
     recordWrite: record.recordWrite,

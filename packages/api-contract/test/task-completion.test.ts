@@ -9,32 +9,29 @@ const record = {
   resultVerification: "验证",
   remainingIssues: [],
 };
-it("versions both legacy status operations while preserving their original fingerprint history ", () => {
+it("versions the module task status operation while preserving its fingerprint history", () => {
   const history = JSON.parse(
     readFileSync(
       new URL("../generated/route-contract-fingerprints.json", import.meta.url),
       "utf8",
     ),
   ) as Record<string, { version: string }[]>;
-  for (const operation of ["transitionTask", "transitionModuleTask"]) {
-    const route = routeRegistry.find(
-      (route) => route.operationId === operation,
-    )!;
-    // ADR-040 起响应 TaskItem 新增 assigneeIds：legacy status 路由再升一个主版本；
-    // ADR-054 起 TaskItem 去掉已归档生命周期取值，重放响应字段变化再升一个主版本。
-    expect(route.idempotencyContractVersion).toBe("5.0.0");
-    expect(route.replayAuthorizationPolicy).toMatchObject({
-      version: "2.0.0",
-      resources: { contextSchemaRef: "TaskStatusCompatibilityReplayContext" },
-    });
-    expect(history[operation]!.map((entry) => entry.version)).toEqual([
-      "1.0.0",
-      "2.0.0",
-      "3.0.0",
-      "4.0.0",
-      "5.0.0",
-    ]);
-  }
+  const route = routeRegistry.find(
+    (route) => route.operationId === "transitionModuleTask",
+  )!;
+  expect(route.idempotencyContractVersion).toBe("6.0.0");
+  expect(route.replayAuthorizationPolicy).toMatchObject({
+    version: "2.0.0",
+    resources: { contextSchemaRef: "TaskStatusCompatibilityReplayContext" },
+  });
+  expect(history.transitionModuleTask!.map((entry) => entry.version)).toEqual([
+    "1.0.0",
+    "2.0.0",
+    "3.0.0",
+    "4.0.0",
+    "5.0.0",
+    "6.0.0",
+  ]);
 });
 it("accepts exactly one inline record or explicit draft reference, never both", () => {
   const base = { mode: "WITH_RECORD", expectedRowVersion: 2 };

@@ -55,7 +55,7 @@ describe("AppRouter integration", () => {
       }),
     } as unknown as InpulseApiClient;
 
-    // 项目概览已与「模块与功能」合并：旧地址不应再停留在 /overview。
+    // 项目概览已与模块目录合并：旧地址不应再停留在 /overview。
     window.history.pushState({}, "", "/projects/7/overview");
     try {
       render(

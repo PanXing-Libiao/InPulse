@@ -64,8 +64,6 @@ let secondMemberUser = 0;
 let memberCookie = "";
 let otherCookie = "";
 let outsiderCookie = "";
-let featureA = 0;
-let featureB = 0;
 let groupId = 0;
 
 let tMain = 0;
@@ -96,7 +94,7 @@ const recordContent = {
   remainingIssues: [],
 };
 
-function nextSuffix(kind: "T" | "F" | "CR"): string {
+function nextSuffix(kind: "T" | "CR"): string {
   sequence += 1;
   return "-" + kind + "-" + String(sequence);
 }
@@ -111,25 +109,10 @@ async function newModule(scope: ProjectFixture, name: string): Promise<number> {
   return row.id;
 }
 
-async function newFeature(
-  scope: ProjectFixture,
-  moduleId: number,
-  name: string,
-): Promise<number> {
-  const [row] = await runtime!.sql<{ id: number }[]>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (${scope.projectId}, ${moduleId}, ${scope.code + nextSuffix("F")}, ${name}, ${scope.userId})
-    RETURNING id
-  `;
-  if (!row) throw new Error("feature fixture insert returned no row");
-  return row.id;
-}
-
 interface TaskOptions {
   readonly assigneeIds?: number[];
   /** 任务创建者；缺省为项目夹具所有者，用于构造 creator ≠ assignee 的场景。 */
   readonly actorUserId?: number;
-  readonly featureId?: number | null;
   readonly workStatus?: "TODO" | "DONE" | "CANCELED";
   readonly lifecycleStatus?: "ACTIVE" | "INVALID";
   readonly title?: string;
@@ -141,13 +124,12 @@ async function newTask(
   scope: ProjectFixture,
   options: TaskOptions = {},
 ): Promise<number> {
-  const featureId = options.featureId ?? null;
   const workStatus = options.workStatus ?? "TODO";
   const code = scope.code + nextSuffix("T");
   return uow!.run(async (tx) => {
     const created = await taskWrites.create(
       tx,
-      { projectId: scope.projectId, moduleId: scope.moduleId, featureId },
+      { projectId: scope.projectId, moduleId: scope.moduleId },
       options.actorUserId ?? scope.userId,
       code,
       {
@@ -195,7 +177,6 @@ async function setProjectStatus(
 }
 
 interface RecordOptions {
-  readonly featureId?: number | null;
   readonly taskId?: number | null;
   readonly publishedAt?: string;
   readonly status?: "PUBLISHED" | "VOID";
@@ -210,7 +191,6 @@ async function newPublishedRecord(
   options: RecordOptions = {},
 ): Promise<number> {
   const code = scope.code + nextSuffix("CR");
-  const featureId = options.featureId ?? null;
   const taskId = options.taskId ?? null;
   const publishedAt = options.publishedAt ?? null;
   const draft = await uow!.run((tx) =>
@@ -219,8 +199,6 @@ async function newPublishedRecord(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId,
-        impactFeatureIds: [],
       },
       scope.userId,
       recordContent,
@@ -240,11 +218,9 @@ async function newPublishedRecord(
 async function newDraftRecord(
   scope: ProjectFixture,
   options: {
-    readonly featureId?: number | null;
     readonly taskId?: number | null;
   } = {},
 ): Promise<number> {
-  const featureId = options.featureId ?? null;
   const taskId = options.taskId ?? null;
   const draft = await uow!.run((tx) =>
     draftWrites.create(
@@ -252,8 +228,6 @@ async function newDraftRecord(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId,
-        impactFeatureIds: [],
       },
       scope.userId,
       recordContent,
@@ -434,31 +408,18 @@ beforeAll(async () => {
   // ADR-044：模块已无归档态，夹具只保留两个活跃模块。
   await newModule(projectFixture, "聚合读接口模块");
 
-  featureA = await newFeature(
-    projectFixture,
-    projectFixture.moduleId,
-    "聚合读接口功能A",
-  );
-  featureB = await newFeature(
-    projectFixture,
-    projectFixture.moduleId,
-    "聚合读接口功能B",
-  );
-  tMain = await newTask(projectFixture, { featureId: featureA });
-  tSource = await newTask(projectFixture, { featureId: featureB });
-  tHistorical = await newTask(projectFixture, { featureId: featureA });
-  tDetached = await newTask(projectFixture, { featureId: featureB });
-  tModule = await newTask(projectFixture, { featureId: null });
+  tMain = await newTask(projectFixture);
+  tSource = await newTask(projectFixture);
+  tHistorical = await newTask(projectFixture);
+  tDetached = await newTask(projectFixture);
+  tModule = await newTask(projectFixture);
   tDone = await newTask(projectFixture, {
-    featureId: featureA,
     workStatus: "DONE",
   });
   tCanceled = await newTask(projectFixture, {
-    featureId: featureA,
     workStatus: "CANCELED",
   });
   tInvalid = await newTask(projectFixture, {
-    featureId: featureA,
     lifecycleStatus: "INVALID",
   });
 
@@ -494,51 +455,42 @@ beforeAll(async () => {
   ]);
 
   crMain = await newPublishedRecord(projectFixture, {
-    featureId: featureA,
     publishedAt: at(1),
     taskId: tMain,
   });
   crModule = await newPublishedRecord(projectFixture, { publishedAt: at(2) });
   crSource = await newPublishedRecord(projectFixture, {
-    featureId: featureB,
     publishedAt: at(3),
     taskId: tSource,
   });
   crVoid = await newPublishedRecord(projectFixture, {
-    featureId: featureB,
     publishedAt: at(4),
     status: "VOID",
     taskId: tSource,
   });
   crHistorical = await newPublishedRecord(projectFixture, {
-    featureId: featureA,
     publishedAt: at(5),
     taskId: tHistorical,
   });
   crPaged = [
     await newPublishedRecord(projectFixture, {
-      featureId: featureB,
       publishedAt: at(6),
       taskId: tSource,
     }),
     await newPublishedRecord(projectFixture, {
-      featureId: featureB,
       publishedAt: at(7),
       taskId: tSource,
     }),
     await newPublishedRecord(projectFixture, {
-      featureId: featureB,
       publishedAt: at(8),
       taskId: tSource,
     }),
     await newPublishedRecord(projectFixture, {
-      featureId: featureB,
       publishedAt: at(9),
       taskId: tSource,
     }),
   ];
   crDraft = await newDraftRecord(projectFixture, {
-    featureId: featureA,
     taskId: tMain,
   });
   // §29.4：版本递增不改变记录数、统计口径与列表条数。
@@ -757,17 +709,12 @@ describe("GET /api/v1/task-groups/{groupId}（R-1 聚合组视图）", () => {
     expect(detail.members.map((member) => member.publishedRecordCount)).toEqual(
       [1, 5, 1, 0],
     );
-    // 2026-09-21：分支卡片需要展示任务优先级与所属功能名称而不是功能编号。
-    expect(
-      detail.members.map((member) => ({
-        featureName: member.featureName,
-        priority: member.priority,
-      })),
-    ).toEqual([
-      { featureName: "聚合读接口功能A", priority: "NORMAL" },
-      { featureName: "聚合读接口功能B", priority: "NORMAL" },
-      { featureName: "聚合读接口功能A", priority: "NORMAL" },
-      { featureName: "聚合读接口功能B", priority: "NORMAL" },
+    // 2026-09-21：分支卡片需要展示任务优先级与所属模块名称而不是模块编号。
+    expect(detail.members.map((member) => member.priority)).toEqual([
+      "NORMAL",
+      "NORMAL",
+      "NORMAL",
+      "NORMAL",
     ]);
     expect(detail.members[0]!.taskCode).toContain("-T-");
     expect(detail.members[0]!.title.length).toBeGreaterThan(0);
@@ -824,17 +771,6 @@ describe("GET /api/v1/task-groups/{groupId}/records（R-4 聚合组记录）", (
     expect(
       page.items.find((item) => item.recordId === crHistorical)?.sourceLabel,
     ).toContain("-T-");
-    // 2026-09-21：记录的功能也按名称返回，顺序与 items 一致。
-    expect(page.items.map((item) => item.featureName)).toEqual([
-      "聚合读接口功能B",
-      "聚合读接口功能B",
-      "聚合读接口功能B",
-      "聚合读接口功能B",
-      "聚合读接口功能A",
-      "聚合读接口功能B",
-      "聚合读接口功能B",
-      "聚合读接口功能A",
-    ]);
     expect(page.items.every((item) => item.externalLinks.length === 0)).toBe(
       true,
     );
@@ -1027,10 +963,9 @@ describe("GET /api/v1/projects/{projectId}/overview（R-2 项目概览）", () =
       status: "NOT_STARTED",
     });
     expect(overview.memberCount).toBe(2);
-    // 活跃功能排除已归档行；模块自 ADR-044 起无归档态，活跃模块数即项目模块数。
+    // 模块自 ADR-044 起无归档态，活跃模块数即项目模块数。
     // 未完成任务排除历史来源分支、CANCELED、INVALID 与 DONE，并包含 §29.3 的模块级任务。
     expect(overview.stats).toEqual({
-      activeFeatureCount: 2,
       activeModuleCount: 2,
       openTaskCount: 4,
       publishedRecordCount: 8,
@@ -1039,11 +974,6 @@ describe("GET /api/v1/projects/{projectId}/overview（R-2 项目概览）", () =
       crPaged[3]!,
       crPaged[2]!,
       crPaged[1]!,
-    ]);
-    expect(overview.recentRecords.map((item) => item.featureName)).toEqual([
-      "聚合读接口功能B",
-      "聚合读接口功能B",
-      "聚合读接口功能B",
     ]);
     expect(overview.activeLeftovers.map((item) => item.content)).toEqual([
       "来源任务遗留问题",
@@ -1089,9 +1019,6 @@ describe("GET /api/v1/projects/{projectId}/overview（R-2 项目概览）", () =
     expect(full.status).toBe(200);
     const all = projectOverviewResponseSchema.parse(full.body);
     expect(all.recentRecords).toHaveLength(8);
-    expect(
-      all.recentRecords.find((item) => item.recordId === crModule)?.featureName,
-    ).toBeNull();
     // VOID 与 DRAFT 记录都不进入最近迭代；VOID 记录与已解决项的遗留问题不计入未处理。
     expect(all.recentRecords.some((item) => item.recordId === crVoid)).toBe(
       false,
@@ -1227,20 +1154,14 @@ describe("GET /api/v1/me/tasks（R-3 我的任务）", () => {
     expect(leftoverSourceByTask.get(tMain)).toBe(false);
     expect(leftoverSourceByTask.get(tDone)).toBe(false);
     expect(page.items.find((item) => item.taskId === tModule)).toMatchObject({
-      featureId: null,
-      featureName: null,
       lifecycleStatus: "ACTIVE",
       projectId: project!.projectId,
       projectName: "Project " + project!.code,
-      scopeType: "MODULE",
       workStatus: "TODO",
     });
     expect(
       page.items.find((item) => item.taskId === tInvalid)?.lifecycleStatus,
     ).toBe("INVALID");
-    expect(
-      page.items.find((item) => item.taskId === tSource)?.featureName,
-    ).toBe("聚合读接口功能B");
   });
 
   test("四项筛选、越权 projectId 收敛与游标 filterKey 绑定", async () => {
@@ -1248,11 +1169,6 @@ describe("GET /api/v1/me/tasks（R-3 我的任务）", () => {
       readonly path: string;
       readonly taskIds: readonly number[];
     }[] = [
-      { path: "/api/v1/me/tasks?scopeType=MODULE", taskIds: [tModule] },
-      {
-        path: "/api/v1/me/tasks?scopeType=FEATURE&workStatus=TODO",
-        taskIds: [tSource, tMain, tDetached, tInvalid],
-      },
       { path: "/api/v1/me/tasks?workStatus=DONE", taskIds: [tDone] },
       { path: "/api/v1/me/tasks?workStatus=CANCELED", taskIds: [tCanceled] },
       {
@@ -1344,7 +1260,7 @@ describe("GET /api/v1/me/tasks（R-3 我的任务）", () => {
       "VALIDATION_FAILED",
     );
     await expectError(
-      "/api/v1/me/tasks?scopeType=GROUP",
+      "/api/v1/me/tasks?moduleScope=GROUP",
       memberCookie,
       422,
       "VALIDATION_FAILED",
@@ -1457,7 +1373,6 @@ describe("GET /api/v1/me/tasks（R-3 我的任务）", () => {
     const dueAt = "2027-03-01T03:00:00.000Z";
     const highTask = await newTask(project!, {
       dueAt,
-      featureId: featureA,
       priority: "HIGH",
     });
     const response = await getJson(
@@ -1521,7 +1436,7 @@ describe("GET /api/v1/me/tasks（R-3 我的任务）", () => {
   });
 
   test("githubLinkCount 与 groupId 同源映射（§10.3）", async () => {
-    const linkTask = await newTask(project!, { featureId: featureB });
+    const linkTask = await newTask(project!);
     const url = "https://github.com/256-code/InPulse/issues/9901";
     const [link] = await runtime!.sql<{ id: number }[]>`
       INSERT INTO app.external_links (project_id, display_url, normalized_url, kind, created_by)
@@ -1712,11 +1627,8 @@ describe("GET /api/v1/me/tasks（R-3 我的任务）", () => {
 describe("GET /api/v1/task-groups/memberships（R-5 任务记录标记批量读，裁决修订 D-1）", () => {
   test("覆盖请求中每一个有权 taskId：未入组任务返回空关系且计数照常", async () => {
     // 未入组但有 PUBLISHED 记录的任务：groupId / groupRole 为 null，计数照常非零。
-    const ungroupedWithRecord = await newTask(project!, {
-      featureId: featureB,
-    });
+    const ungroupedWithRecord = await newTask(project!, {});
     await newPublishedRecord(project!, {
-      featureId: featureB,
       taskId: ungroupedWithRecord,
     });
 

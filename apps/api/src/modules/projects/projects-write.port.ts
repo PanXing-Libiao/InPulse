@@ -121,13 +121,12 @@ export interface ProjectMaintenanceReopenRecord {
 /** 项目卡统计；与 R-2 项目概览的 ProjectOverviewStats 同名同口径。 */
 export interface ProjectStatRecord {
   readonly activeModuleCount: number;
-  readonly activeFeatureCount: number;
   readonly openTaskCount: number;
   readonly completedTaskCount: number;
 }
 
 /** 项目封箱海报数据版本；桥接必须拒绝未知版本而不是猜测字段。 */
-export const PROJECT_WRAP_TEMPLATE_VERSION = 1;
+export const PROJECT_WRAP_TEMPLATE_VERSION = 2;
 
 export interface ProjectWrapParticipant {
   readonly userId: number;
@@ -149,7 +148,6 @@ export interface ProjectWrapSnapshot {
     readonly publishedRecordCount: number;
     readonly activeMemberCount: number;
     readonly activeModuleCount: number;
-    readonly activeFeatureCount: number;
     readonly openTaskCount: number;
     readonly durationDays: number;
     readonly completionPercent: number;
@@ -173,7 +171,6 @@ export interface ProjectWrapRecord {
 /** 物理删除实际删除的业务行数与保留的审计行数；只用于审计留痕，不参与幂等摘要。 */
 export interface ProjectPurgeCounts {
   readonly modules: number;
-  readonly features: number;
   readonly tasks: number;
   readonly changeRecords: number;
   readonly retainedAuditLogs: number;

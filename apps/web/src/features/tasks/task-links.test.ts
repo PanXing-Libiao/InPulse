@@ -8,12 +8,11 @@ describe("task-links", () => {
     ).toEqual({
       projectId: 12,
       moduleId: 34,
-      featureId: null,
       taskId: 56,
     });
   });
 
-  it("解析功能级任务通知深链", () => {
+  it("解析历史功能级任务通知深链并回落到模块任务", () => {
     expect(
       parseTaskDetailPath(
         "/projects/12/modules/34/features/78?taskId=56&from=notification",
@@ -21,7 +20,6 @@ describe("task-links", () => {
     ).toEqual({
       projectId: 12,
       moduleId: 34,
-      featureId: 78,
       taskId: 56,
     });
   });
@@ -30,19 +28,9 @@ describe("task-links", () => {
     const moduleTask = {
       projectId: 3,
       moduleId: 9,
-      featureId: null,
-      taskId: 27,
-    };
-    const featureTask = {
-      projectId: 3,
-      moduleId: 9,
-      featureId: 15,
       taskId: 27,
     };
     expect(parseTaskDetailPath(taskDetailPath(moduleTask))).toEqual(moduleTask);
-    expect(parseTaskDetailPath(taskDetailPath(featureTask))).toEqual(
-      featureTask,
-    );
   });
 
   it("忽略非任务地址、缺少 taskId 与外部地址", () => {

@@ -3,6 +3,10 @@ import { createAuthenticatedContext } from "../helpers/auth-context.js";
 import { fillLeftovers } from "../helpers/record-leftovers.js";
 import { loadRuntime } from "../helpers/runtime.js";
 import { pickCalmSelectOption } from "../helpers/calm-select.js";
+import {
+  createTaskInOpenModule,
+  openFirstModuleTasks,
+} from "../helpers/module-tasks.js";
 
 /**
  * F-20 遗留问题页（R-6）关键路径 E2E：发布带「遗留问题」的迭代记录后，
@@ -22,16 +26,12 @@ test("F-20 遗留问题页未处理展示与页内转为任务", async ({ browse
     const leftover =
       "遗留页跟原文 " + suffix + "：充电策略参数配置项缺少默认值校验。";
 
-    await page.goto("/projects/" + runtime.projectId + "/modules");
-    await page.locator(".module-card").first().click();
-    await page.getByRole("tab", { name: /模块级任务/ }).click();
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
-    const form = page.getByRole("dialog", { name: "新建任务" });
-    await form.getByLabel("任务标题").fill(taskTitle);
-    await pickCalmSelectOption(form, "负责人", runtime.user.name);
-    await form.getByRole("button", { name: /创建任务/ }).click();
-    await expect(form).toBeHidden();
-    const task = page.getByRole("dialog", { name: "任务详情" });
+    await openFirstModuleTasks(page, runtime.projectId);
+    const task = await createTaskInOpenModule(
+      page,
+      runtime.user.name,
+      taskTitle,
+    );
     await task.getByRole("button", { name: "完成任务", exact: true }).click();
     const completion = page.getByRole("dialog", {
       name: "完成任务",
@@ -53,8 +53,8 @@ test("F-20 遗留问题页未处理展示与页内转为任务", async ({ browse
     await expect(page.getByText(/按发布时间倒序/)).toHaveCount(0);
     await expect(page.locator(".issues-page > .issue-list")).toBeVisible();
 
-    // 2026-10-19 用户反馈「布局放中间点，右边留白太多了」：宽屏下 1020px 定宽
-    // 列表必须在内容区内水平居中，左右留白差值不超过 1px；随后恢复默认视口继续交互。
+    // 2026-10-28 与迭代记录页统一为 1200px 内容宽度：宽屏下列表必须在
+    // 内容区内水平居中，左右留白差值不超过 1px；随后恢复默认视口继续交互。
     await page.setViewportSize({ width: 1680, height: 900 });
     const listSpacing = await page.evaluate(() => {
       const list = document.querySelector(".issues-page > .issue-list");
@@ -71,8 +71,8 @@ test("F-20 遗留问题页未处理展示与页内转为任务", async ({ browse
         right: contentRect.right - listRect.right,
       };
     });
-    expect(listSpacing.contentWidth).toBeGreaterThan(1020);
-    expect(listSpacing.listWidth).toBeLessThanOrEqual(1020);
+    expect(listSpacing.contentWidth).toBeGreaterThan(1200);
+    expect(listSpacing.listWidth).toBeLessThanOrEqual(1200);
     expect(Math.abs(listSpacing.left - listSpacing.right)).toBeLessThanOrEqual(
       1,
     );
@@ -94,7 +94,7 @@ test("F-20 遗留问题页未处理展示与页内转为任务", async ({ browse
     await expect(record.getByText(leftover).first()).toBeVisible();
 
     // 2026-10-10 用户指示：记录详情里的「查看来源任务」只在当前页面就地打开任务弹窗
-    // （与任务中心同一宿主），不跳转到项目 / 模块 / 功能页；关掉任务弹窗后回到本条
+    // （与任务中心同一宿主），不跳转到项目 / 模块页；关掉任务弹窗后回到本条
     // 记录弹窗，地址栏始终停在 /issues。
     await record.getByRole("button", { name: "查看来源任务" }).click();
     const sourceTask = page.getByRole("dialog", { name: "任务详情" });
@@ -193,16 +193,12 @@ test("F-20 长遗留问题正文截两行后可展开，卡片与操作列保持
       "避免同一笔用量在两个账期被重复计入。";
     const shortLeftover = "遗留页短文 " + suffix + "：补充默认值校验。";
 
-    await page.goto("/projects/" + runtime.projectId + "/modules");
-    await page.locator(".module-card").first().click();
-    await page.getByRole("tab", { name: /模块级任务/ }).click();
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
-    const form = page.getByRole("dialog", { name: "新建任务" });
-    await form.getByLabel("任务标题").fill(taskTitle);
-    await pickCalmSelectOption(form, "负责人", runtime.user.name);
-    await form.getByRole("button", { name: /创建任务/ }).click();
-    await expect(form).toBeHidden();
-    const task = page.getByRole("dialog", { name: "任务详情" });
+    await openFirstModuleTasks(page, runtime.projectId);
+    const task = await createTaskInOpenModule(
+      page,
+      runtime.user.name,
+      taskTitle,
+    );
     await task.getByRole("button", { name: "完成任务", exact: true }).click();
     const completion = page.getByRole("dialog", {
       name: "完成任务",

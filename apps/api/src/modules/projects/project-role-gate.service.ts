@@ -93,8 +93,8 @@ export class ProjectRoleGateService {
   }
 
   /**
-   * ADR-096 / ADR-104 模块与功能删除门禁。模块和功能共用 moduleFeatureDelete，
-   * 但对外错误码仍由调用方指定，保持模块 / 功能两条命令的诊断稳定。
+   * ADR-096 / ADR-104 模块删除门禁。模块删除复用 moduleDelete，
+   * 对外错误码仍由调用方指定，保持模块命令的诊断稳定。
    */
   async scopeDeleterRole(
     tx: TransactionContext,
@@ -102,16 +102,10 @@ export class ProjectRoleGateService {
     projectId: number,
     forbidden: ForbiddenOverride = {
       code: "MODULE_DELETE_FORBIDDEN",
-      message: "当前平台权限配置不允许该成员删除模块或功能",
+      message: "当前平台权限配置不允许该成员删除模块",
     },
   ): Promise<ProjectRoleGateResult> {
-    return this.gate(
-      tx,
-      actorUserId,
-      projectId,
-      "moduleFeatureDelete",
-      forbidden,
-    );
+    return this.gate(tx, actorUserId, projectId, "moduleDelete", forbidden);
   }
 
   /**
@@ -149,7 +143,7 @@ export class ProjectRoleGateService {
     capability:
       | "projectLeaderTransfer"
       | "projectDelete"
-      | "moduleFeatureDelete"
+      | "moduleDelete"
       | "projectWecomGroup",
     forbidden: ForbiddenOverride,
   ): Promise<ProjectRoleGateResult> {

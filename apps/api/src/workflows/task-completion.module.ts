@@ -8,9 +8,7 @@ import { ExternalLinksModule } from "../modules/external-links/external-links.mo
 import { SearchProjectionModule } from "../modules/search/search-projection.module.js";
 import { ProjectsModule } from "../modules/projects/index.js";
 import { ModulesModule } from "../modules/modules/index.js";
-import { FeaturesModule } from "../modules/features/index.js";
 import { ModulesManagementModule } from "../modules/modules/modules-management.module.js";
-import { FeaturesManagementModule } from "../modules/features/features-management.module.js";
 import { TasksManagementModule } from "../modules/tasks/index.js";
 import { TaskGroupsModule } from "../modules/task-groups/index.js";
 import {
@@ -39,9 +37,7 @@ import { ScopeDeletionController } from "./scope-deletion.controller.js";
     SearchProjectionModule,
     ProjectsModule,
     ModulesModule,
-    FeaturesModule,
     ModulesManagementModule,
-    FeaturesManagementModule,
     TasksManagementModule,
     TaskGroupsModule,
     RecordDraftsModule,

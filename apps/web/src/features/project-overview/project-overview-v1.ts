@@ -44,7 +44,6 @@ export interface ProjectOverviewV1Project {
 
 export interface ProjectOverviewV1Stats {
   readonly activeModuleCount: number;
-  readonly activeFeatureCount: number;
   readonly openTaskCount: number;
   readonly publishedRecordCount: number;
 }
@@ -54,8 +53,6 @@ export interface ProjectOverviewV1RecentRecord {
   readonly code: string;
   readonly title: string;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly featureName: string | null;
   readonly publishedAt: string;
 }
 
@@ -111,7 +108,7 @@ export function toProjectOverviewV1Query(
   };
 }
 
-/** 无损映射：冻结字段到骨架的最近迭代视图（moduleId / featureId 不进入视图）。 */
+/** 无损映射：冻结字段到骨架的最近迭代视图（moduleId 不进入视图）。 */
 export function fromV1RecentRecords(
   items: readonly ProjectOverviewV1RecentRecord[],
 ): readonly ProjectOverviewIteration[] {
@@ -119,7 +116,6 @@ export function fromV1RecentRecords(
     recordId: item.recordId,
     code: item.code,
     title: item.title,
-    featureName: item.featureName,
     publishedAt: item.publishedAt,
   }));
 }
@@ -136,7 +132,6 @@ export function fromV1ProjectOverview(
   return {
     stats: {
       activeModules: response.stats.activeModuleCount,
-      activeFeatures: response.stats.activeFeatureCount,
       openTasks: response.stats.openTaskCount,
       publishedRecords: response.stats.publishedRecordCount,
       openLeftovers: response.activeLeftoverTotal,

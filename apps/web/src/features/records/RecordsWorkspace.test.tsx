@@ -50,10 +50,7 @@ const first: ReadableRecord = {
   id: 7,
   projectId: 1,
   moduleId: 2,
-  featureId: null,
-  scopeType: "MODULE",
   taskId: null,
-  impactFeatureIds: [],
   handlerId: 3,
   authorId: 3,
   status: "PUBLISHED",
@@ -91,7 +88,6 @@ function feedItem(
     record,
     projectName: record.projectId === 1 ? "支付项目" : "风控项目",
     moduleName: record.projectId === 1 ? "支付模块" : "风控模块",
-    featureName: null,
     author: { userId: record.authorId, name: "开发者 C", avatarUrl: null },
     ...overrides,
   };

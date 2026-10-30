@@ -17,7 +17,6 @@ import {
   type MyTaskPriority,
 } from "../change-records/index.js";
 import { ExternalLinksQueryPort } from "../external-links/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { ModuleReadPort } from "../modules/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
@@ -77,7 +76,6 @@ export interface MyTasksQueryCommand {
    * 过滤，两者都是当前 actorUserId，只是列不同。
    */
   readonly ownership?: "ASSIGNEE" | "CREATOR";
-  readonly scopeType?: "FEATURE" | "MODULE";
   readonly workStatus?: "TODO" | "DONE" | "CANCELED";
   readonly hasPublishedRecord?: boolean;
   readonly priority?: MyTaskPriority;
@@ -129,7 +127,6 @@ export class MyTasksQueryService {
     @Inject(ProjectQueryPort) private readonly projects: ProjectQueryPort,
     @Inject(MyTaskQueryPort) private readonly myTasks: MyTaskQueryPort,
     @Inject(ModuleReadPort) private readonly modules: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(ChangeRecordReadPort)
     private readonly records: ChangeRecordReadPort,
     @Inject(ExternalLinksQueryPort)
@@ -180,7 +177,6 @@ export class MyTasksQueryService {
           ]),
       command.ownership ?? "ASSIGNEE",
       command.projectId ?? null,
-      command.scopeType ?? null,
       command.workStatus ?? null,
       command.hasPublishedRecord ?? null,
       command.priority ?? null,
@@ -218,9 +214,6 @@ export class MyTasksQueryService {
         limit,
         excludedTaskIds,
         ...(workStatuses === undefined ? {} : { workStatuses }),
-        ...(command.scopeType === undefined
-          ? {}
-          : { scopeTypes: [command.scopeType] }),
         ...(command.hasPublishedRecord === undefined
           ? {}
           : { hasPublishedRecord: command.hasPublishedRecord }),
@@ -234,20 +227,9 @@ export class MyTasksQueryService {
         ...new Set(page.items.map((item) => item.projectId)),
       ];
       const moduleIds = [...new Set(page.items.map((item) => item.moduleId))];
-      const featureIds = [
-        ...new Set(
-          page.items
-            .map((item) => item.featureId)
-            .filter((featureId): featureId is number => featureId !== null),
-        ),
-      ];
       const modules = await this.modules.listNames(tx, {
         projectIds: pageProjectIds,
         moduleIds,
-      });
-      const features = await this.features.listNames(tx, {
-        projectIds: pageProjectIds,
-        featureIds,
       });
       const assignees = await this.users.listByIds(tx, [
         ...new Set(page.items.flatMap((item) => item.assigneeIds)),
@@ -288,7 +270,6 @@ export class MyTasksQueryService {
         page,
         pageProjectIds,
         modules,
-        features,
         assignees,
         publishedRecordCounts,
         groupRoles,
@@ -305,9 +286,6 @@ export class MyTasksQueryService {
     );
     const moduleNameById = new Map(
       data.modules.map((item) => [item.moduleId, item.name]),
-    );
-    const featureNameById = new Map(
-      data.features.map((item) => [item.featureId, item.name]),
     );
     const userById = new Map(data.assignees.map((item) => [item.userId, item]));
     const publishedRecordCountByTask = new Map(
@@ -348,14 +326,6 @@ export class MyTasksQueryService {
       if (assignee === undefined) {
         throw inconsistentError("任务没有负责人 " + String(row.taskId));
       }
-      let featureName: string | null = null;
-      if (row.featureId !== null) {
-        const name = featureNameById.get(row.featureId);
-        if (name === undefined) {
-          throw inconsistentError("任务缺少功能 " + String(row.featureId));
-        }
-        featureName = name;
-      }
       // 计数为 0 的任务不出现于端口结果，按缺席补 0（裁决修订 D-1）。
       const publishedRecordCount =
         publishedRecordCountByTask.get(row.taskId) ?? 0;
@@ -367,9 +337,6 @@ export class MyTasksQueryService {
         projectName,
         moduleId: row.moduleId,
         moduleName,
-        featureId: row.featureId,
-        featureName,
-        scopeType: row.scopeType,
         workStatus: row.workStatus,
         lifecycleStatus: row.lifecycleStatus,
         assignee,

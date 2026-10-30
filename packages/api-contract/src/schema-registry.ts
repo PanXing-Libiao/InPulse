@@ -63,12 +63,10 @@ import { recordFeedSchemas } from "./contracts/record-feed.zod.js";
 import { recordSummarySchemas } from "./contracts/record-summary.zod.js";
 import { recordSummaryAssistSchemas } from "./contracts/record-summary-assist.zod.js";
 import { publishedRecordSchemas } from "./contracts/published-records.zod.js";
-import { featureSchemas } from "./contracts/features.zod.js";
 import { taskSchemas } from "./contracts/tasks.zod.js";
 import type { z } from "zod";
 import { moduleSchemas } from "./contracts/modules.zod.js";
 import { moduleDeletionSchemas } from "./contracts/module-deletion.zod.js";
-import { featureDeletionSchemas } from "./contracts/feature-deletion.zod.js";
 import {
   taskBoardCardSchema,
   taskBoardModuleSchema,
@@ -201,8 +199,6 @@ export const schemaRegistry = {
     summary: "授权范围内任务中心筛选",
     sensitiveFieldPaths: [],
   },
-  ...featureSchemas,
-  ...featureDeletionSchemas,
   ...taskSchemas,
   ...recordDraftSchemas,
   ...publishedRecordSchemas,
@@ -273,7 +269,7 @@ export const schemaRegistry = {
   },
   RecentRecordItem: {
     schema: recentRecordItemSchema,
-    summary: "最近迭代条目，含所属功能名（R-2）",
+    summary: "最近迭代条目，含所属模块名（R-2）",
     sensitiveFieldPaths: [],
   },
   LeftoverItemSummary: {
@@ -294,7 +290,7 @@ export const schemaRegistry = {
   TaskBoardStats: {
     schema: taskBoardStatsSchema,
     summary:
-      "任务看板项目级统计：完成率、状态计数、逾期、今日到期、本周完成、功能数与成员数（R-8）",
+      "任务看板项目级统计：完成率、状态计数、逾期、今日到期、本周完成、模块数与成员数（R-8）",
     sensitiveFieldPaths: [],
   },
   TaskBoardCard: {
@@ -310,7 +306,7 @@ export const schemaRegistry = {
   },
   TaskBoardModule: {
     schema: taskBoardModuleSchema,
-    summary: "任务看板泳道：模块功能数、统计、负责人头像组与任务卡（R-8）",
+    summary: "任务看板泳道：模块任务数、统计、负责人头像组与任务卡（R-8）",
     sensitiveFieldPaths: [],
   },
   TaskBoardResponse: {

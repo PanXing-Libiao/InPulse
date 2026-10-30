@@ -47,7 +47,6 @@ import {
   useProjectDetail,
 } from "@features/projects/project-query";
 import { moduleErrorMessage, useModules } from "./module-query";
-import { prefetchFeatureRoute } from "@features/features/feature-query";
 import { preloadRoutePath } from "@shared/routing/route-preload";
 import {
   ModuleEditorModal,
@@ -76,7 +75,7 @@ export function ModulesPageView({
   /** 项目名旁的「编辑项目」弹窗，以及保存后的页头提示。 */
   const [projectEditOpen, setProjectEditOpen] = useState(false);
   const [projectNotice, setProjectNotice] = useState<string | null>(null);
-  /** 从文档导入模块/功能/任务（ADR-064）：预览确认后单事务写入。 */
+  /** 从文档导入模块/任务（ADR-064）：预览确认后单事务写入。 */
   const [importOpen, setImportOpen] = useState(false);
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const queryClient = useQueryClient();
@@ -97,12 +96,11 @@ export function ModulesPageView({
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, navigate]);
   const onOpenModule = (moduleId: number) =>
-    navigate("/projects/" + projectId + "/modules/" + moduleId + "/features");
+    navigate("/projects/" + projectId + "/modules/" + moduleId + "/tasks");
   const prefetchModule = (moduleId: number) => {
     void preloadRoutePath(
-      "/projects/" + projectId + "/modules/" + moduleId + "/features",
+      "/projects/" + projectId + "/modules/" + moduleId + "/tasks",
     );
-    prefetchFeatureRoute(queryClient, { projectId, moduleId }, client);
   };
   const projectQuery = useProjectDetail({
     client,
@@ -141,10 +139,6 @@ export function ModulesPageView({
     [client],
   );
   const modules = query.data?.items ?? [];
-  const featureCount = modules.reduce(
-    (total, item) => total + item.stats.activeFeatureCount,
-    0,
-  );
   const taskCount = modules.reduce(
     (total, item) =>
       total + item.stats.openTaskCount + item.stats.completedTaskCount,
@@ -152,30 +146,13 @@ export function ModulesPageView({
   );
   // 搭建引导只在列表读取成功后出现：加载中不闪烁，读取失败让位给错误态。
   const showSetupGuide =
-    query.isSuccess &&
-    !isProjectSetupComplete(modules.length, featureCount, taskCount);
-  // 第二步（添加功能）指向第一个模块：一个功能都没有时，列表首个即最近
-  // 创建的模块（模块列表按「创建时间从近到远」排）。
-  const featureTarget = featureCount === 0 ? modules[0] : undefined;
+    query.isSuccess && !isProjectSetupComplete(modules.length, taskCount);
   const setupGuide: ProjectSetupGuideInput | undefined = showSetupGuide
     ? {
         moduleCount: modules.length,
-        featureCount,
         taskCount,
-        featureTargetName: featureTarget?.name ?? null,
         onCreateModule: () => open("create"),
         onImportDocument: () => setImportOpen(true),
-        onAddFeature: () => {
-          if (featureTarget === undefined) return;
-          navigate(
-            "/projects/" +
-              projectId +
-              "/modules/" +
-              featureTarget.id +
-              "/features",
-            { state: { createFeature: true } },
-          );
-        },
       }
     : undefined;
   return (
@@ -315,12 +292,11 @@ export function ModulesPageView({
                       <p>{item.description}</p>
                       <div className="card-footer">
                         <span>
-                          {item.stats.activeFeatureCount} 个功能 ·{" "}
-                          {item.stats.openTaskCount} 项待办
+                          {item.stats.openTaskCount} 项待办 ·{" "}
+                          {item.stats.completedTaskCount} 项已完成
                         </span>
-                        {/* 整卡点击已经进入模块页，卡内只留「编辑模块」一个动作：
-                            查看功能由整卡点击承担，模块任务在模块页「模块级任务」
-                            页签。ADR-044：模块已无归档/恢复动作。 */}
+                        {/* 整卡点击已经进入模块任务页，卡内只留「编辑模块」一个动作。
+                            ADR-044：模块已无归档/恢复动作。 */}
                         <Button
                           className="text-button"
                           onClick={() => open("update", item)}
@@ -348,7 +324,7 @@ export function ModulesPageView({
                 title: recordTarget.title,
                 recordStatus: "PUBLISHED",
                 publishedAt: recordTarget.publishedAt,
-                contextLabel: recordTarget.featureName,
+                contextLabel: null,
                 externalLinks: [],
               } satisfies RecordDetailTarget)
         }
@@ -391,14 +367,10 @@ export function ModulesPageView({
             "文档导入完成：新建 " +
               result.counts.modules +
               " 个模块、" +
-              result.counts.features +
-              " 个功能、" +
               result.counts.tasks +
               " 个任务，复用 " +
               result.counts.reusedModules +
-              " 个模块、" +
-              result.counts.reusedFeatures +
-              " 个功能。",
+              " 个模块。",
           );
           void query.refetch();
         }}

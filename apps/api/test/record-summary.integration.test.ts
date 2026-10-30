@@ -8,7 +8,6 @@ import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresUserReadPort } from "../src/auth/user-read.port.js";
 import { RecordSummaryQueryService } from "../src/modules/aggregate-read/record-summary-query.service.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectQueryPort } from "../src/modules/projects/postgres-project-query-port.js";
 import {
@@ -62,7 +61,6 @@ interface ProjectScope {
   readonly code: string;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number;
   readonly userId: number;
 }
 
@@ -74,31 +72,15 @@ const recordContent = {
   remainingIssues: [],
 };
 
-function nextSuffix(kind: "T" | "F" | "CR"): string {
+function nextSuffix(kind: "T" | "CR"): string {
   sequence += 1;
   return "-" + kind + "-" + String(sequence);
-}
-
-async function newFeature(scope: {
-  readonly projectId: number;
-  readonly moduleId: number;
-  readonly userId: number;
-  readonly code: string;
-}): Promise<number> {
-  const [row] = await client!.sql<{ id: number }[]>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (${scope.projectId}, ${scope.moduleId}, ${scope.code + nextSuffix("F")}, '总结夹具功能', ${scope.userId})
-    RETURNING id
-  `;
-  if (!row) throw new Error("feature fixture insert returned no row");
-  return row.id;
 }
 
 /** 发布一条记录并可指定 published_at（用文本直接转 timestamptz，绕过进程时区）。 */
 async function newPublishedRecord(
   scope: ProjectScope,
   options: {
-    readonly featureId?: number | null;
     readonly publishedAt: string;
     readonly status?: "PUBLISHED" | "VOID";
     readonly authorUserId?: number;
@@ -112,8 +94,6 @@ async function newPublishedRecord(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId: options.featureId ?? null,
-        impactFeatureIds: [],
       },
       author,
       recordContent,
@@ -157,7 +137,6 @@ async function newLeftover(
 async function newCompletedTask(
   scope: ProjectScope,
   options: {
-    readonly featureId?: number | null;
     readonly assigneeUserId?: number;
     readonly lifecycleStatus?: "ACTIVE" | "ARCHIVED" | "INVALID";
   },
@@ -170,7 +149,6 @@ async function newCompletedTask(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId: options.featureId ?? null,
       },
       scope.userId,
       code,
@@ -223,33 +201,19 @@ beforeAll(async () => {
 
   const userId = await createUser(client.sql);
   const project = await createProject(client.sql, userId);
-  const featureId = await newFeature({
-    projectId: project.projectId,
-    moduleId: project.moduleId,
-    userId,
-    code: project.code,
-  });
   scope = {
     code: project.code,
     projectId: project.projectId,
     moduleId: project.moduleId,
-    featureId,
     userId,
   };
 
   const outsiderUserId = await createUser(client.sql);
   const outsiderProject = await createProject(client.sql, outsiderUserId);
-  const outsiderFeatureId = await newFeature({
-    projectId: outsiderProject.projectId,
-    moduleId: outsiderProject.moduleId,
-    userId: outsiderUserId,
-    code: outsiderProject.code,
-  });
   outsiderScope = {
     code: outsiderProject.code,
     projectId: outsiderProject.projectId,
     moduleId: outsiderProject.moduleId,
-    featureId: outsiderFeatureId,
     userId: outsiderUserId,
   };
 });
@@ -261,25 +225,20 @@ afterAll(async () => {
 describe("ChangeRecordReadPort.summaryRecords", () => {
   test("只取范围内 PUBLISHED 记录，排除草稿 / 作废 / 范围外，total 不受 limit 截断", async () => {
     const older = await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoAt(1),
     });
     const newer = await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoAt(2),
     });
     await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoAt(3),
       status: "VOID",
     });
     // 超出 toDate 的未来记录（published_at 必须不早于 created_at，无法构造历史记录）。
     await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoDays(60),
     });
     const foreign = await newPublishedRecord(outsiderScope, {
-      featureId: outsiderScope.featureId,
       publishedAt: isoAt(4),
     });
 
@@ -329,7 +288,6 @@ describe("ChangeRecordReadPort.summaryRecords", () => {
 
   test("fromDate 之前与 toDate 之后的记录都排除", async () => {
     const beyondWindow = await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoDays(10),
     });
 
@@ -368,7 +326,6 @@ describe("ChangeRecordReadPort.summaryRecords", () => {
 describe("ChangeRecordReadPort.summaryLeftovers", () => {
   test("按来源记录发布日过滤，closedTotal 计入已处理与父记录已作废项", async () => {
     const recordId = await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoAt(1),
     });
     const active = await newLeftover(scope, recordId, "ACTIVE", "还没覆盖退款");
@@ -379,7 +336,6 @@ describe("ChangeRecordReadPort.summaryLeftovers", () => {
       "已转任务跟进",
     );
     const voidRecord = await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoAt(2),
       status: "VOID",
     });
@@ -390,7 +346,6 @@ describe("ChangeRecordReadPort.summaryLeftovers", () => {
       "来源记录已作废",
     );
     const outOfRange = await newPublishedRecord(scope, {
-      featureId: scope.featureId,
       publishedAt: isoDays(60),
     });
     await newLeftover(scope, outOfRange, "ACTIVE", "范围外遗留");
@@ -427,15 +382,11 @@ describe("TaskQueryPort.summaryCompletedTasks", () => {
       INSERT INTO app.project_members (project_id, user_id, role)
       VALUES (${scope.projectId}, ${otherUser}, 'MEMBER')
     `;
-    const mine = await newCompletedTask(scope, {
-      featureId: scope.featureId,
-    });
+    const mine = await newCompletedTask(scope, {});
     const theirs = await newCompletedTask(scope, {
-      featureId: scope.featureId,
       assigneeUserId: otherUser,
     });
     await newCompletedTask(scope, {
-      featureId: scope.featureId,
       lifecycleStatus: "INVALID",
     });
 
@@ -465,9 +416,7 @@ describe("TaskQueryPort.summaryCompletedTasks", () => {
   });
 
   test("按项目收窄与 fromDate 下界过滤，空授权范围短路", async () => {
-    const outsider = await newCompletedTask(outsiderScope, {
-      featureId: outsiderScope.featureId,
-    });
+    const outsider = await newCompletedTask(outsiderScope, {});
     const narrowed = await uow.run((tx) =>
       tasks.summaryCompletedTasks(tx, {
         ...taskInput,
@@ -506,7 +455,6 @@ describe("RecordSummaryQueryService（真实端口）", () => {
       new PostgresProjectAccessQueryPort(client!),
       new PostgresProjectQueryPort(client!),
       new PostgresModuleReadPort(),
-      new PostgresFeatureReadPort(),
       new PostgresChangeRecordReadPort(),
       new PostgresTaskQueryPort(),
       new PostgresUserReadPort(),
@@ -537,7 +485,6 @@ describe("RecordSummaryQueryService（真实端口）", () => {
       new PostgresProjectAccessQueryPort(client!),
       new PostgresProjectQueryPort(client!),
       new PostgresModuleReadPort(),
-      new PostgresFeatureReadPort(),
       new PostgresChangeRecordReadPort(),
       new PostgresTaskQueryPort(),
       new PostgresUserReadPort(),

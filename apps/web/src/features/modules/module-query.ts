@@ -38,7 +38,7 @@ export function moduleErrorMessage(error: unknown): string {
   return "模块服务暂时不可用，请重试。";
 }
 
-/** 项目主页（模块与功能）首屏数据预取：项目详情 + 模块目录。 */
+/** 项目主页（模块目录）首屏数据预取：项目详情 + 模块目录。 */
 export function prefetchModulesRoute(
   cache: QueryClient,
   projectId: number,
@@ -129,11 +129,11 @@ export type ModuleDeletionTarget = {
 };
 
 /**
- * ADR-096：删除模块。服务端在同一事务内物理删除模块、其下全部功能与任务，
+ * ADR-096：删除模块。服务端在同一事务内物理删除模块、其下全部任务，
  * 以及这些实体的全部迭代记录、版本、遗留项与链接关联；只保留审计与项目动态。
  * 删除没有恢复入口，模块及其全部下级不会留下可读快照。
  *
- * 失效清单比编辑宽：级联删除了功能与任务，因此任务、看板、聚合组、任务中心、
+ * 失效清单比编辑宽：级联删除了任务，因此任务、看板、聚合组、任务中心、
  * 遗留问题、项目概览与侧栏计数都要重取。失效刷新一律非阻塞（理由同上）。
  */
 export function useDeleteModule(
@@ -163,8 +163,6 @@ export function useDeleteModule(
       void Promise.all(
         [
           ["modules", projectId],
-          ["features", projectId],
-          ["feature-similar", projectId],
           ["tasks"],
           ["task-board"],
           ["task-group"],

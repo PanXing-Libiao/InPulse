@@ -39,7 +39,6 @@ function toSearchItem(item: SearchProjectionItem): SearchItem {
     entityType: searchEntityTypeSchema.parse(item.entityType),
     entityId: item.entityId,
     moduleId: item.moduleId,
-    featureId: item.featureId,
     recordId: item.recordId,
     title: item.title,
     summary: item.summary,

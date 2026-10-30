@@ -16,7 +16,6 @@ import {
   type UnitOfWork,
 } from "../../database/unit-of-work.js";
 import { RecordFeedReadPort } from "../change-records/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { ModuleReadPort } from "../modules/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
@@ -40,7 +39,7 @@ export const MY_RECORD_DRAFTS_CURSOR = Symbol("MY_RECORD_DRAFTS_CURSOR");
  * 作者恒为当前认证 actor，接口不接受任何他人身份或授权范围参数，因此也不登记
  * 403；projectIds 固定取服务端 AuthorizedProjectScope，被移出项目后其草稿立即
  * 不可见（与项目内草稿列表同一口径）。草稿本体保持 B-1 的 RecordDraftItem 形状，
- * 项目 / 模块 / 功能名由服务端按本页可见范围批量回填。
+ * 项目 / 模块名由服务端按本页可见范围批量回填。
  * 事务：一次请求一个只读事务，不创建命令 UnitOfWork、不取行锁、不写投影。
  * 排序：固定 created_at DESC, id DESC；游标签名绑定 actor、命名空间与固定筛选
  * 摘要，不得跨接口或跨 actor 复用。
@@ -66,7 +65,6 @@ export class MyRecordDraftsQueryService {
     private readonly projectAccess: ProjectAccessQueryPort,
     @Inject(ProjectQueryPort) private readonly projects: ProjectQueryPort,
     @Inject(ModuleReadPort) private readonly modules: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(RecordFeedReadPort) private readonly records: RecordFeedReadPort,
     @Inject(PostgresUnitOfWork) private readonly unitOfWork: UnitOfWork,
     @Inject(MY_RECORD_DRAFTS_CURSOR) private readonly cursor: TimeCursorService,
@@ -100,22 +98,11 @@ export class MyRecordDraftsQueryService {
         ...new Set(page.items.map((draft) => draft.projectId)),
       ];
       const moduleIds = [...new Set(page.items.map((draft) => draft.moduleId))];
-      const featureIds = [
-        ...new Set(
-          page.items
-            .map((draft) => draft.featureId)
-            .filter((featureId): featureId is number => featureId !== null),
-        ),
-      ];
       const modules = await this.modules.listNames(tx, {
         projectIds: pageProjectIds,
         moduleIds,
       });
-      const features = await this.features.listNames(tx, {
-        projectIds: pageProjectIds,
-        featureIds,
-      });
-      return { page, pageProjectIds, modules, features };
+      return { page, pageProjectIds, modules };
     });
 
     const projects = await this.projects.list(data.pageProjectIds);
@@ -124,9 +111,6 @@ export class MyRecordDraftsQueryService {
     );
     const moduleNameById = new Map(
       data.modules.map((item) => [item.moduleId, item.name]),
-    );
-    const featureNameById = new Map(
-      data.features.map((item) => [item.featureId, item.name]),
     );
 
     const items: MyRecordDraftItem[] = data.page.items.map((draft) => {
@@ -138,15 +122,7 @@ export class MyRecordDraftsQueryService {
       if (moduleName === undefined) {
         throw inconsistentError("草稿缺少模块 " + String(draft.moduleId));
       }
-      let featureName: string | null = null;
-      if (draft.featureId !== null) {
-        const name = featureNameById.get(draft.featureId);
-        if (name === undefined) {
-          throw inconsistentError("草稿缺少功能 " + String(draft.featureId));
-        }
-        featureName = name;
-      }
-      return { draft, projectName, moduleName, featureName };
+      return { draft, projectName, moduleName };
     });
 
     const last = data.page.last;

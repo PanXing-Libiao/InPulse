@@ -588,7 +588,7 @@ GitHub Actions 已通过（F-03 PR #72，run 34345191090）。
 
 集成文件共 6 个用例，只允许在 PostgreSQL 18 + PGroonga 隔离库执行。
 本机缺少测试库，未执行；Nest 测试不替代真实事务和锁验证。
-接入及待执行命令见 [FeatureQueryPort 说明](../apps/api/src/modules/features/README.md)。
+接入及待执行命令见 `FeatureQueryPort` 说明（ADR-109 已移除）。
 
 2026-09-08：[PR #42](https://github.com/256-code/InPulse/pull/42) 提交 `58acbe7` 的
 [数据库日志](https://github.com/256-code/InPulse/actions/runs/34210258609/job/102009300977?pr=42#step:17:28) 确认本文件 6 tests 全部通过，334 ms；
@@ -7345,3 +7345,22 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | ADR108-GATE-001 | 类型与格式 | 定向门禁 | `pnpm --filter @inpulse/api typecheck` 通过；5 个变更文件 Prettier 检查通过；`sso-login.integration.test.ts` 22/22 通过 | 本地通过（2026-10-30） |
 
 **未执行 / 已知边界**：未运行全量 API 单元、全量集成、Playwright、GitHub Actions 或测试 VM 部署；未用真实 Casdoor 重新登录 smoke。本批未提交。
+
+
+## 2026-10-30 移除功能层（ADR-109）
+
+[ADR-109](adr/ADR-109.md) 将业务层级固定为“项目 → 模块 → 任务 → 迭代记录”。本批同时收敛任务归属、迭代记录、导入模板、权限字段、搜索实体、外部链接目标和前端入口；历史审计、动态、通知与名称快照中的 FEATURE 只保留只读追溯。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR109-CONTRACT-001 | 契约与权限 | 路由收敛与生成物 | `contract:generate` 重生成 6 个产物；`contract:drift` 无漂移；`contract:validate` 119 条路由全部通过；`permissions:check` 119 条操作 / 119 条路由全部通过；功能 Schema、旧功能任务路由与 FEATURE 搜索目标不再注册 | 本地通过（2026-10-30） |
+| ADR109-DB-001 | 真实 PostgreSQL | 数据库拆除与窄口 | `db:migrations:check` 校验 64 个 SQL 迁移；迁移 `0065_contract_remove_feature_layer.sql` checksum 为 `3e6800a31227535a82405fd2ff1b3d1a56104b76b1cfbee9e9c71a2440ca8fbc`；真实库断言功能表、关系表、任务/记录 `feature_id` 与 `scope_type`、搜索投影功能列、FEATURE 序列、`app.hard_delete_feature` 均为零；权限列只剩 `module_edit` / `module_delete`，`app_runtime` 不能直接执行共享删除 helper | 本地通过（2026-10-30；数据库集成 2 文件 31 例） |
+| ADR109-DB-002 | 真实 PostgreSQL | 历史数据与模板兼容 | 迁移顺序先上提历史功能级任务与迭代记录为模块直属，再删除功能对象；`document_import_runs.template_version` 保留历史 `1` 并接受当前 `2`；迁移不可变且重复执行 0 条；演示种子校验通过 | 本地通过（2026-10-30；`app_ci` 当前 64 条迁移均为已应用） |
+| ADR109-IMPORT-001 | API 单元与契约 | 旧导入层级拒绝 | 旧 `### 功能`、功能级 `#### 任务` 与“影响功能”字段返回 `FEATURE_LAYER_REMOVED`；文档导入目标 Schema 拒绝 `featureId`；新模板只表达项目 → 模块 → 任务 | 本地通过（2026-10-30） |
+| ADR109-API-001 | API 集成（真实 PostgreSQL） | 业务纵切片回归 | API 集成 67 文件 611 例通过：模块直属任务 CRUD、状态历史、记录发布/作废/恢复、外部链接目标、聚合读、项目与模块删除、权限配置和搜索读写均在当前 Schema 上通过；旧功能路由不出现在注册表 | 本地通过（2026-10-30） |
+| ADR109-WEB-001 | Web 单元 | 入口、深链与字段收敛 | Web 单测 120 文件 1052 例通过：模块卡与模块页直接进入任务；无功能目录/编辑/删除入口；任务创建、记录草稿、搜索与外部链接不再提交功能字段；历史 `/features/*` 深链安全回落到同模块任务页；历史 FEATURE 文本仅展示、不生成当前功能链接 | 本地通过（2026-10-30） |
+| ADR109-E2E-001 | Playwright（真实 Chromium） | 全量浏览器回归 | 85/85 通过（4.4 分钟）：包含 ADR-109 模块删除级联、模块直属任务、记录发布、搜索、外部链接、通知与权限路径；夹具清理删除测试用户、项目、业务行与审计行，SYSTEM 审计链头已回退 | 本地通过（2026-10-30） |
+| ADR109-GATE-001 | 静态与构建门禁 | 全仓非数据库门禁 | `pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm build`、`check:deps`（913 个源文件无循环/越界）、`check:frontend:boundaries`（384 模块 / 1984 依赖）、`check:secrets`（1518 个文件）、`check:docs`（161 个 Markdown 文件）与 `git diff --check` 全部通过 | 本地通过（2026-10-30） |
+| ADR109-UNIT-001 | 全仓单元测试 | 各 workspace | 根级 `pnpm test:unit` 通过：API 91 文件 613 例、Web 120 文件 1052 例、契约 16 文件 104 例、数据库 1 文件 15 例、Canonical JSON 1 文件 5 例、Ops 9 文件 60 例 | 本地通过（2026-10-30） |
+
+**未执行 / 已知边界**：本轮未部署测试 VM、未同步生产、未运行 GitHub Actions、未执行生产镜像构建或 Trivy；所有验证均指向独立本地测试库 `app_ci`，未写入演示库 `app`。`0065` 是破坏性迁移，当前自动化数据库测试覆盖拆除后的对象与约束，但本轮没有另造一份停在 `0064` 的独立升级 fixture；正式发布仍须先在迁移前备份副本上执行一遍升级、抽样核对历史任务/记录归属和旧记录只读兼容，再按“迁移 → API → Web”的顺序发布。功能层的历史审计、动态、通知和名称快照按 ADR-109 保留，不应被清理脚本误删。 完整 `pnpm check` 已执行到 `deps:audit`：其余门禁通过，但该步报告 12 个漏洞（7 high、5 moderate），已知 high 包括 `zod <4.6.6`、`body-parser >=2.0.0 <2.4.0`、`undici >=8.0.0 <8.12.2`；本轮未修改 `package.json` 或 lockfile，相关依赖升级须按仓库第 4 节作为独立变更由人工确认。

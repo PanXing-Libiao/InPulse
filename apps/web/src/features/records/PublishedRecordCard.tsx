@@ -24,7 +24,6 @@ export function PublishedRecordCard({
   client,
   writable,
   onListChanged,
-  featureNames,
   githubOpen,
   onGithubOpenChange,
 }: {
@@ -34,8 +33,6 @@ export function PublishedRecordCard({
   readonly client?: InpulseApiClient | undefined;
   readonly writable: boolean;
   readonly onListChanged?: (() => void) | undefined;
-  /** 功能名称表：把记录事实区里的影响功能 ID 还原成名称。 */
-  readonly featureNames?: ReadonlyMap<number, string> | undefined;
   /** 由记录页持有的 GitHub 关联展开状态，避免列表刷新重建时丢失。 */
   readonly githubOpen?: boolean | undefined;
   readonly onGithubOpenChange?: ((open: boolean) => void) | undefined;
@@ -62,13 +59,9 @@ export function PublishedRecordCard({
           </small>
           <small className="record-summary-path">
             归属 {item.projectName} / {item.moduleName}
-            {item.featureName === null ? "" : ` / ${item.featureName}`}
           </small>
         </span>
         <span className="record-summary-badges">
-          {record.scopeType === "MODULE" ? (
-            <CalmBadge tone="violet">模块级</CalmBadge>
-          ) : null}
           {record.currentVersion > 1 ? (
             <CalmBadge tone="cyan">v{record.currentVersion}</CalmBadge>
           ) : null}
@@ -112,11 +105,7 @@ export function PublishedRecordCard({
           labels={{
             project: item.projectName,
             module: item.moduleName,
-            feature: item.featureName,
             author: item.author.name,
-            impactFeatures: record.impactFeatureIds
-              .map((id) => featureNames?.get(id))
-              .filter((name): name is string => typeof name === "string"),
           }}
         />
       ) : null}

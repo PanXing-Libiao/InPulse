@@ -273,7 +273,6 @@ export class PostgresMyTaskQueryPort extends MyTaskQueryPort {
     const assigneeId = input.assigneeId ?? null;
     const creatorId = input.creatorId ?? null;
     const workStatuses = input.workStatuses ? [...input.workStatuses] : null;
-    const scopeTypes = input.scopeTypes ? [...input.scopeTypes] : null;
     const effectiveOnly = input.effectiveOnly === true;
     const excludedTaskIds = input.excludedTaskIds
       ? [...input.excludedTaskIds]
@@ -290,8 +289,6 @@ export class PostgresMyTaskQueryPort extends MyTaskQueryPort {
       SELECT t.id AS "taskId",
              t.project_id AS "projectId",
              t.module_id AS "moduleId",
-             t.feature_id AS "featureId",
-             t.scope_type AS "scopeType",
              t.code,
              t.title,
              (SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id = t.id) AS "assigneeId",
@@ -310,7 +307,6 @@ export class PostgresMyTaskQueryPort extends MyTaskQueryPort {
          AND (${creatorId}::integer IS NULL OR t.creator_id = ${creatorId})
          AND (${input.overdue ?? false}::boolean = false OR (t.work_status = 'TODO' AND t.lifecycle_status <> 'INVALID' AND t.due_at < now()))
          AND (${workStatuses}::text[] IS NULL OR t.work_status = ANY(${workStatuses}::text[]))
-         AND (${scopeTypes}::text[] IS NULL OR t.scope_type = ANY(${scopeTypes}::text[]))
          AND (${priority}::text IS NULL OR t.priority = ${priority})
          AND (${todayTodo}::boolean = false OR (
               t.work_status = 'TODO'

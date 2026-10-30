@@ -3,25 +3,20 @@ import { Button } from "antd";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 
 /**
- * 三步齐备（模块、功能、任务各有至少一条记录）后，搭建引导整体隐藏。
+ * 两步齐备（模块、任务各有至少一条记录）后，搭建引导整体隐藏。
  * 计数由调用方从模块列表的既有统计聚合，引导本身不新增任何请求。
  */
 export function isProjectSetupComplete(
   moduleCount: number,
-  featureCount: number,
   taskCount: number,
 ): boolean {
-  return moduleCount > 0 && featureCount > 0 && taskCount > 0;
+  return moduleCount > 0 && taskCount > 0;
 }
 
 export interface ProjectSetupGuideInput {
   readonly moduleCount: number;
-  readonly featureCount: number;
   readonly taskCount: number;
-  /** 第二步「添加功能」的目标模块名；没有模块时为 null。 */
-  readonly featureTargetName: string | null;
   readonly onCreateModule: () => void;
-  readonly onAddFeature: () => void;
   /**
    * 「从文档导入」（ADR-064）：空项目没有模块区块入口时，引导头部提供导入
    * 入口；已有模块时由模块区块标题行的按钮承担，调用方传 undefined。
@@ -63,27 +58,20 @@ function renderStepAction(step: SetupStep, current: boolean): React.ReactNode {
 }
 
 /**
- * 新项目搭建引导（2026-10-10）：空项目或「模块 → 功能 → 任务」链路没走完时，
- * 出现在项目主页指标条下方；每一步都给出直达对应创建入口的动作。
+ * 新项目搭建引导（ADR-109）：按「模块 → 任务」两段建立第一条业务链路，
+ * 两步齐备后引导自动隐藏；每一步都给出直达对应创建入口的动作。
  */
 export const ProjectSetupGuide: React.FC<ProjectSetupGuideProps> = ({
   moduleCount,
-  featureCount,
   taskCount,
-  featureTargetName,
   onCreateModule,
-  onAddFeature,
   onCreateTask,
   onImportDocument,
 }) => {
-  if (isProjectSetupComplete(moduleCount, featureCount, taskCount)) {
+  if (isProjectSetupComplete(moduleCount, taskCount)) {
     return null;
   }
   const hasModule = moduleCount > 0;
-  const featureDescription =
-    featureTargetName === null
-      ? "功能是长期档案，沉淀当前说明与全部迭代历史。"
-      : "为「" + featureTargetName + "」建第一个功能档案。";
   const steps: readonly SetupStep[] = [
     {
       key: "module",
@@ -93,15 +81,6 @@ export const ProjectSetupGuide: React.FC<ProjectSetupGuideProps> = ({
       doneLabel: moduleCount + " 个模块",
       action: { label: "新增模块", run: onCreateModule },
       hint: null,
-    },
-    {
-      key: "feature",
-      title: "添加功能",
-      description: featureDescription,
-      done: featureCount > 0,
-      doneLabel: featureCount + " 个功能",
-      action: hasModule ? { label: "添加功能", run: onAddFeature } : null,
-      hint: hasModule ? null : "先完成第 1 步",
     },
     {
       key: "task",
@@ -124,8 +103,7 @@ export const ProjectSetupGuide: React.FC<ProjectSetupGuideProps> = ({
         <div>
           <h2>开始搭建这个项目</h2>
           <p>
-            按「模块 → 功能 →
-            任务」的顺序建立第一条业务链路，三步齐备后引导自动隐藏。
+            按「模块 → 任务」的顺序建立第一条业务链路，两步齐备后引导自动隐藏。
           </p>
         </div>
         {onImportDocument !== undefined && moduleCount === 0 ? (

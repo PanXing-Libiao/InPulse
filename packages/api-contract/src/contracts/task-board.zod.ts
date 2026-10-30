@@ -45,8 +45,7 @@ export type TaskBoardProject = z.infer<typeof taskBoardProjectSchema>;
 
 /**
  * 看板项目级统计。总分母 total 为看板集合大小；completionRate 为 0..100 的整数
- * 百分比，分母（done + open）为 0 时取 0；featureCount 为项目内 ACTIVE 功能数；
- * memberCount 为项目成员数（与 R-2 同源）。
+ * 百分比，分母（done + open）为 0 时取 0；memberCount 为项目成员数（与 R-2 同源）。
  */
 export const taskBoardStatsSchema = z
   .object({
@@ -58,7 +57,6 @@ export const taskBoardStatsSchema = z
     dueToday: z.number().int().nonnegative(),
     completedThisWeek: z.number().int().nonnegative(),
     completionRate: z.number().int().min(0).max(100),
-    featureCount: z.number().int().nonnegative(),
     memberCount: z.number().int().nonnegative(),
   })
   .strict()
@@ -68,8 +66,8 @@ export type TaskBoardStats = z.infer<typeof taskBoardStatsSchema>;
 
 /**
  * 看板任务卡。assignees 为全部负责人的展示字段（ADR-040 平权集合，按 userId 升序，
- * 至少一人，2026-09-23 由单值 assignee 收口为集合）；featureName 为任务所在功能名
- * （模块级任务为 null）；publishedRecordCount 为该任务 PUBLISHED 记录数（29.4 节，
+ * 至少一人，2026-09-23 由单值 assignee 收口为集合）；publishedRecordCount 为
+ * 该任务 PUBLISHED 记录数（29.4 节，
  * 不按版本计数）；dueState 由服务端按 Asia/Shanghai 计算。
  */
 export const taskBoardCardSchema = z
@@ -78,9 +76,6 @@ export const taskBoardCardSchema = z
     code: z.string().min(1).max(64),
     title: z.string().min(1).max(500),
     moduleId: id,
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
-    scopeType: z.enum(["FEATURE", "MODULE"]),
     priority: z.enum(["NORMAL", "HIGH", "URGENT"]),
     workStatus: z.enum(["TODO", "DONE", "CANCELED"]),
     dueAt: z.iso.datetime().nullable(),
@@ -117,7 +112,6 @@ export const taskBoardModuleSchema = z
   .object({
     moduleId: id,
     name: z.string().min(1).max(200),
-    featureCount: z.number().int().nonnegative(),
     stats: taskBoardModuleStatsSchema,
     assignees: z.array(userRefSchema).max(TASK_BOARD_LANE_AVATARS_MAX),
     tasks: z.array(taskBoardCardSchema).max(TASK_BOARD_TASKS_MAX),

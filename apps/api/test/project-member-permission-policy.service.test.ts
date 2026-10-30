@@ -17,8 +17,8 @@ const defaults: ProjectMemberPermissionSettingsRecord = {
   projectLeaderTransfer: "LEADERS_ONLY",
   projectDelete: "LEADERS_ONLY",
   projectDocumentImport: "ALL_MEMBERS",
-  moduleFeatureEdit: "ALL_MEMBERS",
-  moduleFeatureDelete: "LEADERS_ONLY",
+  moduleEdit: "ALL_MEMBERS",
+  moduleDelete: "LEADERS_ONLY",
   taskEdit: "ALL_MEMBERS",
   taskLifecycle: "ALL_MEMBERS",
   recordWrite: "ALL_MEMBERS",
@@ -159,7 +159,7 @@ describe("ProjectMemberPermissionPolicyService", () => {
         "projectEdit",
         "projectMemberManage",
         "projectDocumentImport",
-        "moduleFeatureEdit",
+        "moduleEdit",
         "taskEdit",
         "taskLifecycle",
         "recordWrite",
@@ -172,7 +172,7 @@ describe("ProjectMemberPermissionPolicyService", () => {
       capabilities: [
         "projectLeaderTransfer",
         "projectDelete",
-        "moduleFeatureDelete",
+        "moduleDelete",
         "projectWecomGroup",
       ],
     });
@@ -181,7 +181,7 @@ describe("ProjectMemberPermissionPolicyService", () => {
       deniedCapabilities: [
         "projectLeaderTransfer",
         "projectDelete",
-        "moduleFeatureDelete",
+        "moduleDelete",
         "projectWecomGroup",
       ],
     });

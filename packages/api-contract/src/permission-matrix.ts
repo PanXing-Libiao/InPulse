@@ -118,28 +118,25 @@ export const permissionMatrix = [
       },
     }),
   ),
-  // ADR-059：模块与功能删除按 ADR-039 的例外收窄到系统管理员或本项目 ACTIVE 组长，
+  // ADR-059 / ADR-109：模块删除收窄到系统管理员或本项目 ACTIVE 组长，
   // 其余活跃成员 403，非成员与已移除成员 404。
-  ...(["deleteModule", "deleteFeature"] as const).map(
-    (operationId): PermissionMatrixEntry => ({
-      operationId,
-      outcomes: {
-        匿名: { kind: "deny", status: 401 },
-        活跃成员: {
-          kind: "conditional",
-          allowedWhen: "本项目 ACTIVE 组长（LEADER）",
-          deniedWith: 403,
-        },
-        其他项目成员: { kind: "deny", status: 404 },
-        已移除成员: { kind: "deny", status: 404 },
-        停用用户: { kind: "deny", status: 401 },
-        系统管理员: { kind: "allow" },
+  ...(["deleteModule"] as const).map((operationId): PermissionMatrixEntry => ({
+    operationId,
+    outcomes: {
+      匿名: { kind: "deny", status: 401 },
+      活跃成员: {
+        kind: "conditional",
+        allowedWhen: "本项目 ACTIVE 组长（LEADER）",
+        deniedWith: 403,
       },
-    }),
-  ),
+      其他项目成员: { kind: "deny", status: 404 },
+      已移除成员: { kind: "deny", status: 404 },
+      停用用户: { kind: "deny", status: 401 },
+      系统管理员: { kind: "allow" },
+    },
+  })),
   ...(
     [
-      "listFeatures",
       "listRecordDrafts",
       "listChangeRecords",
       "getChangeRecord",
@@ -159,30 +156,18 @@ export const permissionMatrix = [
       "createIndependentRecordDraft",
       "updateIndependentRecordDraft",
       "deleteRecordDraft",
-      "listTasks",
-      "getTask",
-      "listTaskAssignees",
       "listActiveProjectMembers",
       "createTaskWithScope",
-      "createTask",
-      "updateTask",
       "listModuleTasks",
       "getModuleTask",
       "listModuleTaskAssignees",
       "createModuleTask",
       "updateModuleTask",
-      "getTaskStatusHistory",
       "getModuleTaskStatusHistory",
       "mergeTaskGroup",
       "unmergeTaskGroup",
-      "transitionTask",
       "transitionModuleTask",
-      "deleteTask",
       "deleteModuleTask",
-      "getFeature",
-      "findSimilarFeatures",
-      "createFeature",
-      "updateFeature",
     ] as const
   ).map((operationId): PermissionMatrixEntry => ({
     operationId,

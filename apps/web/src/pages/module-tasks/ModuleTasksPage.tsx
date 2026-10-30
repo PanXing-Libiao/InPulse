@@ -13,7 +13,7 @@ import {
 } from "@features/tasks/TasksPanel";
 import type { TaskLocation } from "@features/tasks/task-links";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
-import { CalmSegmented, CalmTabs } from "@features/common/components/Calm";
+import { CalmSegmented } from "@features/common/components/Calm";
 import { CalmSelect } from "@features/common/components/CalmSelect";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
@@ -36,12 +36,9 @@ export default function ModuleTasksPage() {
   );
   const { query } = useModules(projectId);
   const projectQuery = useProjectDetail({ projectId, enabled: validScope });
-  /** 聚合组弹窗里点击成员任务标题后要就地打开的任务（null 表示弹层关闭）。 */
   const [taskTarget, setTaskTarget] = useState<TaskLocation | null>(null);
-  /** ADR-044：模块只有编辑，弹层与模块列表页共用。 */
   const [moduleRequest, setModuleRequest] =
     useState<ModuleEditorRequest | null>(null);
-  /** 页头「新建任务」打开面板内同一个模块级创建弹窗。 */
   const [createOpen, setCreateOpen] = useState(false);
   const [view, setView] = useState<"cards" | "list">("cards");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -67,13 +64,10 @@ export default function ModuleTasksPage() {
     ) : (
       <Alert type="error" title="模块不存在或无法访问" />
     );
-  const featuresHref =
-    "/projects/" + projectId + "/modules/" + moduleId + "/features";
   return (
     <>
       <div className="page-header">
         <div>
-          {/* 与功能目录页头保持同一种返回样式：圆形折角箭头紧贴标题。 */}
           <div className="page-title-row">
             <button
               type="button"
@@ -107,25 +101,11 @@ export default function ModuleTasksPage() {
         </div>
       </div>
       <div className="module-work-bar">
-        <CalmTabs
-          className="calm-tabs module-work-tabs"
-          label="模块工作区"
-          activeKey="模块级任务"
-          onChange={(key) => {
-            if (key === "功能目录") navigate(featuresHref);
-          }}
-          items={[
-            {
-              key: "功能目录",
-              label: <>功能目录 {module.stats.activeFeatureCount}</>,
-            },
-            {
-              key: "模块级任务",
-              label: <>模块级任务 {taskCount}</>,
-            },
-          ]}
-        />
-        <div className="feature-view-controls">
+        <div className="module-task-summary">
+          <strong>任务</strong>
+          <span>{taskCount} 项</span>
+        </div>
+        <div className="module-view-controls">
           <CalmSelect
             className="task-status-filter"
             value={statusFilter}
@@ -158,8 +138,6 @@ export default function ModuleTasksPage() {
       <TasksPanel
         projectId={projectId}
         moduleId={moduleId}
-        featureId={null}
-        /* ADR-044：模块层面已下线归档，模块级任务始终可写。 */
         writable
         onOpenTask={setTaskTarget}
         showHeader={false}

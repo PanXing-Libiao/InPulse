@@ -78,13 +78,10 @@ describe("my-tasks mock adapter", () => {
     ]);
   });
 
-  it("supports priority, level, relation, record and github filters", async () => {
+  it("supports priority, relation, record and github filters", async () => {
     expect(codesOf((await fetchDefault({ priority: "URGENT" })).items)).toEqual(
       ["T-101"],
     );
-    expect(codesOf((await fetchDefault({ level: "MODULE" })).items)).toEqual([
-      "T-102",
-    ]);
     expect(codesOf((await fetchDefault({ relation: "MAIN" })).items)).toEqual([
       "T-102",
     ]);

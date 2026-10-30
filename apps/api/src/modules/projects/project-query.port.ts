@@ -24,7 +24,7 @@ export abstract class ProjectQueryPort {
   /**
    * 按 ID 批量读取当前生命周期状态（ADR-043 三态）。任务中心的展示口径要在
    * 下游列表与统计之前剔除维护中项目，因此这里刻意只查 id 与 status：
-   * 统计列（模块 / 功能 / 任务计数）在该路径上没有消费者，不重复计算。
+   * 统计列（模块 / 任务计数）在该路径上没有消费者，不重复计算。
    * 同样不校验授权（由 AuthorizedProjectScope 决定范围），未知 ID 不返回。
    */
   abstract listStatuses(

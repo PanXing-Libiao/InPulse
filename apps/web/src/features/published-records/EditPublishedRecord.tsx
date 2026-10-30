@@ -229,7 +229,7 @@ export function EditPublishedRecord({
           <div className="dialog-form">
             <p>
               保存为 v{(baseline?.currentVersion ?? item.currentVersion) + 1}
-              ，旧版本保持不变。新的独立功能变化请新建记录。
+              ，旧版本保持不变。新的变更内容请新建记录。
             </p>
             {!!error && (
               <Alert

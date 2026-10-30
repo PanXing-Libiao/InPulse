@@ -6,7 +6,6 @@ import {
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { ModuleQueryPort } from "../modules/index.js";
-import { FeatureQueryPort } from "../features/index.js";
 import { AuditWritePort } from "../../audit/index.js";
 import { ActivityWritePort } from "../activity/index.js";
 import { SearchProjectionWritePort } from "../search/index.js";
@@ -38,7 +37,6 @@ export class RecordLifecycleService {
     @Inject(PROJECT_ACCESS_QUERY_PORT)
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
     @Inject(RecordPublicationRepository)
     private readonly identities: RecordPublicationRepository,
     @Inject(PublishedRecordRepository)
@@ -95,20 +93,12 @@ export class RecordLifecycleService {
       throw new RecordDraftError(403, "ADMIN_REQUIRED", "仅管理员可以操作");
     const before = await this.identities.identity(tx, projectId, recordId);
     if (!before) throw missing();
-    // ADR-044/ADR-045：模块与功能都已无归档只读态，这里只保留归属校验与父级 FOR SHARE 取锁。
+    // ADR-044/ADR-109：模块无归档只读态，这里只保留归属校验与父级 FOR SHARE 取锁。
     const module = await this.modules.checkModuleForWrite(tx, {
       projectId,
       moduleId: before.moduleId,
     });
     if (module.kind === "not-found") throw missing();
-    if (before.featureId !== null) {
-      const feature = await this.features.checkFeatureForWrite(tx, {
-        projectId,
-        moduleId: before.moduleId,
-        featureId: before.featureId,
-      });
-      if (feature.kind === "not-found") throw missing();
-    }
     const locked = await this.identities.identity(
       tx,
       projectId,
@@ -118,7 +108,6 @@ export class RecordLifecycleService {
     if (!locked) throw missing();
     if (
       locked.moduleId !== before.moduleId ||
-      locked.featureId !== before.featureId ||
       locked.status !== (restore ? "VOID" : "PUBLISHED") ||
       locked.rowVersion !== expectedVersion
     )
@@ -212,7 +201,6 @@ export class RecordLifecycleService {
       metadata: {
         recordId: input.recordId,
         moduleId: after.moduleId,
-        featureId: after.featureId,
         version: after.currentVersion,
       },
       occurredAt: new Date(after.updatedAt),

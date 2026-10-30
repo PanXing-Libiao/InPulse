@@ -1,9 +1,6 @@
 export { ProjectWriteAccessWorkflow } from "./project-write-access.workflow.js";
 export {
-  type CheckFeatureForWriteInput,
   type CheckModuleForWriteInput,
-  type FeatureWriteAccessFailure,
-  type FeatureWriteAccessResult,
   type ModuleWriteAccessFailure,
   type ModuleWriteAccessResult,
   type ProjectWriteAccessStep,

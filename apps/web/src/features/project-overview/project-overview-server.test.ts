@@ -10,7 +10,6 @@ const response: ProjectOverviewResponse = {
   memberCount: 3,
   stats: {
     activeModuleCount: 1,
-    activeFeatureCount: 2,
     openTaskCount: 3,
     publishedRecordCount: 4,
   },
@@ -20,8 +19,6 @@ const response: ProjectOverviewResponse = {
       code: "CR-201",
       title: "增加商户订单号幂等校验",
       moduleId: 3,
-      featureId: 9,
-      featureName: "微信支付退款回调",
       publishedAt: "2026-09-10T09:00:00.000Z",
     },
   ],
@@ -55,7 +52,6 @@ describe("project overview server adapter", () => {
     });
     expect(result.stats).toEqual({
       activeModules: 1,
-      activeFeatures: 2,
       openTasks: 3,
       publishedRecords: 4,
       openLeftovers: 1,
@@ -65,7 +61,6 @@ describe("project overview server adapter", () => {
         recordId: 12,
         code: "CR-201",
         title: "增加商户订单号幂等校验",
-        featureName: "微信支付退款回调",
         publishedAt: "2026-09-10T09:00:00.000Z",
       },
     ]);
@@ -80,7 +75,7 @@ describe("project overview server adapter", () => {
   });
 
   it("keeps the notice explicit about the wired server data", () => {
-    expect(PROJECT_OVERVIEW_SERVER_NOTICE).toContain("待处理遗留问题总数");
+    expect(PROJECT_OVERVIEW_SERVER_NOTICE).toContain("待处理遗留问题");
     expect(PROJECT_OVERVIEW_SERVER_NOTICE).toContain("服务端实时数据");
     expect(PROJECT_OVERVIEW_SERVER_NOTICE).not.toContain("契约未提供");
   });

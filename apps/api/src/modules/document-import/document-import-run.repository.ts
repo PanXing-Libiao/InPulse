@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 
 import type { TransactionContext } from "../../database/transaction-context.js";
 
-/** ADR-064 文档导入批次行；同项目同摘要唯一，运行记录不可更新不可删除。 */
+/** ADR-064 / ADR-109 文档导入批次行；同项目同摘要唯一，运行记录不可更新不可删除。 */
 export interface DocumentImportRunRecord {
   readonly id: number;
   readonly projectId: number;
@@ -10,10 +10,8 @@ export interface DocumentImportRunRecord {
   readonly templateVersion: string;
   readonly actorId: number;
   readonly moduleCount: number;
-  readonly featureCount: number;
   readonly taskCount: number;
   readonly reusedModuleCount: number;
-  readonly reusedFeatureCount: number;
   readonly addedMemberCount: number;
   readonly createdAt: string;
 }
@@ -31,10 +29,8 @@ export interface InsertDocumentImportRunInput {
   readonly templateVersion: string;
   readonly actorId: number;
   readonly moduleCount: number;
-  readonly featureCount: number;
   readonly taskCount: number;
   readonly reusedModuleCount: number;
-  readonly reusedFeatureCount: number;
   readonly addedMemberCount: number;
 }
 
@@ -45,10 +41,8 @@ interface RunRow {
   readonly templateVersion: string;
   readonly actorId: number;
   readonly moduleCount: number;
-  readonly featureCount: number;
   readonly taskCount: number;
   readonly reusedModuleCount: number;
-  readonly reusedFeatureCount: number;
   readonly addedMemberCount: number;
   readonly createdAt: string | Date;
 }
@@ -125,10 +119,8 @@ export class DocumentImportRunRepository {
         template_version,
         actor_id,
         module_count,
-        feature_count,
         task_count,
         reused_module_count,
-        reused_feature_count,
         added_member_count
       ) VALUES (
         ${input.projectId},
@@ -136,10 +128,8 @@ export class DocumentImportRunRepository {
         ${input.templateVersion},
         ${input.actorId},
         ${input.moduleCount},
-        ${input.featureCount},
         ${input.taskCount},
         ${input.reusedModuleCount},
-        ${input.reusedFeatureCount},
         ${input.addedMemberCount}
       )
       RETURNING id,
@@ -148,10 +138,8 @@ export class DocumentImportRunRepository {
                 template_version AS "templateVersion",
                 actor_id AS "actorId",
                 module_count AS "moduleCount",
-                feature_count AS "featureCount",
                 task_count AS "taskCount",
                 reused_module_count AS "reusedModuleCount",
-                reused_feature_count AS "reusedFeatureCount",
                 added_member_count AS "addedMemberCount",
                 created_at AS "createdAt"
     `;

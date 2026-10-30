@@ -16,7 +16,6 @@ import {
   DOCUMENT_IMPORT_TEMPLATE,
   type CurrentUserResponse,
   type DocumentImportAssistResponse,
-  type FeatureItem,
   type InpulseApiClient,
   type ModuleItem,
   type ProjectDocumentImportPreviewResponse,
@@ -55,11 +54,7 @@ const SUGGEST_ONLY_DOCUMENT = [
   "# 项目：商城结算系统",
   "- 项目编码：MALL",
   "## 模块：购物车",
-  "### 功能：数量调整",
-  "- 当前说明：支持直接改数量",
-  "- 验收标准：改完数量后金额即时刷新",
-  "- 标签：前端",
-  "#### 任务：数量调整交互",
+  "### 任务：数量调整交互",
   "- 负责人：林雨",
   "- 优先级：高",
   "- 截止：2026-10-20",
@@ -73,25 +68,21 @@ const WORKBENCH_DOCUMENT = [
   "- 项目成员：林雨、陈昊",
   "## 模块：购物车",
   "- 说明：购物车增删改与价格试算",
-  "### 功能：数量调整",
-  "- 当前说明：支持直接改数量",
-  "#### 任务：数量调整交互",
+  "### 任务：数量调整交互",
   "- 负责人：林雨",
   "- 优先级：高",
-  "#### 任务：数量调整接口联调",
+  "### 任务：数量调整接口联调",
   "- 负责人：林语",
   "- 优先级：高",
   "## 模块：订单",
-  "### 功能：订单查询",
-  "#### 任务：订单查询筛选",
+  "### 任务：订单查询筛选",
   "- 负责人：张三",
 ].join("\n");
 
 /** 只缺一个负责人：用来验证「还差 N 处」由确定性检查算出。 */
 const MISSING_DOCUMENT = [
   "## 模块：支付",
-  "### 功能：退款",
-  "#### 任务：修复重复回调",
+  "### 任务：修复重复回调",
   "- 优先级：高",
 ].join("\n");
 
@@ -103,11 +94,7 @@ const COMPLETE_DOCUMENT = [
   "- 项目成员：林雨",
   "## 模块：购物车",
   "- 说明：购物车增删改与价格试算",
-  "### 功能：数量调整",
-  "- 当前说明：支持直接改数量",
-  "- 验收标准：改完数量后金额即时刷新",
-  "- 标签：前端",
-  "#### 任务：数量调整交互",
+  "### 任务：数量调整交互",
   "- 负责人：林雨",
   "- 优先级：高",
   "- 截止：2026-10-20",
@@ -142,23 +129,7 @@ const TARGET_MODULE: ModuleItem = {
   rowVersion: 1,
   createdAt: "2026-10-22T00:00:00.000Z",
   updatedAt: "2026-10-22T00:00:00.000Z",
-  stats: { activeFeatureCount: 1, openTaskCount: 0, completedTaskCount: 0 },
-};
-
-const TARGET_FEATURE: FeatureItem = {
-  id: 8,
-  projectId: 2,
-  moduleId: 7,
-  code: "MALL-F-1",
-  createdBy: 1,
-  tags: [],
-  name: "退款回调",
-  currentBehavior: "处理退款回调",
-  acceptanceCriteria: "",
-  rowVersion: 1,
-  createdAt: "2026-10-22T00:00:00.000Z",
-  updatedAt: "2026-10-22T00:00:00.000Z",
-  stats: { openTaskCount: 0, completedTaskCount: 0, recordCount: 0 },
+  stats: { openTaskCount: 0, completedTaskCount: 0 },
 };
 
 const TARGET_PROJECT: ProjectListItem = {
@@ -175,7 +146,6 @@ const TARGET_PROJECT: ProjectListItem = {
   memberCount: 2,
   stats: {
     activeModuleCount: 1,
-    activeFeatureCount: 1,
     openTaskCount: 0,
     completedTaskCount: 0,
   },
@@ -190,35 +160,21 @@ const okAssist: DocumentImportAssistResponse = {
 
 const okPreview: ProjectDocumentImportPreviewResponse = {
   digest: "a".repeat(64),
-  templateVersion: "1",
+  templateVersion: "2",
   project: null,
   summary: {
     moduleCount: 1,
-    featureCount: 1,
     taskCount: 1,
     moduleCreateCount: 1,
     moduleReuseCount: 0,
-    featureCreateCount: 1,
-    featureReuseCount: 0,
     taskCreateCount: 1,
     memberAddCount: 0,
   },
   modules: [{ line: 4, name: "支付", action: "CREATE", moduleId: null }],
-  features: [
-    {
-      line: 6,
-      moduleName: "支付",
-      name: "微信支付退款回调",
-      action: "CREATE",
-      featureId: null,
-    },
-  ],
   tasks: [
     {
       line: 8,
-      scope: "FEATURE",
       moduleName: "支付",
-      featureName: "微信支付退款回调",
       title: "修复重复回调",
       assignees: [{ token: "zhang", userId: 9, name: "张三" }],
       priority: "HIGH",
@@ -236,21 +192,16 @@ const okResult: ProjectDocumentImportResult = {
   digest: "a".repeat(64),
   counts: {
     modules: 1,
-    features: 1,
     tasks: 1,
     reusedModules: 0,
-    reusedFeatures: 0,
     addedMembers: 0,
   },
   modules: [{ id: 31, code: "SHOP-M-1" }],
-  features: [{ id: 41, code: "SHOP-F-1", moduleId: 31 }],
   tasks: [
     {
       id: 51,
       code: "SHOP-T-1",
       moduleId: 31,
-      featureId: 41,
-      scopeType: "FEATURE",
     },
   ],
 };
@@ -287,7 +238,6 @@ interface MountOptions {
   readonly user?: CurrentUserResponse | null | undefined;
   readonly directory?: readonly UserDirectoryItem[] | undefined;
   readonly modules?: readonly ModuleItem[] | undefined;
-  readonly features?: readonly FeatureItem[] | undefined;
 }
 
 function mount(options: MountOptions = {}) {
@@ -309,9 +259,6 @@ function mount(options: MountOptions = {}) {
   const listModules = vi
     .fn()
     .mockResolvedValue({ items: options.modules ?? [] });
-  const listFeatures = vi
-    .fn()
-    .mockResolvedValue({ items: options.features ?? [] });
   const issueCsrfToken = vi
     .fn()
     .mockResolvedValue({ csrfToken: "a".repeat(43) });
@@ -319,7 +266,6 @@ function mount(options: MountOptions = {}) {
     issueCsrfToken,
     getUserDirectory,
     listModules,
-    listFeatures,
     previewProjectDocumentImport,
     importProjectDocument,
     assistDocumentImport,
@@ -371,7 +317,6 @@ function mount(options: MountOptions = {}) {
     assistDocumentImport,
     getUserDirectory,
     listModules,
-    listFeatures,
     issueCsrfToken,
   };
 }
@@ -478,10 +423,6 @@ describe("ADR-064 文档导入弹窗（项目内导入）", () => {
     const card = screen.getByText("支付").closest(".import-plan-card");
     expect(card).not.toBeNull();
     expect(within(card as HTMLElement).getByText("新建模块")).toBeTruthy();
-    expect(
-      within(card as HTMLElement).getByText("微信支付退款回调"),
-    ).toBeTruthy();
-    expect(within(card as HTMLElement).getByText("新建功能")).toBeTruthy();
     expect(within(card as HTMLElement).getByText("修复重复回调")).toBeTruthy();
     expect(within(card as HTMLElement).getByText("张三 · 高")).toBeTruthy();
 
@@ -510,15 +451,15 @@ describe("ADR-064 文档导入弹窗（项目内导入）", () => {
           {
             severity: "ERROR",
             line: 3,
-            code: "MISSING_FEATURE_SECTION",
-            message: "功能缺少当前说明",
+            code: "MISSING_TASK_ASSIGNEE",
+            message: "任务缺少负责人",
           },
         ],
       },
     });
     await pasteAndPreview();
 
-    expect(screen.getByText("第 3 行：功能缺少当前说明")).toBeTruthy();
+    expect(screen.getByText("第 3 行：任务缺少负责人")).toBeTruthy();
     const apply = screen.getByTestId("document-import-apply");
     expect((apply as HTMLButtonElement).disabled).toBe(true);
   });
@@ -532,8 +473,8 @@ describe("ADR-064 文档导入弹窗（项目内导入）", () => {
           {
             severity: "ERROR",
             line: 3,
-            code: "MISSING_FEATURE_SECTION",
-            message: "功能缺少当前说明",
+            code: "MISSING_TASK_ASSIGNEE",
+            message: "任务缺少负责人",
           },
         ],
       },
@@ -546,7 +487,7 @@ describe("ADR-064 文档导入弹窗（项目内导入）", () => {
     expect(importTextarea().value).toBe(DOCUMENT);
     expect(previewButton()).toBeTruthy();
     expect(screen.queryByTestId("document-import-summary")).toBeNull();
-    expect(screen.queryByText("第 3 行：功能缺少当前说明")).toBeNull();
+    expect(screen.queryByText("第 3 行：任务缺少负责人")).toBeNull();
   });
 
   it("工作台阶段点叉仍然是关掉整个导入弹窗", () => {
@@ -636,9 +577,7 @@ describe("ADR-064 文档导入弹窗（项目内导入）", () => {
     expect(guide.textContent).toContain(
       "参加人员（填写姓名，须包含创建者本人与全部任务负责人）",
     );
-    expect(guide.textContent).toContain(
-      "功能隶属于模块，任务可隶属于模块或功能",
-    );
+    expect(guide.textContent).toContain("任务直接隶属于模块");
     expect(guide.textContent).not.toContain("缺失时导入会被拒绝");
     expect(guide.textContent).not.toContain("格式速查");
     expect(DOCUMENT_IMPORT_TEMPLATE).toContain("项目编码");
@@ -748,11 +687,10 @@ describe("ADR-071 左右分栏工作台", () => {
 
     expect(screen.getByText("商城结算系统")).toBeTruthy();
     expect(screen.getByText("购物车")).toBeTruthy();
-    expect(screen.getByText("数量调整")).toBeTruthy();
     expect(screen.getByText("数量调整交互")).toBeTruthy();
     expect(
       within(screen.getByTestId("document-import-assist")).getByText(
-        "已整理 2 模块 · 2 功能 · 3 任务",
+        "已整理 2 模块 · 3 任务",
       ),
     ).toBeTruthy();
     // 直接粘贴的模板不触发模型调用。
@@ -796,12 +734,9 @@ describe("ADR-071 左右分栏工作台", () => {
   it("「＋字段」入口区分必填与可选：负责人 / 项目编码 / 项目成员都标「必填」", () => {
     mount({ directory: DIRECTORY, mode: "NEW_PROJECT" });
     pasteDocument(
-      [
-        "# 项目：商城系统",
-        "## 模块：支付",
-        "### 功能：退款",
-        "#### 任务：修复重复回调",
-      ].join("\n"),
+      ["# 项目：商城系统", "## 模块：支付", "### 任务：修复重复回调"].join(
+        "\n",
+      ),
     );
 
     // 必填（服务端会拒绝）：任务负责人、整项目导入的项目编码。
@@ -886,7 +821,7 @@ describe("ADR-071 左右分栏工作台", () => {
     );
     const text = messages.textContent ?? "";
     expect(text).toContain(
-      "另有 4 处建议补齐：模块说明 ×1（支付）、功能说明 ×1（退款）、截止时间 ×1（修复重复回调）、任务描述 ×1（修复重复回调）",
+      "另有 3 处建议补齐：模块说明 ×1（支付）、截止时间 ×1（修复重复回调）、任务描述 ×1（修复重复回调）",
     );
     // 规模计数只在头部显示一次，助手不再重复。
     expect(text).not.toContain("已整理");
@@ -907,7 +842,7 @@ describe("ADR-071 左右分栏工作台", () => {
     );
     await waitFor(() =>
       expect(messages.textContent ?? "").toContain(
-        "已进入内容梳理：需要补充 8 处、待确认 2 个名字。",
+        "已进入内容梳理：需要补充 7 处、待确认 2 个名字。",
       ),
     );
   });
@@ -941,7 +876,7 @@ describe("ADR-071 左右分栏工作台", () => {
     );
     await waitFor(() =>
       expect(messages.textContent ?? "").toContain(
-        "已进入内容梳理：需要补充 8 处、待确认 2 个名字。",
+        "已进入内容梳理：需要补充 7 处、待确认 2 个名字。",
       ),
     );
     expect((messages.textContent ?? "").match(/已进入内容梳理/gu)?.length).toBe(
@@ -982,7 +917,7 @@ describe("ADR-071 左右分栏工作台", () => {
 
     await waitFor(() => expect(verdict()).not.toContain("必填还差"));
     expect(verdict()).toContain(
-      "另有 4 处建议补齐：模块说明 ×1（支付）、功能说明 ×1（退款）、截止时间 ×1（修复重复回调）、任务描述 ×1（修复重复回调）",
+      "另有 3 处建议补齐：模块说明 ×1（支付）、截止时间 ×1（修复重复回调）、任务描述 ×1（修复重复回调）",
     );
   });
 
@@ -995,7 +930,7 @@ describe("ADR-071 左右分栏工作台", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: null, featureId: null },
+        target: { projectId: 2, moduleId: null },
         text: "这周要把订单查询做完，负责人是林雨。",
       }),
     );
@@ -1010,17 +945,15 @@ describe("ADR-071 左右分栏工作台", () => {
     expect(screen.queryByTestId("document-import-assist-run-raw")).toBeNull();
   });
 
-  it("项目内导入可选模块与功能，目标随补充说明保持一致", async () => {
-    const { assistDocumentImport, listFeatures } = mount({
+  it("项目内导入可选模块，目标随补充说明保持一致", async () => {
+    const { assistDocumentImport } = mount({
       projectName: "商城结算系统",
       directory: DIRECTORY,
       modules: [TARGET_MODULE],
-      features: [TARGET_FEATURE],
     });
     expect(screen.getByTestId("document-import-target")).toBeTruthy();
     expect(screen.queryByTestId("document-import-mode")).toBeNull();
 
-    // 固定项目入口：项目名只作上下文展示，不能在这里切换项目。
     const projectContext = screen.getByTestId("document-import-project");
     expect(projectContext.textContent).toContain("商城结算系统");
     expect(projectContext.getAttribute("title")).toBe("商城结算系统");
@@ -1028,12 +961,9 @@ describe("ADR-071 左右分栏工作台", () => {
     expect(projectContext.closest("button, [role=button]")).toBeNull();
 
     await pickCalmSelectOption("所属模块", "支付");
-    await waitFor(() => expect(listFeatures).toHaveBeenCalled());
-    await pickCalmSelectOption("所属功能", "退款回调");
-
     expect(
       screen.getByTestId("document-import-target-summary").textContent,
-    ).toContain("支付 / 退款回调");
+    ).toContain("支付");
 
     pasteDocument("退款回调要补一条超时重试。");
     fireEvent.click(screen.getByTestId("document-import-assist-run-raw"));
@@ -1041,7 +971,7 @@ describe("ADR-071 左右分栏工作台", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenNthCalledWith(1, {
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: 7, featureId: 8 },
+        target: { projectId: 2, moduleId: 7 },
         text: "退款回调要补一条超时重试。",
       }),
     );
@@ -1052,7 +982,7 @@ describe("ADR-071 左右分栏工作台", () => {
       expect(calls.length).toBeGreaterThanOrEqual(2);
       expect(calls[1]?.[0]).toMatchObject({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: 7, featureId: 8 },
+        target: { projectId: 2, moduleId: 7 },
       });
     });
   });
@@ -1085,7 +1015,7 @@ describe("ADR-071 左右分栏工作台", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: null, featureId: null },
+        target: { projectId: 2, moduleId: null },
         text: WORKBENCH_DOCUMENT + "\n\n补充说明：「林语」改成「林雨」",
       }),
     );
@@ -1144,7 +1074,7 @@ describe("ADR-071 左右分栏工作台", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: null, featureId: null },
+        target: { projectId: 2, moduleId: null },
         text: WORKBENCH_DOCUMENT + "\n\n补充说明：订单查询要在本周五前完成",
       }),
     );
@@ -1361,7 +1291,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: null, featureId: null },
+        target: { projectId: 2, moduleId: null },
         text: "支付模块需要退款回调能力，负责人张三。",
       }),
     );
@@ -1425,7 +1355,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: null, featureId: null },
+        target: { projectId: 2, moduleId: null },
         text: edited + "\n\n补充说明：补充一句",
       }),
     );
@@ -1463,8 +1393,8 @@ describe("ADR-067 AI 辅助转换区块", () => {
 
   it("把整段说明重写说成改写，而不是同时新增和去掉同一句", async () => {
     const rewritten = WORKBENCH_DOCUMENT.replace(
-      "- 当前说明：支持直接改数量",
-      "- 当前说明：支持直接改数量，并在数量变化时即时刷新金额与小计。",
+      "- 说明：购物车增删改与价格试算",
+      "- 说明：购物车增删改与价格试算，并在数量变化时即时刷新金额与小计。",
     );
     const { assistDocumentImport } = mount({
       directory: DIRECTORY,
@@ -1472,12 +1402,12 @@ describe("ADR-067 AI 辅助转换区块", () => {
     });
     pasteDocument(WORKBENCH_DOCUMENT);
 
-    sendSupplement("功能说明帮我写详细一点");
+    sendSupplement("模块说明帮我写详细一点");
 
     await waitFor(() => {
       const messages = screen.getByTestId("document-import-assist-messages");
       expect(messages.textContent ?? "").toContain("改写 1 处");
-      expect(messages.textContent ?? "").toContain("功能说明");
+      expect(messages.textContent ?? "").toContain("模块说明");
       expect(messages.textContent ?? "").not.toContain("新增 1 行");
       expect(messages.textContent ?? "").not.toContain("去掉 1 行");
     });
@@ -1527,7 +1457,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
     expect(assistDocumentImport).toHaveBeenCalledTimes(1);
   });
 
-  it("目标项目、模块或功能失效时明确提示重新选择导入位置", async () => {
+  it("目标项目或模块失效时明确提示重新选择导入位置", async () => {
     mount({
       directory: DIRECTORY,
       assistError: new ApiError(404, {
@@ -1635,7 +1565,7 @@ describe("ADR-067 AI 辅助转换区块", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: null, featureId: null },
+        target: { projectId: 2, moduleId: null },
         text: "很长的需求文本",
       }),
     );
@@ -1711,7 +1641,7 @@ describe("文档导入：拖放与进行中反馈", () => {
     await waitFor(() =>
       expect(assistDocumentImport).toHaveBeenCalledWith({
         mode: "IN_PROJECT",
-        target: { projectId: 2, moduleId: null, featureId: null },
+        target: { projectId: 2, moduleId: null },
         text: "需求补充：售后要支持退货流程，负责人林雨。",
       }),
     );
@@ -1783,8 +1713,7 @@ describe("项目成员名单校验（整项目导入；ADR-073 起创建者默�
     "- 项目编码：MALL",
     "- 项目成员：林雨",
     "## 模块：购物车",
-    "### 功能：数量调整",
-    "#### 任务：数量调整交互",
+    "### 任务：数量调整交互",
     "- 负责人：陈昊",
   ].join("\n");
 
@@ -1799,8 +1728,7 @@ describe("项目成员名单校验（整项目导入；ADR-073 起创建者默�
         "# 项目：商城结算系统",
         "- 项目编码：MALL",
         "## 模块：购物车",
-        "### 功能：数量调整",
-        "#### 任务：数量调整交互",
+        "### 任务：数量调整交互",
         "- 负责人：林雨",
       ].join("\n"),
     );
@@ -1838,8 +1766,7 @@ describe("项目成员名单校验（整项目导入；ADR-073 起创建者默�
         "- 项目编码：MALL",
         "- 项目成员：林雨, 陈昊",
         "## 模块：购物车",
-        "### 功能：数量调整",
-        "#### 任务：数量调整交互",
+        "### 任务：数量调整交互",
         "- 负责人：陈昊",
       ].join("\n"),
     );
@@ -1863,8 +1790,7 @@ describe("项目成员名单校验（整项目导入；ADR-073 起创建者默�
         "- 项目编码：MALL",
         "- 项目成员：林雨",
         "## 模块：购物车",
-        "### 功能：数量调整",
-        "#### 任务：数量调整交互",
+        "### 任务：数量调整交互",
         "- 负责人：林雨, 特哥",
       ].join("\n"),
     );
@@ -1886,8 +1812,7 @@ describe("项目成员名单校验（整项目导入；ADR-073 起创建者默�
         "- 项目编码：MALL",
         "- 项目成员：林雨, xiaowu",
         "## 模块：购物车",
-        "### 功能：数量调整",
-        "#### 任务：数量调整交互",
+        "### 任务：数量调整交互",
         "- 负责人：xiaowu",
       ].join("\n"),
     );
@@ -1900,12 +1825,9 @@ describe("项目成员名单校验（整项目导入；ADR-073 起创建者默�
   it("项目内导入不做这两项校验", async () => {
     mount({ mode: "PROJECT", user: creatorUser, directory: DIRECTORY });
     pasteDocument(
-      [
-        "## 模块：购物车",
-        "### 功能：数量调整",
-        "#### 任务：数量调整交互",
-        "- 负责人：林雨",
-      ].join("\n"),
+      ["## 模块：购物车", "### 任务：数量调整交互", "- 负责人：林雨"].join(
+        "\n",
+      ),
     );
 
     const assist = screen.getByTestId("document-import-assist");
@@ -1947,9 +1869,7 @@ describe("创建者是固定成员（ADR-073，2026-10-14）", () => {
     "- 项目成员：林雨",
     "## 模块：购物车",
     "- 说明：购物车增删改与价格试算",
-    "### 功能：数量调整",
-    "- 当前说明：支持直接改数量",
-    "#### 任务：数量调整交互",
+    "### 任务：数量调整交互",
     "- 负责人：林雨",
   ].join("\n");
 

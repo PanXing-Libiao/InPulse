@@ -24,8 +24,6 @@ describe("ExternalLinks invariants", () => {
   let other: ProjectFixture;
   let taskId: number;
   let otherTaskId: number;
-  let featureId: number;
-  let otherFeatureId: number;
   let recordId: number;
   let otherRecordId: number;
 
@@ -37,8 +35,6 @@ describe("ExternalLinks invariants", () => {
     other = await createProject(runtime);
     taskId = await createTask(runtime, member, 1);
     otherTaskId = await createTask(runtime, other, 1);
-    featureId = await createFeature(runtime, member, 1);
-    otherFeatureId = await createFeature(runtime, other, 1);
     recordId = await createChangeRecord(runtime, member, 1);
     otherRecordId = await createChangeRecord(runtime, other, 1);
   });
@@ -84,34 +80,6 @@ describe("ExternalLinks invariants", () => {
     return row.id;
   }
 
-  async function createFeature(
-    sql: Sql,
-    fixture: ProjectFixture,
-    ordinal: number,
-  ): Promise<number> {
-    const [row] = await sql<Array<{ id: number }>>`
-      INSERT INTO app.features (
-        project_id,
-        module_id,
-        code,
-        name,
-        created_by
-      )
-      VALUES (
-        ${fixture.projectId},
-        ${fixture.moduleId},
-        ${`${fixture.code}-F-${ordinal}`},
-        ${`功能 ${ordinal}`},
-        ${fixture.userId}
-      )
-      RETURNING id
-    `;
-    if (!row) {
-      throw new Error("Feature fixture insert returned no row");
-    }
-    return row.id;
-  }
-
   async function createChangeRecord(
     sql: Sql,
     fixture: ProjectFixture,
@@ -121,7 +89,6 @@ describe("ExternalLinks invariants", () => {
       INSERT INTO app.change_records (
         project_id,
         module_id,
-        scope_type,
         title,
         handler_id,
         author_id
@@ -129,7 +96,6 @@ describe("ExternalLinks invariants", () => {
       VALUES (
         ${fixture.projectId},
         ${fixture.moduleId},
-        'MODULE',
         ${`变更记录 ${ordinal}`},
         ${fixture.userId},
         ${fixture.userId}
@@ -237,62 +203,6 @@ describe("ExternalLinks invariants", () => {
       runtime`
         INSERT INTO app.task_external_links (project_id, task_id, link_id)
         VALUES (${member.projectId}, ${taskId}, ${linkId})
-      `,
-      "23505",
-    );
-  });
-
-  test("功能级关联拒绝跨项目串联与归属错配", async () => {
-    const url = uniqueUrl("feature");
-    const linkId = await insertLink(member.projectId, member.userId, url);
-    await runtime`
-      INSERT INTO app.feature_external_links (project_id, feature_id, link_id)
-      VALUES (${member.projectId}, ${featureId}, ${linkId})
-    `;
-
-    await expectPostgresError(
-      runtime`
-        INSERT INTO app.feature_external_links (project_id, feature_id, link_id)
-        VALUES (${other.projectId}, ${otherFeatureId}, ${linkId})
-      `,
-      "23503",
-    );
-
-    const otherUrl = uniqueUrl("feature-other");
-    const otherLinkId = await insertLink(
-      other.projectId,
-      other.userId,
-      otherUrl,
-    );
-
-    await expectPostgresError(
-      runtime`
-        INSERT INTO app.feature_external_links (project_id, feature_id, link_id)
-        VALUES (${member.projectId}, ${featureId}, ${otherLinkId})
-      `,
-      "23503",
-    );
-    await expectPostgresError(
-      runtime`
-        INSERT INTO app.feature_external_links (project_id, feature_id, link_id)
-        VALUES (${other.projectId}, ${featureId}, ${otherLinkId})
-      `,
-      "23503",
-    );
-  });
-
-  test("同一功能重复关联同一链接返回 23505", async () => {
-    const url = uniqueUrl("feature-dup");
-    const linkId = await insertLink(member.projectId, member.userId, url);
-    await runtime`
-      INSERT INTO app.feature_external_links (project_id, feature_id, link_id)
-      VALUES (${member.projectId}, ${featureId}, ${linkId})
-    `;
-
-    await expectPostgresError(
-      runtime`
-        INSERT INTO app.feature_external_links (project_id, feature_id, link_id)
-        VALUES (${member.projectId}, ${featureId}, ${linkId})
       `,
       "23505",
     );

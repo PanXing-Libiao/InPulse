@@ -24,7 +24,6 @@ const fields = [
   "rowVersion",
   "createdAt",
   "updatedAt",
-  "stats.activeFeatureCount",
   "stats.openTaskCount",
   "stats.completedTaskCount",
 ];
@@ -35,7 +34,6 @@ const moduleDeletionFields = [
   "code",
   "name",
   "kind",
-  "deletedFeatureCount",
   "deletedTaskCount",
   "deletedRecordCount",
   "removedLinkCount",
@@ -97,7 +95,7 @@ export const moduleRoutes: readonly RouteDefinition[] = [
         idempotencyExceptionAdr: "none",
         // ADR-044：模块下线归档后 ModuleItem 去掉 status / archivedAt，
         // 重放安全字段集合随响应 Schema 变化，旧 Key 在新契约下 409。
-        idempotencyContractVersion: "1.4.0",
+        idempotencyContractVersion: "2.0.0",
         idempotencyFingerprintVersion: "1.0.0",
         behaviorHeaders: create ? [] : ["If-Match"],
         idempotencyReplayPolicy: {
@@ -136,12 +134,12 @@ export const moduleRoutes: readonly RouteDefinition[] = [
     },
   ),
   {
-    // ADR-096：删除模块改为物理删除，级联删除其功能、任务、记录与全部下级数据。
+    // ADR-096 / ADR-109：删除模块改为物理删除，级联删除其任务、记录与全部下级数据。
     method: "POST",
     path: "/projects/{projectId}/modules/{moduleId}/delete",
     operationId: "deleteModule",
     summary:
-      "删除模块：同一事务物理删除模块、其下功能与任务、全部迭代记录及下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
+      "删除模块：同一事务物理删除模块、其下任务、全部迭代记录及下级数据，只保留审计、项目动态与删除事件（ADR-096）。",
     request: {
       path: "ModuleResourcePath",
       query: "none",
@@ -160,11 +158,11 @@ export const moduleRoutes: readonly RouteDefinition[] = [
     csrfPolicy: "required",
     idempotencyPolicy: "idempotencyRequired",
     idempotencyExceptionAdr: "none",
-    idempotencyContractVersion: "2.0.0",
+    idempotencyContractVersion: "3.0.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: {
-      version: "2.0.0",
+      version: "3.0.0",
       success: {
         "200": {
           body: {
@@ -190,9 +188,9 @@ export const moduleRoutes: readonly RouteDefinition[] = [
     },
     concurrencyPolicy: {
       rowVersion: "required",
-      lockOrder: ["project", "module", "feature", "task", "taskGroup"],
+      lockOrder: ["project", "module", "task", "taskGroup"],
       retry:
-        "parents FOR SHARE, module FOR UPDATE; hard-delete function locks features, tasks, task groups and records in ascending id order",
+        "parents FOR SHARE, module FOR UPDATE; hard-delete function locks tasks, task groups and records in ascending id order",
     },
     auditAction: "module.delete",
   },

@@ -14,8 +14,6 @@ export interface ProjectMemberUnfinishedTask {
   readonly taskId: number;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly scopeType: "FEATURE" | "MODULE";
   readonly code: string;
   readonly title: string;
   readonly description: string;
@@ -24,13 +22,11 @@ export interface ProjectMemberUnfinishedTask {
   readonly workStatus: "TODO";
   readonly assigneeId: number;
   readonly rowVersion: number;
-  readonly impactFeatureIds: number[];
 }
 
 export interface ProjectMemberReassignmentInput {
   readonly taskId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
   readonly rowVersion: number;
   readonly assigneeIds: readonly number[];
 }
@@ -63,8 +59,6 @@ export class ProjectMemberTaskCommandPort {
       SELECT t.id AS "taskId",
              t.project_id AS "projectId",
              t.module_id AS "moduleId",
-             t.feature_id AS "featureId",
-             t.scope_type AS "scopeType",
              t.code,
              t.title,
              t.description,
@@ -72,15 +66,7 @@ export class ProjectMemberTaskCommandPort {
              t.due_at AS "dueAt",
              t.work_status AS "workStatus",
              ${userId}::integer AS "assigneeId",
-             t.row_version AS "rowVersion",
-             ARRAY(
-               SELECT i.feature_id
-                 FROM app.task_feature_impacts AS i
-                 JOIN app.features AS x
-                   ON x.id = i.feature_id AND x.deleted_at IS NULL
-                WHERE i.task_id = t.id
-                ORDER BY i.feature_id
-             ) AS "impactFeatureIds"
+             t.row_version AS "rowVersion"
         FROM app.tasks AS t
        WHERE t.project_id = ${projectId}          AND t.deleted_at IS NULL         AND EXISTS (SELECT 1 FROM app.task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ${userId})
          AND t.work_status = 'TODO'
@@ -90,8 +76,6 @@ export class ProjectMemberTaskCommandPort {
       taskId: number;
       projectId: number;
       moduleId: number;
-      featureId: number | null;
-      scopeType: "FEATURE" | "MODULE";
       code: string;
       title: string;
       description: string;
@@ -100,7 +84,6 @@ export class ProjectMemberTaskCommandPort {
       workStatus: "TODO";
       assigneeId: number;
       rowVersion: number;
-      impactFeatureIds: number[];
     }[];
     return rows.map((row) => ({
       ...row,
@@ -131,7 +114,6 @@ export class ProjectMemberTaskCommandPort {
       const scope: TaskScope = {
         projectId: input.projectId,
         moduleId: assignment.moduleId,
-        featureId: assignment.featureId,
       };
       const current = await this.repository.find(tx, scope, assignment.taskId);
       if (current === undefined) {
@@ -179,12 +161,10 @@ export class ProjectMemberTaskCommandPort {
       }
       try {
         await this.tasks.execute(tx, {
-          operation:
-            current.featureId === null ? "updateModuleTask" : "updateTask",
+          operation: "updateModuleTask",
           actorId: input.actorId,
           projectId: input.projectId,
           moduleId: current.moduleId,
-          featureId: current.featureId,
           taskId: current.id,
           version: assignment.rowVersion,
           edit: {
@@ -194,9 +174,6 @@ export class ProjectMemberTaskCommandPort {
             assigneeIds: nextAssigneeIds,
             dueAt: current.dueAt,
           },
-          ...(current.featureId === null
-            ? { impactFeatureIds: current.impactFeatureIds }
-            : {}),
           requestId: input.requestId,
         });
       } catch (error) {

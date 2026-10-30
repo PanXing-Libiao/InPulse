@@ -18,12 +18,11 @@ import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import { TaskDeletionWorkflow } from "./task-deletion.workflow.js";
 import type { CompletionHttpRequest } from "./task-completion-http.service.js";
 
-export type TaskDeletionOperation = "deleteTask" | "deleteModuleTask";
+export type TaskDeletionOperation = "deleteModuleTask";
 
 interface TaskDeletionResource {
   projectId: number;
   moduleId: number;
-  featureId: number | null;
   taskId: number;
 }
 
@@ -59,9 +58,8 @@ export class TaskDeletionHttpService {
           "请求未通过同源安全校验",
         );
       const route = routeRegistry.find(
-          (route) => route.operationId === operation,
-        )!,
-        moduleScope = operation === "deleteModuleTask";
+        (route) => route.operationId === operation,
+      )!;
       if (
         route.request.path === "none" ||
         route.request.headers === "none" ||
@@ -103,10 +101,7 @@ export class TaskDeletionHttpService {
           "TASK_CONTENT_TYPE_INVALID",
           "请求必须使用 application/json",
         );
-      const resource = {
-          ...(parsedPath.data as TaskDeletionResource),
-          ...(moduleScope ? { featureId: null } : {}),
-        },
+      const resource = parsedPath.data as TaskDeletionResource,
         command = parsedCommand.data as { reason: string | null };
       // 这里只做认证：重放路径同样会执行该回调，而任务行已被物理删除，
       // 带 taskId 的授权复核只允许出现在首次执行的 execute 中。
@@ -156,7 +151,6 @@ export class TaskDeletionHttpService {
             replayAuthContext: {
               projectId: resource.projectId,
               moduleId: resource.moduleId,
-              featureId: resource.featureId,
               taskId: resource.taskId,
             },
           };
@@ -175,7 +169,6 @@ export class TaskDeletionHttpService {
           if (
             saved.projectId !== resource.projectId ||
             saved.moduleId !== resource.moduleId ||
-            saved.featureId !== resource.featureId ||
             saved.taskId !== resource.taskId
           )
             throw new TaskManagementError(
@@ -188,7 +181,6 @@ export class TaskDeletionHttpService {
           await this.commands.authorize(tx, current.userId, {
             projectId: saved.projectId,
             moduleId: saved.moduleId,
-            featureId: saved.featureId,
           });
         },
       });

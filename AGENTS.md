@@ -13,6 +13,7 @@
 - 2026-10-28：项目成员权限已按 [ADR-104](./docs/adr/ADR-104.md) 改为全平台统一三档配置（全部成员 / 仅组长 / 仅系统管理员），当时路由总数 133，新增迁移 `0062_project_member_permissions.sql`。查看与个人设置、创建项目、整项目导入固定开放；记录作废/恢复与系统管理固定仅系统管理员；配置实时生效且不缓存到 Session。
 - 2026-10-28：企业微信项目群通知按 [ADR-105](./docs/adr/ADR-105.md) 新增群机器人 Webhook 通道（历史口径；项目群 BOT 通道已由 ADR-106 下线，当前不再接受新的 ACTIVE BOT）。当时路由总数 135，新增迁移 `0063_project_wecom_webhooks.sql`。
 - 2026-10-29：项目群通知已按 [ADR-106](./docs/adr/ADR-106.md) 收敛为 Webhook-only，当前路由总数 133，新增迁移 `0064_project_wecom_webhook_only.sql`。项目群只保留 Webhook 的读取、五类通知开关、添加与删除；项目群绑定码、项目群解绑和 BOT 群投递均已下线，旧路由返回 404。历史 BOT 目标、绑定码与投递记录只保留追溯，数据库拒绝新的 ACTIVE BOT；更换个人机器人只撤销个人绑定，Webhook 不受影响。个人单聊机器人、个人绑定码、欢迎语和个人通知保持不变。实现与本地验证状态以测试矩阵为准；测试 VM 与生产环境尚未同步。
+- 2026-10-30：功能层已按 [ADR-109](./docs/adr/ADR-109.md) 移除，当前层级固定为项目 → 模块 → 任务 → 迭代记录；新增迁移 `0065_contract_remove_feature_layer.sql`，路由总数 133 → 119。历史功能级任务与迭代记录一次性上提原模块；功能 API、页面、搜索实体、外部链接目标、影响关系和导入功能段均已下线，历史 `FEATURE` 审计、动态、通知与外部历史链接只保留追溯展示。文档导入新模板版本为 `2`，历史 `1` 只读兼容。本地演示库已迁移并重新导出种子；测试 VM 与生产环境尚未同步。
 - 明确的任务目标决定本次修改范围，但不得绕过既有安全和数据不变量。若需求确需改变不变量，先走 ADR 和人工评审。
 
 ## 2. 开工方式
@@ -81,14 +82,14 @@
 - 跨模块业务操作必须在同一事务中完成；审计、通知、活动投影和搜索投影与业务写入使用相同事务。
 - 聚合更新使用条件更新或显式行锁；内容变化必须递增 `row_version`，项目纯状态变更按 [ADR-092](./docs/adr/ADR-092.md) 保持版本不变。唯一约束、版本冲突和状态冲突映射为明确的 409 业务错误。
 - 多聚合命令固定锁序为：任务 ID 升序 -> 任务组 ID 升序 -> 迭代记录 ID 升序 -> 遗留项 ID 升序。预读结果在获得锁后发生变化时，必须重新读取并从头有限重试。
-- 命令需要验证项目、模块或功能仍可写时，必须先按项目 -> 模块 -> 功能的父到子顺序和各层 ID 升序取得 `FOR SHARE`；归档方按相同顺序取得 `FOR UPDATE`，随后才进入上述业务聚合锁序，防止父级归档与子级写入竞态。
-- 任务、功能与模块的物理删除只能经 `app.hard_delete_task` / `app.hard_delete_feature` / `app.hard_delete_module` 三个 `SECURITY DEFINER` 入口执行；共享 helper `app.hard_delete_business_scope` 不得授予 `app_runtime`，业务表 `DELETE` 权限不得因此放开。固定锁序为父级写前门禁 -> 功能 ID 升序 -> 任务 ID 升序 -> 聚合组 ID 升序 -> 迭代记录 ID 升序 -> 遗留项 ID 升序。
+- 命令需要验证项目或模块仍可写时，必须先按项目 -> 模块的父到子顺序和各层 ID 升序取得 `FOR SHARE`；归档方按相同顺序取得 `FOR UPDATE`，随后才进入上述业务聚合锁序，防止父级归档与子级写入竞态。
+- 任务与模块的物理删除只能经 `app.hard_delete_task` / `app.hard_delete_module` 两个 `SECURITY DEFINER` 入口执行；共享 helper `app.hard_delete_business_scope` 不得授予 `app_runtime`，业务表 `DELETE` 权限不得因此放开。固定锁序为父级写前门禁 -> 任务 ID 升序 -> 聚合组 ID 升序 -> 迭代记录 ID 升序 -> 遗留项 ID 升序。
 - 所有写接口（POST、PUT、PATCH、DELETE）默认必须在 Route Registry 声明 `idempotencyRequired` 并实现数据库级幂等；普通 GET、HEAD 和纯校验接口显式声明 `none`。[ADR-023](./docs/adr/ADR-023.md) allowlist 中的 operationId 必须且只能声明 `securityFlow`，包括签发/消费一次性安全材料（预认证 CSRF、Session 与 CSRF）、登录/登出与 SSO 认证导航（`startSsoLogin`/`completeSsoLogin`，共五条，[ADR-032](./docs/adr/ADR-032.md)）；新增例外必须另立 ADR。通用幂等记录禁止保存或重放 Cookie、CSRF Token 或任何一次性安全材料。
 - `idempotencyRequired` 的请求摘要必须覆盖大写 method、operationId、幂等契约版本、摘要格式与请求 Schema 版本、Schema 解析后的 path 参数和规范 query、规范 Content-Type、Route Registry 声明的全部行为相关请求头以及 JCS 规范化 body；使用版本头的路由必须包含 `If-Match`。摘要使用独立、带版本密钥的 HMAC-SHA-256，不得把普通 SHA-256 用作密码、验证码或其他低熵输入的离线校验器。Cookie、Authorization、CSRF、追踪头和 Idempotency-Key 不进入摘要。任一语义输入或幂等契约版本不同都返回 409。幂等不能只依赖前端禁用按钮或进程内锁。
 - 每条 `idempotencyRequired` 路由必须登记带版本的 `idempotencyReplayPolicy`：逐个列出可能缓存的 2xx 状态；有 body 时列出精确响应 Schema 引用以及可安全持久化和重放的全部 body 叶子字段，无 body 时使用互斥的 `noBody` 分支。CI 必须拒绝遗漏状态、字段不全或越界、Schema 不一致、Secret 字段以及任何 `Set-Cookie`/认证响应头重放；`none` 与 `securityFlow` 路由的该策略只能为 `none`。请求或安全重放策略变化必须升级幂等契约版本，旧 Key 在新契约下返回 409。
 - 每条 `idempotencyRequired` 路由还必须登记 `replayAuthorizationPolicy`，以类型化、最小化的结果资源引用说明缓存响应暴露了哪些资源。幂等重放前必须重新验证当前认证、原操作权限、所有结果资源的当前可读权限及该路由要求的高风险门禁（当前有效的完整管理员 Session）；任一门禁失败时拒绝且不得泄露已存状态码或响应。只有全部门禁通过后，同 Key、同摘要和同契约版本才重放原 2xx。
 - 项目创建时，创建者必须自动成为活跃成员且创建流程不可取消该成员关系；创建完成后，系统管理员可以按普通成员规则移除创建者（[ADR-033](./docs/adr/ADR-033.md) 起创建者成员行默认担任组长 LEADER，组长须先由系统管理员转移或撤销后才能被移除）。`projects.created_by` 只用于不可变溯源，不赋予额外权限，也不得随成员移除而改变。普通成员创建者被移除后立即失去成员关系派生的项目权限；若创建者本身是系统管理员，其全局管理员权限不受成员记录影响。测试必须分别覆盖这两种身份。
-- 正式记录版本不可变；迭代记录状态只允许 `DRAFT -> PUBLISHED -> VOID`，以及系统管理员执行的 `VOID -> PUBLISHED` 恢复（[ADR-031](./docs/adr/ADR-031.md) 起不再要求 TOTP 重认证）。`status` 是详情、统计、搜索和时间线可见性的唯一真相，不得因恢复后仍保留 `voided_at` 而继续隐藏。恢复必须保留作废快照与全部版本，原因进入不可变审计，具体不变量见 [ADR-024](./docs/adr/ADR-024.md)。任务组成员关系是 MAIN/SOURCE 身份的唯一真相。业务历史默认通过归档、作废或新版本保留，不物理覆盖或删除；唯一显式例外是项目删除以及任务、功能、模块删除（[ADR-062](./docs/adr/ADR-062.md)、[ADR-096](./docs/adr/ADR-096.md)），其级联边界与保留面必须按 ADR 执行。
+- 正式记录版本不可变；迭代记录状态只允许 `DRAFT -> PUBLISHED -> VOID`，以及系统管理员执行的 `VOID -> PUBLISHED` 恢复（[ADR-031](./docs/adr/ADR-031.md) 起不再要求 TOTP 重认证）。`status` 是详情、统计、搜索和时间线可见性的唯一真相，不得因恢复后仍保留 `voided_at` 而继续隐藏。恢复必须保留作废快照与全部版本，原因进入不可变审计，具体不变量见 [ADR-024](./docs/adr/ADR-024.md)。任务组成员关系是 MAIN/SOURCE 身份的唯一真相。业务历史默认通过归档、作废或新版本保留，不物理覆盖或删除；唯一显式例外是项目删除以及任务、模块删除（[ADR-062](./docs/adr/ADR-062.md)、[ADR-096](./docs/adr/ADR-096.md)），其级联边界与保留面必须按 ADR 执行。
 - 历史迁移一经合并不得修改、删除或重排。新迁移采用 expand/contract 思路，必须支持从上一正式版本验证升级和回滚兼容窗口。
 - API 进程不得在启动时自动生成 Schema。迁移由独立、受限的 migration 任务执行。
 - Repository/Application 集成测试必须使用真实 PostgreSQL 验证事务、锁、约束和权限，不能只 Mock Repository。

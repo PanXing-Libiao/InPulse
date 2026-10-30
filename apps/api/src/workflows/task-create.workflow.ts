@@ -12,7 +12,6 @@ import type {
 } from "@inpulse/api-contract";
 import type { TransactionContext } from "../database/transaction-context.js";
 import { ModuleCreateCommandPort } from "../modules/modules/create.command-port.js";
-import { FeatureCreateCommandPort } from "../modules/features/create.command-port.js";
 import { TaskCreateCommandPort } from "../modules/tasks/create.command-port.js";
 @Injectable()
 export class TaskCreateWorkflow {
@@ -23,8 +22,6 @@ export class TaskCreateWorkflow {
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleCreateCommandPort)
     private readonly modules: ModuleCreateCommandPort,
-    @Inject(FeatureCreateCommandPort)
-    private readonly features: FeatureCreateCommandPort,
     @Inject(TaskCreateCommandPort)
     private readonly tasks: TaskCreateCommandPort,
     @Inject(ProjectMemberPermissionPolicyService)
@@ -52,10 +49,7 @@ export class TaskCreateWorkflow {
       actorUserId: actorId,
       projectId,
       capabilities:
-        input.module.kind === "new" ||
-        (input.feature !== null && input.feature.kind === "new")
-          ? ["taskEdit", "moduleFeatureEdit"]
-          : ["taskEdit"],
+        input.module.kind === "new" ? ["taskEdit", "moduleEdit"] : ["taskEdit"],
     });
     const moduleId =
       input.module.kind === "existing"
@@ -69,34 +63,14 @@ export class TaskCreateWorkflow {
               requestId,
             )
           ).id;
-    const featureId =
-      input.feature === null
-        ? null
-        : input.feature.kind === "existing"
-          ? input.feature.id
-          : (
-              await this.features.create(
-                tx,
-                actorId,
-                projectId,
-                moduleId,
-                input.feature.input,
-                requestId,
-              )
-            ).id;
     const task = await this.tasks.create(
       tx,
       actorId,
-      {
-        projectId,
-        moduleId,
-        featureId,
-        impactFeatureIds: input.impactFeatureIds,
-      },
+      { projectId, moduleId },
       input.task,
       requestId,
     );
-    return { projectId, moduleId, featureId, taskId: task.id };
+    return { projectId, moduleId, taskId: task.id };
   }
   async replay(
     tx: TransactionContext,
@@ -104,21 +78,13 @@ export class TaskCreateWorkflow {
     result: TaskCreateResult,
     input: TaskCreateRequest,
   ) {
-    if (
-      input.module.kind === "new" ||
-      (input.feature !== null && input.feature.kind === "new")
-    ) {
+    if (input.module.kind === "new") {
       await this.permissions.assertCapabilities(tx, {
         actorUserId: actorId,
         projectId: result.projectId,
-        capabilities: ["moduleFeatureEdit"],
+        capabilities: ["moduleEdit"],
       });
     }
-    return this.tasks.replay(
-      tx,
-      actorId,
-      { ...result, impactFeatureIds: input.impactFeatureIds },
-      result.taskId,
-    );
+    return this.tasks.replay(tx, actorId, result, result.taskId);
   }
 }

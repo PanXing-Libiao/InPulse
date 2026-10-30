@@ -18,7 +18,6 @@ import { ApiHttpError } from "../http/contract-errors.js";
 import type { TransactionContext } from "../database/transaction-context.js";
 import { TaskManagementError } from "../modules/tasks/tasks-management.service.js";
 import { ModuleManagementError } from "../modules/modules/modules-management.service.js";
-import { FeatureManagementError } from "../modules/features/features-management.service.js";
 import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import { TaskCreateWorkflow } from "./task-create.workflow.js";
 @Injectable()
@@ -94,7 +93,6 @@ export class TaskCreateHttpService {
       if (
         error instanceof TaskManagementError ||
         error instanceof ModuleManagementError ||
-        error instanceof FeatureManagementError ||
         error instanceof ProjectCapabilityAccessError ||
         error instanceof IdempotencyHttpError ||
         error instanceof SearchProjectionCapacityError

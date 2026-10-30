@@ -23,8 +23,8 @@ const settings: ProjectMemberPermissions = {
   projectLeaderTransfer: "LEADERS_ONLY",
   projectDelete: "LEADERS_ONLY",
   projectDocumentImport: "ALL_MEMBERS",
-  moduleFeatureEdit: "ALL_MEMBERS",
-  moduleFeatureDelete: "LEADERS_ONLY",
+  moduleEdit: "ALL_MEMBERS",
+  moduleDelete: "LEADERS_ONLY",
   taskEdit: "ALL_MEMBERS",
   taskLifecycle: "ALL_MEMBERS",
   recordWrite: "ALL_MEMBERS",
@@ -85,7 +85,7 @@ describe("PermissionMatrixPanel", () => {
     const table = await screen.findByRole("table", {
       name: "全平台项目成员权限矩阵",
     });
-    for (const header of ["功能", "权限范围", "规则说明"]) {
+    for (const header of ["权限能力", "权限范围", "规则说明"]) {
       expect(
         within(table).getByRole("columnheader", { name: header }),
       ).toBeInTheDocument();
@@ -141,8 +141,8 @@ describe("PermissionMatrixPanel", () => {
       projectLeaderTransfer: "LEADERS_ONLY",
       projectDelete: "LEADERS_ONLY",
       projectDocumentImport: "ALL_MEMBERS",
-      moduleFeatureEdit: "ALL_MEMBERS",
-      moduleFeatureDelete: "LEADERS_ONLY",
+      moduleEdit: "ALL_MEMBERS",
+      moduleDelete: "LEADERS_ONLY",
       taskEdit: "ALL_MEMBERS",
       taskLifecycle: "ALL_MEMBERS",
       recordWrite: "ALL_MEMBERS",

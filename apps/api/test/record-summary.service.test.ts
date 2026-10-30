@@ -11,7 +11,6 @@ import type {
   RecordSummaryRecordPage,
   RecordSummaryRecordRow,
 } from "../src/modules/change-records/index.js";
-import type { FeatureReadPort } from "../src/modules/features/index.js";
 import type { ModuleReadPort } from "../src/modules/modules/index.js";
 import type {
   ProjectAccessQueryPort,
@@ -46,8 +45,6 @@ function recordFixture(
     recordCode: "SHOP-CR-100",
     projectId: 7,
     moduleId: 3,
-    featureId: 4,
-    scopeType: "FEATURE",
     title: "登录页首屏优化",
     changeSolution: "改动方案",
     resultVerification: "首屏从 2s 降到 0.8s",
@@ -64,8 +61,6 @@ function taskFixture(overrides: Partial<SummaryTaskRow> = {}): SummaryTaskRow {
     code: "SHOP-T-20",
     projectId: 7,
     moduleId: 3,
-    featureId: 4,
-    scopeType: "FEATURE",
     title: "登录页首屏优化",
     completedAt: baseTime,
     assigneeId: 6,
@@ -103,12 +98,6 @@ function setup(
       readonly projectId: number;
       readonly name: string;
     }[];
-    readonly featureNames?: readonly {
-      readonly featureId: number;
-      readonly projectId: number;
-      readonly moduleId: number;
-      readonly name: string;
-    }[];
     readonly users?: readonly UserRefItem[];
     readonly projectNames?: readonly string[];
   } = {},
@@ -134,13 +123,6 @@ function setup(
     .fn()
     .mockResolvedValue(
       options.moduleNames ?? [{ moduleId: 3, projectId: 7, name: "登录模块" }],
-    );
-  const listFeatureNames = vi
-    .fn()
-    .mockResolvedValue(
-      options.featureNames ?? [
-        { featureId: 4, projectId: 7, moduleId: 3, name: "登录页" },
-      ],
     );
   const summaryRecords = vi.fn().mockResolvedValue(
     options.records ?? {
@@ -174,7 +156,6 @@ function setup(
     { getAuthorizedSearchScope } as unknown as ProjectAccessQueryPort,
     { list: listProjects } as unknown as ProjectQueryPort,
     { listNames: listModuleNames } as unknown as ModuleReadPort,
-    { listNames: listFeatureNames } as unknown as FeatureReadPort,
     {
       summaryRecords,
       summaryLeftovers,
@@ -222,7 +203,6 @@ describe("RecordSummaryQueryService.get", () => {
     expect(result.totals).toMatchObject({
       projectCount: 1,
       moduleCount: 1,
-      featureCount: 1,
       recordCount: 1,
       completedTaskCount: 1,
       missingRecordTaskCount: 0,
@@ -240,14 +220,13 @@ describe("RecordSummaryQueryService.get", () => {
       recordCode: "SHOP-CR-100",
       projectName: "商城系统",
       moduleName: "登录模块",
-      featureName: "登录页",
       detail: "首屏从 2s 降到 0.8s",
       author: { userId: 5, name: "作者" },
     });
     expect(result.gaps).toEqual([]);
   });
 
-  it("范围内没有任何记录时，同功能下的已完成任务进入缺口", async () => {
+  it("范围内没有任何记录时，同模块下的已完成任务进入缺口", async () => {
     const setupResult = setup({
       records: { items: [], total: 0, hasMore: false },
     });
@@ -258,21 +237,18 @@ describe("RecordSummaryQueryService.get", () => {
       taskId: 20,
       taskCode: "SHOP-T-20",
       moduleName: "登录模块",
-      featureName: "登录页",
       assignee: { userId: 6, name: "负责人" },
     });
     expect(result.totals.missingRecordTaskCount).toBe(1);
   });
 
-  it("模块级记录覆盖整个模块，该模块下的功能级任务不算缺口", async () => {
+  it("模块级记录覆盖整个模块，该模块下的任务不算缺口", async () => {
     const setupResult = setup({
       records: {
         items: [
           recordFixture({
             recordId: 101,
             recordCode: "SHOP-CR-101",
-            featureId: null,
-            scopeType: "MODULE",
           }),
         ],
         total: 1,
@@ -282,7 +258,6 @@ describe("RecordSummaryQueryService.get", () => {
     const result = await setupResult.service.get({ ...command });
 
     expect(result.gaps).toEqual([]);
-    expect(result.points[0]?.featureName).toBeNull();
   });
 
   it("记录被截断时不做缺口判定，只置 truncated", async () => {

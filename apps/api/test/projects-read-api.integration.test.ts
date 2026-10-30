@@ -47,7 +47,6 @@ const auditKey = Buffer.alloc(32, 0x5c);
 /** 项目统计夹具的期望值：与 R-2 getProjectOverview 同口径。 */
 const expectedStats = {
   activeModuleCount: 3,
-  activeFeatureCount: 2,
   openTaskCount: 4,
   // 统计夹具里只有「统计夹具已完成任务」一条 DONE（历史来源分支不计）。
   completedTaskCount: 1,
@@ -348,7 +347,7 @@ describe("F-05.1 real HTTP + PostgreSQL", () => {
     );
   });
 
-  test("列表与详情按 R-2 口径返回活跃模块、活跃功能与未完成有效任务", async () => {
+  test("列表与详情按 R-2 口径返回活跃模块、未完成有效任务与任务统计", async () => {
     const admin = await actor(true);
     const owner = await actor();
     const extra = await actor();
@@ -357,31 +356,14 @@ describe("F-05.1 real HTTP + PostgreSQL", () => {
       INSERT INTO app.project_members (project_id, user_id)
       VALUES (${project.projectId}, ${extra.userId})
     `;
-    const [secondModule] = await client.sql<{ id: number }[]>`
+    await client.sql`
       INSERT INTO app.modules (project_id, name, created_by)
       VALUES (${project.projectId}, ${"统计夹具模块 B"}, ${owner.userId})
-      RETURNING id
     `;
     await client.sql`
       INSERT INTO app.modules (project_id, name, created_by)
       VALUES (${project.projectId}, ${"统计夹具模块 C"}, ${owner.userId})
     `;
-    // ADR-045：功能已无归档态，统计夹具只保留两条活跃功能。
-    for (const [code, name, moduleId] of [
-      [`${project.code}-F-1`, "统计夹具功能 1", project.moduleId],
-      [`${project.code}-F-2`, "统计夹具功能 2", secondModule!.id],
-    ] as const) {
-      await client.sql`
-        INSERT INTO app.features (project_id, module_id, code, name, created_by)
-        VALUES (
-          ${project.projectId},
-          ${moduleId},
-          ${code},
-          ${name},
-          ${owner.userId}
-        )
-      `;
-    }
 
     let taskSequence = 0;
     const newTask = async (title: string) => {
@@ -392,7 +374,6 @@ describe("F-05.1 real HTTP + PostgreSQL", () => {
           {
             projectId: project.projectId,
             moduleId: project.moduleId,
-            featureId: null,
           },
           owner.userId,
           `${project.code}-T-${taskSequence}`,
@@ -521,7 +502,6 @@ describe("F-05.1 real HTTP + PostgreSQL", () => {
     expect(items.find((item) => item.id === isolated.projectId)?.stats).toEqual(
       {
         activeModuleCount: 1,
-        activeFeatureCount: 0,
         openTaskCount: 0,
         completedTaskCount: 0,
       },
@@ -542,13 +522,12 @@ describe("F-05.1 real HTTP + PostgreSQL", () => {
     await client.sql`
       WITH created AS (
         INSERT INTO app.tasks (
-          project_id, module_id, scope_type, code, title, work_status,
+          project_id, module_id, code, title, work_status,
           completion_note, completed_at, creator_id
         )
         VALUES (
           ${active.projectId},
           ${active.moduleId},
-          'MODULE',
           ${`${active.code}-T-1`},
           '已完成任务',
           'DONE',

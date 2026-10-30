@@ -24,9 +24,7 @@ export const recordPublicationReplayContextSchema = z
     projectId: id,
     recordId: id,
     moduleId: id,
-    featureId: id.nullable(),
     taskId: id.nullable(),
-    impactFeatureIds: z.array(id),
     leftoverItemIds: z.array(id),
   })
   .strict()

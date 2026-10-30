@@ -34,7 +34,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
     [],
   );
 
-  /** 整项目导入成功后直接进入新项目模块页，导入的模块/功能/任务立即可见。 */
+  /** 整项目导入成功后直接进入新项目模块页，导入的模块/任务立即可见。 */
   const handleImportedProject = useCallback(
     (result: ProjectDocumentImportResult) => {
       navigate("/projects/" + result.projectId + "/modules");

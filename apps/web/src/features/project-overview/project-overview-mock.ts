@@ -28,21 +28,18 @@ function createIterations(): readonly ProjectOverviewIteration[] {
       recordId: 301,
       code: "R-301",
       title: "任务中心与项目概览骨架对齐设计稿",
-      featureName: "任务中心",
       publishedAt: isoDaysAgo(1, 16),
     },
     {
       recordId: 302,
       code: "R-302",
       title: "项目成员移除时的任务改派流程复核",
-      featureName: "成员管理",
       publishedAt: isoDaysAgo(3, 11),
     },
     {
       recordId: 303,
       code: "R-303",
       title: "搜索短词命中率复核结论",
-      featureName: null,
       publishedAt: isoDaysAgo(6, 14),
     },
   ];
@@ -69,7 +66,6 @@ export function createProjectOverviewMockResult(): ProjectOverviewResult {
   return {
     stats: {
       activeModules: 4,
-      activeFeatures: 11,
       openTasks: 6,
       publishedRecords: 9,
       openLeftovers: createLeftovers().length,

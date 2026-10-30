@@ -8,7 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import {
   ApiError,
@@ -29,7 +29,7 @@ const item: ModuleItem = {
   rowVersion: 1,
   createdAt: "2026-09-09T00:00:00.000Z",
   updatedAt: "2026-09-09T00:00:00.000Z",
-  stats: { activeFeatureCount: 0, openTaskCount: 0, completedTaskCount: 1 },
+  stats: { openTaskCount: 0, completedTaskCount: 1 },
 };
 function mount(client: InpulseApiClient) {
   return render(
@@ -238,7 +238,6 @@ describe("F-12 forms", () => {
           memberCount: 2,
           stats: {
             activeModuleCount: 1,
-            activeFeatureCount: 0,
             openTaskCount: 0,
             completedTaskCount: 1,
           },
@@ -269,7 +268,7 @@ describe("F-12 forms", () => {
 describe("模块卡", () => {
   const withStats = {
     ...item,
-    stats: { activeFeatureCount: 3, openTaskCount: 2, completedTaskCount: 1 },
+    stats: { openTaskCount: 2, completedTaskCount: 1 },
   };
   const mountRouted = (client: InpulseApiClient) =>
     render(
@@ -287,8 +286,8 @@ describe("模块卡", () => {
                   element={<ModulesPageView projectId={2} client={client} />}
                 />
                 <Route
-                  path="/projects/:projectId/modules/:moduleId/features"
-                  element={<div>功能列表页</div>}
+                  path="/projects/:projectId/modules/:moduleId/tasks"
+                  element={<div>模块任务页</div>}
                 />
               </Routes>
             </MemoryRouter>
@@ -296,21 +295,21 @@ describe("模块卡", () => {
         </AuthStateProvider>
       </ConfigProvider>,
     );
-  it("shows the module feature and open task counts in the card footer", async () => {
+  it("shows the module open and completed task counts in the card footer", async () => {
     const client = {
       listModules: vi.fn().mockResolvedValue({ items: [withStats] }),
     } as unknown as InpulseApiClient;
     mountRouted(client);
-    expect(await screen.findByText(/3 个功能/)).toBeInTheDocument();
+    expect(await screen.findByText(/2 项待办/)).toBeInTheDocument();
     expect(screen.getByText(/2 项待办/)).toBeInTheDocument();
   });
-  it("opens the feature list when the card body itself is clicked", async () => {
+  it("opens the module task page when the card body itself is clicked", async () => {
     const client = {
       listModules: vi.fn().mockResolvedValue({ items: [withStats] }),
     } as unknown as InpulseApiClient;
     mountRouted(client);
     fireEvent.click(await screen.findByRole("heading", { name: "未分类模块" }));
-    await screen.findByText("功能列表页");
+    await screen.findByText("模块任务页");
   });
   it("keeps 编辑模块 as the only control inside the card so card clicks stay unambiguous", async () => {
     const client = {
@@ -319,7 +318,7 @@ describe("模块卡", () => {
     mountRouted(client);
     const heading = await screen.findByRole("heading", { name: "未分类模块" });
     const card = heading.closest(".calm-feature-card") as HTMLElement;
-    // 「查看功能」与整卡点击同义，已删除；卡内不再有任何链接。
+    // 整卡点击进入模块任务页；卡内不再有任何链接。
     expect(within(card).queryByRole("link")).toBeNull();
     expect(within(card).getAllByRole("button")).toHaveLength(1);
     expect(
@@ -388,7 +387,6 @@ describe("模块弹层的归档入口（ADR-044 已下线）", () => {
           memberCount: 2,
           stats: {
             activeModuleCount: 1,
-            activeFeatureCount: 0,
             openTaskCount: 0,
             completedTaskCount: 1,
           },
@@ -418,14 +416,6 @@ describe("模块弹层的归档入口（ADR-044 已下线）", () => {
 });
 
 describe("新项目搭建引导（2026-10-10）", () => {
-  function FeatureRouteProbe() {
-    const location = useLocation();
-    return (
-      <div data-testid="feature-route-probe">
-        {JSON.stringify(location.state)}
-      </div>
-    );
-  }
   const mountGuided = (
     client: InpulseApiClient,
     state: { createModule?: boolean } | null = null,
@@ -446,10 +436,6 @@ describe("新项目搭建引导（2026-10-10）", () => {
                   path="/projects/:projectId/modules"
                   element={<ModulesPageView projectId={2} client={client} />}
                 />
-                <Route
-                  path="/projects/:projectId/modules/:moduleId/features"
-                  element={<FeatureRouteProbe />}
-                />
               </Routes>
             </MemoryRouter>
           </QueryClientProvider>
@@ -457,7 +443,7 @@ describe("新项目搭建引导（2026-10-10）", () => {
       </ConfigProvider>,
     );
 
-  it("空项目显示三步引导，不再叠加「暂无模块」空态", async () => {
+  it("空项目显示两步引导，不再叠加「暂无模块」空态", async () => {
     const client = {
       listModules: vi.fn().mockResolvedValue({ items: [] }),
     } as unknown as InpulseApiClient;
@@ -469,29 +455,30 @@ describe("新项目搭建引导（2026-10-10）", () => {
     expect(screen.queryByRole("dialog", { name: "新增模块" })).toBeNull();
   });
 
-  it("只有模块时引导指向最近的模块，添加功能带一次性信号进入功能页", async () => {
+  it("只有模块时引导进入创建任务", async () => {
     const emptyModule: ModuleItem = {
       ...item,
-      stats: { activeFeatureCount: 0, openTaskCount: 0, completedTaskCount: 0 },
+      stats: { openTaskCount: 0, completedTaskCount: 0 },
     };
     const client = {
       listModules: vi.fn().mockResolvedValue({ items: [emptyModule] }),
     } as unknown as InpulseApiClient;
     mountGuided(client);
     expect(
-      await screen.findByText("为「未分类模块」建第一个功能档案。"),
+      await screen.findByText(
+        "任务是指派给成员的具体工作，完成后可沉淀迭代记录。",
+      ),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "添加功能" }));
-    const probe = await screen.findByTestId("feature-route-probe");
-    expect(JSON.parse(probe.textContent ?? "null")).toEqual({
-      createFeature: true,
-    });
+    fireEvent.click(screen.getByRole("button", { name: "创建任务" }));
+    expect(
+      await screen.findByRole("dialog", { name: "新建任务" }),
+    ).toBeInTheDocument();
   });
 
-  it("三步齐备后不再出现引导", async () => {
+  it("模块与任务齐备后不再出现引导", async () => {
     const completeModule: ModuleItem = {
       ...item,
-      stats: { activeFeatureCount: 3, openTaskCount: 2, completedTaskCount: 1 },
+      stats: { openTaskCount: 2, completedTaskCount: 1 },
     };
     const client = {
       listModules: vi.fn().mockResolvedValue({ items: [completeModule] }),
@@ -528,7 +515,6 @@ describe("项目主页企微群入口", () => {
       memberCount: 3,
       stats: {
         activeModuleCount: 1,
-        activeFeatureCount: 0,
         openTaskCount: 0,
         completedTaskCount: 0,
       },
@@ -576,7 +562,6 @@ describe("ADR-064 文档导入入口", () => {
       memberCount: 3,
       stats: {
         activeModuleCount: 1,
-        activeFeatureCount: 0,
         openTaskCount: 0,
         completedTaskCount: 0,
       },
@@ -605,7 +590,6 @@ describe("ADR-064 文档导入入口", () => {
           ...projectDetail.project,
           stats: {
             activeModuleCount: 0,
-            activeFeatureCount: 0,
             openTaskCount: 0,
             completedTaskCount: 0,
           },

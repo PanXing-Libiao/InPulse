@@ -27,7 +27,6 @@ const project: ProjectListItem = {
   memberCount: 4,
   stats: {
     activeModuleCount: 8,
-    activeFeatureCount: 32,
     openTaskCount: 3,
     completedTaskCount: 1,
   },
@@ -79,10 +78,9 @@ function mount(
 }
 
 describe("项目卡", () => {
-  it("shows module, feature, task and member counts in the two footer rows", () => {
+  it("shows module, task and member counts in the two footer rows", () => {
     mount({});
     expect(screen.getByText(/8 个模块/)).toBeInTheDocument();
-    expect(screen.getByText(/32 个功能/)).toBeInTheDocument();
     expect(screen.getByText(/3 项待办/)).toBeInTheDocument();
     expect(screen.getByText(/4 位成员/)).toBeInTheDocument();
   });
@@ -401,7 +399,7 @@ describe("ADR-064 / ADR-094 项目列表文档导入入口", () => {
     ).toBe("true");
   });
 
-  it("在同一个工作台内切换到已有项目，再选择模块 / 功能目标", async () => {
+  it("在同一个工作台内切换到已有项目，再选择模块目标", async () => {
     const listModules = vi.fn().mockResolvedValue({ items: [] });
     const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
     mount({

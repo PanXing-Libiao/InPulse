@@ -10,7 +10,6 @@ export const SEARCH_CURSOR_MAX_LENGTH = 256;
 export const searchEntityTypeSchema = z.enum([
   "PROJECT",
   "MODULE",
-  "FEATURE",
   "TASK",
   "CHANGE_RECORD",
   "EXTERNAL_LINK",
@@ -48,9 +47,8 @@ export type SearchQueryRequest = z.infer<typeof searchQueryRequestSchema>;
 
 /**
  * 搜索结果条目；不暴露搜索投影内部 ID，只暴露客户端导航所需稳定字段。
- * `moduleId` / `featureId` 是打开结果自身页面所需的上级归属：TASK 两者都带
- * （模块级任务 featureId 为 null）、FEATURE 带 `moduleId`，可由 entityId 自证
- * 或没有下级页面的类型为 null；`recordId` 是遗留问题所属的来源记录，客户端据此
+ * `moduleId` 是打开 TASK 页面所需的模块归属；没有模块下级页面的类型为 null。
+ * `recordId` 是遗留问题所属的来源记录，客户端据此
  * 打开记录页（其余类型为 null）。客户端打开结果时不得再自行推导这些归属。
  */
 export const searchItemSchema = z
@@ -59,7 +57,6 @@ export const searchItemSchema = z
     entityType: searchEntityTypeSchema,
     entityId: z.number().int().positive(),
     moduleId: z.number().int().positive().nullable(),
-    featureId: z.number().int().positive().nullable(),
     recordId: z.number().int().positive().nullable(),
     title: z.string().min(1).max(500),
     summary: z.string().max(5000),

@@ -22,7 +22,6 @@ describe("my-tasks-url", () => {
       projectId: 7,
       status: "all",
       priority: "HIGH",
-      level: "FEATURE",
       relation: "MAIN",
       hasRecord: "no",
       hasGithub: "yes",
@@ -79,7 +78,7 @@ describe("my-tasks-url", () => {
 
   it("falls back to defaults for invalid values", () => {
     const params = new URLSearchParams(
-      "scope=everything&project=0&status=nope&priority=MAYBE&level=X&relation=Y&record=maybe&github=maybe&canceled=1&view=grid",
+      "scope=everything&project=0&status=nope&priority=MAYBE&relation=Y&record=maybe&github=maybe&canceled=1&view=grid",
     );
     expect(readMyTaskFilters(params)).toEqual({
       ...DEFAULT_MY_TASK_FILTERS,
@@ -128,14 +127,13 @@ describe("my-tasks-url", () => {
         ...DEFAULT_MY_TASK_FILTERS,
         status: "done",
         priority: "URGENT",
-        level: "MODULE",
         relation: "SOURCE",
         hasRecord: "yes",
         hasGithub: "no",
         includeCanceled: true,
         query: "登录",
       }),
-    ).toBe(8);
+    ).toBe(7);
   });
 });
 

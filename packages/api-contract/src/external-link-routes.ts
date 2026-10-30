@@ -26,7 +26,7 @@ export const externalLinkRoutes: readonly RouteDefinition[] = [
       ? remove
         ? "管理目标的当前GitHub关联并保留实体和审计"
         : "新增目标的GitHub关联（接受完整链接或项目根仓库下的commit SHA）并保留实体和审计"
-      : "读取当前有权目标的GitHub关联；项目目标聚合其有效任务、功能与已发布记录上的关联并标注来源（取消或无效任务不聚合）",
+      : "读取当前有权目标的GitHub关联；项目目标聚合其有效任务与已发布记录上的关联并标注来源（取消或无效任务不聚合）",
     request: {
       path: remove ? "ExternalLinkResourcePath" : "ExternalLinkTargetPath",
       query: "none",
@@ -92,7 +92,7 @@ export const externalLinkRoutes: readonly RouteDefinition[] = [
     concurrencyPolicy: write
       ? {
           rowVersion: "required",
-          lockOrder: ["project", "module", "feature", "task", "changeRecord"],
+          lockOrder: ["project", "module", "task", "changeRecord"],
           retry:
             "Re-read true ownership after ordered target lock; reject changed version",
         }

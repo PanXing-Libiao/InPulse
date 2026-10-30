@@ -17,24 +17,18 @@ const FULL_DOCUMENT = [
   "- 项目成员：wangwu, zhaoliu",
   "## 模块：支付",
   "- 说明：支付相关能力",
-  "### 功能：退款回调",
-  "- 当前说明：回调失败会重试",
-  "- 验收标准：重复回调只入账一次",
-  "- 标签：支付, 回调, 支付",
-  "#### 任务：修复重复回调",
+  "### 任务：修复重复回调",
   "- 负责人：zhangsan, 张三",
   "- 优先级：高",
   "- 截止：2026-10-30",
   "- 描述：修复线上问题",
   "### 任务：升级 SDK",
   "- 负责人：zhangsan",
-  "- 影响功能：退款回调",
 ].join("\n");
 
 const IN_PROJECT_DOCUMENT = [
   "## 模块：订单",
-  "### 功能：下单",
-  "#### 任务：实现下单",
+  "### 任务：实现下单",
   "- 负责人：zhangsan",
 ].join("\n");
 
@@ -47,7 +41,7 @@ function errors(issues: readonly DocumentImportIssue[]): DocumentImportIssue[] {
 }
 
 describe("parseDocumentTemplate 语法", () => {
-  test("完整文档解析出项目、模块、功能、任务与字段", () => {
+  test("完整文档解析出项目、模块、直属任务与字段", () => {
     const result = parseDocumentTemplate(FULL_DOCUMENT);
     expect(result.issues).toEqual([]);
     expect(result.digest).toMatch(/^[0-9a-f]{64}$/);
@@ -65,69 +59,50 @@ describe("parseDocumentTemplate 语法", () => {
       name: "支付",
       description: "支付相关能力",
     });
-    expect(module.features).toHaveLength(1);
-    const feature = module.features[0]!;
-    expect(feature).toMatchObject({
+    expect(module.tasks).toHaveLength(2);
+    const firstTask = module.tasks[0]!;
+    expect(firstTask).toMatchObject({
       line: 7,
-      name: "退款回调",
-      currentBehavior: "回调失败会重试",
-      acceptanceCriteria: "重复回调只入账一次",
-    });
-    expect(feature.tags).toEqual(["支付", "回调"]);
-    expect(feature.tasks).toHaveLength(1);
-    const featureTask = feature.tasks[0]!;
-    expect(featureTask).toMatchObject({
-      line: 11,
-      scope: "FEATURE",
       title: "修复重复回调",
       assigneeTokens: ["zhangsan", "张三"],
       priority: "HIGH",
       description: "修复线上问题",
-      impactFeatureNames: [],
     });
-    expect(featureTask.dueAt).toBe(
+    expect(firstTask.dueAt).toBe(
       new Date("2026-10-30T23:59:59+08:00").toISOString(),
     );
-    expect(module.tasks).toHaveLength(1);
-    expect(module.tasks[0]).toMatchObject({
-      line: 16,
-      scope: "MODULE",
+    expect(module.tasks[1]).toMatchObject({
+      line: 12,
       title: "升级 SDK",
       assigneeTokens: ["zhangsan"],
       priority: "NORMAL",
       dueAt: null,
       description: "",
-      impactFeatureNames: ["退款回调"],
     });
   });
 
-  test("项目内导入文档（无项目段）只解析模块与下级", () => {
+  test("项目内导入文档（无项目段）只解析模块与直属任务", () => {
     const result = parseDocumentTemplate(IN_PROJECT_DOCUMENT);
     expect(result.issues).toEqual([]);
     expect(result.project).toBeNull();
     expect(result.modules).toHaveLength(1);
-    expect(result.modules[0]!.features[0]!.tasks[0]!.title).toBe("实现下单");
+    expect(result.modules[0]!.tasks[0]!.title).toBe("实现下单");
   });
 
   test("摘要按去 BOM、CRLF→LF 归一化", () => {
-    const lf = "## 模块：支付\n### 功能：退款\n";
-    const crlf = "\uFEFF## 模块：支付\r\n### 功能：退款\r\n";
+    const lf = "## 模块：支付\n### 任务：退款\n";
+    const crlf = "\uFEFF## 模块：支付\r\n### 任务：退款\r\n";
     expect(documentDigest(crlf)).toBe(documentDigest(lf));
     expect(parseDocumentTemplate(crlf).digest).toBe(documentDigest(lf));
   });
 
   test("未填写可选字段使用默认值", () => {
     const result = parseDocumentTemplate(
-      ["## 模块：支付", "### 功能：退款", "#### 任务：t", "- 负责人：a"].join(
-        "\n",
-      ),
+      ["## 模块：支付", "### 任务：t", "- 负责人：a"].join("\n"),
     );
     const module = result.modules[0]!;
     expect(module.description).toBe("");
-    expect(module.features[0]!.currentBehavior).toBe("");
-    expect(module.features[0]!.acceptanceCriteria).toBeNull();
-    expect(module.features[0]!.tags).toEqual([]);
-    const task = module.features[0]!.tasks[0]!;
+    const task = module.tasks[0]!;
     expect(task).toMatchObject({
       priority: "NORMAL",
       dueAt: null,
@@ -153,11 +128,10 @@ describe("parseDocumentTemplate 语法", () => {
     expect(result.issues).toEqual([]);
     expect(result.project?.code).toBe("SHOP");
     expect(result.modules[0]?.name).toBe("支付");
-    expect(result.modules[0]?.features[0]?.tasks[0]?.title).toBe(
-      "修复重复回调",
-    );
+    expect(result.modules[0]?.tasks[0]?.title).toBe("修复重复回调");
   });
-  test("上一版模板的「- 初始成员：」仍按成员字段识别（2026-10-16 改名后兼容）", () => {
+
+  test("上一版模板的「- 初始成员：」仍按成员字段识别", () => {
     const result = parseDocumentTemplate(
       [
         "# 项目：商城系统",
@@ -180,8 +154,7 @@ describe("parseDocumentTemplate 语法", () => {
         "~~~",
         "## 模块：支付",
         "> ## 模块：假模块",
-        "### 功能：退款",
-        "#### 任务：t",
+        "### 任务：t",
         "- 负责人：a",
         "```",
       ].join("\n"),
@@ -190,13 +163,14 @@ describe("parseDocumentTemplate 语法", () => {
     expect(result.project?.code).toBe("SHOP");
     expect(result.modules).toHaveLength(1);
     expect(result.modules[0]!.name).toBe("支付");
-    expect(result.modules[0]!.features[0]!.tasks).toHaveLength(1);
+    expect(result.modules[0]!.tasks).toHaveLength(1);
   });
 
   test("只含说明行与围栏行的文档按空文档处理（ADR-065）", () => {
     const result = parseDocumentTemplate(["> 说明", "```", "~~~"].join("\n"));
     expect(codes(result.issues)).toEqual(["EMPTY_DOCUMENT"]);
   });
+
   test("无法识别的行报 LINE_UNRECOGNIZED", () => {
     const result = parseDocumentTemplate(
       ["## 模块：支付", "这是一段说明"].join("\n"),
@@ -213,37 +187,32 @@ describe("parseDocumentTemplate 结构校验", () => {
         "- 未知字段：x",
         "## 模块：支付",
         "- 未知字段：x",
-        "### 功能：退款",
-        "- 未知字段：x",
-        "#### 任务：t",
+        "### 任务：t",
         "- 负责人：a",
         "- 未知字段：x",
       ].join("\n"),
     );
     expect(
       codes(result.issues).filter((code) => code === "UNKNOWN_FIELD"),
-    ).toHaveLength(4);
+    ).toHaveLength(3);
   });
 
-  test("层级错误：功能在模块外、任务在错误层级", () => {
+  test("旧功能标题与功能级任务明确报 FEATURE_LAYER_REMOVED", () => {
     const result = parseDocumentTemplate(
-      ["### 功能：退款", "#### 任务：t", "### 任务：m"].join("\n"),
+      ["### 功能：退款", "#### 任务：t", "### 任务：模块任务"].join("\n"),
     );
     const found = codes(result.issues);
-    expect(found).toContain("FEATURE_OUTSIDE_MODULE");
-    expect(found).toContain("FEATURE_TASK_OUTSIDE_FEATURE");
+    expect(
+      found.filter((code) => code === "FEATURE_LAYER_REMOVED"),
+    ).toHaveLength(2);
     expect(found).toContain("TASK_OUTSIDE_MODULE");
   });
 
-  test("文档内模块重名与功能重名", () => {
-    const moduleDuplicate = parseDocumentTemplate(
+  test("文档内模块重名", () => {
+    const duplicate = parseDocumentTemplate(
       ["## 模块：支付", "## 模块：支付"].join("\n"),
     );
-    expect(codes(moduleDuplicate.issues)).toContain("DUPLICATE_MODULE_NAME");
-    const featureDuplicate = parseDocumentTemplate(
-      ["## 模块：支付", "### 功能：退款", "### 功能：退款"].join("\n"),
-    );
-    expect(codes(featureDuplicate.issues)).toContain("DUPLICATE_FEATURE_NAME");
+    expect(codes(duplicate.issues)).toContain("DUPLICATE_MODULE_NAME");
   });
 
   test("项目段重复与位置错误", () => {
@@ -295,17 +264,13 @@ describe("parseDocumentTemplate 任务校验", () => {
     expect(found).toContain("DUE_DATE_INVALID");
   });
 
-  test("功能任务不允许影响功能字段", () => {
+  test("任务不再接受影响功能等旧功能字段", () => {
     const result = parseDocumentTemplate(
-      [
-        "## 模块：支付",
-        "### 功能：退款",
-        "#### 任务：t",
-        "- 负责人：a",
-        "- 影响功能：退款",
-      ].join("\n"),
+      ["## 模块：支付", "### 任务：t", "- 负责人：a", "- 影响功能：退款"].join(
+        "\n",
+      ),
     );
-    expect(codes(result.issues)).toContain("UNKNOWN_FIELD");
+    expect(codes(result.issues)).toContain("FEATURE_LAYER_REMOVED");
   });
 
   test("任务标题重复仅产生 WARNING", () => {

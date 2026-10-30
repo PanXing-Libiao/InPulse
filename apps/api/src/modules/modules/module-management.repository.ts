@@ -13,18 +13,16 @@ import {
 type Row = Omit<ModuleItem, "createdAt" | "updatedAt" | "stats"> & {
   createdAt: string | Date;
   updatedAt: string | Date;
-  activeFeatureCount: number;
   openTaskCount: number;
   completedTaskCount: number;
 };
 const dto = (row: Row): ModuleItem => {
-  const { activeFeatureCount, openTaskCount, completedTaskCount, ...rest } =
-    row;
+  const { openTaskCount, completedTaskCount, ...rest } = row;
   return moduleItemSchema.parse({
     ...rest,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
-    stats: { activeFeatureCount, openTaskCount, completedTaskCount },
+    stats: { openTaskCount, completedTaskCount },
   });
 };
 
@@ -41,7 +39,6 @@ export interface ModuleDeletionRow {
 /** ADR-096：模块物理删除后的结果快照与级联计数。 */
 export interface ModuleHardDeletedRow extends ModuleDeletionRow {
   readonly deletedAt: string;
-  readonly deletedFeatureCount: number;
   readonly deletedTaskCount: number;
   readonly deletedRecordCount: number;
   readonly removedLinkCount: number;
@@ -111,7 +108,7 @@ export class ModuleManagementRepository {
   }
 
   /**
-   * ADR-096：模块物理删除。模块、全部功能与任务、全部迭代记录及下级数据由
+   * ADR-096：模块物理删除。模块、全部任务、全部迭代记录及下级数据由
    * 数据库窄口函数同一事务删除；只保留审计、项目动态与删除事件。
    */
   async hardDelete(

@@ -5,18 +5,11 @@ import type { ActivitySourceEntityType } from "./activity.write-port.js";
 
 /**
  * 与契约 `ActivityCategory` 对齐的服务端分类口径。映射必须与前端 chip 行
- * 一一对应：`github` / `member` 按 `activity_type` 前缀，`task` / `record` /
- * `feature` / `module` 按 `sourceEntityType`，`project` 是兜底桶。
+ * 一一对应：`github` / `member` 按 `activity_type` 前缀，`task` / `record` / `module` 按 `sourceEntityType`，`project` 是兜底桶。
+ * 历史 FEATURE 事件只保留只读追溯，不再提供独立筛选。
  */
 export type ActivityCategoryFilter =
-  | "all"
-  | "task"
-  | "record"
-  | "feature"
-  | "module"
-  | "project"
-  | "member"
-  | "github";
+  "all" | "task" | "record" | "module" | "project" | "member" | "github";
 
 /**
  * 分类条件是枚举驱动的常量 SQL 片段，不接受用户输入拼接。
@@ -29,7 +22,6 @@ const ACTIVITY_CATEGORY_SQL: Readonly<Record<ActivityCategoryFilter, string>> =
     member: "AND activity_type LIKE 'PROJECT_MEMBER%'",
     task: "AND source_entity_type IN ('TASK','TASK_GROUP')",
     record: "AND source_entity_type IN ('CHANGE_RECORD','LEFTOVER_ITEM')",
-    feature: "AND source_entity_type = 'FEATURE'",
     module: "AND source_entity_type = 'MODULE'",
     project:
       "AND NOT (activity_type LIKE 'EXTERNAL_LINK%' OR activity_type LIKE 'PROJECT_MEMBER%' OR source_entity_type IN ('TASK','TASK_GROUP','CHANGE_RECORD','LEFTOVER_ITEM','FEATURE','MODULE'))",

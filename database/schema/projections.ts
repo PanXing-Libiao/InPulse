@@ -40,7 +40,7 @@ export const codeSequences = appSchema.table(
     check(
       "code_sequences_entity_check",
       sql.raw(
-        "entity_type IN ('FEATURE', 'TASK', 'CHANGE_RECORD', 'TASK_GROUP', 'MODULE')",
+        "entity_type IN ('TASK', 'CHANGE_RECORD', 'TASK_GROUP', 'MODULE')",
       ),
     ),
     check("code_sequences_number_check", sql.raw("last_number > 0")),
@@ -244,7 +244,7 @@ export const searchProjection = appSchema.table(
     check(
       "search_projection_entity_type_check",
       sql.raw(
-        "entity_type IN ('PROJECT', 'MODULE', 'FEATURE', 'TASK', 'CHANGE_RECORD', 'EXTERNAL_LINK', 'TASK_GROUP', 'LEFTOVER')",
+        "entity_type IN ('PROJECT', 'MODULE', 'TASK', 'CHANGE_RECORD', 'EXTERNAL_LINK', 'TASK_GROUP', 'LEFTOVER')",
       ),
     ),
     check(

@@ -30,8 +30,7 @@ test("F-14 项目成员创建/指派任务，双页面合并，通知直达和�
     await page.getByTestId("open-created-project-activity").click();
     const projectId = page.url().match(/projects\/(\d+)/)![1];
     await page.goto(`/projects/${projectId}/modules`);
-    // 空项目的模块页显示「模块 → 功能 → 任务」搭建引导，第一步即新增模块
-    // 入口（2026-10-10 起取代「暂无模块」空态）。
+    // 空项目的模块页直接显示「项目 → 模块 → 任务」搭建引导。
     await expect(page.getByTestId("project-setup-guide")).toBeVisible();
     await page.getByRole("button", { name: "新增模块", exact: true }).click();
     const moduleDialog = page.getByRole("dialog", { name: "新增模块" });
@@ -39,13 +38,8 @@ test("F-14 项目成员创建/指派任务，双页面合并，通知直达和�
     await moduleDialog.getByRole("button", { name: /保\s*存/ }).click();
     await expect(moduleDialog).toBeHidden();
     await page.locator(".module-card").first().click();
-    await page.getByRole("button", { name: "新增功能" }).click();
-    const feature = page.getByRole("dialog", { name: "新增功能" });
-    await feature.getByLabel("功能名称").fill(`支付-${suffix}`);
-    await feature.getByRole("button", { name: /保\s*存/ }).click();
-    await expect(feature).toBeHidden();
-    await page.locator(".calm-feature-card").first().click();
-    const featureUrl = page.url();
+    await expect(page).toHaveURL(/\/modules\/\d+\/tasks$/);
+    const moduleTasksUrl = page.url();
     await page.getByRole("button", { name: "新建任务", exact: true }).click();
     const form = page.getByRole("dialog", { name: "新建任务" });
     await form.getByLabel("任务标题").fill(`退款任务-${suffix}`);
@@ -66,7 +60,7 @@ test("F-14 项目成员创建/指派任务，双页面合并，通知直达和�
     const edit = page.getByRole("dialog", { name: "编辑任务" });
     await edit.getByLabel("任务标题").fill(`我的标题-${suffix}`);
     const other = await context.newPage();
-    await other.goto(featureUrl);
+    await other.goto(moduleTasksUrl);
     await other.locator(".calm-task-card").first().click();
     await other.getByRole("button", { name: "编辑任务" }).click();
     const otherEdit = other.getByRole("dialog", { name: "编辑任务" });

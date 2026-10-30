@@ -70,8 +70,6 @@ const unfinishedTask: ProjectMemberUnfinishedTaskItem = {
   taskId: 99,
   projectId: 7,
   moduleId: 12,
-  featureId: 33,
-  scopeType: "FEATURE",
   code: "SHOP-T-99",
   title: "待办功能",
   description: "描述",
@@ -80,7 +78,6 @@ const unfinishedTask: ProjectMemberUnfinishedTaskItem = {
   workStatus: "TODO",
   assigneeId: 2,
   rowVersion: 4,
-  impactFeatureIds: [33],
 };
 
 function LocationProbe() {
@@ -132,7 +129,6 @@ function baseClient() {
           memberCount: 2,
           stats: {
             activeModuleCount: 2,
-            activeFeatureCount: 5,
             openTaskCount: 3,
             completedTaskCount: 1,
           },
@@ -395,7 +391,6 @@ describe("ProjectMembersPageView", () => {
           {
             taskId: 99,
             moduleId: 12,
-            featureId: 33,
             rowVersion: 4,
             assigneeIds: [3, 5],
           },

@@ -37,7 +37,7 @@ interface RoutePreloadEntry {
 
 const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/g;
 
-/** 把路由 path 编译成匹配真实地址的正则；`:id?` 这种可选段也要能命中（功能档案页）。 */
+/** 把路由 path 编译成匹配真实地址的正则；`:id?` 这种可选段也要能命中（模块任务页）。 */
 function pathPatternOf(routePath: string): RegExp {
   let source = "";
   for (const segment of routePath.split("/")) {

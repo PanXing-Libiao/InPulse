@@ -5,6 +5,10 @@ import {
   pickCalmSelectOption,
   pickFirstCalmSelectOption,
 } from "../helpers/calm-select.js";
+import {
+  createTaskInOpenModule,
+  openFirstModuleTasks,
+} from "../helpers/module-tasks.js";
 async function add(page: Page, url: string, label: string) {
   const modal = page.getByRole("dialog", { name: "GitHub 链接", exact: true });
   // 方案 A：写操作按需展开，先点「添加链接」再填地址。
@@ -32,7 +36,7 @@ async function addInline(
   await expect(link).toHaveAttribute("target", "_blank");
   await expect(link).toHaveAttribute("rel", "noopener noreferrer");
 }
-test("F22 project, feature and task multi-links persist; duplicate and unsafe links are explained", async ({
+test("F22 项目与任务多链接持久化，重复和不安全链接有明确提示", async ({
   browser,
 }) => {
   test.setTimeout(120000);
@@ -53,18 +57,9 @@ test("F22 project, feature and task multi-links persist; duplicate and unsafe li
         .getByTestId("search-result-item")
         .filter({ hasText: runtime.projectTitle }),
     ).toBeVisible();
+
     await page.goto(`/projects/${runtime.projectId}/modules`);
-    await page.locator(".module-card").first().click();
-    await page.getByRole("button", { name: "新增功能" }).click();
-    const create = page.getByRole("dialog", { name: "新增功能" }),
-      name = "链接功能" + Date.now();
-    await create.getByLabel("功能名称").fill(name);
-    await create.getByRole("button", { name: /保\s*存/ }).click();
-    await expect(create).toBeHidden();
-    await page.locator(".calm-feature-card").filter({ hasText: name }).click();
-    await page
-      .getByRole("button", { name: "GitHub 链接", exact: true })
-      .click();
+    await page.getByRole("button", { name: "GitHub 链接" }).click();
     modal = await add(
       page,
       "https://GitHub.com:443/inpulse/core/releases/tag/v2.6.0?utm_source=test#notes",
@@ -84,13 +79,13 @@ test("F22 project, feature and task multi-links persist; duplicate and unsafe li
     await modal.getByRole("button", { name: "确认添加" }).click();
     await expect(modal.getByText(/链接无效/)).toBeVisible();
     await modal.getByRole("button", { name: "关闭关联" }).click();
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
-    const task = page.getByRole("dialog", { name: "新建任务" });
-    await task.getByLabel("任务标题").fill("GitHub任务");
-    await pickCalmSelectOption(task, "负责人", runtime.user.name);
-    await task.getByRole("button", { name: /创建任务/ }).click();
-    await expect(task).toBeHidden();
-    const detail = page.getByRole("dialog", { name: "任务详情" });
+
+    await openFirstModuleTasks(page, runtime.projectId);
+    const detail = await createTaskInOpenModule(
+      page,
+      runtime.user.name,
+      "GitHub任务-" + Date.now(),
+    );
     await detail.getByRole("button", { name: "GitHub 链接" }).click();
     modal = await add(
       page,

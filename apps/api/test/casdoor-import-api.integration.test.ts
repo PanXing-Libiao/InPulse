@@ -306,6 +306,7 @@ describe("ADR-100 Casdoor 批量导入真实 HTTP", () => {
       create: 2,
       link: 0,
       refresh: 0,
+      unchanged: 0,
       skip: 0,
     });
     expect(

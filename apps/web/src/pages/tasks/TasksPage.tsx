@@ -24,7 +24,7 @@ import {
 } from "@features/project-overview/project-workspace-chunks";
 
 /**
- * 任务详情弹窗按需加载：任务中心的初始包不引入功能档案的完整任务面板，
+ * 任务详情弹窗按需加载：任务中心的初始包不引入模块任务页的完整任务面板，
  * 首次点击任务卡片时才加载详情弹窗与配套写入口。
  */
 const TaskDetailOverlay = lazy(loadTaskDetailOverlay);
@@ -98,7 +98,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ client, adapter }) => {
   }, []);
 
   /**
-   * 任务卡片 / 列表行与聚合组入口点击后在当前页面就地打开任务详情弹窗：与功能档案
+   * 任务卡片 / 列表行与聚合组入口点击后在当前页面就地打开任务详情弹窗：与模块任务页
    * 共用同一个完整详情（含状态推进、编辑、迭代记录等写操作），不改变地址栏、不跳转，
    * 关闭后仍停留在任务中心。
    */

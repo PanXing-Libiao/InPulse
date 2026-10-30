@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
 import {
-  DOCUMENT_IMPORT_MAX_FEATURES,
   DOCUMENT_IMPORT_MAX_MODULES,
   DOCUMENT_IMPORT_MAX_TASKS,
   DOCUMENT_IMPORT_MAX_TOTAL_ENTITIES,
@@ -9,7 +8,7 @@ import {
 } from "@inpulse/api-contract";
 
 /**
- * ADR-064 固定模板解析器（纯函数，无数据库访问）。
+ * ADR-064 / ADR-109 固定模板解析器（纯函数，无数据库访问）。
  *
  * 语法（每行一个语义单元，空行忽略）：
  *   # 项目：商城系统
@@ -18,45 +17,31 @@ import {
  *   - 项目成员：wangwu, zhaoliu
  *   ## 模块：支付
  *   - 说明：……
- *   ### 功能：微信支付退款回调
- *   - 当前说明：…… / - 验收标准：…… / - 标签：a, b
- *   #### 任务：修复重复回调
+ *   ### 任务：修复重复回调
  *   - 负责人：zhangsan, 张三 / - 优先级：高 / - 截止：2026-10-30 / - 描述：……
- *   ### 任务：升级 SDK
- *   - 影响功能：微信支付退款回调
  *
- * 语义校验（负责人解析、模块/功能复用、重复导入、编码占用）不在本文件，
+ * 功能层已由 ADR-109 移除。旧文档里的「### 功能」「#### 任务」「- 影响功能」
+ * 会得到明确的 FEATURE_LAYER_REMOVED 错误，不会被静默忽略或降级处理。
+ *
+ * 语义校验（负责人解析、模块复用、重复导入、编码占用）不在本文件，
  * 由 Workflow 在事务内完成；本文件只输出语法与文档内一致性级别的问题。
  */
 
 export type ParsedTaskPriority = "NORMAL" | "HIGH" | "URGENT";
-export type ParsedTaskScope = "FEATURE" | "MODULE";
 
 export interface ParsedTask {
   readonly line: number;
-  readonly scope: ParsedTaskScope;
   readonly title: string;
   readonly assigneeTokens: readonly string[];
   readonly priority: ParsedTaskPriority;
   readonly dueAt: string | null;
   readonly description: string;
-  readonly impactFeatureNames: readonly string[];
-}
-
-export interface ParsedFeature {
-  readonly line: number;
-  readonly name: string;
-  readonly currentBehavior: string;
-  readonly acceptanceCriteria: string | null;
-  readonly tags: readonly string[];
-  readonly tasks: readonly ParsedTask[];
 }
 
 export interface ParsedModule {
   readonly line: number;
   readonly name: string;
   readonly description: string;
-  readonly features: readonly ParsedFeature[];
   readonly tasks: readonly ParsedTask[];
 }
 
@@ -76,12 +61,9 @@ export interface ParsedDocument {
 }
 
 export const DOCUMENT_IMPORT_NAME_MAX = 200;
-export const DOCUMENT_IMPORT_FEATURE_NAME_MAX = 500;
 export const DOCUMENT_IMPORT_TASK_TITLE_MAX = 500;
 export const DOCUMENT_IMPORT_DESCRIPTION_MAX = 20_000;
-export const DOCUMENT_IMPORT_FEATURE_TEXT_MAX = 50_000;
 export const DOCUMENT_IMPORT_TASK_DESCRIPTION_MAX = 50_000;
-export const DOCUMENT_IMPORT_MAX_TAGS = 50;
 export const DOCUMENT_IMPORT_MAX_ASSIGNEES_PER_TASK = 20;
 export const DOCUMENT_IMPORT_MAX_MEMBER_TOKEN_LENGTH = 200;
 const PROJECT_CODE_RE = /^[A-Z][A-Z0-9_]{1,31}$/;
@@ -157,7 +139,8 @@ function parseDueDate(value: string): { dueAt: string } | undefined {
   // 截止日按北京时间当日 23:59:59 落库，输出 UTC ISO 供契约与后续写入复用。
   return { dueAt: new Date(value + "T23:59:59+08:00").toISOString() };
 }
-type ContextKind = "project" | "module" | "feature" | "task";
+
+type ContextKind = "project" | "module" | "task";
 type AddIssue = (
   severity: "ERROR" | "WARNING",
   line: number,
@@ -167,23 +150,11 @@ type AddIssue = (
 
 interface TaskBuilder {
   line: number;
-  scope: ParsedTaskScope;
   title: string;
   assigneeTokens: string[];
   priority: ParsedTaskPriority;
   dueAt: string | null;
   description: string;
-  impactFeatureNames: string[];
-  seen: Set<string>;
-}
-
-interface FeatureBuilder {
-  line: number;
-  name: string;
-  currentBehavior: string;
-  acceptanceCriteria: string | null;
-  tags: string[];
-  tasks: TaskBuilder[];
   seen: Set<string>;
 }
 
@@ -191,7 +162,6 @@ interface ModuleBuilder {
   line: number;
   name: string;
   description: string;
-  features: FeatureBuilder[];
   tasks: TaskBuilder[];
   seen: Set<string>;
 }
@@ -239,32 +209,6 @@ function parseTokenList(
   return result;
 }
 
-function parseTagList(
-  rawValue: string,
-  line: number,
-  addIssue: AddIssue,
-): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const tag of splitTokens(rawValue)) {
-    const key = tag.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    result.push(tag);
-  }
-  if (result.length > DOCUMENT_IMPORT_MAX_TAGS) {
-    addIssue(
-      "ERROR",
-      line,
-      "TAG_LIMIT_EXCEEDED",
-      "单个功能的标签最多 " + String(DOCUMENT_IMPORT_MAX_TAGS) + " 个",
-    );
-  }
-  return result.slice(0, DOCUMENT_IMPORT_MAX_TAGS);
-}
-
 function applyText(
   rawValue: string,
   max: number,
@@ -288,7 +232,6 @@ function handleField(input: {
   readonly context: ContextKind | null;
   readonly project: ProjectBuilder | null;
   readonly module: ModuleBuilder | null;
-  readonly feature: FeatureBuilder | null;
   readonly task: TaskBuilder | null;
   readonly fieldName: string;
   readonly rawValue: string;
@@ -310,9 +253,7 @@ function handleField(input: {
       ? input.project
       : context === "module"
         ? input.module
-        : context === "feature"
-          ? input.feature
-          : input.task;
+        : input.task;
   if (builder === null) {
     addIssue(
       "ERROR",
@@ -401,44 +342,6 @@ function handleField(input: {
     return;
   }
 
-  if (context === "feature") {
-    const feature = input.feature!;
-    if (fieldName === "当前说明") {
-      feature.currentBehavior = applyText(
-        rawValue,
-        DOCUMENT_IMPORT_FEATURE_TEXT_MAX,
-        line,
-        "当前说明",
-        addIssue,
-      );
-      return;
-    }
-    if (fieldName === "验收标准") {
-      feature.acceptanceCriteria =
-        rawValue === ""
-          ? null
-          : applyText(
-              rawValue,
-              DOCUMENT_IMPORT_FEATURE_TEXT_MAX,
-              line,
-              "验收标准",
-              addIssue,
-            );
-      return;
-    }
-    if (fieldName === "标签") {
-      feature.tags = parseTagList(rawValue, line, addIssue);
-      return;
-    }
-    addIssue(
-      "ERROR",
-      line,
-      "UNKNOWN_FIELD",
-      "功能段不支持字段「" + fieldName + "」",
-    );
-    return;
-  }
-
   const task = input.task!;
   if (fieldName === "负责人") {
     const tokens = parseTokenList(rawValue, line, "负责人", addIssue);
@@ -502,39 +405,18 @@ function handleField(input: {
     );
     return;
   }
-  if (fieldName === "影响功能") {
-    if (task.scope !== "MODULE") {
-      addIssue(
-        "ERROR",
-        line,
-        "UNKNOWN_FIELD",
-        "功能级任务不支持「影响功能」；影响关系只用于模块级任务",
-      );
-      return;
-    }
-    const names = splitTokens(rawValue).map((name) => {
-      const clamped = clamps(name, DOCUMENT_IMPORT_FEATURE_NAME_MAX);
-      if (clamped.overflow) {
-        addIssue(
-          "ERROR",
-          line,
-          "FIELD_TOO_LONG",
-          "影响功能名称超过 " +
-            String(DOCUMENT_IMPORT_FEATURE_NAME_MAX) +
-            " 字符，超出部分已截断",
-        );
-      }
-      return clamped.text;
-    });
-    const seen = new Set<string>();
-    task.impactFeatureNames = names.filter((name) => {
-      const key = normalizeDocumentName(name);
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
+  if (
+    fieldName === "影响功能" ||
+    fieldName === "当前说明" ||
+    fieldName === "验收标准" ||
+    fieldName === "标签"
+  ) {
+    addIssue(
+      "ERROR",
+      line,
+      "FEATURE_LAYER_REMOVED",
+      "功能层已移除；任务段不再支持「" + fieldName + "」，请删除该字段",
+    );
     return;
   }
   addIssue(
@@ -544,6 +426,7 @@ function handleField(input: {
     "任务段不支持字段「" + fieldName + "」",
   );
 }
+
 export function parseDocumentTemplate(text: string): ParsedDocument {
   const digest = documentDigest(text);
   const normalized = normalizeDocumentText(text);
@@ -558,7 +441,6 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
   let project: ProjectBuilder | null = null;
   let modules: ModuleBuilder[] = [];
   let currentModule: ModuleBuilder | null = null;
-  let currentFeature: FeatureBuilder | null = null;
   let currentTask: TaskBuilder | null = null;
   let context: ContextKind | null = null;
   let sawModuleOrDeeper = false;
@@ -587,6 +469,17 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
     if (heading !== null) {
       const depth = (heading[1] ?? "").length;
       const rest = (heading[2] ?? "").trim();
+      // 即使旧标题缺少冒号，也要给出「功能层已移除」而不是笼统的格式错误。
+      if (/^功能(?:\s*[：:]|$)/u.test(rest)) {
+        addError(
+          lineNo,
+          "FEATURE_LAYER_REMOVED",
+          "功能层已移除；不能再使用「功能」段。请把任务直接写在「## 模块」下，使用「### 任务：标题」。",
+        );
+        currentTask = null;
+        context = null;
+        continue;
+      }
       const parts = FIELD_SPLIT_RE.exec(rest);
       if (parts === null) {
         addError(
@@ -598,8 +491,26 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
       }
       const kind = (parts[1] ?? "").trim();
       const rawName = (parts[2] ?? "").trim();
-      if (depth >= 5) {
-        addError(lineNo, "HEADING_TOO_DEEP", "标题层级最多到四级（#### 任务）");
+      if (kind === "功能") {
+        addError(
+          lineNo,
+          "FEATURE_LAYER_REMOVED",
+          "功能层已移除；不能再使用「功能」段。请把任务直接写在「## 模块」下，使用「### 任务：标题」。",
+        );
+        currentTask = null;
+        context = null;
+        continue;
+      }
+      if (depth >= 4) {
+        addError(
+          lineNo,
+          kind === "任务" ? "FEATURE_LAYER_REMOVED" : "HEADING_TOO_DEEP",
+          kind === "任务"
+            ? "功能层已移除；旧功能级「#### 任务」不再支持，请改为模块下直接使用「### 任务：标题」。"
+            : "标题层级最多到三级（### 任务）",
+        );
+        currentTask = null;
+        context = null;
         continue;
       }
       if (depth === 1) {
@@ -647,7 +558,6 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
           seen: new Set(),
         };
         currentModule = null;
-        currentFeature = null;
         currentTask = null;
         context = "project";
         continue;
@@ -662,7 +572,6 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
           continue;
         }
         sawModuleOrDeeper = true;
-        currentFeature = null;
         currentTask = null;
         if (rawName === "") {
           addError(lineNo, "TITLE_NAME_REQUIRED", "模块名称不能为空");
@@ -697,7 +606,6 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
           line: lineNo,
           name: name.text,
           description: "",
-          features: [],
           tasks: [],
           seen: new Set(),
         };
@@ -705,123 +613,24 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
         context = "module";
         continue;
       }
-      if (depth === 3) {
-        if (kind === "功能") {
-          if (currentModule === null) {
-            addError(
-              lineNo,
-              "FEATURE_OUTSIDE_MODULE",
-              "功能必须位于某个「## 模块」之内",
-            );
-            continue;
-          }
-          currentTask = null;
-          if (rawName === "") {
-            addError(lineNo, "TITLE_NAME_REQUIRED", "功能名称不能为空");
-          }
-          const name = clamps(
-            rawName === "" ? "（未命名）" : rawName,
-            DOCUMENT_IMPORT_FEATURE_NAME_MAX,
-          );
-          if (name.overflow) {
-            addError(
-              lineNo,
-              "FIELD_TOO_LONG",
-              "功能名称超过 " +
-                String(DOCUMENT_IMPORT_FEATURE_NAME_MAX) +
-                " 字符，超出部分已截断",
-            );
-          }
-          const normalizedName = normalizeDocumentName(name.text);
-          const existing = currentModule.features.find(
-            (feature) => normalizeDocumentName(feature.name) === normalizedName,
-          );
-          if (existing !== undefined) {
-            addError(
-              lineNo,
-              "DUPLICATE_FEATURE_NAME",
-              "与第 " +
-                String(existing.line) +
-                " 行的功能在模块「" +
-                currentModule.name +
-                "」内重名；同一模块内功能名不能重复",
-            );
-          }
-          currentFeature = {
-            line: lineNo,
-            name: name.text,
-            currentBehavior: "",
-            acceptanceCriteria: null,
-            tags: [],
-            tasks: [],
-            seen: new Set(),
-          };
-          currentModule.features.push(currentFeature);
-          context = "feature";
-          continue;
-        }
-        if (kind === "任务") {
-          if (currentModule === null) {
-            addError(
-              lineNo,
-              "TASK_OUTSIDE_MODULE",
-              "模块级任务必须位于某个「## 模块」之内",
-            );
-            continue;
-          }
-          currentFeature = null;
-          if (rawName === "") {
-            addError(lineNo, "TITLE_NAME_REQUIRED", "任务标题不能为空");
-          }
-          const title = clamps(
-            rawName === "" ? "（未命名）" : rawName,
-            DOCUMENT_IMPORT_TASK_TITLE_MAX,
-          );
-          if (title.overflow) {
-            addError(
-              lineNo,
-              "FIELD_TOO_LONG",
-              "任务标题超过 " +
-                String(DOCUMENT_IMPORT_TASK_TITLE_MAX) +
-                " 字符，超出部分已截断",
-            );
-          }
-          currentTask = {
-            line: lineNo,
-            scope: "MODULE",
-            title: title.text,
-            assigneeTokens: [],
-            priority: "NORMAL",
-            dueAt: null,
-            description: "",
-            impactFeatureNames: [],
-            seen: new Set(),
-          };
-          currentModule.tasks.push(currentTask);
-          context = "task";
-          continue;
-        }
+      const kindIsTask = kind === "任务";
+      if (!kindIsTask) {
         addError(
           lineNo,
           "HEADING_KIND_MISMATCH",
-          "三级标题必须是「### 功能：名称」或「### 任务：名称」",
+          "三级标题必须是「### 任务：名称」",
         );
         continue;
       }
-      if (kind !== "任务") {
+      sawModuleOrDeeper = true;
+      if (currentModule === null) {
         addError(
           lineNo,
-          "HEADING_KIND_MISMATCH",
-          "四级标题必须是「#### 任务：名称」",
+          "TASK_OUTSIDE_MODULE",
+          "任务必须直接位于某个「## 模块」之内",
         );
-        continue;
-      }
-      if (currentFeature === null) {
-        addError(
-          lineNo,
-          "FEATURE_TASK_OUTSIDE_FEATURE",
-          "四级任务必须位于某个「### 功能」之内",
-        );
+        currentTask = null;
+        context = null;
         continue;
       }
       if (rawName === "") {
@@ -842,16 +651,14 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
       }
       currentTask = {
         line: lineNo,
-        scope: "FEATURE",
         title: title.text,
         assigneeTokens: [],
         priority: "NORMAL",
         dueAt: null,
         description: "",
-        impactFeatureNames: [],
         seen: new Set(),
       };
-      currentFeature.tasks.push(currentTask);
+      currentModule.tasks.push(currentTask);
       context = "task";
       continue;
     }
@@ -871,7 +678,6 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
         context,
         project,
         module: currentModule,
-        feature: currentFeature,
         task: currentTask,
         fieldName: (parts[1] ?? "").trim(),
         rawValue: (parts[2] ?? "").trim(),
@@ -887,6 +693,7 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
       "无法识别的行；仅支持标题行、「- 字段：值」字段行、以 > 开头的说明行与 ``` 代码围栏（后两者会被忽略）",
     );
   }
+
   const addWarning = (line: number, code: string, message: string): void => {
     addIssue("WARNING", line, code, message);
   };
@@ -899,11 +706,6 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
   for (const module of modules) {
     for (const task of module.tasks) {
       allTasks.push(task);
-    }
-    for (const feature of module.features) {
-      for (const task of feature.tasks) {
-        allTasks.push(task);
-      }
     }
   }
   for (const task of allTasks) {
@@ -927,39 +729,10 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
     modules = modules.slice(0, DOCUMENT_IMPORT_MAX_MODULES);
   }
 
-  let featureKept = 0;
-  let featureLimitReported = false;
-  for (const module of modules) {
-    const allowed = Math.max(0, DOCUMENT_IMPORT_MAX_FEATURES - featureKept);
-    if (module.features.length > allowed) {
-      if (!featureLimitReported) {
-        addError(
-          module.features[allowed]!.line,
-          "LIMIT_EXCEEDED",
-          "功能数量超过上限 " +
-            String(DOCUMENT_IMPORT_MAX_FEATURES) +
-            "，超出部分不会执行",
-        );
-        featureLimitReported = true;
-      }
-      module.features = module.features.slice(0, allowed);
-    }
-    featureKept += module.features.length;
-  }
-
-  const taskEntries: {
-    module: ModuleBuilder;
-    feature: FeatureBuilder | null;
-    task: TaskBuilder;
-  }[] = [];
+  const taskEntries: { module: ModuleBuilder; task: TaskBuilder }[] = [];
   for (const module of modules) {
     for (const task of module.tasks) {
-      taskEntries.push({ module, feature: null, task });
-    }
-    for (const feature of module.features) {
-      for (const task of feature.tasks) {
-        taskEntries.push({ module, feature, task });
-      }
+      taskEntries.push({ module, task });
     }
   }
   taskEntries.sort((a, b) => a.task.line - b.task.line);
@@ -977,29 +750,17 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
   );
   for (const module of modules) {
     module.tasks = module.tasks.filter((task) => keptTasks.has(task));
-    for (const feature of module.features) {
-      feature.tasks = feature.tasks.filter((task) => keptTasks.has(task));
-    }
   }
 
   const entityLines = [
     ...modules.map((module) => module.line),
-    ...modules.flatMap((module) =>
-      module.features.map((feature) => feature.line),
-    ),
-    ...modules.flatMap((module) => [
-      ...module.tasks.map((task) => task.line),
-      ...module.features.flatMap((feature) =>
-        feature.tasks.map((task) => task.line),
-      ),
-    ]),
+    ...modules.flatMap((module) => module.tasks.map((task) => task.line)),
   ].sort((a, b) => a - b);
   if (entityLines.length > DOCUMENT_IMPORT_MAX_TOTAL_ENTITIES) {
     addError(
       entityLines[DOCUMENT_IMPORT_MAX_TOTAL_ENTITIES]!,
       "LIMIT_EXCEEDED",
-      "模块、功能与任务总数超过上限 " +
-        String(DOCUMENT_IMPORT_MAX_TOTAL_ENTITIES),
+      "模块与任务总数超过上限 " + String(DOCUMENT_IMPORT_MAX_TOTAL_ENTITIES),
     );
   }
 
@@ -1039,14 +800,6 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
       line: module.line,
       name: module.name,
       description: module.description,
-      features: module.features.map((feature) => ({
-        line: feature.line,
-        name: feature.name,
-        currentBehavior: feature.currentBehavior,
-        acceptanceCriteria: feature.acceptanceCriteria,
-        tags: [...feature.tags],
-        tasks: feature.tasks.map(toParsedTask),
-      })),
       tasks: module.tasks.map(toParsedTask),
     })),
     issues,
@@ -1056,12 +809,10 @@ export function parseDocumentTemplate(text: string): ParsedDocument {
 function toParsedTask(task: TaskBuilder): ParsedTask {
   return {
     line: task.line,
-    scope: task.scope,
     title: task.title,
     assigneeTokens: [...task.assigneeTokens],
     priority: task.priority,
     dueAt: task.dueAt,
     description: task.description,
-    impactFeatureNames: [...task.impactFeatureNames],
   };
 }

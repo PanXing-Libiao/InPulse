@@ -13,15 +13,10 @@ const fields = [
   "id",
   "projectId",
   "moduleId",
-  "featureId",
-  "scopeType",
   "taskId",
-  "impactFeatureIds[]",
   "handlerId",
   "authorId",
   "moduleName",
-  "featureName",
-  "impactFeatureNames[]",
   "authorName",
   "handlerName",
   "status",
@@ -90,8 +85,8 @@ export const recordDraftRoutes: readonly RouteDefinition[] = (
     idempotencyPolicy: write ? "idempotencyRequired" : "none",
     idempotencyExceptionAdr: "none",
     // 1.2.0：遗留问题由单段文本改为条目数组。
-    idempotencyContractVersion: write ? "1.2.0" : "none",
-    idempotencyFingerprintVersion: write ? "1.2.0" : "none",
+    idempotencyContractVersion: write ? "2.0.0" : "none",
+    idempotencyFingerprintVersion: write ? "2.0.0" : "none",
     behaviorHeaders: write ? (create ? [] : ["If-Match"]) : "none",
     idempotencyReplayPolicy: write
       ? {
@@ -128,8 +123,8 @@ export const recordDraftRoutes: readonly RouteDefinition[] = (
       ? {
           rowVersion: create ? "none" : "required",
           lockOrder: create
-            ? ["project", "module", "feature"]
-            : ["project", "module", "feature", "changeRecord"],
+            ? ["project", "module"]
+            : ["project", "module", "changeRecord"],
           retry:
             "none; sorted parent FOR SHARE then draft FOR UPDATE; recheck scope/version",
         }
@@ -167,22 +162,15 @@ export const recordDraftDeleteRoutes: readonly RouteDefinition[] = (
       ...errors,
     },
     auditAction: "record.draft.delete",
-    idempotencyContractVersion: "1.0.0",
+    idempotencyContractVersion: "2.0.0",
     idempotencyFingerprintVersion: "1.0.0",
     idempotencyReplayPolicy: {
-      version: "1.0.0",
+      version: "2.0.0",
       success: {
         "200": {
           body: {
             responseSchemaRef: "RecordDraftDeleteResult",
-            safeBodyFieldPaths: [
-              "projectId",
-              "recordId",
-              "moduleId",
-              "featureId",
-              "taskId",
-              "impactFeatureIds[]",
-            ],
+            safeBodyFieldPaths: ["projectId", "recordId", "moduleId", "taskId"],
           },
         },
       },
@@ -197,7 +185,7 @@ export const recordDraftDeleteRoutes: readonly RouteDefinition[] = (
     },
     concurrencyPolicy: {
       rowVersion: "required",
-      lockOrder: ["project", "module", "feature", "changeRecord"],
+      lockOrder: ["project", "module", "changeRecord"],
       retry: "none; parents FOR SHARE then draft FOR UPDATE, recheck version",
     },
   };
@@ -251,9 +239,9 @@ export const taskRecordDraftRoutes: readonly RouteDefinition[] = (
       ? "none"
       : {
           rowVersion: "required",
-          lockOrder: ["project", "module", "feature", "task", "changeRecord"],
+          lockOrder: ["project", "module", "task", "changeRecord"],
           retry:
-            "up to 3 savepoint attempts; sorted union of task and record impacts, then task lock and reread, then record; create If-Match targets task, edit targets record",
+            "up to 3 savepoint attempts; sorted task and record locks, then task reread, then record; create If-Match targets task, edit targets record",
         },
   };
 });

@@ -15,8 +15,6 @@ const base: LeftoverListItem = {
   projectName: "AGV 智能搬运平台",
   moduleId: 2,
   moduleName: "任务调度",
-  featureId: null,
-  featureName: null,
   author: { userId: 3, name: "陈晓", avatarUrl: null },
   publishedAt: "2026-08-18T03:00:00.000Z",
   content: "高峰期多车同时等待充电的调度策略仍需优化。",
@@ -26,19 +24,15 @@ const base: LeftoverListItem = {
 };
 
 describe("issues-format", () => {
-  it("splits the origin into project name and detail without the feature segment", () => {
+  it("splits the origin into project name and detail with only the module segment", () => {
     // 2026-10-10：项目名从行中间提到行首单独成段（行首接项目标识），
-    // 项目名与记录之间改用「 · 」，模块 / 功能继续用「 / 」表示父子层级。
+    // 项目名、记录、模块、作者与日期由「 · 」分段。
     expect(issueOriginParts(base)).toEqual({
       projectName: "AGV 智能搬运平台",
       detail: "记录「充电策略支持参数配置」 · 任务调度 · 陈晓 · 2026-08-18",
     });
-    expect(
-      issueOriginParts({
-        ...base,
-        featureName: "充电任务编排",
-      }).detail,
-    ).toContain("任务调度 / 充电任务编排");
+    expect(issueOriginParts(base).detail).toContain("任务调度");
+    expect(issueOriginParts(base).detail).not.toContain("充电任务编排");
   });
 
   it("keeps the raw value when the date cannot be parsed", () => {

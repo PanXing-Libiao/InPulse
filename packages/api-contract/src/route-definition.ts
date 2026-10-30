@@ -17,7 +17,6 @@ export const unsafeHttpMethods: readonly HttpMethod[] = [
 export const canonicalLockOrder = [
   "project",
   "module",
-  "feature",
   "task",
   "taskGroup",
   "changeRecord",

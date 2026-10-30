@@ -20,7 +20,6 @@ import {
   RecordFeedReadPort,
   type RecordFeedSourceFilter,
 } from "../change-records/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { ModuleReadPort } from "../modules/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
@@ -59,7 +58,7 @@ export interface RecordFeedQueryCommand {
   readonly limit?: number;
   readonly projectId?: number;
   readonly status?: "PUBLISHED" | "VOID" | "ALL";
-  readonly source?: "ALL" | "MAIN" | "SOURCE" | "MODULE" | "FEATURE";
+  readonly source?: "ALL" | "MAIN" | "SOURCE" | "MODULE";
   readonly q?: string;
 }
 
@@ -101,7 +100,6 @@ export class RecordFeedQueryService {
     private readonly projectAccess: ProjectAccessQueryPort,
     @Inject(ProjectQueryPort) private readonly projects: ProjectQueryPort,
     @Inject(ModuleReadPort) private readonly modules: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(RecordFeedReadPort) private readonly records: RecordFeedReadPort,
     @Inject(UserReadPort) private readonly users: UserReadPort,
     @Inject(PostgresUnitOfWork) private readonly unitOfWork: UnitOfWork,
@@ -156,25 +154,14 @@ export class RecordFeedQueryService {
       const moduleIds = [
         ...new Set(page.items.map((record) => record.moduleId)),
       ];
-      const featureIds = [
-        ...new Set(
-          page.items
-            .map((record) => record.featureId)
-            .filter((featureId): featureId is number => featureId !== null),
-        ),
-      ];
       const modules = await this.modules.listNames(tx, {
         projectIds: pageProjectIds,
         moduleIds,
       });
-      const features = await this.features.listNames(tx, {
-        projectIds: pageProjectIds,
-        featureIds,
-      });
       const authors = await this.users.listByIds(tx, [
         ...new Set(page.items.map((record) => record.authorId)),
       ]);
-      return { page, pageProjectIds, modules, features, authors };
+      return { page, pageProjectIds, modules, authors };
     });
 
     const projects = await this.projects.list(data.pageProjectIds);
@@ -183,9 +170,6 @@ export class RecordFeedQueryService {
     );
     const moduleNameById = new Map(
       data.modules.map((item) => [item.moduleId, item.name]),
-    );
-    const featureNameById = new Map(
-      data.features.map((item) => [item.featureId, item.name]),
     );
     const userById = new Map(data.authors.map((item) => [item.userId, item]));
 
@@ -198,20 +182,11 @@ export class RecordFeedQueryService {
       if (moduleName === undefined) {
         throw inconsistentError("记录缺少模块 " + String(record.moduleId));
       }
-      let featureName: string | null = null;
-      if (record.featureId !== null) {
-        const name = featureNameById.get(record.featureId);
-        if (name === undefined) {
-          throw inconsistentError("记录缺少功能 " + String(record.featureId));
-        }
-        featureName = name;
-      }
       const author = userById.get(record.authorId);
       return {
         record,
         projectName,
         moduleName,
-        featureName,
         author: {
           userId: record.authorId,
           name: record.authorName ?? author?.name ?? "删除用户",

@@ -247,7 +247,6 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
       reassignments.push({
         taskId: task.taskId,
         moduleId: task.moduleId,
-        featureId: task.featureId,
         rowVersion: task.rowVersion,
         assigneeIds: [...choice.assigneeIds],
       });

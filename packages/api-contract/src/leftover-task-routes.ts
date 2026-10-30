@@ -31,8 +31,8 @@ export const leftoverTaskRoutes: readonly RouteDefinition[] = [
     auditAction: "leftover.convert",
     // 2026-09-30：请求 Schema 增加可选 description（任务说明），请求侧语义变化，
     // 幂等契约版本与请求 Schema 版本一起升到 1.2.0；摘要格式与重放策略未变。
-    idempotencyContractVersion: "1.2.0",
-    idempotencyFingerprintVersion: "1.2.0",
+    idempotencyContractVersion: "2.0.0",
+    idempotencyFingerprintVersion: "2.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: {
       version: "1.0.0",
@@ -43,14 +43,12 @@ export const leftoverTaskRoutes: readonly RouteDefinition[] = [
             safeBodyFieldPaths: [
               "projectId",
               "moduleId",
-              "featureId",
               "taskId",
               "recordId",
               "leftoverItemId",
               "recordVersion",
               "recordRowVersion",
               "leftoverRowVersion",
-              "impactFeatureIds[]",
             ],
           },
         },
@@ -66,22 +64,16 @@ export const leftoverTaskRoutes: readonly RouteDefinition[] = [
     },
     concurrencyPolicy: {
       rowVersion: "required",
-      lockOrder: [
-        "project",
-        "module",
-        "feature",
-        "changeRecord",
-        "leftoverItem",
-      ],
+      lockOrder: ["project", "module", "changeRecord", "leftoverItem"],
       retry:
-        "Prelock all record and result impact features; bounded retry before creating a new task",
+        "Prelock the record and result module/task resources; bounded retry before creating a new task",
     },
   },
   {
     ...read,
     operationId: "previewLeftoverTask",
     path: "/projects/{projectId}/change-records/{recordId}/leftover-task-preview",
-    summary: "预览遗留转任务的服务端影响继承；可指定要处理的遗留项",
+    summary: "预览遗留转任务的服务端归属继承；可指定要处理的遗留项",
     request: {
       ...read.request,
       query: "LeftoverTaskPreviewQuery",

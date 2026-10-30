@@ -227,9 +227,8 @@ interface DocumentImportTargetQueryOptions {
 }
 
 /**
- * ADR-094：文档导入目标选择器复用项目模块目录。查询键与模块 feature 相同，
- * 因此从模块页打开导入弹窗时通常直接命中已有缓存；本模块不反向依赖其他
- * feature 的 query 模块。
+ * ADR-094：文档导入目标选择器复用项目模块目录。查询键与模块列表查询相同，
+ * 因此从模块页打开导入弹窗时通常直接命中已有缓存。
  */
 export function useDocumentImportTargetModules({
   projectId,
@@ -250,34 +249,6 @@ export function useDocumentImportTargetModules({
       projectId !== undefined &&
       Number.isInteger(projectId) &&
       projectId > 0,
-    retry: false,
-  });
-}
-
-/** ADR-094：选中模块后再读取该模块的功能目录。 */
-export function useDocumentImportTargetFeatures(
-  options: DocumentImportTargetQueryOptions & {
-    readonly moduleId?: number | undefined;
-  },
-) {
-  const { projectId, moduleId, client, enabled } = options;
-  const apiClient = useMemo(() => client ?? createApiClient(), [client]);
-  return useQuery({
-    queryKey: ["features", projectId, moduleId, undefined],
-    queryFn: ({ signal }) => {
-      if (projectId === undefined || moduleId === undefined) {
-        throw new Error("projectId and moduleId are required");
-      }
-      return apiClient.listFeatures(projectId, moduleId, { signal });
-    },
-    enabled:
-      (enabled ?? true) &&
-      projectId !== undefined &&
-      moduleId !== undefined &&
-      Number.isInteger(projectId) &&
-      projectId > 0 &&
-      Number.isInteger(moduleId) &&
-      moduleId > 0,
     retry: false,
   });
 }

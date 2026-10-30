@@ -18,7 +18,7 @@ import type { TaskBoardCard, TaskBoardModule } from "../task-board-types";
 
 /**
  * 列表视图：按模块分组的高密度表格，列固定为
- * 编号 / 标题 / 功能 / 负责人 / 优先级 / 状态 / 截止或完成时间。
+ * 编号 / 标题 / 负责人 / 优先级 / 状态 / 截止或完成时间。
  * 分组头沿用泳道统计（全量口径），行点击就地打开任务详情。
  * 行底色按优先级区分程度（紧急红 / 高橙 / 普通蓝 / 低灰），已完成与
  * 已取消覆盖为对应状态色；色值只在 design-system.css 的 --tb-row-* 维护。
@@ -82,7 +82,6 @@ const TaskBoardTableRow: React.FC<{
         ) : null}
         <span className="tb-row-title-text">{card.title}</span>
       </span>
-      <span className="tb-row-sub">{card.featureName ?? "模块级任务"}</span>
       <span className="tb-row-owner">
         {lead === undefined ? null : (
           <span className={"tb-ava " + avatarToneOf(lead.userId)}>
@@ -122,7 +121,6 @@ export const TaskBoardTable: React.FC<TaskBoardTableProps> = ({
       <div className="tb-list-head">
         <span>编号</span>
         <span>标题</span>
-        <span>功能</span>
         <span>负责人</span>
         <span>优先级</span>
         <span>状态</span>

@@ -1,16 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type { TransactionContext } from "../../database/transaction-context.js";
-import type {
-  TaskEditRequest,
-  TaskItem,
-  ModuleTaskItem,
-} from "@inpulse/api-contract";
+import type { TaskEditRequest, ModuleTaskItem } from "@inpulse/api-contract";
 import { TasksManagementService } from "./tasks-management.service.js";
 export interface FollowupScope {
   projectId: number;
   moduleId: number;
-  featureId: number | null;
-  impactFeatureIds: number[];
 }
 export abstract class FollowupTaskCommandPort {
   abstract create(
@@ -19,7 +13,7 @@ export abstract class FollowupTaskCommandPort {
     scope: FollowupScope,
     edit: TaskEditRequest,
     requestId: string,
-  ): Promise<TaskItem | ModuleTaskItem>;
+  ): Promise<ModuleTaskItem>;
   abstract replay(
     tx: TransactionContext,
     actorId: number,
@@ -47,7 +41,7 @@ export class PostgresFollowupTaskCommandPort extends FollowupTaskCommandPort {
       actorId,
       edit,
       requestId,
-      operation: scope.featureId === null ? "createModuleTask" : "createTask",
+      operation: "createModuleTask",
       assignmentNotificationType: "leftover.convert",
     });
   }
@@ -61,9 +55,6 @@ export class PostgresFollowupTaskCommandPort extends FollowupTaskCommandPort {
       projectId: scope.projectId,
       moduleId: scope.moduleId,
       taskId,
-      ...(scope.featureId === null
-        ? { impactFeatureIds: scope.impactFeatureIds }
-        : { featureId: scope.featureId }),
     });
   }
 }

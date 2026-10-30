@@ -67,17 +67,12 @@ const fields = [
   "id",
   "projectId",
   "moduleId",
-  "featureId",
-  "scopeType",
   "taskId",
-  "impactFeatureIds[]",
   "handlerId",
   "authorId",
   "authorName",
   "handlerName",
   "moduleName",
-  "featureName",
-  "impactFeatureNames[]",
   "status",
   "code",
   "currentVersion",
@@ -139,8 +134,8 @@ export const recordPublicationRoutes: readonly RouteDefinition[] = (
     },
     behaviorHeaders: publish ? ["If-Match"] : ["If-Match", "X-Record-Version"],
     // 1.2.0：遗留问题由单段文本改为条目数组，响应移除标量 leftoverItem。
-    idempotencyContractVersion: "1.2.0",
-    idempotencyFingerprintVersion: "1.2.0",
+    idempotencyContractVersion: "2.0.0",
+    idempotencyFingerprintVersion: "2.0.0",
     idempotencyReplayPolicy: {
       version: "1.0.0",
       success: {
@@ -163,15 +158,8 @@ export const recordPublicationRoutes: readonly RouteDefinition[] = (
     concurrencyPolicy: {
       rowVersion: "required",
       lockOrder: publish
-        ? [
-            "project",
-            "module",
-            "feature",
-            "task",
-            "changeRecord",
-            "leftoverItem",
-          ]
-        : ["project", "module", "feature", "changeRecord", "leftoverItem"],
+        ? ["project", "module", "task", "changeRecord", "leftoverItem"]
+        : ["project", "module", "changeRecord", "leftoverItem"],
       retry:
         "source pre-read changes release savepoint locks and retry at most 3 times",
     },
@@ -201,8 +189,8 @@ export const recordLeftoverRoutes: readonly RouteDefinition[] = [
         ],
       },
     },
-    idempotencyContractVersion: "1.0.0",
-    idempotencyFingerprintVersion: "1.0.0",
+    idempotencyContractVersion: "2.0.0",
+    idempotencyFingerprintVersion: "2.0.0",
     auditAction: "record.leftover.add",
   },
 ];
@@ -265,7 +253,7 @@ export const recordLifecycleRoutes: readonly RouteDefinition[] = (
   },
   concurrencyPolicy: {
     rowVersion: "required",
-    lockOrder: ["project", "module", "feature", "changeRecord"],
+    lockOrder: ["project", "module", "changeRecord"],
     retry:
       "none; lock ownership parents then conditional status and row_version update",
   },

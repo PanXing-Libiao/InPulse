@@ -4,7 +4,6 @@ import { githubLinkLabel } from "./github-link-label.js";
 
 const TARGET_LABELS: Readonly<Record<ExternalLinkTargetType, string>> = {
   PROJECT: "项目",
-  FEATURE: "功能",
   TASK: "任务",
   CHANGE_RECORD: "迭代记录",
 };

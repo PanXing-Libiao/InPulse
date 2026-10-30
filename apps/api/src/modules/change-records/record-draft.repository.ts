@@ -39,15 +39,11 @@ export interface MyRecordDraftListPage {
 export interface DraftScope {
   projectId: number;
   moduleId: number;
-  featureId: number | null;
-  impactFeatureIds: number[];
 }
 type Row = {
   id: number;
   projectId: number;
   moduleId: number;
-  featureId: number | null;
-  scopeType: string;
   taskId: number | null;
   title: string;
   handlerId: number;
@@ -62,7 +58,6 @@ type Row = {
   rowVersion: number;
   createdAt: Date;
   updatedAt: Date;
-  impactFeatureIds: number[];
 };
 const dto = (row: Row) => {
   const { currentPayload, ...fields } = row;
@@ -99,11 +94,9 @@ export class RecordDraftRepository {
     return rows.map((row) => row.authorId);
   }
   private columns(tx: TransactionContext) {
-    return tx.sql`id, project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",
-    scope_type AS "scopeType",task_id AS "taskId",title,handler_id AS "handlerId",handler_snapshot->>'name' AS "handlerName",author_id AS "authorId",author_snapshot->>'name' AS "authorName",status,code,
+    return tx.sql`id, project_id AS "projectId",module_id AS "moduleId",task_id AS "taskId",title,handler_id AS "handlerId",handler_snapshot->>'name' AS "handlerName",author_id AS "authorId",author_snapshot->>'name' AS "authorName",status,code,
     current_version AS "currentVersion",published_at AS "publishedAt",current_payload AS "currentPayload",
-    row_version AS "rowVersion",created_at AS "createdAt",updated_at AS "updatedAt",
-    ARRAY(SELECT i.feature_id FROM app.change_record_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.change_record_id=app.change_records.id ORDER BY i.feature_id) AS "impactFeatureIds"`;
+    row_version AS "rowVersion",created_at AS "createdAt",updated_at AS "updatedAt"`;
   }
   async find(
     tx: TransactionContext,
@@ -186,10 +179,8 @@ export class RecordDraftRepository {
     const { title, ...payload } = content;
     const [row] = await tx.sql<
       { id: number }[]
-    >`INSERT INTO app.change_records(project_id,module_id,feature_id,scope_type,title,handler_id,author_id,status,current_payload,task_id)
-      VALUES (${scope.projectId},${scope.moduleId},${scope.featureId},${scope.featureId === null ? "MODULE" : "FEATURE"},${title},${source?.handlerId ?? actorId},${actorId},'DRAFT',${JSON.stringify(payload)}::jsonb,${source?.taskId ?? null}) RETURNING id`;
-    for (const featureId of scope.impactFeatureIds)
-      await tx.sql`INSERT INTO app.change_record_feature_impacts(change_record_id,module_id,project_id,feature_id) VALUES (${row!.id},${scope.moduleId},${scope.projectId},${featureId})`;
+    >`INSERT INTO app.change_records(project_id,module_id,title,handler_id,author_id,status,current_payload,task_id)
+      VALUES (${scope.projectId},${scope.moduleId},${title},${source?.handlerId ?? actorId},${actorId},'DRAFT',${JSON.stringify(payload)}::jsonb,${source?.taskId ?? null}) RETURNING id`;
     return (await this.find(tx, scope.projectId, row!.id))!;
   }
   async listForTask(tx: TransactionContext, projectId: number, taskId: number) {

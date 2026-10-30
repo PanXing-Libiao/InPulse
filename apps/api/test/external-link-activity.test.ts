@@ -32,7 +32,7 @@ describe("externalLinkActivitySummary", () => {
     );
   });
 
-  test("项目、功能与正式迭代记录使用各自的中文标签与编号", () => {
+  test("项目与正式迭代记录使用各自的中文标签与编号", () => {
     expect(
       externalLinkActivitySummary({
         adding: true,
@@ -43,14 +43,6 @@ describe("externalLinkActivitySummary", () => {
     ).toBe(
       "添加 GitHub 关联：Issue #11（项目 LIINK「LIINK市场管理系统-项目部门」）",
     );
-    expect(
-      externalLinkActivitySummary({
-        adding: true,
-        url: "https://github.com/inpulse/core/releases/tag/v2.6.0",
-        targetType: "FEATURE",
-        target: { code: "LIINK-F-3", title: "退款" },
-      }),
-    ).toBe("添加 GitHub 关联：Release v2.6.0（功能 LIINK-F-3「退款」）");
     expect(
       externalLinkActivitySummary({
         adding: true,
@@ -94,6 +86,5 @@ describe("externalLinkActivityApplies", () => {
     );
     expect(externalLinkActivityApplies("TASK", "ACTIVE")).toBe(true);
     expect(externalLinkActivityApplies("PROJECT", "ACTIVE")).toBe(true);
-    expect(externalLinkActivityApplies("FEATURE", "ACTIVE")).toBe(true);
   });
 });

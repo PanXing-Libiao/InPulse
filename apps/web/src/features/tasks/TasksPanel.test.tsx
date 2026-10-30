@@ -14,18 +14,16 @@ import {
   ApiError,
   type InpulseApiClient,
   type ModuleItem,
-  type TaskItem,
+  type ModuleTaskItem,
 } from "@generated/api";
 import { AuthStateProvider } from "@features/auth/auth-context";
 import { TasksPanel } from "./TasksPanel";
 import { mergeTask, taskEdit } from "./task-query";
 
-const item: TaskItem = {
+const item: ModuleTaskItem = {
   id: 1,
   projectId: 2,
   moduleId: 3,
-  featureId: 4,
-  scopeType: "FEATURE",
   code: "PR-T-1",
   title: "退款任务",
   description: "原说明",
@@ -42,9 +40,8 @@ const item: TaskItem = {
 };
 function client(overrides: object = {}) {
   return {
-    getTaskStatusHistory: vi.fn().mockResolvedValue({ items: [] }),
     getModuleTaskStatusHistory: vi.fn().mockResolvedValue({ items: [] }),
-    listTasks: vi.fn().mockResolvedValue({ items: [item] }),
+    listModuleTasks: vi.fn().mockResolvedValue({ items: [item] }),
     listTaskGroupMemberships: vi.fn().mockResolvedValue({ items: [] }),
     getTaskGroup: vi.fn().mockResolvedValue({
       group: {
@@ -68,7 +65,6 @@ function client(overrides: object = {}) {
           workStatus: "TODO",
           lifecycleStatus: "ACTIVE",
           moduleId: 3,
-          featureId: 4,
           assignee: { userId: 5, name: "项目成员", avatarUrl: null },
           joinedAt: "2026-09-01T12:00:00.000Z",
           detachedAt: null,
@@ -80,11 +76,10 @@ function client(overrides: object = {}) {
     listTaskGroupRecords: vi
       .fn()
       .mockResolvedValue({ items: [], nextCursor: null, hasMore: false }),
-    listTaskAssignees: vi.fn().mockResolvedValue({
+    listModuleTaskAssignees: vi.fn().mockResolvedValue({
       items: [{ id: 5, name: "项目成员", avatarUrl: null }],
     }),
     issueCsrfToken: vi.fn().mockResolvedValue({ csrfToken: "a".repeat(43) }),
-    getFeature: vi.fn().mockResolvedValue({ status: "ACTIVE" }),
     listActiveProjectMembers: vi.fn().mockResolvedValue({
       items: [{ id: 5, name: "项目成员", avatarUrl: null }],
     }),
@@ -96,14 +91,11 @@ function client(overrides: object = {}) {
         taskId: 1,
         projectId: 2,
         moduleId: 3,
-        featureId: 4,
-        scopeType: "FEATURE",
         title: item.title,
         assigneeId: 5,
         workStatus: "TODO",
         lifecycleStatus: "ACTIVE",
         rowVersion: 1,
-        impactFeatureIds: [],
       },
       items: [],
     }),
@@ -142,7 +134,6 @@ function mount(api: InpulseApiClient, writable = true) {
             <TasksPanel
               projectId={2}
               moduleId={3}
-              featureId={4}
               writable={writable}
               client={api}
             />
@@ -152,24 +143,23 @@ function mount(api: InpulseApiClient, writable = true) {
     </ConfigProvider>,
   );
 }
-describe("F-14 功能级任务入口", () => {
-  it("保存成功用浮层气泡提示，不再插入整行成功横幅", async () => {
-    const createTask = vi
+describe("F-14 模块任务固定归属", () => {
+  it("编辑保存成功用浮层气泡提示，不再插入整行成功横幅", async () => {
+    const updateModuleTask = vi
       .fn()
-      .mockResolvedValue({ ...item, id: 2, title: "新任务" });
-    mount(
-      client({
-        listTasks: vi.fn().mockResolvedValue({ items: [] }),
-        createTask,
-      }),
+      .mockResolvedValue({ ...item, title: "更新后的任务", rowVersion: 2 });
+    mount(client({ updateModuleTask }));
+    fireEvent.click(
+      await screen.findByRole("article", { name: /^查看任务详情/ }),
     );
-    await screen.findByText("暂无任务");
-    fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
-    fireEvent.change(screen.getByLabelText("任务标题"), {
-      target: { value: "新任务" },
+    fireEvent.click(await screen.findByRole("button", { name: "编辑任务" }));
+    const editor = within(
+      await screen.findByRole("dialog", { name: "编辑任务" }),
+    );
+    fireEvent.change(editor.getByLabelText("任务标题"), {
+      target: { value: "更新后的任务" },
     });
-    pickSelectOption("负责人", "项目成员");
-    fireEvent.click(screen.getByRole("button", { name: /创建任务/ }));
+    fireEvent.click(editor.getByRole("button", { name: /保\s*存/ }));
 
     const toast = await screen.findByTestId("task-save-success");
     expect(toast).toHaveTextContent("任务已保存");
@@ -177,9 +167,9 @@ describe("F-14 功能级任务入口", () => {
     expect(toast.closest(".ant-alert")).toBeNull();
   });
 
-  it("功能面板只保留固定归属的「新建任务」，没有自定义归属入口", async () => {
+  it("模块面板只保留固定归属的「新建任务」，没有自定义归属入口", async () => {
     mount(client());
-    // 任务保存在当前功能下，不需要让用户再选一次归属。
+    // 任务保存在当前模块下，不需要让用户再选一次归属。
     expect(
       await screen.findByRole("button", { name: "新建任务" }),
     ).toBeTruthy();
@@ -203,7 +193,6 @@ describe("F-14 模块级任务入口", () => {
       createdAt: "2026-09-09T00:00:00.000Z",
       updatedAt: "2026-09-09T00:00:00.000Z",
       stats: {
-        activeFeatureCount: 0,
         openTaskCount: 0,
         completedTaskCount: 0,
       },
@@ -220,7 +209,6 @@ describe("F-14 模块级任务入口", () => {
               <TasksPanel
                 projectId={2}
                 moduleId={3}
-                featureId={null}
                 writable
                 client={client({
                   listModuleTasks: vi.fn().mockResolvedValue({ items: [] }),
@@ -251,9 +239,6 @@ describe("F-14 模块级任务入口", () => {
   it("按搜索关键词过滤模块任务，并把总数回传给页面", async () => {
     const moduleTask = {
       ...item,
-      scopeType: "MODULE" as const,
-      featureId: null,
-      impactFeatureIds: [],
     };
     const onCount = vi.fn();
     render(
@@ -268,7 +253,6 @@ describe("F-14 模块级任务入口", () => {
               <TasksPanel
                 projectId={2}
                 moduleId={3}
-                featureId={null}
                 writable
                 showHeader={false}
                 search="查无此项"
@@ -314,7 +298,7 @@ describe("F-14 task editing", () => {
     mount(
       client({
         completeTask,
-        getTask: vi.fn().mockResolvedValue({ ...item, rowVersion: 2 }),
+        getModuleTask: vi.fn().mockResolvedValue({ ...item, rowVersion: 2 }),
       }),
     );
     fireEvent.click(
@@ -334,7 +318,7 @@ describe("F-14 task editing", () => {
     expect(modal.getByRole("button", { name: /返回任务/ })).toBeTruthy();
     expect(
       modal.getByRole("heading", {
-        name: "本次工作是否产生了实际功能变化？",
+        name: "本次工作是否产生了需要记录的变更？",
       }),
     ).toBeTruthy();
     expect(modal.getByText(`${item.code} · ${item.title}`)).toBeTruthy();
@@ -373,7 +357,7 @@ describe("F-14 task editing", () => {
   it("defaults to every status and retains all history without displaying an incomplete completion rate", async () => {
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({
+        listModuleTasks: vi.fn().mockResolvedValue({
           items: [
             item,
             { ...item, id: 2, title: "历史完成", workStatus: "DONE" },
@@ -408,45 +392,25 @@ describe("F-14 task editing", () => {
       expect(screen.getByText(title)).toBeVisible();
     expect(screen.queryByText(/完成率/)).not.toBeInTheDocument();
   });
-  it("compares impact sets semantically and requires a three-way choice", () => {
-    const base = { ...taskEdit(item), impactFeatureIds: [2] };
-    expect(
-      mergeTask(
-        base,
-        { ...base, impactFeatureIds: [2, 3] },
-        { ...base, impactFeatureIds: [2, 4] },
-      ).conflicts,
-    ).toEqual(["impactFeatureIds"]);
-    expect(
-      mergeTask(
-        base,
-        { ...base, impactFeatureIds: [2] },
-        { ...base, title: "新标题" },
-      ).conflicts,
-    ).toEqual([]);
-  });
-  it("shows a MODULE reference only once and without a module-task jump link", async () => {
+  it("renders a module task without an obsolete scope badge or jump link", async () => {
     const module = {
       ...item,
-      featureId: null,
-      scopeType: "MODULE",
-      impactFeatureIds: [4],
     };
     mount(
-      client({ listTasks: vi.fn().mockResolvedValue({ items: [module] }) }),
+      client({
+        listModuleTasks: vi.fn().mockResolvedValue({ items: [module] }),
+      }),
     );
-    // 卡片正文是任务介绍，模块级引用由「模块级」徽标表达（不再重复功能名）。
-    await screen.findByText("模块级");
-    expect(screen.getByText("原说明")).toBeVisible();
+    // 模块归属由页面语境表达，卡片不再重复渲染旧功能层级或范围徽标。
+    await screen.findByText("原说明");
     expect(screen.getByText("1 个任务")).toBeVisible();
     fireEvent.click(screen.getByRole("article", { name: /^查看任务详情/ }));
-    // 2026-09-24 产品要求删除正文里的「打开模块任务」跳转（任务中心详情动作行
-    // 的「在项目中打开」与功能页头部的「模块级任务」标签已是同一去向）。
+    // 模块任务只在页面语境中表达归属，不再提供重复的模块任务跳转。
     await screen.findByRole("button", { name: "编辑任务" });
     expect(
       screen.queryByRole("link", { name: "打开模块任务" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "编辑任务" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "编辑任务" })).toBeEnabled();
   });
   it("merges untouched fields and requires choice for conflicting assignee/due date", () => {
     const base = taskEdit(item);
@@ -468,11 +432,13 @@ describe("F-14 task editing", () => {
     });
   });
   it("retains identical retry key after uncertain failure and changes key with semantics", async () => {
-    const createTask = vi.fn().mockRejectedValue(new Error("lost response"));
+    const createModuleTask = vi
+      .fn()
+      .mockRejectedValue(new Error("lost response"));
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({ items: [] }),
-        createTask,
+        listModuleTasks: vi.fn().mockResolvedValue({ items: [] }),
+        createModuleTask,
       }),
     );
     await screen.findByText("暂无任务");
@@ -480,24 +446,27 @@ describe("F-14 task editing", () => {
     fireEvent.change(screen.getByLabelText("任务标题"), {
       target: { value: "新任务" },
     });
+    await waitFor(() =>
+      expect(screen.queryByText("正在加载项目成员…")).not.toBeInTheDocument(),
+    );
     pickSelectOption("负责人", "项目成员");
     const save = screen.getByRole("button", { name: /创建任务/ });
     fireEvent.click(save);
     await screen.findByText("任务服务暂时不可用，输入已保留，可重试。");
     fireEvent.click(save);
-    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(2));
-    expect(createTask.mock.calls[0]![4].headers["Idempotency-Key"]).toBe(
-      createTask.mock.calls[1]![4].headers["Idempotency-Key"],
+    await waitFor(() => expect(createModuleTask).toHaveBeenCalledTimes(2));
+    expect(createModuleTask.mock.calls[0]![3].headers["Idempotency-Key"]).toBe(
+      createModuleTask.mock.calls[1]![3].headers["Idempotency-Key"],
     );
     await waitFor(() => expect(save).not.toHaveClass("ant-btn-loading"));
     fireEvent.change(screen.getByLabelText("任务标题"), {
       target: { value: "改了标题" },
     });
     fireEvent.click(save);
-    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(3));
-    expect(createTask.mock.calls[2]![4].headers["Idempotency-Key"]).not.toBe(
-      createTask.mock.calls[1]![4].headers["Idempotency-Key"],
-    );
+    await waitFor(() => expect(createModuleTask).toHaveBeenCalledTimes(3));
+    expect(
+      createModuleTask.mock.calls[2]![3].headers["Idempotency-Key"],
+    ).not.toBe(createModuleTask.mock.calls[1]![3].headers["Idempotency-Key"]);
   });
   it("requires selecting the conflicting title before submitting latest If-Match", async () => {
     const latest = {
@@ -506,7 +475,7 @@ describe("F-14 task editing", () => {
       description: "他人说明",
       rowVersion: 2,
     };
-    const updateTask = vi
+    const updateModuleTask = vi
       .fn()
       .mockRejectedValueOnce(
         new ApiError(409, {
@@ -517,7 +486,12 @@ describe("F-14 task editing", () => {
         }),
       )
       .mockResolvedValue({ ...latest, title: "我的标题", rowVersion: 3 });
-    mount(client({ getTask: vi.fn().mockResolvedValue(latest), updateTask }));
+    mount(
+      client({
+        getModuleTask: vi.fn().mockResolvedValue(latest),
+        updateModuleTask,
+      }),
+    );
     await screen.findByText("退款任务");
     fireEvent.click(screen.getByRole("article", { name: /^查看任务详情/ }));
     fireEvent.click(await screen.findByRole("button", { name: "编辑任务" }));
@@ -535,8 +509,8 @@ describe("F-14 task editing", () => {
     fireEvent.click(modal.getByRole("button", { name: "应用合并结果" }));
     expect(modal.getByLabelText("任务说明")).toHaveValue("他人说明");
     fireEvent.click(modal.getByRole("button", { name: /保\s*存/ }));
-    await waitFor(() => expect(updateTask).toHaveBeenCalledTimes(2));
-    expect(updateTask.mock.calls[1]![5].headers["If-Match"]).toBe('"2"');
+    await waitFor(() => expect(updateModuleTask).toHaveBeenCalledTimes(2));
+    expect(updateModuleTask.mock.calls[1]![4].headers["If-Match"]).toBe('"2"');
   });
   it("keeps one modal surface when switching from detail to edit", async () => {
     mount(client());
@@ -549,9 +523,11 @@ describe("F-14 task editing", () => {
     // 详情与编辑共用一个弹层：同一个 DOM 节点原地换内容，遮罩不会卸载重播。
     expect(editor).toBe(detail);
   });
-  it("shows read failure/retry and disables creation in archived feature", async () => {
+  it("shows read failure/retry and disables creation in an archived module", async () => {
     mount(
-      client({ listTasks: vi.fn().mockRejectedValue(new Error("offline")) }),
+      client({
+        listModuleTasks: vi.fn().mockRejectedValue(new Error("offline")),
+      }),
       false,
     );
     await screen.findByRole("button", { name: "重试任务列表" });
@@ -566,7 +542,7 @@ describe("F-14 task editing", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /创建任务/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "请至少选择一名负责人",
+      "请至少指派一名项目活跃成员作为负责人。",
     );
   });
 });
@@ -583,13 +559,12 @@ function mountWithGroupModal(api: InpulseApiClient, writable = true) {
           new QueryClient({ defaultOptions: { queries: { retry: false } } })
         }
       >
-        <MemoryRouter initialEntries={["/features/4"]}>
+        <MemoryRouter initialEntries={["/projects/2/modules/3/tasks?taskId=4"]}>
           {/* 聚合组弹窗里的记录详情按 isAdmin 判断正文可读性，需要认证上下文。 */}
           <AuthStateProvider>
             <TasksPanel
               projectId={2}
               moduleId={3}
-              featureId={4}
               writable={writable}
               client={api}
             />
@@ -614,12 +589,11 @@ describe("F-23 merge entry", () => {
   });
 });
 describe("ADR-096 删除任务", () => {
-  it("requires a second confirmation before calling deleteTask with CSRF, idempotency key and If-Match", async () => {
-    const deleteTask = vi.fn().mockResolvedValue({
+  it("requires a second confirmation before calling deleteModuleTask with CSRF, idempotency key and If-Match", async () => {
+    const deleteModuleTask = vi.fn().mockResolvedValue({
       id: 1,
       projectId: 2,
       moduleId: 3,
-      featureId: 4,
       code: "PR-T-1",
       title: "退款任务",
       workStatus: "TODO",
@@ -627,7 +601,7 @@ describe("ADR-096 删除任务", () => {
       removedLinkCount: 1,
       detachedGroupRole: null,
     });
-    mount(client({ deleteTask }));
+    mount(client({ deleteModuleTask }));
     fireEvent.click(
       await screen.findByRole("article", { name: /^查看任务详情/ }),
     );
@@ -644,19 +618,18 @@ describe("ADR-096 删除任务", () => {
       within(confirm).getByText(/全部迭代记录、版本、遗留项/),
     ).toBeInTheDocument();
     // 二次确认前不发请求。
-    expect(deleteTask).not.toHaveBeenCalled();
+    expect(deleteModuleTask).not.toHaveBeenCalled();
     fireEvent.click(within(confirm).getByTestId("confirm-delete-task"));
-    await waitFor(() => expect(deleteTask).toHaveBeenCalledTimes(1));
-    const [projectId, moduleId, featureId, taskId, body, init] = deleteTask.mock
+    await waitFor(() => expect(deleteModuleTask).toHaveBeenCalledTimes(1));
+    const [projectId, moduleId, taskId, body, init] = deleteModuleTask.mock
       .calls[0] as [
-      number,
       number,
       number,
       number,
       { reason: string | null },
       { headers: Record<string, string> },
     ];
-    expect([projectId, moduleId, featureId, taskId]).toEqual([2, 3, 4, 1]);
+    expect([projectId, moduleId, taskId]).toEqual([2, 3, 1]);
     expect(body).toEqual({ reason: null });
     expect(init.headers["x-csrf-token"]).toBe("a".repeat(43));
     expect(init.headers["If-Match"]).toBe('"1"');
@@ -664,9 +637,9 @@ describe("ADR-096 删除任务", () => {
   });
 });
 describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
-  const source: TaskItem = { ...item, id: 1, title: "来源任务甲" };
-  const ungrouped: TaskItem = { ...item, id: 2, title: "未入组任务乙" };
-  const main: TaskItem = { ...item, id: 3, title: "主任务丙" };
+  const source: ModuleTaskItem = { ...item, id: 1, title: "来源任务甲" };
+  const ungrouped: ModuleTaskItem = { ...item, id: 2, title: "未入组任务乙" };
+  const main: ModuleTaskItem = { ...item, id: 3, title: "主任务丙" };
   const marks = {
     items: [
       {
@@ -689,7 +662,9 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
     const listTaskGroupMemberships = vi.fn().mockResolvedValue(marks);
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({ items: [source, ungrouped] }),
+        listModuleTasks: vi
+          .fn()
+          .mockResolvedValue({ items: [source, ungrouped] }),
         listTaskGroupMemberships,
       }),
     );
@@ -727,7 +702,7 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
   it("列表视图沿用同一套程度配色：优先级铺色，已完成转青碧、已取消转灰", async () => {
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({
+        listModuleTasks: vi.fn().mockResolvedValue({
           items: [
             item,
             {
@@ -776,7 +751,7 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
       ).toISOString();
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({
+        listModuleTasks: vi.fn().mockResolvedValue({
           items: [
             {
               ...item,
@@ -824,7 +799,9 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
     expect(dueCellOf("已完成逾期任务")).not.toHaveClass("due-overdue");
   });
   it("标签落到左下角、负责人贴在分隔线上方右侧", async () => {
-    mount(client({ listTasks: vi.fn().mockResolvedValue({ items: [item] }) }));
+    mount(
+      client({ listModuleTasks: vi.fn().mockResolvedValue({ items: [item] }) }),
+    );
 
     const card = (await screen.findByText("退款任务")).closest(
       ".calm-task-card",
@@ -860,7 +837,7 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
       ).toISOString();
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({
+        listModuleTasks: vi.fn().mockResolvedValue({
           items: [
             {
               ...item,
@@ -936,7 +913,7 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
   it("shows badge, record count and the main-task entry in the detail dialog, then opens the group dialog in place", async () => {
     mountWithGroupModal(
       client({
-        listTasks: vi.fn().mockResolvedValue({ items: [source] }),
+        listModuleTasks: vi.fn().mockResolvedValue({ items: [source] }),
         listTaskGroupMemberships: vi.fn().mockResolvedValue(marks),
       }),
     );
@@ -955,7 +932,7 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
   it("keeps the main task badge but hides the main-task entry on the MAIN task itself", async () => {
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({ items: [main] }),
+        listModuleTasks: vi.fn().mockResolvedValue({ items: [main] }),
         listTaskGroupMemberships: vi.fn().mockResolvedValue({
           items: [
             {
@@ -985,8 +962,8 @@ describe("C-1 任务聚合标记（R-5 页面级一次批量）", () => {
 });
 
 describe("C-3 任务详情弹窗标签页", () => {
-  const source: TaskItem = { ...item, id: 1, title: "来源任务甲" };
-  const main: TaskItem = { ...item, id: 3, title: "主任务丙" };
+  const source: ModuleTaskItem = { ...item, id: 1, title: "来源任务甲" };
+  const main: ModuleTaskItem = { ...item, id: 3, title: "主任务丙" };
   const marks = (role: "MAIN" | "SOURCE") => ({
     items: [
       {
@@ -1044,7 +1021,7 @@ describe("C-3 任务详情弹窗标签页", () => {
     // 页脚直接给发布入口，来源任务未完成也能发布。
     expect(modal.getByLabelText("迭代标题")).toHaveValue("退款任务");
     expect(
-      modal.getByText("所属功能").closest(".record-scope-facts"),
+      modal.getByText("所属模块").closest(".record-scope-facts"),
     ).not.toBeNull();
     // 页脚与迭代记录页同一顺序：淡蓝「保存草稿」在左、主按钮「发布迭代记录」在右。
     // 是否可提交取决于项目状态是否已知，由 RecordDraftsView 的单测与浏览器用例覆盖。
@@ -1062,10 +1039,7 @@ describe("C-3 任务详情弹窗标签页", () => {
       id: 41,
       projectId: 2,
       moduleId: 3,
-      featureId: 4,
-      scopeType: "FEATURE",
       taskId: 1,
-      impactFeatureIds: [],
       handlerId: 5,
       authorId: 5,
       status: "DRAFT",
@@ -1142,10 +1116,7 @@ describe("C-3 任务详情弹窗标签页", () => {
       id: 41,
       projectId: 2,
       moduleId: 3,
-      featureId: 4,
-      scopeType: "FEATURE",
       taskId: 1,
-      impactFeatureIds: [],
       handlerId: 5,
       authorId: 5,
       status: "DRAFT",
@@ -1257,10 +1228,7 @@ describe("C-3 任务详情弹窗标签页", () => {
       id: 11,
       projectId: 2,
       moduleId: 3,
-      featureId: 4,
-      scopeType: "FEATURE",
       taskId: 1,
-      impactFeatureIds: [],
       handlerId: 5,
       authorId: 5,
       status: "PUBLISHED",
@@ -1292,24 +1260,18 @@ describe("C-3 任务详情弹窗标签页", () => {
             taskId: 1,
             projectId: 2,
             moduleId: 3,
-            featureId: 4,
-            scopeType: "FEATURE",
             title: item.title,
             assigneeId: 5,
             workStatus: "TODO",
             lifecycleStatus: "ACTIVE",
             rowVersion: 1,
-            impactFeatureIds: [],
           },
           items: [
             {
               id: 21,
               projectId: 2,
               moduleId: 3,
-              featureId: 4,
-              scopeType: "FEATURE",
               taskId: 1,
-              impactFeatureIds: [],
               handlerId: 5,
               authorId: 5,
               status: "DRAFT",
@@ -1364,7 +1326,7 @@ describe("C-3 任务详情弹窗标签页", () => {
   it("shows creator and history operator names instead of raw ids", async () => {
     mount(
       client({
-        getTaskStatusHistory: vi.fn().mockResolvedValue({
+        getModuleTaskStatusHistory: vi.fn().mockResolvedValue({
           items: [
             {
               id: "1",
@@ -1394,7 +1356,7 @@ describe("C-3 任务详情弹窗标签页", () => {
   it("shows the source branch panel and opens the group dialog from the branches tab", async () => {
     mountWithGroupModal(
       client({
-        listTasks: vi.fn().mockResolvedValue({ items: [source] }),
+        listModuleTasks: vi.fn().mockResolvedValue({ items: [source] }),
         listTaskGroupMemberships: vi.fn().mockResolvedValue(marks("SOURCE")),
       }),
     );
@@ -1416,7 +1378,7 @@ describe("C-3 任务详情弹窗标签页", () => {
   it("keeps the group marker but hides the main-task entry on the MAIN task", async () => {
     mount(
       client({
-        listTasks: vi.fn().mockResolvedValue({ items: [main] }),
+        listModuleTasks: vi.fn().mockResolvedValue({ items: [main] }),
         listTaskGroupMemberships: vi.fn().mockResolvedValue(marks("MAIN")),
       }),
     );
@@ -1454,7 +1416,7 @@ describe("负责人已被移出项目", () => {
   const detachedClient = () =>
     client({
       // 人被移出项目：任务指派人候选与项目活跃成员里都没有 5 号。
-      listTaskAssignees: vi.fn().mockResolvedValue({ items: [] }),
+      listModuleTaskAssignees: vi.fn().mockResolvedValue({ items: [] }),
       listActiveProjectMembers: vi.fn().mockResolvedValue({ items: [] }),
       // 全站用户目录仍能解析出姓名：必须显示「小潘（已移出项目）」，不是「用户 #5」。
       getUserDirectory: vi.fn().mockResolvedValue({

@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import type {
   CurrentUserResponse,
-  FeatureItem,
   InpulseApiClient,
   ModuleItem,
 } from "@generated/api";
@@ -29,12 +28,6 @@ const moduleItem = {
   status: "ACTIVE",
 } as unknown as ModuleItem;
 
-const featureItem = {
-  id: 5,
-  name: "车辆调度",
-  status: "ACTIVE",
-} as unknown as FeatureItem;
-
 const signedInUser: CurrentUserResponse = {
   id: 7,
   loginName: "viewer",
@@ -58,7 +51,6 @@ function createClient() {
     listProjects: vi.fn().mockResolvedValue({ items: projects }),
     getProject: vi.fn().mockResolvedValue({ project: projects[0] }),
     listModules: vi.fn().mockResolvedValue({ items: [moduleItem] }),
-    listFeatures: vi.fn().mockResolvedValue({ items: [featureItem] }),
   } as unknown as InpulseApiClient;
 }
 
@@ -106,7 +98,7 @@ describe("ProjectTree 手风琴", () => {
     expect(wms).toHaveAttribute("aria-expanded", "false");
     // 只铺开一个项目的子页行。
     expect(
-      await screen.findAllByRole("button", { name: "模块与功能" }),
+      await screen.findAllByRole("button", { name: "项目与模块" }),
     ).toHaveLength(1);
 
     fireEvent.click(wms);
@@ -114,7 +106,7 @@ describe("ProjectTree 手风琴", () => {
     expect(agv).toHaveAttribute("aria-expanded", "false");
     // 前一个项目的子页行与模块列表一起消失，仍只剩一份。
     expect(screen.queryByRole("button", { name: /调度模块/ })).toBeNull();
-    expect(screen.getAllByRole("button", { name: "模块与功能" })).toHaveLength(
+    expect(screen.getAllByRole("button", { name: "项目与模块" })).toHaveLength(
       1,
     );
   });

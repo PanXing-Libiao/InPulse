@@ -9,7 +9,6 @@ describe("project overview mock adapter", () => {
     });
     expect(result.stats).toEqual({
       activeModules: 4,
-      activeFeatures: 11,
       openTasks: 6,
       publishedRecords: 9,
       openLeftovers: 2,

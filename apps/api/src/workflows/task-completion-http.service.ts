@@ -124,18 +124,13 @@ export class TaskCompletionHttpService {
             replayAuthContext: {
               projectId: task.projectId,
               moduleId: task.moduleId,
-              featureId: task.featureId,
               taskId: task.id,
-              impactFeatureIds:
-                "impactFeatureIds" in task ? task.impactFeatureIds : [],
               record: record
                 ? {
                     projectId: record.projectId,
                     recordId: record.id,
                     moduleId: record.moduleId,
-                    featureId: record.featureId,
                     taskId: record.taskId,
-                    impactFeatureIds: record.impactFeatureIds,
                     leftoverItemIds: record.leftovers.map(
                       (leftover) => leftover.id,
                     ),

@@ -9,7 +9,6 @@ import {
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
-import { FeatureQueryPort } from "../modules/features/index.js";
 import { TaskQueryPort } from "../modules/tasks/index.js";
 import {
   RecordDraftCommandPort,
@@ -35,7 +34,6 @@ export class TaskRecordDraftWorkflow {
     @Inject(PROJECT_ACCESS_QUERY_PORT)
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
     @Inject(RecordDraftQueryPort)
     private readonly records: RecordDraftQueryPort,
@@ -59,15 +57,12 @@ export class TaskRecordDraftWorkflow {
           taskId: source.taskId,
           projectId: source.projectId,
           moduleId: source.moduleId,
-          featureId: source.featureId,
-          scopeType: source.scopeType,
           title: source.title,
           assigneeId: source.assigneeId,
           assigneeName: assignee?.name ?? null,
           workStatus: source.workStatus,
           lifecycleStatus: source.lifecycleStatus,
           rowVersion: source.rowVersion,
-          impactFeatureIds: source.impactFeatureIds,
         },
         items: await this.records.listForTask(tx, path.projectId, path.taskId),
       };
@@ -118,26 +113,9 @@ export class TaskRecordDraftWorkflow {
         path.recordId !== undefined &&
         (!record ||
           record.taskId !== path.taskId ||
-          record.moduleId !== path.moduleId ||
-          record.featureId !== previous.featureId)
+          record.moduleId !== path.moduleId)
       )
         throw missing();
-      const ids = [
-        ...new Set([
-          ...(previous.featureId === null
-            ? previous.impactFeatureIds
-            : [previous.featureId]),
-          ...(record?.impactFeatureIds ?? []),
-        ]),
-      ].sort((a, b) => a - b);
-      for (const featureId of ids) {
-        const feature = await this.features.checkFeatureForWrite(tx, {
-          projectId: path.projectId,
-          moduleId: path.moduleId,
-          featureId,
-        });
-        if (feature.kind === "not-found") throw missing();
-      }
       const source = await this.tasks.lock(tx, path.projectId, path.taskId);
       if (!source || source.moduleId !== path.moduleId) throw missing();
       if (JSON.stringify(source) !== JSON.stringify(previous)) {
@@ -209,7 +187,6 @@ export class TaskRecordDraftWorkflow {
       recordId: number;
       moduleId: number;
       taskId: number | null;
-      impactFeatureIds: readonly number[];
     },
   ) {
     if (
@@ -218,17 +195,11 @@ export class TaskRecordDraftWorkflow {
       context.taskId !== path.taskId
     )
       throw missing();
-    // Saved impact resources are immutable within F-17. Prepare checks their current identity,
-    // the true parent, task, and current draft before exposing the cached response.
+    // 重放前重新校验项目、模块、来源任务与草稿当前仍可访问且归属一致。
     const { record } = await this.prepare(tx, actorId, {
       ...path,
       recordId: context.recordId,
     });
-    if (
-      !record ||
-      JSON.stringify(record.impactFeatureIds) !==
-        JSON.stringify(context.impactFeatureIds)
-    )
-      throw missing();
+    if (!record) throw missing();
   }
 }

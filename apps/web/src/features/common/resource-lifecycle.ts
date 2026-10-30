@@ -65,7 +65,6 @@ export const projectTier = (status: ProjectStatus): ProjectTier =>
  * - `ACTIVE`：进行中，模块下已有 `work_status = 'DONE'` 的有效任务。
  * - `NOT_STARTED`：未开始，模块下还没有任何已完成任务。
  *
- * 功能自 ADR-045 起同样下线归档，档位按同一规则推导，见下方功能档位。
  */
 export type ModuleLifecycleKind = "ACTIVE" | "NOT_STARTED";
 
@@ -82,7 +81,7 @@ export const moduleLifecycleLabel = (completedTaskCount: number): string =>
   moduleLabels[moduleLifecycleKind(completedTaskCount)];
 
 /**
- * 模块标签配色：「进行中」全站统一项目蓝（与项目、功能列表卡同色），
+ * 模块标签配色：「进行中」全站统一项目蓝（与项目列表卡同色），
  * 未开始用中性青与进行中区分。第三个参数是「进行中」档位的主色，
  * 按「同一文案同色」的规则，调用方必须传 `blue`。
  */
@@ -91,39 +90,5 @@ export const moduleLifecycleTone = (
   activeTone: CalmBadgeTone,
 ): CalmBadgeTone =>
   moduleLifecycleKind(completedTaskCount) === "NOT_STARTED"
-    ? "cyan"
-    : activeTone;
-
-/**
- * 功能生命周期标签档位（ADR-045）：功能层面已下线归档，档位只由「功能下是否已有
- * 完成任务」推导，与后端排序键 `apps/api/src/stats/card-stat-columns.ts` 的
- * `lifecycleRankExpression` 在功能侧的输出一致（0 = 进行中、1 = 未开始），两处必须一起修改：
- *
- * - `ACTIVE`：进行中，功能下已有 `work_status = 'DONE'` 的有效任务。
- * - `NOT_STARTED`：未开始，功能下还没有任何已完成任务。
- */
-export type FeatureLifecycleKind = "ACTIVE" | "NOT_STARTED";
-
-export const featureLifecycleKind = (
-  completedTaskCount: number,
-): FeatureLifecycleKind => (completedTaskCount > 0 ? "ACTIVE" : "NOT_STARTED");
-
-const featureLabels: Record<FeatureLifecycleKind, string> = {
-  ACTIVE: "进行中",
-  NOT_STARTED: "未开始",
-};
-
-export const featureLifecycleLabel = (completedTaskCount: number): string =>
-  featureLabels[featureLifecycleKind(completedTaskCount)];
-
-/**
- * 功能标签配色：与项目、模块列表卡一致——未开始用中性青，进行中用主色。
- * 按「同一文案同色」的规则，调用方必须传 `blue`。
- */
-export const featureLifecycleTone = (
-  completedTaskCount: number,
-  activeTone: CalmBadgeTone,
-): CalmBadgeTone =>
-  featureLifecycleKind(completedTaskCount) === "NOT_STARTED"
     ? "cyan"
     : activeTone;

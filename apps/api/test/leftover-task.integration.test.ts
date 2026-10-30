@@ -46,8 +46,6 @@ import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { PostgresTaskCompletionCommandPort } from "../src/modules/tasks/task-completion.port.js";
@@ -102,8 +100,6 @@ beforeAll(async () => {
   uow = new PostgresUnitOfWork(db);
   const access = new PostgresProjectAccessQueryPort(db),
     modules = new PostgresModuleQueryPort(),
-    features = new PostgresFeatureQueryPort(),
-    featureRead = new PostgresFeatureReadPort(),
     taskQuery = new PostgresTaskQueryPort(),
     pubRepo = new RecordPublicationRepository();
   audit = new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key });
@@ -115,8 +111,6 @@ beforeAll(async () => {
     access,
     modules,
     new PostgresModuleReadPort(),
-    features,
-    featureRead,
     records,
     uow,
     audit,
@@ -127,7 +121,6 @@ beforeAll(async () => {
     new RecordPublicationAccess(
       access,
       modules,
-      features,
       taskQuery,
       pubRepo,
       postgresProjectMemberPermissions(),
@@ -136,7 +129,6 @@ beforeAll(async () => {
     records,
     new PublishedRecordRepository(),
     new PostgresProjectCodePort(),
-    featureRead,
     new RecordPublicationEffects(
       audit,
       activity,
@@ -148,7 +140,6 @@ beforeAll(async () => {
   workflow = new TaskCompletionWorkflow(
     access,
     modules,
-    features,
     taskQuery,
     new PostgresTaskBranchQueryPort(groups),
     drafts,
@@ -186,15 +177,11 @@ beforeAll(async () => {
   leftover = new LeftoverTaskWorkflow(
     access,
     modules,
-    features,
-    featureRead,
     taskQuery,
     new PostgresFollowupTaskCommandPort(
       new TasksManagementService(
         access,
         modules,
-        features,
-        featureRead,
         new PostgresProjectCodePort(),
         new PostgresProjectMembersQueryPort(),
         uow,
@@ -245,8 +232,6 @@ beforeAll(async () => {
             new TasksManagementService(
               access,
               modules,
-              features,
-              featureRead,
               new PostgresProjectCodePort(),
               new PostgresProjectMembersQueryPort(),
               uow,
@@ -288,36 +273,21 @@ afterAll(async () => {
   await db?.close();
   await auditDb?.close();
 });
-async function fixture(feature = false) {
+async function fixture() {
   const actor = await createUser(db.sql),
     p = await createProject(db.sql, actor),
     author = await createUser(db.sql);
   await db.sql`INSERT INTO app.project_members(project_id,user_id) VALUES(${p.projectId},${author})`;
-  const [f] = await db.sql<
-    { id: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES(${p.projectId},${p.moduleId},${p.code + "-F-1"},'真实功能',${actor}) RETURNING id`;
-  const scope = { ...p, featureId: feature ? f!.id : null },
-    task = await uow.run(async (tx) => {
-      const task = await tasks.create(
-        tx,
-        scope,
-        actor,
-        await new PostgresProjectCodePort().allocateTaskCode(tx, p.projectId),
-        {
-          title: "待完成任务",
-          description: "说明",
-          assigneeIds: [actor],
-          priority: "NORMAL",
-          dueAt: null,
-        },
-      );
-      if (!feature) {
-        await tasks.replaceImpacts(tx, task, [f!.id]);
-        return (await tasks.find(tx, scope, task.id))!;
-      }
-      return task;
-    });
-  return { ...scope, actor, author, impactFeatureId: f!.id, task };
+  const task = await uow.run((tx) =>
+    tasks.create(tx, p, actor, p.code + "-T-9", {
+      title: "待完成任务",
+      description: "说明",
+      assigneeIds: [actor],
+      priority: "NORMAL",
+      dueAt: null,
+    }),
+  );
+  return { ...p, actor, author, task };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 const complete = (
@@ -332,8 +302,8 @@ const complete = (
     workflow.execute(tx, f.actor, f.task.id, input, randomUUID()),
   );
 
-async function published(feature = false) {
-  const f = await fixture(feature),
+async function published() {
+  const f = await fixture(),
     result = await complete(f);
   return { ...f, record: result.record! };
 }
@@ -347,7 +317,6 @@ async function inputFor(f: PublishedFixture): Promise<LeftoverTaskRequest> {
     recordVersion: preview.recordVersion,
     expectedRowVersion: preview.rowVersion,
     leftoverExpectedRowVersion: preview.leftoverRowVersion,
-    expectedImpactFeatureIds: preview.inheritedImpacts.map((i) => i.id),
     title: "跟进遗留问题",
     assigneeIds: [f.author],
     priority: "HIGH",
@@ -420,88 +389,63 @@ function post(
     },
   );
 }
-for (const feature of [true, false])
-  it(`converts ${feature ? "FEATURE" : "MODULE"} stable item once with original snapshots and bidirectional source`, async () => {
-    const f = await published(feature),
-      input = await inputFor(f),
-      before = await snapshot(f),
-      result = await convert(f, input);
-    const task = await uow.run((tx) => tasks.find(tx, f, result.taskId));
-    expect(task).toMatchObject({
-      workStatus: "TODO",
-      rowVersion: 1,
-      assigneeIds: [f.author],
-      scopeType: feature ? "FEATURE" : "MODULE",
-      featureId: f.featureId,
-    });
-    expect(task?.description).toContain("后续优化");
-    expect(task?.description).toContain(f.record.code + " v1");
-    // 未填任务说明时，说明仍是服务端自动的来源块（口径 A 的退化情形）。
-    expect(task?.description?.startsWith("来源记录：")).toBe(true);
-    const after = await snapshot(f);
-    for (const table of [
-      "change_record_versions",
-      "change_record_version_leftovers",
-    ])
-      expect(after[table]).toEqual(before[table]);
-    expect(
-      await uow.run((tx) =>
-        new PublishedRecordRepository().find(tx, f.projectId, f.record.id),
-      ),
-    ).toMatchObject({
-      currentVersion: 1,
-      rowVersion: f.record.rowVersion + 1,
-      leftovers: [
-        {
-          id: input.leftoverItemId,
-          status: "CONVERTED",
-          linkedTaskId: result.taskId,
-          content: "后续优化",
-        },
-      ],
-    });
-    expect(
-      await uow.run((tx) => leftover.source(tx, f.actor, result.taskId)),
-    ).toEqual({
-      source: {
-        projectId: f.projectId,
-        recordId: f.record.id,
-        leftoverItemId: input.leftoverItemId,
-      },
-    });
-    expect(
-      await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${f.projectId} AND notification_type='leftover.convert'`,
-    ).toEqual([{ recipient_id: f.author }]);
-    expect(
-      await db.sql`SELECT entity_id FROM app.search_projection WHERE project_id=${f.projectId} AND entity_type='TASK' AND entity_id=${result.taskId}`,
-    ).toHaveLength(1);
-    await expect(convert(f, input)).rejects.toMatchObject({
-      status: 409,
-      code: "LEFTOVER_ALREADY_CONVERTED",
-      details: { task: { taskId: result.taskId } },
-    });
-  });
-it("inherits every impacted feature because impacts can no longer be archived (ADR-045)", async () => {
+it("converts a stable item once with original snapshots and bidirectional source", async () => {
   const f = await published(),
-    [second] = await db.sql<
-      { id: number }[]
-    >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES(${f.projectId},${f.moduleId},${f.code + "-F-2"},'后加影响',${f.actor}) RETURNING id`;
-  await db.sql`INSERT INTO app.change_record_feature_impacts(module_id,project_id,change_record_id,feature_id) VALUES(${f.moduleId},${f.projectId},${f.record.id},${second!.id})`;
-  const preview = await uow.run((tx) =>
-    leftover.preview(tx, f.actor, f.projectId, f.record.id),
-  );
-  // 功能层下线归档后，记录上的全部影响都会原样继承，不再有 archived history 排除分支。
-  expect(preview.inheritedImpacts.map((i) => i.id)).toEqual([
-    f.impactFeatureId,
-    second!.id,
-  ]);
-  const result = await convert(f, await inputFor(f));
-  expect(result.impactFeatureIds).toEqual([f.impactFeatureId, second!.id]);
+    input = await inputFor(f),
+    before = await snapshot(f),
+    result = await convert(f, input);
+  const task = await uow.run((tx) => tasks.find(tx, f, result.taskId));
+  expect(task).toMatchObject({
+    workStatus: "TODO",
+    rowVersion: 1,
+    assigneeIds: [f.author],
+  });
+  expect(task?.description).toContain("后续优化");
+  expect(task?.description).toContain(f.record.code + " v1");
+  // 未填任务说明时，说明仍是服务端自动的来源块（口径 A 的退化情形）。
+  expect(task?.description?.startsWith("来源记录：")).toBe(true);
+  const after = await snapshot(f);
+  for (const table of [
+    "change_record_versions",
+    "change_record_version_leftovers",
+  ])
+    expect(after[table]).toEqual(before[table]);
   expect(
-    (await uow.run((tx) =>
+    await uow.run((tx) =>
       new PublishedRecordRepository().find(tx, f.projectId, f.record.id),
-    ))!.impactFeatureIds,
-  ).toEqual([f.impactFeatureId, second!.id]);
+    ),
+  ).toMatchObject({
+    currentVersion: 1,
+    rowVersion: f.record.rowVersion + 1,
+    leftovers: [
+      {
+        id: input.leftoverItemId,
+        status: "CONVERTED",
+        linkedTaskId: result.taskId,
+        content: "后续优化",
+      },
+    ],
+  });
+  expect(
+    await uow.run((tx) => leftover.source(tx, f.actor, result.taskId)),
+  ).toEqual({
+    source: {
+      projectId: f.projectId,
+      recordId: f.record.id,
+      leftoverItemId: input.leftoverItemId,
+    },
+  });
+  expect(
+    await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${f.projectId} AND notification_type='leftover.convert'`,
+  ).toEqual([{ recipient_id: f.author }]);
+  expect(
+    await db.sql`SELECT entity_id FROM app.search_projection WHERE project_id=${f.projectId} AND entity_type='TASK' AND entity_id=${result.taskId}`,
+  ).toHaveLength(1);
+  await expect(convert(f, input)).rejects.toMatchObject({
+    status: 409,
+    code: "LEFTOVER_ALREADY_CONVERTED",
+    details: { task: { taskId: result.taskId } },
+  });
 });
 it("rejects stale record/item versions, foreign item, non-member assignee and hidden client identity without writes", async () => {
   const f = await published(),
@@ -514,7 +458,6 @@ it("rejects stale record/item versions, foreign item, non-member assignee and hi
     { ...input, leftoverExpectedRowVersion: 99 },
     { ...input, leftoverItemId: 2147483647 },
     { ...input, assigneeIds: [outsider] },
-    { ...input, expectedImpactFeatureIds: [] },
   ]) {
     await expect(convert(f, changed)).rejects.toMatchObject({
       status:

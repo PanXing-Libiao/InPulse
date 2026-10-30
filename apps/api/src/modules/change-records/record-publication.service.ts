@@ -7,7 +7,6 @@ import {
 } from "@inpulse/api-contract";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import { ProjectCodePort } from "../projects/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { RecordDraftRepository } from "./record-draft.repository.js";
 import { PublishedRecordRepository } from "./published-record.repository.js";
 import {
@@ -33,7 +32,6 @@ export class RecordPublicationService implements RecordPublicationCommandPort {
     @Inject(PublishedRecordRepository)
     private readonly published: PublishedRecordRepository,
     @Inject(ProjectCodePort) private readonly codes: ProjectCodePort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(RecordPublicationEffects)
     private readonly effects: RecordPublicationEffects,
   ) {}
@@ -100,23 +98,6 @@ export class RecordPublicationService implements RecordPublicationCommandPort {
       after.handlerId,
       ...(source ? [source.assigneeId] : []),
     ];
-    for (const featureId of after.featureId === null
-      ? after.impactFeatureIds
-      : [after.featureId]) {
-      const feature = await this.features.find(
-        tx,
-        projectId,
-        after.moduleId,
-        featureId,
-      );
-      if (!feature)
-        throw new RecordDraftError(
-          404,
-          "RECORD_FEATURE_NOT_FOUND",
-          "所属功能不存在或无法访问",
-        );
-      recipients.push(feature.createdBy);
-    }
     await this.effects.append(
       tx,
       actorId,
@@ -314,13 +295,7 @@ export class RecordPublicationService implements RecordPublicationCommandPort {
       saved.recordId,
       false,
     );
-    if (
-      record.moduleId !== saved.moduleId ||
-      record.featureId !== saved.featureId ||
-      record.taskId !== saved.taskId ||
-      JSON.stringify(record.impactFeatureIds) !==
-        JSON.stringify(saved.impactFeatureIds)
-    )
+    if (record.moduleId !== saved.moduleId || record.taskId !== saved.taskId)
       throw this.conflict();
     const items = await this.repository.leftovers(
       tx,

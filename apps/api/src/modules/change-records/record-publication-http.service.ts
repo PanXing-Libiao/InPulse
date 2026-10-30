@@ -175,9 +175,7 @@ export class RecordPublicationHttpService {
               projectId: value.projectId,
               recordId: value.id,
               moduleId: value.moduleId,
-              featureId: value.featureId,
               taskId: value.taskId,
-              impactFeatureIds: value.impactFeatureIds,
               leftoverItemIds: value.leftovers.map((leftover) => leftover.id),
             },
           };

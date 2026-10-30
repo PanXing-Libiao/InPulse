@@ -199,9 +199,6 @@ function subjectFor(item, activityType, summary, projectName) {
   if (activityType === "module.create" || activityType === "module.update") {
     return cleanText(item.module_name, 80) || summarySubject(summary);
   }
-  if (activityType === "feature.create" || activityType === "feature.update") {
-    return cleanText(item.feature_name, 80) || summarySubject(summary);
-  }
   if (
     activityType === "project_created" ||
     activityType === "project_updated"
@@ -233,23 +230,7 @@ function taskContext(item, activityType) {
   if (assignees.length > 0) lines.push("负责人 " + assignees);
   const due = formatDateTime(item.due_at);
   if (due.length > 0) lines.push("截止 " + due);
-  lines.push(...featureContext(item));
-  const featureModuleCode = cleanText(item.feature_module_code, 48);
-  const featureModuleName = cleanText(item.feature_module_name, 80);
-  const moduleCode = cleanText(item.module_code, 48);
-  const moduleName = cleanText(item.module_name, 80);
-  if (
-    featureModuleCode.length === 0 &&
-    featureModuleName.length === 0 &&
-    (moduleCode.length > 0 || moduleName.length > 0)
-  ) {
-    lines.push(
-      "模块 " +
-        [moduleCode, moduleName]
-          .filter((value) => value.length > 0)
-          .join(" · "),
-    );
-  }
+  lines.push(...moduleScopeLine(item));
   return lines;
 }
 
@@ -262,45 +243,13 @@ function moduleContext(item, subject) {
   return lines;
 }
 
-function featureContext(item) {
-  const lines = [];
-  const code = cleanText(item.feature_code, 48);
-  const name = cleanText(item.feature_name, 80);
-  if (code.length > 0 || name.length > 0) {
-    lines.push(
-      "功能 " + [code, name].filter((value) => value.length > 0).join(" · "),
-    );
-  }
-  const moduleCode = cleanText(item.feature_module_code, 48);
-  const moduleName = cleanText(item.feature_module_name, 80);
-  if (moduleCode.length > 0 || moduleName.length > 0) {
-    lines.push(
-      "所属模块 " +
-        [moduleCode, moduleName]
-          .filter((value) => value.length > 0)
-          .join(" · "),
-    );
-  }
-  return lines;
-}
-
-function featureOwnContext(item, subject) {
-  const lines = [];
-  const code = cleanText(item.feature_code, 48);
-  const name = cleanText(item.feature_name, 80);
-  if (code.length > 0) lines.push("编号 " + code);
-  if (name.length > 0 && name !== subject) lines.push("名称 " + name);
-  const moduleCode = cleanText(item.feature_module_code, 48);
-  const moduleName = cleanText(item.feature_module_name, 80);
-  if (moduleCode.length > 0 || moduleName.length > 0) {
-    lines.push(
-      "所属模块 " +
-        [moduleCode, moduleName]
-          .filter((value) => value.length > 0)
-          .join(" · "),
-    );
-  }
-  return lines;
+function moduleScopeLine(item) {
+  const code = cleanText(item.module_code, 48);
+  const name = cleanText(item.module_name, 80);
+  if (code.length === 0 && name.length === 0) return [];
+  return [
+    "模块 " + [code, name].filter((value) => value.length > 0).join(" · "),
+  ];
 }
 
 function projectStatusContext(item) {
@@ -324,7 +273,7 @@ function recordContext(item) {
   if (Number.isSafeInteger(version) && version > 0) {
     lines.push("版本 v" + String(version));
   }
-  lines.push(...featureContext(item));
+  lines.push(...moduleScopeLine(item));
   return lines;
 }
 
@@ -334,9 +283,6 @@ function contextLines(item, activityType, subject) {
   }
   if (activityType === "module.create" || activityType === "module.update") {
     return moduleContext(item, subject);
-  }
-  if (activityType === "feature.create" || activityType === "feature.update") {
-    return featureOwnContext(item, subject);
   }
   if (activityType === "project_status_changed")
     return projectStatusContext(item);
@@ -420,29 +366,15 @@ function pushCardRow(rows, keyname, value, maxLength = 40) {
 }
 
 function cardScopeRows(rows, item) {
-  const featureCode = cleanText(item.feature_code, 48);
-  const featureName = cleanText(item.feature_name, 60);
-  if (featureCode.length > 0 || featureName.length > 0) {
-    pushCardRow(
-      rows,
-      "功能",
-      [featureCode, featureName]
-        .filter((value) => value.length > 0)
-        .join(" · "),
-      44,
-    );
-    return;
-  }
   const moduleCode = cleanText(item.module_code, 48);
   const moduleName = cleanText(item.module_name, 60);
-  if (moduleCode.length > 0 || moduleName.length > 0) {
-    pushCardRow(
-      rows,
-      "模块",
-      [moduleCode, moduleName].filter((value) => value.length > 0).join(" · "),
-      44,
-    );
-  }
+  if (moduleCode.length === 0 && moduleName.length === 0) return;
+  pushCardRow(
+    rows,
+    "模块",
+    [moduleCode, moduleName].filter((value) => value.length > 0).join(" · "),
+    44,
+  );
 }
 
 function cardRowsFor(item, activityType) {
@@ -467,18 +399,7 @@ function cardRowsFor(item, activityType) {
     activityType === "feature.create" ||
     activityType === "feature.update"
   ) {
-    const moduleCode = cleanText(item.feature_module_code, 48);
-    const moduleName = cleanText(item.feature_module_name, 60);
-    if (moduleCode.length > 0 || moduleName.length > 0) {
-      pushCardRow(
-        rows,
-        "所属模块",
-        [moduleCode, moduleName]
-          .filter((value) => value.length > 0)
-          .join(" · "),
-        44,
-      );
-    }
+    cardScopeRows(rows, item);
   } else if (activityType === "project_status_changed") {
     const metadata = metadataOf(item.metadata);
     const before = labelOf(PROJECT_STATUS_LABELS, metadata.beforeStatus);
@@ -528,11 +449,6 @@ function cardCodeFor(item, activityType) {
     activityType === "module.update"
   ) {
     code = cleanText(item.module_code, 48);
-  } else if (
-    activityType === "feature.create" ||
-    activityType === "feature.update"
-  ) {
-    code = cleanText(item.feature_code, 48);
   }
   if (code.length === 0) code = cleanText(item.project_code, 48);
   return code.length > 0 ? "编号 " + code : "";

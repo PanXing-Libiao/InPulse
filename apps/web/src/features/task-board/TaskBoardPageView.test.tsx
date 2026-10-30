@@ -22,9 +22,6 @@ function cardOf(overrides: Partial<TaskBoardCard> = {}): TaskBoardCard {
     code: "T-1001",
     title: "实现任务看板",
     moduleId: 3,
-    featureId: 5,
-    featureName: "任务看板",
-    scopeType: "FEATURE",
     priority: "NORMAL",
     workStatus: "TODO",
     dueAt: "2026-09-17T18:30:00.000Z",
@@ -48,14 +45,12 @@ const response: TaskBoardResponse = {
     dueToday: 2,
     completedThisWeek: 5,
     completionRate: 69,
-    featureCount: 8,
     memberCount: 4,
   },
   modules: [
     {
       moduleId: 3,
       name: "调度模块",
-      featureCount: 2,
       stats: {
         total: 30,
         done: 25,
@@ -86,7 +81,6 @@ const response: TaskBoardResponse = {
     {
       moduleId: 4,
       name: "结算模块",
-      featureCount: 1,
       stats: {
         total: 12,
         done: 2,
@@ -102,9 +96,6 @@ const response: TaskBoardResponse = {
           code: "T-1003",
           title: "结算对账",
           moduleId: 4,
-          featureId: null,
-          featureName: null,
-          scopeType: "MODULE",
           workStatus: "CANCELED",
           dueState: "NONE",
           dueAt: null,
@@ -127,7 +118,6 @@ const emptyResponse: TaskBoardResponse = {
     dueToday: 0,
     completedThisWeek: 0,
     completionRate: 0,
-    featureCount: 0,
     memberCount: 0,
   },
   modules: [],
@@ -304,7 +294,6 @@ describe("TaskBoardPageView", () => {
     const row = await screen.findByRole("button", {
       name: "打开任务 T-1003 结算对账",
     });
-    expect(within(row).getByText("模块级任务")).toBeInTheDocument();
     expect(within(row).getByText("已取消")).toBeInTheDocument();
     // 行配色：优先级决定底色（tone 类），已取消覆盖状态色。
     // 这两行都是「普通」任务：「普通」是白底卡，列表行取同族的近白中性一套，2026-09-23 起
@@ -338,13 +327,13 @@ describe("TaskBoardPageView", () => {
     ).toBeInTheDocument();
   });
 
-  it("空项目引导前往模块与功能创建第一个任务", async () => {
+  it("空项目引导前往模块创建第一个任务", async () => {
     const user = userEvent.setup();
     const onOpenModules = vi.fn();
     renderView({ response: emptyResponse, onOpenModules });
 
     expect(await screen.findByText("项目还没有任务")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "前往模块与功能" }));
+    await user.click(screen.getByRole("button", { name: "前往模块" }));
     expect(onOpenModules).toHaveBeenCalledTimes(1);
   });
 

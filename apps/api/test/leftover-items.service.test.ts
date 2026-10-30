@@ -15,10 +15,6 @@ import type {
   LeftoverListRow,
 } from "../src/modules/change-records/index.js";
 import type {
-  FeatureNameItem,
-  FeatureReadPort,
-} from "../src/modules/features/feature-read.port.js";
-import type {
   ModuleNameItem,
   ModuleReadPort,
 } from "../src/modules/modules/index.js";
@@ -53,7 +49,6 @@ function projectFixture(id: number, name: string): ProjectItem {
     memberCount: 2,
     stats: {
       activeModuleCount: 2,
-      activeFeatureCount: 1,
       openTaskCount: 3,
       completedTaskCount: 1,
     },
@@ -70,7 +65,6 @@ function leftoverRow(
     recordTitle: "登录会话超时",
     projectId: 7,
     moduleId: 3,
-    featureId: 4,
     authorId: 5,
     publishedAt: baseTime,
     content: "会话 30 分钟后仍可继续操作",
@@ -89,8 +83,6 @@ function taskFixture(
     taskId,
     projectId: 7,
     moduleId: 3,
-    featureId: 4,
-    scopeType: "FEATURE",
     code: "SHOP-T-" + String(taskId),
     title: "任务 " + String(taskId),
     creatorId: 5,
@@ -100,7 +92,6 @@ function taskFixture(
     lifecycleStatus: "ACTIVE",
     dueAt: null,
     rowVersion: 1,
-    impactFeatureIds: [],
     ...overrides,
   };
 }
@@ -110,7 +101,6 @@ function leftoverSetup(
     readonly scopeProjectIds?: readonly number[];
     readonly page?: LeftoverListPage;
     readonly modules?: readonly ModuleNameItem[];
-    readonly features?: readonly FeatureNameItem[];
     readonly tasks?: readonly TaskReadModel[];
     readonly users?: readonly UserRefItem[];
     readonly projects?: readonly ProjectItem[];
@@ -128,7 +118,6 @@ function leftoverSetup(
       options.page ?? { items: [], nextLeftoverItemId: null, hasMore: false },
     );
   const listModuleNames = vi.fn().mockResolvedValue(options.modules ?? []);
-  const listFeatureNames = vi.fn().mockResolvedValue(options.features ?? []);
   const listByIds = vi.fn().mockResolvedValue(options.tasks ?? []);
   const listUsers = vi
     .fn()
@@ -146,7 +135,6 @@ function leftoverSetup(
     { getAuthorizedSearchScope } as unknown as ProjectAccessQueryPort,
     { list: listProjects } as unknown as ProjectQueryPort,
     { listNames: listModuleNames } as unknown as ModuleReadPort,
-    { listNames: listFeatureNames } as unknown as FeatureReadPort,
     { listLeftovers } as unknown as ChangeRecordReadPort,
     { listByIds } as unknown as TaskQueryPort,
     { listByIds: listUsers } as unknown as UserReadPort,
@@ -157,7 +145,6 @@ function leftoverSetup(
     service,
     listLeftovers,
     listModuleNames,
-    listFeatureNames,
     listByIds,
     listProjects,
     cursor,
@@ -165,7 +152,7 @@ function leftoverSetup(
 }
 
 describe("LeftoverItemsQueryService.list", () => {
-  it("按分桶查询并映射项目、模块、功能、作者与任务引用", async () => {
+  it("按分桶查询并映射项目、模块、作者与任务引用", async () => {
     const setup = leftoverSetup({
       page: {
         items: [
@@ -175,7 +162,6 @@ describe("LeftoverItemsQueryService.list", () => {
             recordId: 500,
             recordCode: "SHOP-CR-202",
             recordTitle: "独立草稿遗留",
-            featureId: null,
             status: "CONVERTED",
             sourceTaskId: null,
             followupTaskId: 22,
@@ -185,7 +171,6 @@ describe("LeftoverItemsQueryService.list", () => {
         hasMore: true,
       },
       modules: [{ moduleId: 3, projectId: 7, name: "登录模块" }],
-      features: [{ featureId: 4, projectId: 7, moduleId: 3, name: "会话保持" }],
       tasks: [taskFixture(21), taskFixture(22)],
     });
 
@@ -204,10 +189,6 @@ describe("LeftoverItemsQueryService.list", () => {
       projectIds: [7],
       moduleIds: [3],
     });
-    expect(setup.listFeatureNames).toHaveBeenCalledWith(expect.anything(), {
-      projectIds: [7],
-      featureIds: [4],
-    });
     expect(result.items[0]).toEqual({
       leftoverItemId: 71,
       recordId: 501,
@@ -217,8 +198,6 @@ describe("LeftoverItemsQueryService.list", () => {
       projectName: "商城系统",
       moduleId: 3,
       moduleName: "登录模块",
-      featureId: 4,
-      featureName: "会话保持",
       author: { userId: 5, name: "张三", avatarUrl: null },
       publishedAt: baseTime.toISOString(),
       content: "会话 30 分钟后仍可继续操作",
@@ -228,13 +207,10 @@ describe("LeftoverItemsQueryService.list", () => {
         code: "SHOP-T-21",
         projectId: 7,
         moduleId: 3,
-        featureId: 4,
       },
       followupTask: null,
     });
     expect(result.items[1]).toMatchObject({
-      featureId: null,
-      featureName: null,
       status: "CONVERTED",
       sourceTask: null,
       followupTask: {
@@ -242,7 +218,6 @@ describe("LeftoverItemsQueryService.list", () => {
         code: "SHOP-T-22",
         projectId: 7,
         moduleId: 3,
-        featureId: 4,
       },
     });
     expect(result.hasMore).toBe(true);
@@ -286,7 +261,6 @@ describe("LeftoverItemsQueryService.list", () => {
         nextLeftoverItemId: null,
         hasMore: false,
       },
-      features: [{ featureId: 4, projectId: 7, moduleId: 3, name: "会话保持" }],
     });
     await expect(
       missingModule.service.list({ actorUserId: 5 }),
@@ -302,7 +276,6 @@ describe("LeftoverItemsQueryService.list", () => {
         hasMore: false,
       },
       modules: [{ moduleId: 3, projectId: 7, name: "登录模块" }],
-      features: [{ featureId: 4, projectId: 7, moduleId: 3, name: "会话保持" }],
       users: [],
     });
     await expect(

@@ -164,8 +164,6 @@ export const adminUserOffboardingTaskSchema = z
     taskId: userIdSchema,
     projectId: userIdSchema,
     moduleId: userIdSchema,
-    featureId: userIdSchema.nullable(),
-    scopeType: z.enum(["FEATURE", "MODULE"]),
     code: z.string().min(1).max(64),
     title: z.string().min(1).max(500),
     rowVersion: z.number().int().positive(),
@@ -219,7 +217,6 @@ export const adminUserDisableTaskActionSchema = z
   .object({
     projectId: userIdSchema,
     moduleId: userIdSchema,
-    featureId: userIdSchema.nullable(),
     taskId: userIdSchema,
     rowVersion: z.number().int().positive(),
     assigneeIds: z

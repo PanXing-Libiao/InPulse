@@ -447,40 +447,6 @@ describe("DocumentImportAiAssistClient", () => {
     });
   });
 
-  test("ADR-094 功能目标：只允许在目标功能下生成任务", async () => {
-    const { fetchImpl, calls } = stubFetch(() =>
-      jsonResponse(completion("## 模块：支付\n### 功能：退款回调")),
-    );
-    const client = new DocumentImportAiAssistClient(fetchImpl);
-    await client.generateDraft(config, {
-      mode: "IN_PROJECT",
-      text: "退款回调补超时重试",
-      target: {
-        kind: "FEATURE",
-        projectId: 2,
-        moduleId: 7,
-        moduleName: "支付",
-        featureId: 8,
-        featureName: "退款回调",
-      },
-    });
-    const body = JSON.parse(String(calls[0]!.init.body)) as {
-      messages: readonly { role: string; content: string }[];
-    };
-    expect(body.messages[0]!.content).toContain("唯一一个功能段");
-    expect(body.messages[0]!.content).toContain("### 功能：退款回调");
-    expect(body.messages[0]!.content).toContain(
-      "不得输出模块级任务、其他功能或其他模块",
-    );
-    expect(body.messages[0]!.content).toContain(
-      "已有说明、验收标准和标签不会被草稿覆盖",
-    );
-    expect(body.messages[1]).toEqual({
-      role: "user",
-      content: "退款回调补超时重试",
-    });
-  });
-
   test("总结改写：请求构造带事实与要求，成功日志只记元数据", async () => {
     const log = vi
       .spyOn(Logger.prototype, "log")

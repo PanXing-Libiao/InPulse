@@ -22,20 +22,14 @@ import {
  * 静默排除（与 R-6 / R-7 同族）。
  * 来源口径与设计师稿一致：MAIN = 未入聚合组的任务与聚合组主任务，
  * SOURCE = ACTIVE 聚合组的来源任务（已解除成员按普通任务处理），
- * MODULE = 无任务的模块级记录，FEATURE = 无任务的功能级记录。
+ * MODULE = 无任务的模块级记录。
  * q 复用 CHANGE_RECORD 全文投影；最短 1、最长 200 字（单字可搜），归一化后为空返回 422。
  * 排序固定 published_at DESC, id DESC（与单项目列表 listChangeRecords 一致）；
  * 游标为服务端 HMAC 签名，绑定 actor、命名空间与 projectId（null = 全部项目），
  * TTL 15 分钟；游标不得跨接口或跨项目复用。
  */
 export const RECORD_FEED_STATUSES = ["PUBLISHED", "VOID", "ALL"] as const;
-export const RECORD_FEED_SOURCES = [
-  "ALL",
-  "MAIN",
-  "SOURCE",
-  "MODULE",
-  "FEATURE",
-] as const;
+export const RECORD_FEED_SOURCES = ["ALL", "MAIN", "SOURCE", "MODULE"] as const;
 
 export const recordFeedQueryRequestSchema = z
   .object({
@@ -59,7 +53,7 @@ export type RecordFeedQueryRequest = z.infer<
 
 /**
  * 名称回填：记录本体保持 B-1 的 ReadableRecord 形状（含三段正文、遗留项与
- * 作废快照），项目 / 模块 / 功能 / 作者显示名由服务端按本页可见范围批量补齐，
+ * 作废快照），项目 / 模块 / 作者显示名由服务端按本页可见范围批量补齐，
  * 客户端不再逐条回查；author 只含姓名与头像，不暴露登录名或邮箱。
  */
 export const recordFeedItemSchema = z
@@ -67,7 +61,6 @@ export const recordFeedItemSchema = z
     record: readableRecordSchema,
     projectName: z.string().min(1).max(200),
     moduleName: z.string().min(1).max(200),
-    featureName: z.string().min(1).max(500).nullable(),
     author: userRefSchema,
   })
   .strict()
@@ -97,7 +90,6 @@ export const myRecordDraftItemSchema = z
     draft: recordDraftItemSchema,
     projectName: z.string().min(1).max(200),
     moduleName: z.string().min(1).max(200),
-    featureName: z.string().min(1).max(500).nullable(),
   })
   .strict()
   .meta({ id: "MyRecordDraftItem" });
@@ -136,7 +128,7 @@ export const recordFeedSchemas = {
   },
   RecordFeedItem: {
     schema: recordFeedItemSchema,
-    summary: "记录本体（ReadableRecord）与项目 / 模块 / 功能 / 作者名称回填",
+    summary: "记录本体（ReadableRecord）与项目 / 模块 / 作者名称回填",
     sensitiveFieldPaths: [],
   },
   RecordFeedPage: {
@@ -146,7 +138,7 @@ export const recordFeedSchemas = {
   },
   MyRecordDraftItem: {
     schema: myRecordDraftItemSchema,
-    summary: "本人草稿与项目 / 模块 / 功能名称回填；不接受他人身份参数",
+    summary: "本人草稿与项目 / 模块名称回填；不接受他人身份参数",
     sensitiveFieldPaths: [],
   },
   MyRecordDraftPage: {

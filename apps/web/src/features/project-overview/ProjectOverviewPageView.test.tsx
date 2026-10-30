@@ -26,7 +26,6 @@ const project: ProjectItem = {
   memberCount: 3,
   stats: {
     activeModuleCount: 4,
-    activeFeatureCount: 11,
     openTaskCount: 6,
     completedTaskCount: 1,
   },
@@ -35,7 +34,6 @@ const project: ProjectItem = {
 const overviewResult: ProjectOverviewResult = {
   stats: {
     activeModules: 4,
-    activeFeatures: 11,
     openTasks: 6,
     publishedRecords: 9,
     openLeftovers: 1,
@@ -45,14 +43,12 @@ const overviewResult: ProjectOverviewResult = {
       recordId: 301,
       code: "R-301",
       title: "迭代一",
-      featureName: "任务中心",
       publishedAt: "2026-09-09T08:00:00.000Z",
     },
     {
       recordId: 302,
       code: "R-302",
       title: "迭代二",
-      featureName: null,
       publishedAt: "2026-09-06T08:00:00.000Z",
     },
   ],
@@ -180,7 +176,7 @@ describe("ProjectOverviewPageView", () => {
     const user = userEvent.setup();
 
     const row = await screen.findByRole("button", { name: /迭代一/ });
-    expect(row).toHaveTextContent("任务中心：迭代一");
+    expect(row).toHaveTextContent("迭代一");
     expect(row).toHaveTextContent("R-301");
 
     // 单行打开该条记录详情；「查看全部」才打开记录工作区弹窗。
@@ -219,7 +215,6 @@ describe("ProjectOverviewPageView", () => {
           Promise.resolve({
             stats: {
               activeModules: 4,
-              activeFeatures: 11,
               openTasks: 6,
               publishedRecords: 9,
               openLeftovers: 2,
@@ -254,7 +249,6 @@ describe("ProjectOverviewPageView", () => {
       adapter: createAdapter({
         stats: {
           activeModules: 0,
-          activeFeatures: 0,
           openTasks: 0,
           publishedRecords: 0,
           openLeftovers: 0,
@@ -294,22 +288,17 @@ describe("ProjectOverviewPageView", () => {
 
   it("渲染搭建引导并把第一步动作接到回调上", () => {
     const onCreateModule = vi.fn();
-    const onAddFeature = vi.fn();
     renderView({
       setupGuide: {
         moduleCount: 0,
-        featureCount: 0,
         taskCount: 0,
-        featureTargetName: null,
         onCreateModule,
-        onAddFeature,
       },
     });
     const guide = screen.getByTestId("project-setup-guide");
     expect(within(guide).getByText("开始搭建这个项目")).toBeInTheDocument();
     fireEvent.click(within(guide).getByRole("button", { name: "新增模块" }));
     expect(onCreateModule).toHaveBeenCalledTimes(1);
-    expect(onAddFeature).not.toHaveBeenCalled();
   });
 
   it("没有搭建引导输入时不渲染引导", async () => {

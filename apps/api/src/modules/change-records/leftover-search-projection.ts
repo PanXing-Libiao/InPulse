@@ -65,7 +65,6 @@ export function buildLeftoverProjectionInput(
     entityType: "LEFTOVER",
     entityId: leftover.id,
     moduleId: null,
-    featureId: null,
     recordId: record.id,
     title: leftoverProjectionTitle(leftover.content),
     summary: leftoverProjectionSummary(leftover.status, record),

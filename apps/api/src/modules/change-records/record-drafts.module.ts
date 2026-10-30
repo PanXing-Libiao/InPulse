@@ -12,7 +12,6 @@ import { DatabaseModule } from "../../database/database.module.js";
 import { IdempotencyModule } from "../../idempotency/idempotency.module.js";
 import { ProjectsModule } from "../projects/index.js";
 import { ModulesModule } from "../modules/index.js";
-import { FeaturesModule } from "../features/index.js";
 import { RecordDraftsService } from "./record-drafts.service.js";
 import { RecordDraftRepository } from "./record-draft.repository.js";
 import { RecordDraftsHttpService } from "./record-drafts-http.service.js";
@@ -25,7 +24,6 @@ import { RecordDraftsController } from "./record-drafts.controller.js";
     IdempotencyModule,
     ProjectsModule,
     ModulesModule,
-    FeaturesModule,
   ],
   providers: [
     RecordDraftsService,

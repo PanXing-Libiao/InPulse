@@ -14,10 +14,7 @@ const publishedRecord = {
   id: 41,
   projectId: 7,
   moduleId: 9,
-  featureId: null,
-  scopeType: "MODULE",
   taskId: null,
-  impactFeatureIds: [],
   handlerId: 3,
   authorId: 3,
   status: "PUBLISHED",
@@ -39,7 +36,6 @@ const feedItem = {
   record: publishedRecord,
   projectName: "InPulse 项目一号",
   moduleName: "支付模块",
-  featureName: null,
   author: { userId: 3, name: "张三", avatarUrl: null },
 };
 

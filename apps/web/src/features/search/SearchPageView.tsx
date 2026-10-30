@@ -34,7 +34,6 @@ const entityTypeMeta: Readonly<
 > = {
   PROJECT: { label: "项目", color: "blue" },
   MODULE: { label: "模块", color: "cyan" },
-  FEATURE: { label: "功能", color: "geekblue" },
   TASK: { label: "任务", color: "purple" },
   CHANGE_RECORD: { label: "变更记录", color: "orange" },
   EXTERNAL_LINK: { label: "外部链接", color: "green" },
@@ -208,7 +207,7 @@ export const SearchPageView: React.FC<SearchPageViewProps> = ({
           allowClear
           enterButton="搜索"
           maxLength={SEARCH_MAX_LENGTH}
-          placeholder="搜索项目、模块、功能、任务、记录..."
+          placeholder="搜索项目、模块、任务、记录..."
           value={draft}
           onChange={(event) => setDraft(event.currentTarget.value)}
           onSearch={handleSearch}

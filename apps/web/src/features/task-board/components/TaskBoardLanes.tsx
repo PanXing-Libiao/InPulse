@@ -16,7 +16,7 @@ import { assigneeNamesOf } from "@features/tasks/detached-assignee";
 import type { TaskBoardCard, TaskBoardModule } from "../task-board-types";
 
 /**
- * 看板视图：按模块分泳道，泳道头含模块名、功能与任务计数、逾期角标、
+ * 看板视图：按模块分泳道，泳道头含模块名、任务计数、逾期角标、
  * 完成进度与负责人头像组；泳道内任务卡按服务端排序（与任务中心共用
  * apps/api/src/modules/tasks/task-list-order.ts 的同一套排序键）。点击卡片就地打开
  * 任务详情（TaskDetailOverlay）。
@@ -54,7 +54,7 @@ const TaskBoardCardItem: React.FC<{
 }> = ({ card, leftoverSource, index, activeMemberIds, onOpen }) => {
   const mark = cardMarkOf(card);
   const due = dueLabelOf(card);
-  // ADR-040：负责人是平权集合，卡片要列出全部人（与任务中心、功能档案同一口径），
+  // ADR-040：负责人是平权集合，卡片要列出全部人（与任务中心同一口径），
   // 头像取首位、姓名用「、」连接，空间不足时由 .tb-meta-name 省略并以 title 兑底全名单。
   const lead = card.assignees[0];
   // 负责人已移出项目时姓名后面带「（已移出项目）」，hover 再给一句处置指引：
@@ -96,12 +96,8 @@ const TaskBoardCardItem: React.FC<{
         </span>
         <span className="tb-card-title">{card.title}</span>
         <span className="tb-card-meta">
-          <span className="tb-meta-feature">
-            {card.featureName ?? "模块级任务"}
-          </span>
           {lead === undefined ? null : (
             <>
-              <span className="tb-dot-sep">·</span>
               <span className={"tb-ava " + avatarToneOf(lead.userId)}>
                 {avatarTextOf(lead.name)}
               </span>
@@ -161,8 +157,7 @@ const TaskBoardLane: React.FC<{
         <div className="tb-lane-title">
           <h2>{lane.name}</h2>
           <p>
-            {lane.featureCount} 个功能 · {lane.stats.total} 个任务 · 进行中{" "}
-            {lane.stats.open}
+            {lane.stats.total} 个任务 · 进行中 {lane.stats.open}
           </p>
         </div>
         {lane.stats.overdue > 0 ? (

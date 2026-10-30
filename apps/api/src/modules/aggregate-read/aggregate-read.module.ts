@@ -7,7 +7,6 @@ import { AuthModule } from "../../auth/auth.module.js";
 import { DatabaseModule } from "../../database/database.module.js";
 import { PublishedRecordsModule } from "../change-records/index.js";
 import { ExternalLinksModule } from "../external-links/index.js";
-import { FeaturesModule } from "../features/index.js";
 import { ModulesModule } from "../modules/index.js";
 import { ProjectsModule } from "../projects/index.js";
 import { TaskGroupsModule } from "../task-groups/index.js";
@@ -54,7 +53,6 @@ import { TimeCursorService } from "../../cursors/time-cursor.js";
     DatabaseModule,
     ProjectsModule,
     ModulesModule,
-    FeaturesModule,
     TasksManagementModule,
     PublishedRecordsModule,
     TaskGroupsModule,

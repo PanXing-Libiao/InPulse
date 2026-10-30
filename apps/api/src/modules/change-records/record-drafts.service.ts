@@ -27,7 +27,6 @@ import {
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { ModuleQueryPort, ModuleReadPort } from "../modules/index.js";
-import { FeatureQueryPort, FeatureReadPort } from "../features/index.js";
 import {
   RecordDraftRepository,
   type DraftScope,
@@ -71,8 +70,6 @@ export class RecordDraftsService
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
     @Inject(ModuleReadPort) private readonly moduleRead: ModuleReadPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
-    @Inject(FeatureReadPort) private readonly featureRead: FeatureReadPort,
     @Inject(RecordDraftRepository)
     private readonly repository: RecordDraftRepository,
     @Inject(PostgresUnitOfWork) private readonly uow: PostgresUnitOfWork,
@@ -140,34 +137,12 @@ export class RecordDraftsService
       projectIds,
       moduleIds: [...new Set(items.map((item) => item.moduleId))],
     });
-    const featureNames = await this.featureRead.listNames(tx, {
-      projectIds,
-      featureIds: [
-        ...new Set(
-          items.flatMap((item) => [
-            ...item.impactFeatureIds,
-            ...(item.featureId === null ? [] : [item.featureId]),
-          ]),
-        ),
-      ],
-    });
     return items.map((item) => ({
       ...item,
       moduleName:
         moduleNames.find(
           (m) => m.projectId === item.projectId && m.moduleId === item.moduleId,
         )?.name ?? null,
-      featureName:
-        featureNames.find(
-          (f) =>
-            f.projectId === item.projectId && f.featureId === item.featureId,
-        )?.name ?? null,
-      impactFeatureNames: item.impactFeatureIds.map(
-        (id) =>
-          featureNames.find(
-            (f) => f.projectId === item.projectId && f.featureId === id,
-          )?.name ?? "名称暂不可用",
-      ),
     }));
   }
 
@@ -218,7 +193,6 @@ export class RecordDraftsService
     if (
       !before ||
       before.moduleId !== source.moduleId ||
-      before.featureId !== source.featureId ||
       (before.taskId !== null && before.taskId !== source.taskId)
     )
       throw missing();
@@ -252,31 +226,8 @@ export class RecordDraftsService
     });
     if (!(await this.moduleRead.find(tx, scope.projectId, scope.moduleId)))
       throw missing();
-    if (
-      scope.featureId !== null &&
-      !(await this.featureRead.find(
-        tx,
-        scope.projectId,
-        scope.moduleId,
-        scope.featureId,
-      ))
-    )
-      throw missing();
-    // ADR-044/ADR-045：模块与功能都已无归档只读态，这里只保留归属校验与父级 FOR SHARE 取锁。
     const module = await this.modules.checkModuleForWrite(tx, scope);
     if (module.kind === "not-found") throw missing();
-    for (const featureId of [
-      ...new Set(
-        scope.featureId === null ? scope.impactFeatureIds : [scope.featureId],
-      ),
-    ].sort((a, b) => a - b)) {
-      const feature = await this.features.checkFeatureForWrite(tx, {
-        projectId: scope.projectId,
-        moduleId: scope.moduleId,
-        featureId,
-      });
-      if (feature.kind === "not-found") throw missing();
-    }
   }
   async resolveExisting(
     tx: TransactionContext,
@@ -302,13 +253,7 @@ export class RecordDraftsService
     input: IndependentRecordDraftRequest,
     requestId: string,
   ) {
-    const scope = {
-      projectId,
-      moduleId,
-      featureId: input.scopeType === "FEATURE" ? input.featureId : null,
-      impactFeatureIds:
-        input.scopeType === "MODULE" ? input.impactFeatureIds : [],
-    };
+    const scope = { projectId, moduleId };
     await this.authorize(tx, actorId, scope);
     const after = await this.repository.create(
       tx,
@@ -342,13 +287,7 @@ export class RecordDraftsService
       );
     const before = await this.repository.find(tx, projectId, recordId, true);
     if (!before) throw missing();
-    if (
-      before.taskId !== null ||
-      before.moduleId !== resource.moduleId ||
-      before.featureId !== resource.featureId ||
-      JSON.stringify(before.impactFeatureIds) !==
-        JSON.stringify(resource.impactFeatureIds)
-    )
+    if (before.taskId !== null || before.moduleId !== resource.moduleId)
       throw new RecordDraftError(
         409,
         "RECORD_SCOPE_CONFLICT",
@@ -373,16 +312,6 @@ export class RecordDraftsService
   async replay(tx: TransactionContext, actorId: number, context: unknown) {
     const saved = recordDraftReplayContextSchema.parse(context);
     await this.resolveExisting(tx, actorId, saved.projectId, saved.recordId);
-    for (const featureId of saved.impactFeatureIds)
-      if (
-        !(await this.featureRead.find(
-          tx,
-          saved.projectId,
-          saved.moduleId,
-          featureId,
-        ))
-      )
-        throw missing();
   }
   async findDraft(tx: TransactionContext, projectId: number, recordId: number) {
     // Business pre-reads must match lockDraft; display names belong to read/list responses.
@@ -430,8 +359,7 @@ export class RecordDraftsService
     if (
       !before ||
       before.taskId !== source.taskId ||
-      before.moduleId !== source.moduleId ||
-      before.featureId !== source.featureId
+      before.moduleId !== source.moduleId
     )
       throw missing();
     if (before.rowVersion !== version)
@@ -507,9 +435,7 @@ export class RecordDraftsService
       projectId,
       recordId,
       moduleId: before.moduleId,
-      featureId: before.featureId,
       taskId: before.taskId,
-      impactFeatureIds: before.impactFeatureIds,
     };
   }
   private content(input: RecordDraftContent): RecordDraftContent {

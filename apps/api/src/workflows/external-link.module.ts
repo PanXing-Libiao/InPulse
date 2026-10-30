@@ -5,7 +5,6 @@ import { IdempotencyModule } from "../idempotency/idempotency.module.js";
 import { AuditModule } from "../audit/audit.module.js";
 import { ProjectsModule } from "../modules/projects/index.js";
 import { ModulesModule } from "../modules/modules/index.js";
-import { FeaturesModule } from "../modules/features/index.js";
 import { TasksManagementModule } from "../modules/tasks/index.js";
 import { PublishedRecordsModule } from "../modules/change-records/index.js";
 import { ActivityProjectionModule } from "../modules/activity/index.js";
@@ -23,7 +22,6 @@ import { ExternalLinkController } from "./external-link.controller.js";
     AuditModule,
     ProjectsModule,
     ModulesModule,
-    FeaturesModule,
     TasksManagementModule,
     PublishedRecordsModule,
     ActivityProjectionModule,

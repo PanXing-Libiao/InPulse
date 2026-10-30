@@ -16,7 +16,7 @@ import type { ProjectOverviewAdapter } from "./project-overview-types";
 
 export const PROJECT_OVERVIEW_SERVER_NOTICE =
   "项目概览已接入服务端聚合读接口（GET /api/v1/projects/{projectId}/overview）。" +
-  "活跃模块、活跃功能、未完成任务、迭代记录、最近迭代、待处理遗留问题总数与条目均为服务端实时数据。";
+  "活跃模块、未完成任务、迭代记录、最近迭代与待处理遗留问题均为服务端实时数据。";
 
 export function createProjectOverviewServerAdapter(
   client?: InpulseApiClient | undefined,

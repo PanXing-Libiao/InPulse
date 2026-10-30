@@ -208,7 +208,7 @@ export const projectMemberRoutes: readonly RouteDefinition[] = [
     },
     concurrencyPolicy: {
       rowVersion: "none",
-      lockOrder: ["project", "module", "feature", "task"],
+      lockOrder: ["project", "module", "task"],
       retry:
         "项目 FOR SHARE，任务按父级与 ID 锁序改派后成员 FOR UPDATE；任务版本冲突 409，不自动重试",
     },

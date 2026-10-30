@@ -84,7 +84,6 @@ export function CompleteWithRecord({
   const choices = draftItems.filter(
     (record) =>
       record.moduleId === item.moduleId &&
-      record.featureId === item.featureId &&
       (record.taskId === null || record.taskId === item.id),
   );
   const conflict = error instanceof ApiError && error.status === 409;
@@ -117,15 +116,11 @@ export function CompleteWithRecord({
   async function reload() {
     setBusy(true);
     try {
-      const task =
-        base.featureId === null
-          ? await api.getModuleTask(base.projectId, base.moduleId, base.id)
-          : await api.getTask(
-              base.projectId,
-              base.moduleId,
-              base.featureId,
-              base.id,
-            );
+      const task = await api.getModuleTask(
+        base.projectId,
+        base.moduleId,
+        base.id,
+      );
       setBase(task);
       if (selected) {
         const record = await api.getRecordDraft(base.projectId, selected.id);
@@ -144,14 +139,13 @@ export function CompleteWithRecord({
     await Promise.all(
       // task-group / task-group-records：完成并发布记录会同时改变聚合组详情
       // 的分支状态与「已发布记录」计数，以及组内记录列表（2026-09-22 修）。
-      // modules / features / project-overview：完成会改变功能与模块卡的
-      // 「进行中 / 未开始」档位和概览统计，不失效会停留旧标签（2026-09-24 修）。
+      // modules / project-overview：完成会改变模块卡的任务统计，
+      // 不失效会停留旧数据（2026-09-24 修）。
       [
         "tasks",
         "task-board",
         "task-history",
         "modules",
-        "features",
         "project-overview",
         "record-drafts",
         "task-record-drafts",

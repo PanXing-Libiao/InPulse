@@ -41,8 +41,7 @@ import { useQueryClient } from "@tanstack/react-query";
 const hierarchyNotes = [
   { label: "项目", text: "顶层业务容器，承载范围与成员。" },
   { label: "模块", text: "项目内的一级业务分类，不支持子模块。" },
-  { label: "功能", text: "长期档案，保存当前说明与全部迭代历史。" },
-  { label: "任务", text: "一次具体执行工作，功能级或模块级。" },
+  { label: "任务", text: "一次具体执行工作，归属一个模块。" },
   { label: "迭代记录", text: "已经发生的变化，人员与时间自动生成。" },
   { label: "分支任务", text: "合并后保留的历史，不删除不覆盖。" },
 ];
@@ -272,7 +271,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
         <SuccessToast
           testId="created-project-success"
           title="项目创建成功"
-          description={`${createdProject.project.name}（${createdProject.project.code}） · 现在可以新增模块，或在新建任务时创建模块和功能。${createdProjectNotice ? ` ${createdProjectNotice}` : ""}`}
+          description={`${createdProject.project.name}（${createdProject.project.code}） · 现在可以新增模块，或在新建任务时创建模块。${createdProjectNotice ? ` ${createdProjectNotice}` : ""}`}
           onDismiss={onDismissCreatedProject}
           actions={
             <>
@@ -342,7 +341,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
         <CalmEmptyState
           icon="boxes"
           title="还没有项目"
-          description="创建第一个项目后，模块、功能、任务与迭代记录都会沉淀在对应项目内。"
+          description="创建第一个项目后，模块、任务与迭代记录都会沉淀在对应项目内。"
         >
           <Button
             className="primary-button"
@@ -456,10 +455,6 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
                         {project.stats.activeModuleCount} 个模块
                       </span>
                       <span>
-                        <InpulseIcon name="code" size={14} />
-                        {project.stats.activeFeatureCount} 个功能
-                      </span>
-                      <span>
                         <InpulseIcon name="clipboard" size={14} />
                         {project.stats.openTaskCount} 项待办
                       </span>
@@ -516,7 +511,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
           )}
           <CalmSectionTitle
             title="层级说明"
-            hint="项目 / 模块 / 功能 / 任务 / 迭代记录"
+            hint="项目 / 模块 / 任务 / 迭代记录"
           />
           <ul className="rule-list rule-list-grid">
             {hierarchyNotes.map((note) => (

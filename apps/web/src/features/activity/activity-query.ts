@@ -18,14 +18,7 @@ export const ACTIVITY_PAGE_LIMIT = 20;
 
 /** 与契约 ACTIVITY_CATEGORIES 一致；「全部」即不传 category。 */
 export type ActivityCategory =
-  | "all"
-  | "task"
-  | "record"
-  | "feature"
-  | "module"
-  | "project"
-  | "member"
-  | "github";
+  "all" | "task" | "record" | "module" | "project" | "member" | "github";
 
 export interface ActivityFeedPage {
   readonly items: readonly ActivityItem[];

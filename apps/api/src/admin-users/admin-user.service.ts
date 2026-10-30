@@ -257,8 +257,7 @@ export class AdminUserService {
       if (task === undefined) throw adminUserOffboardingTaskNotFound();
       if (
         task.projectId !== action.projectId ||
-        task.moduleId !== action.moduleId ||
-        task.featureId !== action.featureId
+        task.moduleId !== action.moduleId
       ) {
         throw adminUserOffboardingInvalid(
           "ADMIN_USER_OFFBOARDING_TASK_SCOPE_MISMATCH",
@@ -363,7 +362,6 @@ export class AdminUserService {
           {
             taskId: task.taskId,
             moduleId: task.moduleId,
-            featureId: task.featureId,
             rowVersion: task.rowVersion,
             assigneeIds,
           },
@@ -384,7 +382,6 @@ export class AdminUserService {
     const scope = {
       projectId: task.projectId,
       moduleId: task.moduleId,
-      featureId: task.featureId,
     };
     try {
       await this.taskDeletionCommands.authorize(

@@ -48,8 +48,6 @@ const unfinishedTask = {
   taskId: 12,
   projectId: 7,
   moduleId: 3,
-  featureId: null,
-  scopeType: "MODULE" as const,
   code: "P-T-1",
   title: "任务",
   description: "",
@@ -58,7 +56,6 @@ const unfinishedTask = {
   workStatus: "TODO" as const,
   assigneeId: 5,
   rowVersion: 2,
-  impactFeatureIds: [],
 };
 
 function setup() {
@@ -270,7 +267,6 @@ describe("ProjectMemberManagementService", () => {
           {
             taskId: 12,
             moduleId: 3,
-            featureId: null,
             rowVersion: 2,
             assigneeIds: [6],
           },

@@ -13,7 +13,6 @@ import type {
 } from "../src/idempotency/runner.js";
 import { resolveRegisteredRoute } from "../src/idempotency/route.js";
 import type { IdempotencyRecord } from "../src/idempotency/store.js";
-import { featureDeletionForbidden } from "../src/modules/features/feature-deletion.command-port.js";
 import { moduleUnclassifiedProtected } from "../src/modules/modules/module-deletion.command-port.js";
 import { ProjectCapabilityAccessError } from "../src/modules/projects/project-member-permission-policy.service.js";
 import type { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
@@ -28,22 +27,10 @@ const moduleBody = {
   code: "PAY-M-2",
   name: "结算模块",
   kind: "NORMAL" as const,
-  deletedFeatureCount: 2,
   deletedTaskCount: 3,
   deletedRecordCount: 2,
   removedLinkCount: 2,
 };
-const featureBody = {
-  id: 11,
-  projectId: 3,
-  moduleId: 9,
-  code: "PAY-F-4",
-  name: "对账功能",
-  deletedTaskCount: 1,
-  deletedRecordCount: 1,
-  removedLinkCount: 1,
-};
-
 function request(
   overrides: {
     headers?: Record<string, string>;
@@ -76,7 +63,6 @@ function setup(
     actorId?: number | undefined;
     failWith?: unknown;
     moduleResult?: unknown;
-    featureResult?: unknown;
     replay?: boolean;
     replayRole?: string;
   } = {},
@@ -91,27 +77,18 @@ function setup(
     if (options.failWith !== undefined) throw options.failWith;
     return options.moduleResult ?? moduleBody;
   });
-  const deleteFeature = vi.fn(async () => {
-    if (options.failWith !== undefined) throw options.failWith;
-    return options.featureResult ?? featureBody;
-  });
   const scopeDeleterReplayRole = vi
     .fn()
     .mockResolvedValue(options.replayRole ?? "LEADER");
   const runnerRun = vi.fn(async (input: RunIdempotencyCommand) => {
     if (options.replay === true) {
-      // 已存记录必须是合法可重放的 2xx，否则失败原因会变成响应策略错误。
-      const isModule = input.command.operationId === "deleteModule";
+      // 已存记录必须是合法可重放的 2xx。
       const saved = {
         responseStatus: 200,
-        responseSchemaRef: isModule
-          ? "ModuleDeletionResponse"
-          : "FeatureDeletionResponse",
+        responseSchemaRef: "ModuleDeletionResponse",
         responseHasBody: true,
-        responseBody: isModule ? moduleBody : featureBody,
-        replayAuthContext: isModule
-          ? { projectId: 3, moduleId: 9 }
-          : { projectId: 3, moduleId: 9, featureId: 11 },
+        responseBody: moduleBody,
+        replayAuthContext: { projectId: 3, moduleId: 9 },
       } as unknown as IdempotencyRecord;
       await input.replayAuthorizer?.(saved, tx);
       return { kind: "replayed" as const, record: saved };
@@ -139,21 +116,20 @@ function setup(
       { currentVersion: 1, currentKey: () => key, keyFor: () => key },
       resolveRegisteredRoute,
     ),
-    { deleteModule, deleteFeature } as unknown as ScopeDeletionWorkflow,
+    { deleteModule } as unknown as ScopeDeletionWorkflow,
     { scopeDeleterReplayRole } as unknown as ProjectRoleGateService,
   );
   return {
     service,
     verify,
     deleteModule,
-    deleteFeature,
     scopeDeleterReplayRole,
     results,
     runnerRun,
   };
 }
 
-describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
+describe("ADR-096 物理删除模块 HTTP 边界", () => {
   it("合法请求返回 200 并校验契约 DTO，业务命令收到认证用户", async () => {
     const { service, deleteModule } = setup({ actorId: 7 });
     const result = await service.handle("deleteModule", request());
@@ -161,7 +137,6 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
     expect(result.body).toMatchObject({
       id: 9,
       kind: "NORMAL",
-      deletedFeatureCount: 2,
       removedLinkCount: 2,
     });
     expect(deleteModule).toHaveBeenCalledTimes(1);
@@ -175,23 +150,12 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
     ]);
   });
 
-  it("重放授权上下文登记项目与模块，功能删除追加 featureId", async () => {
+  it("重放授权上下文只登记项目与模块", async () => {
     const { service, results } = setup({ actorId: 7 });
     await service.handle("deleteModule", request());
     expect(results[0]).toMatchObject({
       responseSchemaRef: "ModuleDeletionResponse",
       replayAuthContext: { projectId: 3, moduleId: 9 },
-    });
-    await service.handle(
-      "deleteFeature",
-      request({
-        params: { projectId: "3", moduleId: "9", featureId: "11" },
-        body: { reason: "功能下线" },
-      }),
-    );
-    expect(results[1]).toMatchObject({
-      responseSchemaRef: "FeatureDeletionResponse",
-      replayAuthContext: { projectId: 3, moduleId: 9, featureId: 11 },
     });
   });
 
@@ -208,19 +172,16 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
   });
 
   it("非 JSON 请求体返回 400 契约错误码", async () => {
-    const { service, deleteFeature } = setup({ actorId: 7 });
+    const { service, deleteModule } = setup({ actorId: 7 });
     const result = await service.handle(
-      "deleteFeature",
-      request({
-        params: { projectId: "3", moduleId: "9", featureId: "11" },
-        headers: { "content-type": "text/plain" },
-      }),
+      "deleteModule",
+      request({ headers: { "content-type": "text/plain" } }),
     );
     expect(result).toMatchObject({ status: 400 });
     expect(result.body).toMatchObject({
-      code: "FEATURE_CONTENT_TYPE_INVALID",
+      code: "MODULE_CONTENT_TYPE_INVALID",
     });
-    expect(deleteFeature).not.toHaveBeenCalled();
+    expect(deleteModule).not.toHaveBeenCalled();
   });
 
   it("请求头、路径、请求体与查询参数违反契约统一返回 422", async () => {
@@ -320,17 +281,11 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
       actorId: 7,
       failWith: new Error("relation app.modules does not exist"),
     });
-    const result = await service.handle(
-      "deleteFeature",
-      request({
-        params: { projectId: "3", moduleId: "9", featureId: "11" },
-        body: { reason: "功能下线" },
-      }),
-    );
+    const result = await service.handle("deleteModule", request());
     expect(result).toMatchObject({ status: 500 });
     expect(result.body).toMatchObject({
       code: "INTERNAL_ERROR",
-      message: "暂时无法删除功能",
+      message: "暂时无法删除模块",
       details: {},
     });
     expect(JSON.stringify(result.body)).not.toMatch(/relation app\./);
@@ -357,8 +312,8 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
       new ProjectCapabilityAccessError(
         403,
         "MODULE_DELETE_FORBIDDEN",
-        "当前平台权限配置不允许该成员删除模块或功能",
-        "moduleFeatureDelete",
+        "当前平台权限配置不允许该成员删除模块",
+        "moduleDelete",
       ),
     );
     const memberFailure = await member.service.handle(
@@ -370,9 +325,7 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
       code: "MODULE_DELETE_FORBIDDEN",
     });
     // 不得泄露已存状态码与响应体。
-    expect(JSON.stringify(memberFailure.body)).not.toMatch(
-      /deletedFeatureCount/,
-    );
+    expect(JSON.stringify(memberFailure.body)).not.toMatch(/deletedTaskCount/);
 
     const outsider = setup({
       actorId: 7,
@@ -408,24 +361,6 @@ describe("ADR-096 物理删除模块/功能 HTTP 边界", () => {
     expect(anonymousResult).toMatchObject({ status: 401 });
     expect(anonymousResult.body).toMatchObject({
       code: "MODULE_SESSION_REQUIRED",
-    });
-  });
-
-  it("功能侧失败按功能错误码返回，不与模块错误码串用", async () => {
-    const forbidden = setup({
-      actorId: 7,
-      failWith: featureDeletionForbidden(),
-    });
-    const forbiddenResult = await forbidden.service.handle(
-      "deleteFeature",
-      request({
-        params: { projectId: "3", moduleId: "9", featureId: "11" },
-      }),
-    );
-    expect(forbiddenResult).toMatchObject({ status: 403 });
-    expect(forbiddenResult.body).toMatchObject({
-      code: "FEATURE_DELETE_FORBIDDEN",
-      message: "只有系统管理员或本项目组长可以删除功能",
     });
   });
 });

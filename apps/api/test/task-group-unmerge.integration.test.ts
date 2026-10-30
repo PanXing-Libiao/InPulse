@@ -25,7 +25,6 @@ import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
@@ -78,7 +77,6 @@ beforeAll(async () => {
     access,
     new PostgresProjectCodePort(),
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
     new PostgresTaskQueryPort(),
     new TaskGroupRepository(),
     new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key }),
@@ -241,7 +239,7 @@ async function createTask(
   return client.sql.begin(async (tx) => {
     const [row] = await tx<
       { id: number }[]
-    >`INSERT INTO app.tasks(project_id,module_id,feature_id,scope_type,code,title,creator_id,work_status,lifecycle_status,completed_at) VALUES (${project.projectId},${project.moduleId},NULL,'MODULE',${`${project.code}-T-${sequences}`},${title},${creatorId},${workStatus},${options.lifecycleStatus ?? "ACTIVE"},${completedAt}) RETURNING id`;
+    >`INSERT INTO app.tasks(project_id,module_id,code,title,creator_id,work_status,lifecycle_status,completed_at) VALUES (${project.projectId},${project.moduleId},${`${project.code}-T-${sequences}`},${title},${creatorId},${workStatus},${options.lifecycleStatus ?? "ACTIVE"},${completedAt}) RETURNING id`;
     if (!row) throw new Error("task fixture returned no row");
     await tx`INSERT INTO app.task_assignees (task_id, user_id, project_id) VALUES (${row.id}, ${assigneeId}, ${project.projectId})`;
     await tx`INSERT INTO app.task_status_history (task_id, project_id, from_work_status, to_work_status, completed_at_snapshot, changed_by) VALUES (${row.id}, ${project.projectId}, NULL, ${workStatus}, ${completedAt}, ${creatorId})`;

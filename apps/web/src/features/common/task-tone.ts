@@ -16,7 +16,7 @@
  * .tb-date--overdue / .tb-date--today），不再整卡换色。
  * 色值分两处维护：design-system.css 中段的 .tone-prio-* 管列表行 / 表格行的浅色底
  * 与色条，「任务卡片醒目配色」块管卡片实色；优先级圆点取卡片实色的同值。
- * 任务看板（卡片 + 列表）、任务中心（卡片 + 列表）与功能任务面板共用同一
+ * 任务看板（卡片 + 列表）、任务中心（卡片 + 列表）与模块任务面板共用同一
  * 映射，避免同一优先级在不同页面颜色不一。
  */
 import type { CalmBadgeTone } from "./components/Calm";

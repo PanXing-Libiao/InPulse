@@ -13,18 +13,12 @@ import {
   ModuleQueryPort,
   ModulesModule,
 } from "../src/modules/modules/index.js";
-import {
-  FeatureQueryPort,
-  FeaturesModule,
-} from "../src/modules/features/index.js";
 import { createProject, createUser, testUrls } from "./database.helpers.js";
 
 let client: DatabaseClient;
 let writer: DatabaseClient;
 let moduleContext: INestApplicationContext;
-let featureContext: INestApplicationContext;
 let modules: ModuleQueryPort;
-let features: FeatureQueryPort;
 let uow: PostgresUnitOfWork;
 let userId: number;
 
@@ -42,74 +36,57 @@ beforeAll(async () => {
   moduleContext = await NestFactory.createApplicationContext(ModulesModule, {
     logger: false,
   });
-  featureContext = await NestFactory.createApplicationContext(FeaturesModule, {
-    logger: false,
-  });
   modules = moduleContext.get(ModuleQueryPort);
-  features = featureContext.get(FeatureQueryPort);
 });
 
 afterAll(async () => {
-  await featureContext?.close();
   await moduleContext?.close();
   await writer?.close();
   await client?.close();
 });
 
 async function fixture() {
-  // Existing helper commits a valid project, creator membership and unclassified module.
+  // Existing helper commits a valid project, creator membership and an unclassified module.
   const project = await createProject(client.sql, userId);
   const [module] = await client.sql<{ id: number }[]>`
     INSERT INTO app.modules (project_id, name, created_by)
     VALUES (${project.projectId}, 'Normal fixture', ${userId}) RETURNING id
   `;
   if (!module) throw new Error("Missing module fixture");
-  const [feature] = await client.sql<{ id: number }[]>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (${project.projectId}, ${module.id}, ${`${project.code}-F-1`}, 'Feature fixture', ${userId}) RETURNING id
-  `;
-  if (!feature) throw new Error("Missing feature fixture");
   return {
     projectId: project.projectId,
     moduleId: module.id,
-    featureId: feature.id,
     otherModuleId: project.moduleId,
   };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
-type Domain = "module" | "feature";
+type Domain = "module";
 async function check(domain: Domain, tx: TransactionContext, input: Fixture) {
-  return domain === "module"
-    ? modules.checkModuleForWrite(tx, input)
-    : features.checkFeatureForWrite(tx, input);
+  void domain;
+  return modules.checkModuleForWrite(tx, input);
 }
-/** ADR-044/ADR-045：模块与功能都没有状态列，摘要只剩归属与 row_version。 */
+/** ADR-044 / ADR-109：模块没有状态列，摘要只剩归属与 row_version。 */
 function summary(domain: Domain, f: Fixture, rowVersion = 1) {
   return {
     projectId: f.projectId,
     moduleId: f.moduleId,
-    ...(domain === "feature" ? { featureId: f.featureId } : {}),
     rowVersion,
   };
 }
 /**
- * 对行做一次真实写入并递增 row_version：模块与功能都只做改名
- * （ADR-044 起模块、ADR-045 起功能都没有可写的生命周期状态）。
+ * 对行做一次真实写入并递增 row_version：模块只做改名（ADR-044 起模块没有可写的生命周期状态；ADR-109 已移除功能层）。
  */
 async function writeRow(tx: TransactionContext, domain: Domain, f: Fixture) {
-  if (domain === "module") {
-    await tx.sql`UPDATE app.modules SET name = 'Renamed fixture', row_version = row_version + 1 WHERE id = ${f.moduleId}`;
-  } else {
-    await tx.sql`UPDATE app.features SET name = 'Renamed fixture', row_version = row_version + 1 WHERE id = ${f.featureId}`;
-  }
+  void domain;
+  await tx.sql`UPDATE app.modules SET name = 'Renamed fixture', row_version = row_version + 1 WHERE id = ${f.moduleId}`;
 }
-/** 写入后各域的公共读取结果：两域都只有 allowed，不再有归档只读态。 */
+/** 写入后的公共读取结果只有 allowed，不再有归档只读态。 */
 function afterWrite(domain: Domain, f: Fixture) {
   return { kind: "allowed" as const, resource: summary(domain, f, 2) };
 }
 
-for (const domain of ["module", "feature"] as const) {
+for (const domain of ["module"] as const) {
   test(`${domain}: active, absent and wrong ownership have exact public results`, async () => {
     const f = await fixture();
     const otherProject = await createProject(client.sql, userId);
@@ -121,8 +98,7 @@ for (const domain of ["module", "feature"] as const) {
       expect(
         await check(domain, tx, {
           ...f,
-          moduleId: domain === "module" ? -1 : f.moduleId,
-          featureId: -1,
+          moduleId: -1,
         }),
       ).toEqual({ kind: "not-found" });
       expect(
@@ -130,11 +106,6 @@ for (const domain of ["module", "feature"] as const) {
       ).toEqual({
         kind: "not-found",
       });
-      if (domain === "feature") {
-        expect(
-          await check(domain, tx, { ...f, moduleId: f.otherModuleId }),
-        ).toEqual({ kind: "not-found" });
-      }
       await writeRow(tx, domain, f);
       expect(await check(domain, tx, f)).toEqual(afterWrite(domain, f));
       expect(await check(domain, tx, { ...f, projectId: -1 })).toEqual({

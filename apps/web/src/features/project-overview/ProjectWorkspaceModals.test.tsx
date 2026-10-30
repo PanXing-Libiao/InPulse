@@ -65,7 +65,6 @@ const client = {
       memberCount: 2,
       stats: {
         activeModuleCount: 1,
-        activeFeatureCount: 2,
         openTaskCount: 3,
         completedTaskCount: 0,
       },
@@ -142,7 +141,6 @@ describe("ProjectWorkspaceModals", () => {
           memberCount: 2,
           stats: {
             activeModuleCount: 1,
-            activeFeatureCount: 2,
             openTaskCount: 3,
             completedTaskCount: 0,
           },

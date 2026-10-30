@@ -34,13 +34,12 @@ import { RecordMarkdown } from "@features/common/components/RecordMarkdown";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 /**
  * 归一后的草稿卡片。名称回填只由服务端跨项目列表（全部项目视图）提供；项目内视图
- * 与来源任务视图沿用草稿自身携带的 moduleName / featureName。
+ * 与来源任务视图沿用草稿自身携带的 moduleName。
  */
 interface DraftCardItem {
   readonly draft: RecordDraftItem;
   readonly projectName: string | null;
   readonly moduleName: string | null;
-  readonly featureName: string | null;
   readonly authorName: string | null;
 }
 
@@ -49,7 +48,6 @@ function toDraftCard(
   names?: {
     readonly projectName: string;
     readonly moduleName: string;
-    readonly featureName: string | null;
   },
   authorFallback?: string | undefined,
 ): DraftCardItem {
@@ -57,7 +55,6 @@ function toDraftCard(
     draft,
     projectName: names?.projectName ?? null,
     moduleName: names?.moduleName ?? draft.moduleName ?? null,
-    featureName: names?.featureName ?? draft.featureName ?? null,
     // 全部项目视图的草稿恒为当前用户创建，服务端不回填作者名时用登录用户名兜底。
     authorName: draft.authorName ?? authorFallback ?? null,
   };
@@ -310,7 +307,7 @@ export function RecordDraftsView({
           <section aria-label="来源任务">
             <h2>{sourceQuery.data.source.title}</h2>
             <a
-              href={`/projects/${projectId}/modules/${sourceModuleId}${sourceQuery.data.source.featureId === null ? "/tasks" : `/features/${sourceQuery.data.source.featureId}`}?taskId=${taskId}`}
+              href={`/projects/${projectId}/modules/${sourceModuleId}/tasks?taskId=${taskId}`}
             >
               返回来源任务
             </a>
@@ -408,9 +405,6 @@ export function RecordDraftsView({
                         ? ""
                         : item.projectName + " / "}
                       {item.moduleName ?? "名称暂不可用"}
-                      {item.draft.featureId
-                        ? " / " + (item.featureName ?? "名称暂不可用")
-                        : ""}
                     </span>
                     <span className="draft-card-author">
                       <span className="draft-card-avatar" aria-hidden="true">
@@ -504,18 +498,7 @@ export function RecordDraftsView({
                     )?.name ?? "名称暂不可用"}
                     {" / "}
                     {detail.data.moduleName ?? "名称暂不可用"}
-                    {detail.data.featureId
-                      ? ` / ${detail.data.featureName ?? "名称暂不可用"}`
-                      : ""}
                   </dd>
-                  {detail.data.featureId === null && (
-                    <>
-                      <dt>影响功能</dt>
-                      <dd>
-                        {detail.data.impactFeatureNames?.join("、") || "未选择"}
-                      </dd>
-                    </>
-                  )}
                   <dt>人员</dt>
                   <dd>
                     处理人 {detail.data.handlerName ?? "名称暂不可用"} ·
@@ -560,7 +543,6 @@ export function RecordDraftsView({
         target={editorTarget}
         projectId={projectId}
         defaultModuleId={Number(params.get("moduleId")) || 0}
-        defaultFeatureId={Number(params.get("featureId")) || 0}
         writable={sourceWritable}
         onClose={() => setEditorTarget(null)}
         // 删除草稿后详情弹层仍在按 URL 的 recordId 取值：一并清掉，避免展示已删草稿。

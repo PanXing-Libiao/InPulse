@@ -34,17 +34,16 @@ describe("my-tasks-v1-query", () => {
     expect(MY_TASKS_V1_LIMIT_MAX).toBe(100);
   });
 
-  it("maps the project scope and level onto projectId and scopeType", () => {
+  it("maps the project scope onto projectId", () => {
     expect(
       toMyTasksV1Query(
         filters({
           scope: "project",
           projectId: 7,
-          level: "MODULE",
           status: "all",
         }),
       ),
-    ).toEqual({ limit: 20, projectId: 7, scopeType: "MODULE" });
+    ).toEqual({ limit: 20, projectId: 7 });
     expect(
       toMyTasksV1Query(filters({ scope: "project", projectId: null }))
         .projectId,
@@ -167,7 +166,6 @@ describe("my-tasks-v1-query", () => {
           scope: "project",
           projectId: 3,
           status: "open",
-          level: "FEATURE",
           hasRecord: "yes",
           priority: "URGENT",
           includeCanceled: true,
@@ -199,9 +197,6 @@ describe("my-tasks-v1-query", () => {
       projectName: "InPulse 平台",
       moduleId: 2,
       moduleName: "访问控制",
-      featureId: 3,
-      featureName: "MFA 登录",
-      scopeType: "FEATURE",
       workStatus: "TODO",
       lifecycleStatus: "ACTIVE",
       assignee: { userId: 9, name: "张三", avatarUrl: null },
@@ -229,7 +224,7 @@ describe("my-tasks-v1-query", () => {
     expect(matches({ hasGithub: "yes" })).toBe(true);
     expect(matches({ hasGithub: "no" })).toBe(false);
     expect(matches({ query: "恢复码" })).toBe(true);
-    expect(matches({ query: "mfa 登录" })).toBe(true);
+    expect(matches({ query: "访问控制" })).toBe(true);
     expect(matches({ query: "张三" })).toBe(true);
     expect(matches({ query: "不存在的词" })).toBe(false);
     expect(matches({ relation: "STANDALONE", query: "恢复码" })).toBe(true);
@@ -244,9 +239,6 @@ describe("my-tasks-v1-query", () => {
       projectName: "InPulse 平台",
       moduleId: 2,
       moduleName: "访问控制",
-      featureId: 3,
-      featureName: "MFA 登录",
-      scopeType: "FEATURE",
       workStatus: "DONE",
       lifecycleStatus: "ACTIVE",
       assignee: { userId: 9, name: "张三", avatarUrl: null },
@@ -271,9 +263,6 @@ describe("my-tasks-v1-query", () => {
       projectName: "InPulse 平台",
       moduleId: 2,
       moduleName: "访问控制",
-      featureId: 3,
-      featureName: "MFA 登录",
-      scopeType: "FEATURE",
       workStatus: "DONE",
       lifecycleStatus: "ACTIVE",
       assignee: { userId: 9, name: "张三", avatarUrl: null },

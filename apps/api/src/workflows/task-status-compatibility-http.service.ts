@@ -24,8 +24,7 @@ import { RecordDraftError } from "../modules/change-records/index.js";
 import { ProjectCapabilityAccessError } from "../modules/projects/index.js";
 import { TaskCompletionWorkflow } from "./task-completion.workflow.js";
 import type { CompletionHttpRequest } from "./task-completion-http.service.js";
-export type CompatibilityStatusOperation =
-  "transitionTask" | "transitionModuleTask";
+export type CompatibilityStatusOperation = "transitionModuleTask";
 /** Legacy envelopes remain unchanged; COMPLETE shares the new cross-domain transaction. */
 @Injectable()
 export class TaskStatusCompatibilityHttpService {
@@ -52,9 +51,8 @@ export class TaskStatusCompatibilityHttpService {
           "请求未通过同源安全校验",
         );
       const route = routeRegistry.find(
-          (route) => route.operationId === operation,
-        )!,
-        moduleScope = operation === "transitionModuleTask";
+        (route) => route.operationId === operation,
+      )!;
       if (route.request.path === "none" || route.request.headers === "none")
         throw Error("Status contract incomplete");
       const parsedPath = schemaRegistry[route.request.path].schema.safeParse(
@@ -87,10 +85,7 @@ export class TaskStatusCompatibilityHttpService {
           "TASK_CONTENT_TYPE_INVALID",
           "请求必须使用 application/json",
         );
-      const resource = {
-          ...(parsedPath.data as TaskStatusResource),
-          ...(moduleScope ? { featureId: null } : {}),
-        },
+      const resource = parsedPath.data as TaskStatusResource,
         command = parsedCommand.data;
       const actor = async (tx: TransactionContext) => {
         const actor = await this.mutation.verify(tx, request.headers);
@@ -107,8 +102,7 @@ export class TaskStatusCompatibilityHttpService {
         );
         if (
           actual.projectId !== resource.projectId ||
-          actual.moduleId !== resource.moduleId ||
-          actual.featureId !== resource.featureId
+          actual.moduleId !== resource.moduleId
         )
           throw new TaskManagementError(
             404,
@@ -164,16 +158,13 @@ export class TaskStatusCompatibilityHttpService {
                 );
           return {
             responseStatus: 200,
-            responseSchemaRef: moduleScope ? "ModuleTaskItem" : "TaskItem",
+            responseSchemaRef: "ModuleTaskItem",
             responseHasBody: true,
             responseBody: task,
             replayAuthContext: {
               projectId: task.projectId,
               moduleId: task.moduleId,
-              featureId: task.featureId,
               taskId: task.id,
-              impactFeatureIds:
-                "impactFeatureIds" in task ? task.impactFeatureIds : [],
               completion: command.action === "COMPLETE",
             },
           };
@@ -188,7 +179,6 @@ export class TaskStatusCompatibilityHttpService {
             saved.taskId !== resource.taskId ||
             saved.projectId !== resource.projectId ||
             saved.moduleId !== resource.moduleId ||
-            saved.featureId !== resource.featureId ||
             saved.completion !== (command.action === "COMPLETE")
           )
             throw new TaskManagementError(
@@ -207,18 +197,12 @@ export class TaskStatusCompatibilityHttpService {
               projectId: saved.projectId,
               moduleId: saved.moduleId,
               taskId: saved.taskId,
-              ...(moduleScope
-                ? { impactFeatureIds: saved.impactFeatureIds }
-                : { featureId: saved.featureId }),
             });
         },
       });
       return {
         status: result.responseStatus,
-        body: (moduleScope
-          ? schemaRegistry.ModuleTaskItem
-          : schemaRegistry.TaskItem
-        ).schema.parse(result.responseBody),
+        body: schemaRegistry.ModuleTaskItem.schema.parse(result.responseBody),
       };
     } catch (error) {
       const known =

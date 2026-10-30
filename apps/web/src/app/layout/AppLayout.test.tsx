@@ -199,7 +199,6 @@ describe("AppLayout", () => {
           memberCount: 4,
           stats: {
             activeModuleCount: 2,
-            activeFeatureCount: 5,
             openTaskCount: 3,
             completedTaskCount: 1,
           },
@@ -477,7 +476,7 @@ describe("AppLayout", () => {
             notificationType: "task.assigned",
             title: "任务指派：电池巡检",
             body: "T-91",
-            targetPath: "/projects/1/modules/2/features/3?taskId=4",
+            targetPath: "/projects/1/modules/2/tasks?taskId=4",
             createdAt: "2026-10-20T00:00:00.000Z",
             readAt: null,
           },
@@ -500,7 +499,7 @@ describe("AppLayout", () => {
               element={<div>Notifications content</div>}
             />
             <Route
-              path="projects/1/modules/2/features/3"
+              path="projects/1/modules/2/tasks"
               element={<div>Project content</div>}
             />
           </Route>
@@ -595,7 +594,6 @@ describe("AppLayout", () => {
           memberCount: 4,
           stats: {
             activeModuleCount: 1,
-            activeFeatureCount: 1,
             openTaskCount: 1,
             completedTaskCount: 1,
           },
@@ -604,9 +602,6 @@ describe("AppLayout", () => {
       listModules: vi
         .fn()
         .mockResolvedValue({ items: [{ id: 3, name: "调度模块" }] }),
-      listFeatures: vi
-        .fn()
-        .mockResolvedValue({ items: [{ id: 5, name: "车辆调度" }] }),
     } as unknown as InpulseApiClient;
 
     renderLayout(
@@ -627,12 +622,12 @@ describe("AppLayout", () => {
               element={<div>项目主页内容</div>}
             />
             <Route
-              path="projects/:projectId/modules/:moduleId/features"
-              element={<div>功能目录内容</div>}
+              path="projects/:projectId/modules/:moduleId/tasks"
+              element={<div>模块任务内容</div>}
             />
             <Route
-              path="projects/:projectId/modules/:moduleId/features/:featureId"
-              element={<div>功能档案内容</div>}
+              path="projects/:projectId/modules/:moduleId/tasks/:taskId"
+              element={<div>任务详情内容</div>}
             />
           </Route>
         </Routes>

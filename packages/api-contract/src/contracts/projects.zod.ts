@@ -20,16 +20,15 @@ export type ProjectPath = z.infer<typeof projectPathSchema>;
 
 /**
  * 项目卡统计：与 R-2 项目概览（projectOverviewStatsSchema）同名同口径——
- * activeModuleCount / activeFeatureCount 只计行自身 status = ACTIVE，
+ * activeModuleCount 只计行自身 status = ACTIVE，
  * openTaskCount 只计有效任务的 work_status = TODO（排除 INVALID、CANCELED 与历史来源分支）；
  * completedTaskCount 是同一有效任务口径下 work_status = DONE 的任务数。项目标签自
- * 四态改造起读存储 status，不再由该计数推导；模块与功能的「未开始 / 进行中」仍按该计数推导。
+ * 四态改造起读存储 status，不再由该计数推导；模块的「未开始 / 进行中」仍按该计数推导。
  * 列表接口一次返回，项目卡无需按项目逐个再请求概览。
  */
 export const projectStatsSchema = z
   .object({
     activeModuleCount: z.number().int().nonnegative(),
-    activeFeatureCount: z.number().int().nonnegative(),
     openTaskCount: z.number().int().nonnegative(),
     completedTaskCount: z.number().int().nonnegative(),
   })
@@ -42,7 +41,7 @@ export type ProjectStats = z.infer<typeof projectStatsSchema>;
  * 项目生命周期三态：与 app.projects 的 projects_status_check 一致。
  *
  * 2026-09-23 定案：项目层面不再有「归档」这一说、也不再需要归档申请，只剩三态；
- * 归档概念只保留在模块 / 功能 / 任务上，项目自身只表达进度。
+ * 归档概念只保留在模块 / 任务上，项目自身只表达进度。
  *
  * - `NOT_STARTED`（未开始）：项目下还没有任何已完成任务；
  * - `ACTIVE`（进行中）：项目已开工，含手动置为进行中、首次有任务完成后的自动升级
@@ -219,8 +218,6 @@ export const projectMemberUnfinishedTaskItemSchema = z
     taskId: projectPositiveId,
     projectId: projectPositiveId,
     moduleId: projectPositiveId,
-    featureId: projectPositiveId.nullable(),
-    scopeType: z.enum(["FEATURE", "MODULE"]),
     code: z.string().min(1).max(64),
     title: z.string().min(1).max(500),
     description: z.string().max(50000),
@@ -229,7 +226,6 @@ export const projectMemberUnfinishedTaskItemSchema = z
     workStatus: z.literal("TODO"),
     assigneeId: projectPositiveId,
     rowVersion: projectPositiveId,
-    impactFeatureIds: z.array(projectPositiveId).default([]),
   })
   .strict()
   .meta({ id: "ProjectMemberUnfinishedTaskItem" });
@@ -259,7 +255,6 @@ export const projectMemberReassignmentItemSchema = z
   .object({
     taskId: projectPositiveId,
     moduleId: projectPositiveId,
-    featureId: projectPositiveId.nullable(),
     rowVersion: projectPositiveId,
     assigneeIds: z
       .array(projectPositiveId)

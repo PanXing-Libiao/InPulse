@@ -37,11 +37,11 @@ import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
  * F-25 聚合组正文面板：成员与分支、组内记录（按分支筛选、服务端过滤并以签名
  * 游标分页，R-4）。视图只消费服务端字段：不复制任务或记录实体，也不展示原始
  * 审计内容；GitHub 链接按关联时刻快照标注（A 裁决 Q-13 / Q-14）。解除合并入口
- * 只对活跃 SOURCE 成员开放（功能设计 18.14，F-24）。
+ * 只对活跃 SOURCE 成员开放（F-24）。
  *
  * 本实现由 TaskGroupDetailModal 独占使用（`/task-groups/{id}` 独立页已删除），
  * 记录筛选状态由宿主弹层持有，面板本身不读 URL。成员任务标题经宿主下发的
- * `onOpenTask` 就地打开任务详情（与任务中心、功能档案同一实现）。
+ * `onOpenTask` 就地打开任务详情（与任务中心、模块任务页同一实现）。
  */
 
 const ALL_RECORDS_VALUE = "all";
@@ -85,7 +85,7 @@ export interface TaskGroupDetailPanelsProps {
   /** 解除合并等写操作完成后回调宿主，供列表等上层数据刷新。 */
   readonly onChanged?: (() => void) | undefined;
   /**
-   * 点击成员任务标题时就地打开任务详情弹窗：由宿主页面下发（任务中心与功能档案
+   * 点击成员任务标题时就地打开任务详情弹窗：由宿主页面下发（任务中心与模块任务页
    * 都传同一实现），缺省时标题按纯文本渲染，不给出点了没反应的入口。
    */
   readonly onOpenTask?: ((location: TaskLocation) => void) | undefined;
@@ -126,13 +126,12 @@ export const TaskGroupDetailPanels: React.FC<TaskGroupDetailPanelsProps> = ({
   });
   const records = recordsQuery.data?.pages.flatMap((page) => page.items) ?? [];
 
-  /** 成员任务自带归属（moduleId / featureId），点击后按它自身的范围打开详情。 */
+  /** 成员任务自带归属（moduleId），点击后按它自身的范围打开详情。 */
   const openMemberTask = (member: TaskGroupMember) => {
     if (onOpenTask === undefined || group === null) return;
     onOpenTask({
       projectId: group.projectId,
       moduleId: member.moduleId,
-      featureId: member.featureId,
       taskId: member.taskId,
     });
   };
@@ -233,7 +232,6 @@ export const TaskGroupDetailPanels: React.FC<TaskGroupDetailPanelsProps> = ({
             member.publishedRecordCount +
             " 条 · 合并于 " +
             formatDay(member.joinedAt)}
-          {member.featureName === null ? "" : " · 功能 " + member.featureName}
         </p>
         {detached ? (
           <p
@@ -400,9 +398,6 @@ export const TaskGroupDetailPanels: React.FC<TaskGroupDetailPanelsProps> = ({
                           <strong>{record.title}</strong>
                           <small className="task-group-record-meta">
                             {formatDay(record.publishedAt) + " 发布"}
-                            {record.featureName === null
-                              ? ""
-                              : " · 功能 " + record.featureName}
                           </small>
                         </button>
                         {record.externalLinks.length > 0 ? (

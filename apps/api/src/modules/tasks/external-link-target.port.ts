@@ -15,7 +15,7 @@ export class TaskLinkQueryPort implements LinkTargetQueryPort {
   ): Promise<LinkTarget | undefined> {
     const [row] = await tx.sql<
       LinkTarget[]
-    >`SELECT id,project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",lifecycle_status AS status,row_version AS "rowVersion",code,title FROM app.tasks WHERE id=${id} AND deleted_at IS NULL ${lock === "update" ? tx.sql`FOR UPDATE` : lock === "share" ? tx.sql`FOR SHARE` : tx.sql``}`;
+    >`SELECT id,project_id AS "projectId",module_id AS "moduleId",lifecycle_status AS status,row_version AS "rowVersion",code,title FROM app.tasks WHERE id=${id} AND deleted_at IS NULL ${lock === "update" ? tx.sql`FOR UPDATE` : lock === "share" ? tx.sql`FOR SHARE` : tx.sql``}`;
     return row;
   }
 }

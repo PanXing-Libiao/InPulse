@@ -21,8 +21,7 @@ export const RECORD_SOURCE_FILTERS: ReadonlyArray<{
   { value: "ALL", label: "全部" },
   { value: "MAIN", label: "主任务" },
   { value: "SOURCE", label: "分支任务" },
-  { value: "MODULE", label: "模块级影响" },
-  { value: "FEATURE", label: "功能直接创建" },
+  { value: "MODULE", label: "模块级记录" },
 ];
 
 export const RECORD_SEARCH_PLACEHOLDER =

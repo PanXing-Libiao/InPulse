@@ -10,13 +10,15 @@ const assigneeIds = z
   .min(1)
   .max(20)
   .overwrite((values) => [...new Set(values)].sort((a, b) => a - b));
-export const taskCollectionPathSchema = z
-  .object({ projectId: pathId, moduleId: pathId, featureId: pathId })
+
+/** ADR-109：任务直接归属模块，功能层不再是任务父级。 */
+export const moduleTaskCollectionPathSchema = z
+  .object({ projectId: pathId, moduleId: pathId })
   .strict()
-  .meta({ id: "TaskCollectionPath" });
-export const taskResourcePathSchema = taskCollectionPathSchema
+  .meta({ id: "ModuleTaskCollectionPath" });
+export const moduleTaskResourcePathSchema = moduleTaskCollectionPathSchema
   .extend({ taskId: pathId })
-  .meta({ id: "TaskResourcePath" });
+  .meta({ id: "ModuleTaskResourcePath" });
 export const taskEditRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(500),
@@ -27,6 +29,7 @@ export const taskEditRequestSchema = z
   })
   .strict()
   .meta({ id: "TaskEditRequest" });
+export const moduleTaskEditRequestSchema = taskEditRequestSchema;
 export const taskMutationHeadersSchema = z
   .object({ "x-csrf-token": z.string().length(43) })
   .strict()
@@ -34,13 +37,11 @@ export const taskMutationHeadersSchema = z
 export const taskVersionHeadersSchema = taskMutationHeadersSchema
   .extend({ "if-match": z.string().regex(/^"[1-9][0-9]{0,9}"$/) })
   .meta({ id: "TaskVersionHeaders" });
-export const taskItemSchema = taskEditRequestSchema
+export const moduleTaskItemSchema = taskEditRequestSchema
   .extend({
     id,
     projectId: id,
     moduleId: id,
-    featureId: id,
-    scopeType: z.literal("FEATURE"),
     code: z.string().max(64),
     /**
      * 派生展示字段：恒等于 assigneeIds[0]，与 assigneeIds 同源同口径（ADR-040）。
@@ -58,52 +59,22 @@ export const taskItemSchema = taskEditRequestSchema
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
   })
-  .meta({ id: "TaskItem" });
-export const moduleTaskCollectionPathSchema = taskCollectionPathSchema
-  .omit({ featureId: true })
-  .meta({ id: "ModuleTaskCollectionPath" });
-export const moduleTaskResourcePathSchema = moduleTaskCollectionPathSchema
-  .extend({ taskId: pathId })
-  .meta({ id: "ModuleTaskResourcePath" });
-const impactIds = z
-  .array(id)
-  .max(1000)
-  .overwrite((values) => [...new Set(values)].sort((a, b) => a - b));
-export const moduleTaskEditRequestSchema = taskEditRequestSchema
-  .extend({ impactFeatureIds: impactIds })
-  .meta({ id: "ModuleTaskEditRequest" });
-export const moduleTaskItemSchema = taskItemSchema
-  .extend({
-    scopeType: z.literal("MODULE"),
-    featureId: z.null(),
-    impactFeatureIds: impactIds,
-  })
   .meta({ id: "ModuleTaskItem" });
+export const taskItemSchema = moduleTaskItemSchema;
 export const moduleTaskListResponseSchema = z
   .object({ items: z.array(moduleTaskItemSchema) })
   .strict()
   .meta({ id: "ModuleTaskListResponse" });
+export const taskListResponseSchema = moduleTaskListResponseSchema;
 export const moduleTaskReplayContextSchema = z
-  .object({
-    projectId: id,
-    moduleId: id,
-    taskId: id,
-    impactFeatureIds: impactIds,
-  })
+  .object({ projectId: id, moduleId: id, taskId: id })
   .strict()
   .meta({ id: "ModuleTaskReplayContext" });
+export const taskReplayContextSchema = moduleTaskReplayContextSchema;
 export type ModuleTaskItem = z.infer<typeof moduleTaskItemSchema>;
+export type TaskItem = ModuleTaskItem;
 export type ModuleTaskEditRequest = z.infer<typeof moduleTaskEditRequestSchema>;
-export const taskListResponseSchema = z
-  .object({ items: z.array(z.union([taskItemSchema, moduleTaskItemSchema])) })
-  .strict()
-  .meta({ id: "TaskListResponse" });
-export const taskReplayContextSchema = z
-  .object({ projectId: id, moduleId: id, featureId: id, taskId: id })
-  .strict()
-  .meta({ id: "TaskReplayContext" });
-export type TaskItem = z.infer<typeof taskItemSchema>;
-export type TaskEditRequest = z.infer<typeof taskEditRequestSchema>;
+export type TaskEditRequest = ModuleTaskEditRequest;
 export const taskAssigneesResponseSchema = z
   .object({
     items: z.array(
@@ -167,7 +138,7 @@ export const taskStatusHistoryResponseSchema = z
 export const taskSchemas = {
   TaskStatusRequest: {
     schema: taskStatusRequestSchema,
-    summary: "任务状态命令；完成仅支持无功能变化",
+    summary: "任务状态命令；完成可无记录或绑定已保存草稿",
     sensitiveFieldPaths: [],
   },
   TaskStatusHistoryResponse: {
@@ -177,22 +148,22 @@ export const taskSchemas = {
   },
   ModuleTaskCollectionPath: {
     schema: moduleTaskCollectionPathSchema,
-    summary: "模块级任务父级",
+    summary: "模块任务父级",
     sensitiveFieldPaths: [],
   },
   ModuleTaskResourcePath: {
     schema: moduleTaskResourcePathSchema,
-    summary: "模块级任务资源",
+    summary: "模块任务资源",
     sensitiveFieldPaths: [],
   },
-  ModuleTaskEditRequest: {
-    schema: moduleTaskEditRequestSchema,
-    summary: "模块任务及去重影响功能集合",
+  TaskEditRequest: {
+    schema: taskEditRequestSchema,
+    summary: "任务可编辑字段",
     sensitiveFieldPaths: [],
   },
   ModuleTaskItem: {
     schema: moduleTaskItemSchema,
-    summary: "单份模块任务及当前影响集合",
+    summary: "模块直属任务",
     sensitiveFieldPaths: [],
   },
   ModuleTaskListResponse: {
@@ -202,27 +173,12 @@ export const taskSchemas = {
   },
   ModuleTaskReplayContext: {
     schema: moduleTaskReplayContextSchema,
-    summary: "模块任务重放资源与影响功能",
+    summary: "模块任务重放资源",
     sensitiveFieldPaths: [],
   },
   TaskAssigneesResponse: {
     schema: taskAssigneesResponseSchema,
     summary: "当前项目可指派成员",
-    sensitiveFieldPaths: [],
-  },
-  TaskCollectionPath: {
-    schema: taskCollectionPathSchema,
-    summary: "任务真实父级归属",
-    sensitiveFieldPaths: [],
-  },
-  TaskResourcePath: {
-    schema: taskResourcePathSchema,
-    summary: "任务资源归属",
-    sensitiveFieldPaths: [],
-  },
-  TaskEditRequest: {
-    schema: taskEditRequestSchema,
-    summary: "任务可编辑字段",
     sensitiveFieldPaths: [],
   },
   TaskMutationHeaders: {
@@ -235,19 +191,4 @@ export const taskSchemas = {
     summary: "任务版本安全头",
     sensitiveFieldPaths: ["x-csrf-token"],
   },
-  TaskItem: {
-    schema: taskItemSchema,
-    summary: "功能级任务",
-    sensitiveFieldPaths: [],
-  },
-  TaskListResponse: {
-    schema: taskListResponseSchema,
-    summary: "功能内任务与模块级引用，每个任务只返回一次",
-    sensitiveFieldPaths: [],
-  },
-  TaskReplayContext: {
-    schema: taskReplayContextSchema,
-    summary: "任务重放授权资源",
-    sensitiveFieldPaths: [],
-  },
-};
+} as const;

@@ -3,14 +3,16 @@ import { ConfigProvider } from "antd";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { expect, it, vi } from "vitest";
-import { ApiError, type InpulseApiClient, type TaskItem } from "@generated/api";
+import {
+  ApiError,
+  type InpulseApiClient,
+  type ModuleTaskItem,
+} from "@generated/api";
 import { CompleteWithRecord } from "./CompleteWithRecord";
-const task: TaskItem = {
+const task: ModuleTaskItem = {
   id: 1,
   projectId: 2,
   moduleId: 3,
-  featureId: 4,
-  scopeType: "FEATURE",
   code: "SHOP-T-1",
   title: "任务标题",
   description: "",
@@ -29,7 +31,6 @@ const draft = {
   id: 7,
   projectId: 2,
   moduleId: 3,
-  featureId: 4,
   taskId: null,
   title: "已存草稿",
   rowVersion: 2,
@@ -145,14 +146,14 @@ it("requires explicit draft selection and explicit confirmation of its changed c
   mount({
     completeTask,
     listRecordDrafts: vi.fn().mockResolvedValue({
-      items: [draft, { ...draft, id: 8, featureId: 99, title: "不匹配草稿" }],
+      items: [draft, { ...draft, id: 8, taskId: 999, title: "不匹配草稿" }],
       nextCursor: null,
       hasMore: false,
     }),
     getRecordDraft: vi
       .fn()
       .mockResolvedValue({ ...draft, title: "新版标题", rowVersion: 3 }),
-    getTask: vi.fn().mockResolvedValue({ ...task, rowVersion: 2 }),
+    getModuleTask: vi.fn().mockResolvedValue({ ...task, rowVersion: 2 }),
   });
   pickSelectOption("记录来源", "选择已有草稿");
   await screen.findByLabelText("待发布草稿");

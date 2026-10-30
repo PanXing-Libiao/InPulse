@@ -22,7 +22,7 @@ export interface MyRecordDraftsQueryOptions {
 
 /**
  * B-3b 我的草稿：GET /me/record-drafts（listMyRecordDrafts）。
- * 跨项目返回当前用户仍可访问的项目里的草稿，并回填项目 / 模块 / 功能名称；
+ * 跨项目返回当前用户仍可访问的项目里的草稿，并回填项目 / 模块名称；
  * 被移出项目后服务端立即不再返回对应草稿。
  */
 export function useMyRecordDraftsQuery({

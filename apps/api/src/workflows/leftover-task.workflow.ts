@@ -12,10 +12,6 @@ import {
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
 import {
-  FeatureQueryPort,
-  FeatureReadPort,
-} from "../modules/features/index.js";
-import {
   TaskQueryPort,
   FollowupTaskCommandPort,
 } from "../modules/tasks/index.js";
@@ -58,10 +54,20 @@ function composeTaskDescription(
   leftoverItemId: number,
   content: string,
 ): string {
-  const source = `来源记录：${recordTitle}（${recordCode} v${recordVersion}）\n遗留项 #${leftoverItemId}\n\n${content}`;
+  const source =
+    "来源记录：" +
+    recordTitle +
+    "（" +
+    recordCode +
+    " v" +
+    recordVersion +
+    "）\n遗留项 #" +
+    leftoverItemId +
+    "\n\n" +
+    content;
   const note = authored?.trim();
   if (!note) return source;
-  const composed = `${note}\n\n${taskDescriptionDivider}\n${source}`;
+  const composed = note + "\n\n" + taskDescriptionDivider + "\n" + source;
   if (composed.length > taskDescriptionLimit)
     throw new LeftoverTaskError(
       422,
@@ -76,8 +82,6 @@ export class LeftoverTaskWorkflow {
     @Inject(PROJECT_ACCESS_QUERY_PORT)
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
-    @Inject(FeatureReadPort) private readonly featureRead: FeatureReadPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
     @Inject(FollowupTaskCommandPort)
     private readonly createTask: FollowupTaskCommandPort,
@@ -149,7 +153,6 @@ export class LeftoverTaskWorkflow {
     actorId: number,
     p: number,
     r: number,
-    resultImpacts: number[] = [],
     leftoverItemId?: number,
   ) {
     await this.authorize(tx, actorId, p);
@@ -157,38 +160,12 @@ export class LeftoverTaskWorkflow {
       await tx.sql`SAVEPOINT leftover_parent_locks`;
       const before = await this.records.find(tx, p, r);
       if (!before) throw missing();
-      // ADR-044/ADR-045：模块与功能都已无归档只读态，这里只保留归属校验与父级 FOR SHARE 取锁。
+      // ADR-044/ADR-045：模块已无归档只读态，这里只保留归属校验与父级 FOR SHARE 取锁。
       const module = await this.modules.checkModuleForWrite(tx, before);
       if (module.kind === "not-found") throw missing();
-      const inherited: { id: number; name: string }[] = [];
-      const ids = [
-        ...new Set([
-          ...(before.featureId === null
-            ? before.impactFeatureIds
-            : [before.featureId]),
-          ...resultImpacts,
-        ]),
-      ].sort((a, b) => a - b);
-      for (const id of ids) {
-        const check = await this.features.checkFeatureForWrite(tx, {
-          projectId: p,
-          moduleId: before.moduleId,
-          featureId: id,
-        });
-        if (check.kind === "not-found") throw missing();
-        const feature = await this.featureRead.find(tx, p, before.moduleId, id);
-        if (!feature) throw missing();
-        if (before.featureId === null && before.impactFeatureIds.includes(id))
-          inherited.push({ id, name: feature.name });
-      }
       const record = await this.records.lock(tx, p, r);
       if (!record) throw missing();
-      if (
-        record.moduleId !== before.moduleId ||
-        record.featureId !== before.featureId ||
-        JSON.stringify(record.impactFeatureIds) !==
-          JSON.stringify(before.impactFeatureIds)
-      ) {
+      if (record.moduleId !== before.moduleId) {
         await tx.sql`ROLLBACK TO SAVEPOINT leftover_parent_locks`;
         await tx.sql`RELEASE SAVEPOINT leftover_parent_locks`;
         continue;
@@ -199,12 +176,12 @@ export class LeftoverTaskWorkflow {
           : await this.removedItem(tx, p, r, leftoverItemId);
       if (!item) throw missing();
       await tx.sql`RELEASE SAVEPOINT leftover_parent_locks`;
-      return { record, item, inherited };
+      return { record, item };
     }
     throw new LeftoverTaskError(
       409,
       "LEFTOVER_SCOPE_CONFLICT",
-      "记录影响集合已变化，请刷新确认",
+      "记录归属模块已变化，请刷新确认",
     );
   }
   private async taskReference(
@@ -214,17 +191,11 @@ export class LeftoverTaskWorkflow {
     taskId: number,
   ) {
     const task = await this.tasks.find(tx, record.projectId, taskId);
-    if (
-      !task ||
-      task.moduleId !== record.moduleId ||
-      task.featureId !== record.featureId
-    )
-      throw missing();
+    if (!task || task.moduleId !== record.moduleId) throw missing();
     await this.authorize(tx, actorId, task.projectId);
     return {
       projectId: task.projectId,
       moduleId: task.moduleId,
-      featureId: task.featureId,
       taskId,
     };
   }
@@ -235,12 +206,11 @@ export class LeftoverTaskWorkflow {
     r: number,
     leftoverItemId?: number,
   ) {
-    const { record, item, inherited } = await this.prepare(
+    const { record, item } = await this.prepare(
       tx,
       actorId,
       p,
       r,
-      [],
       leftoverItemId,
     );
     return {
@@ -251,7 +221,6 @@ export class LeftoverTaskWorkflow {
       leftoverRowVersion: item.rowVersion,
       status: item.status,
       content: record.leftovers.find((l) => l.id === item.id)?.content ?? "",
-      inheritedImpacts: inherited,
       linkedTask:
         item.linkedTaskId === null
           ? null
@@ -266,12 +235,11 @@ export class LeftoverTaskWorkflow {
     input: LeftoverTaskRequest,
     requestId: string,
   ) {
-    const { record, item, inherited } = await this.prepare(
+    const { record, item } = await this.prepare(
       tx,
       actorId,
       p,
       r,
-      [],
       input.leftoverItemId,
     );
     await this.permissions.assertCapabilities(tx, {
@@ -311,25 +279,12 @@ export class LeftoverTaskWorkflow {
         "LEFTOVER_NOT_ACTIVE",
         "当前正式版本没有可转换的遗留问题",
       );
-    const impactFeatureIds = inherited.map((f) => f.id);
-    if (
-      JSON.stringify(
-        [...input.expectedImpactFeatureIds].sort((a, b) => a - b),
-      ) !== JSON.stringify(impactFeatureIds)
-    )
-      throw new LeftoverTaskError(
-        409,
-        "LEFTOVER_IMPACTS_CHANGED",
-        "继承的影响功能已变化，请刷新预览并确认",
-      );
     const task = await this.createTask.create(
       tx,
       actorId,
       {
         projectId: p,
         moduleId: record.moduleId,
-        featureId: record.featureId,
-        impactFeatureIds,
       },
       {
         title: input.title,
@@ -361,8 +316,6 @@ export class LeftoverTaskWorkflow {
         leftoverItemId: item.id,
         taskId: task.id,
         contentSnapshot: content,
-        sourceImpactFeatureIds: record.impactFeatureIds,
-        inheritedImpactFeatureIds: impactFeatureIds,
         before: { status: item.status, rowVersion: item.rowVersion },
         after: { status: "CONVERTED", rowVersion: item.rowVersion + 1 },
       },
@@ -376,7 +329,7 @@ export class LeftoverTaskWorkflow {
       sourceEntityId: r,
       activityType: "leftover.convert",
       actorId,
-      summary: `遗留问题已转任务：${task.title}`,
+      summary: "遗留问题已转任务：" + task.title,
       metadata: { recordId: r, taskId: task.id, leftoverItemId: item.id },
       visibilityScope: "MEMBER",
       sourceStatus: "PUBLISHED",
@@ -388,7 +341,6 @@ export class LeftoverTaskWorkflow {
       entityType: "CHANGE_RECORD",
       entityId: r,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: record.title,
       summary: record.changeSolution.slice(0, 5000),
@@ -408,14 +360,12 @@ export class LeftoverTaskWorkflow {
     return {
       projectId: p,
       moduleId: record.moduleId,
-      featureId: record.featureId,
       taskId: task.id,
       recordId: r,
       leftoverItemId: item.id,
       recordVersion: record.currentVersion,
       recordRowVersion: record.rowVersion + 1,
       leftoverRowVersion: item.rowVersion + 1,
-      impactFeatureIds,
     };
   }
   async replay(
@@ -433,7 +383,7 @@ export class LeftoverTaskWorkflow {
       actorId,
       p,
       r,
-      saved.impactFeatureIds,
+      saved.leftoverItemId,
     );
     await this.permissions.assertCapabilities(tx, {
       actorUserId: actorId,
@@ -444,8 +394,7 @@ export class LeftoverTaskWorkflow {
       item.id !== saved.leftoverItemId ||
       item.status !== "CONVERTED" ||
       item.linkedTaskId !== saved.taskId ||
-      record.moduleId !== saved.moduleId ||
-      record.featureId !== saved.featureId
+      record.moduleId !== saved.moduleId
     )
       throw missing();
     await this.taskReference(tx, actorId, record, saved.taskId);

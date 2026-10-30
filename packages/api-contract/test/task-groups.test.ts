@@ -154,7 +154,7 @@ describe("F-23 任务合并契约", () => {
       auditAction: "task.merge",
       concurrencyPolicy: {
         rowVersion: "none",
-        lockOrder: ["project", "module", "feature", "task", "taskGroup"],
+        lockOrder: ["project", "module", "task", "taskGroup"],
       },
       request: {
         path: "none",
@@ -343,7 +343,7 @@ describe("F-24 任务解除合并契约", () => {
       auditAction: "task.unmerge",
       concurrencyPolicy: {
         rowVersion: "none",
-        lockOrder: ["project", "module", "feature", "task", "taskGroup"],
+        lockOrder: ["project", "module", "task", "taskGroup"],
       },
       request: {
         path: "none",

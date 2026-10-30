@@ -33,8 +33,6 @@ import { IdempotencyRunner } from "../src/idempotency/runner.js";
 import { resolveRegisteredRoute } from "../src/idempotency/route.js";
 import { ApiExceptionFilter } from "../src/http/api-exception.filter.js";
 import { ContractResponseInterceptor } from "../src/http/contract-response.interceptor.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
@@ -87,7 +85,6 @@ interface Fixture {
   readonly admin: Actor;
   readonly owner: Actor;
   readonly project: ProjectFixture;
-  readonly featureId: number;
 }
 
 async function actor(admin = false): Promise<Actor> {
@@ -134,22 +131,10 @@ async function fixture(): Promise<Fixture> {
   const admin = await actor(true);
   const owner = await actor(false);
   const project = await createProject(client.sql, owner.userId);
-  const [feature] = await client.sql<Array<{ id: number }>>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (
-      ${project.projectId},
-      ${project.moduleId},
-      ${`${project.code}-F-1`},
-      '成员管理测试功能',
-      ${owner.userId}
-    )
-    RETURNING id
-  `;
   return {
     admin,
     owner,
     project,
-    featureId: feature!.id,
   };
 }
 
@@ -189,11 +174,10 @@ async function createFeatureTask(
 ): Promise<{ readonly id: number; readonly rowVersion: number }> {
   const task = await uow.run((tx) =>
     management.execute(tx, {
-      operation: "createTask",
+      operation: "createModuleTask",
       actorId: fixtureValue.admin.userId,
       projectId: fixtureValue.project.projectId,
       moduleId: fixtureValue.project.moduleId,
-      featureId: fixtureValue.featureId,
       edit: {
         title: "成员管理任务",
         description: "用于验证成员移除与改派",
@@ -288,8 +272,6 @@ beforeAll(async () => {
   management = new TasksManagementService(
     access,
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
-    new PostgresFeatureReadPort(),
     new PostgresProjectCodePort(),
     new PostgresProjectMembersQueryPort(),
     uow,
@@ -565,7 +547,6 @@ describe("F-05 project member management API", () => {
           {
             taskId: task.id,
             moduleId: value.project.moduleId,
-            featureId: value.featureId,
             rowVersion: task.rowVersion,
             assigneeIds: [assignee.userId],
           },
@@ -638,7 +619,6 @@ describe("F-05 project member management API", () => {
           {
             taskId: soloTask.id,
             moduleId: value.project.moduleId,
-            featureId: value.featureId,
             rowVersion: soloTask.rowVersion,
             // 重复成员由契约去重升序，不应产生重复负责人行。
             assigneeIds: [second.userId, first.userId, first.userId],
@@ -646,7 +626,6 @@ describe("F-05 project member management API", () => {
           {
             taskId: sharedTask.id,
             moduleId: value.project.moduleId,
-            featureId: value.featureId,
             rowVersion: sharedTask.rowVersion,
             assigneeIds: [second.userId],
           },
@@ -803,7 +782,6 @@ describe("F-05 project member management API", () => {
           {
             taskId: task.id,
             moduleId: value.project.moduleId,
-            featureId: value.featureId,
             rowVersion: task.rowVersion,
             assigneeIds: [assignee.userId],
           },

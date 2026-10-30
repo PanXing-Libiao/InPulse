@@ -32,7 +32,6 @@ export function validatePublishedRecordSearch(
     entityId: record.id,
     // 记录自身的 entityId 就是打开记录页所需的 id，上级归属不重复下发。
     moduleId: null,
-    featureId: null,
     recordId: null,
     title: record.title,
     summary: record.contextProblem.slice(0, 5000),
@@ -117,7 +116,6 @@ export class RecordPublicationEffects {
       metadata: {
         recordId: after.id,
         moduleId: after.moduleId,
-        featureId: after.featureId,
         version: after.currentVersion,
       },
       visibilityScope: "MEMBER",

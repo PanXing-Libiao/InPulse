@@ -3,6 +3,7 @@ import {
   createBrowserRouter,
   Navigate,
   RouterProvider,
+  useLocation,
   useParams,
   type RouteObject,
 } from "react-router-dom";
@@ -13,7 +14,19 @@ import { RequireAuth, RequireAdmin } from "../auth/auth-guard";
 import { RouteErrorPage } from "../errors/RouteErrorPage";
 import { ProjectTierProvider } from "@features/common/project-tier-context";
 
-/** 项目概览已与「模块与功能」合并：旧地址不再单独渲染页面，整体重定向到项目主页。 */
+/** 功能层已按 ADR-109 下线：历史功能页地址安全回落到同一模块的任务页。 */
+const LegacyFeatureRedirect: React.FC = () => {
+  const { projectId, moduleId } = useParams();
+  const location = useLocation();
+  return (
+    <Navigate
+      to={`/projects/${projectId ?? ""}/modules/${moduleId ?? ""}/tasks${location.search}`}
+      replace
+    />
+  );
+};
+
+/** 项目概览已与「模块与任务」合并：旧地址不再单独渲染页面，整体重定向到项目主页。 */
 const ProjectOverviewRedirect: React.FC = () => {
   const { projectId } = useParams();
   return <Navigate to={`/projects/${projectId ?? ""}/modules`} replace />;
@@ -85,6 +98,10 @@ export function createInPulseRouter(
       {
         path: "projects/:projectId/tasks",
         element: <ProjectSegmentRedirect segment="task-board" />,
+      },
+      {
+        path: "projects/:projectId/modules/:moduleId/features/*",
+        element: <LegacyFeatureRedirect />,
       },
       {
         path: "projects/:projectId/settings",

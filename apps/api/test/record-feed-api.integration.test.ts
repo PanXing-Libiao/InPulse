@@ -56,7 +56,6 @@ interface FeedItemBody {
   };
   readonly projectName: string;
   readonly moduleName: string;
-  readonly featureName: string | null;
   readonly author: { readonly userId: number; readonly name: string };
 }
 
@@ -93,12 +92,11 @@ let memberCookie = "";
 let outsiderCookie = "";
 let adminCookie = "";
 
-let featureA = 0;
 let tMain = 0;
 let tSource = 0;
 
 let rModule = 0;
-let rFeature = 0;
+let rModuleB = 0;
 let rMain = 0;
 let rSource = 0;
 let rVoid = 0;
@@ -121,33 +119,16 @@ const recordContent = {
   remainingIssues: [],
 };
 
-function nextSuffix(kind: "T" | "F" | "CR"): string {
+function nextSuffix(kind: "T" | "CR"): string {
   sequence += 1;
   return "-" + kind + "-" + String(sequence);
 }
 
-async function newFeature(
-  scope: ProjectFixture,
-  name: string,
-): Promise<number> {
-  const [row] = await runtime!.sql<{ id: number }[]>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (${scope.projectId}, ${scope.moduleId}, ${scope.code + nextSuffix("F")}, ${name}, ${scope.userId})
-    RETURNING id
-  `;
-  if (!row) throw new Error("feature fixture insert returned no row");
-  return row.id;
-}
-
-async function newTask(
-  scope: ProjectFixture,
-  title: string,
-  featureId: number | null = null,
-): Promise<number> {
+async function newTask(scope: ProjectFixture, title: string): Promise<number> {
   return uow!.run(async (tx) => {
     const created = await taskWrites.create(
       tx,
-      { projectId: scope.projectId, moduleId: scope.moduleId, featureId },
+      { projectId: scope.projectId, moduleId: scope.moduleId },
       scope.userId,
       scope.code + nextSuffix("T"),
       {
@@ -163,7 +144,6 @@ async function newTask(
 }
 
 interface RecordOptions {
-  readonly featureId?: number | null;
   readonly taskId?: number | null;
   readonly publishedAt?: string;
   readonly status?: "PUBLISHED" | "VOID";
@@ -175,7 +155,6 @@ async function newPublishedRecord(
   options: RecordOptions = {},
 ): Promise<number> {
   const code = scope.code + nextSuffix("CR");
-  const featureId = options.featureId ?? null;
   const taskId = options.taskId ?? null;
   const publishedAt = options.publishedAt ?? null;
   const authorId = options.authorId ?? scope.userId;
@@ -185,8 +164,6 @@ async function newPublishedRecord(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId,
-        impactFeatureIds: [],
       },
       authorId,
       recordContent,
@@ -206,7 +183,6 @@ async function newPublishedRecord(
 async function newDraft(
   scope: ProjectFixture,
   actorId: number,
-  featureId: number | null = null,
 ): Promise<number> {
   const draft = await uow!.run((tx) =>
     draftWrites.create(
@@ -214,8 +190,6 @@ async function newDraft(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId,
-        impactFeatureIds: [],
       },
       actorId,
       recordContent,
@@ -360,14 +334,12 @@ beforeAll(async () => {
   const fixtureC = await createProject(runtime.sql, outsiderUser);
   projectC = fixtureC;
 
-  featureA = await newFeature(fixtureA, "记录清单功能A");
   tMain = await newTask(fixtureA, "记录清单主任务");
   tSource = await newTask(fixtureA, "记录清单来源任务");
   await seedActiveGroup(fixtureA, tMain, tSource);
 
   rModule = await newPublishedRecord(fixtureA, { publishedAt: isoAt(1) });
-  rFeature = await newPublishedRecord(fixtureA, {
-    featureId: featureA,
+  rModuleB = await newPublishedRecord(fixtureA, {
     publishedAt: isoAt(2),
   });
   rMain = await newPublishedRecord(fixtureA, {
@@ -385,7 +357,7 @@ beforeAll(async () => {
   rOther = await newPublishedRecord(fixtureB, { publishedAt: isoAt(6) });
   rForeign = await newPublishedRecord(fixtureC, { publishedAt: isoAt(7) });
 
-  await seedRecordSearch(fixtureA, rFeature, searchKeyword + " 功能级记录");
+  await seedRecordSearch(fixtureA, rModuleB, searchKeyword + " 模块级记录乙");
   await seedRecordSearch(
     fixtureA,
     rVoid,
@@ -525,7 +497,7 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
       rOther,
       rSource,
       rMain,
-      rFeature,
+      rModuleB,
       rModule,
     ]);
 
@@ -534,16 +506,14 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
     expect(other.record.projectId).toBe(projectB!.projectId);
     expect(other.projectName).toBe("Project " + projectB!.code);
     expect(other.moduleName).toBe("未分类");
-    expect(other.featureName).toBeNull();
     expect(other.author.name).toContain("Test user_");
     expect(other.record.status).toBe("PUBLISHED");
     expect("voidedAt" in other.record).toBe(false);
 
-    const featureItem = items.find(
-      (item) => item.record.id === rFeature,
+    const moduleBItem = items.find(
+      (item) => item.record.id === rModuleB,
     ) as FeedItemBody;
-    expect(featureItem.featureName).toBe("记录清单功能A");
-    expect(featureItem.moduleName).toBe("未分类");
+    expect(moduleBItem.moduleName).toBe("未分类");
   });
 
   test("非成员项目收敛为空页，projectId 只用于收窄授权范围", async () => {
@@ -564,7 +534,7 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
       rOther,
       rSource,
       rMain,
-      rFeature,
+      rModuleB,
       rModule,
     ]);
 
@@ -573,7 +543,7 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
       rOther,
       rSource,
       rMain,
-      rFeature,
+      rModuleB,
       rModule,
     ]);
 
@@ -591,7 +561,7 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
     expect(recordIds(adminProjectA)).toEqual([
       rSource,
       rMain,
-      rFeature,
+      rModuleB,
       rModule,
     ]);
 
@@ -612,7 +582,7 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
       rVoid,
       rSource,
       rMain,
-      rFeature,
+      rModuleB,
       rModule,
     ]);
 
@@ -623,16 +593,19 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
     expect(recordIds(adminForeignAll)).toEqual([rForeign]);
   });
 
-  test("来源筛选区分主任务 / 来源任务 / 模块级 / 功能直接创建", async () => {
+  test("来源筛选区分主任务 / 来源任务 / 模块级记录", async () => {
     expect(recordIds(await feed("?source=MAIN"))).toEqual([rMain]);
     expect(recordIds(await feed("?source=SOURCE"))).toEqual([rSource]);
-    expect(recordIds(await feed("?source=MODULE"))).toEqual([rOther, rModule]);
-    expect(recordIds(await feed("?source=FEATURE"))).toEqual([rFeature]);
+    expect(recordIds(await feed("?source=MODULE"))).toEqual([
+      rOther,
+      rModuleB,
+      rModule,
+    ]);
     expect(recordIds(await feed("?source=ALL"))).toEqual([
       rOther,
       rSource,
       rMain,
-      rFeature,
+      rModuleB,
       rModule,
     ]);
   });
@@ -640,10 +613,10 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
   test("q 复用全文投影：跨项目命中、作废投影只对管理员可见、无匹配为空页", async () => {
     const query = encodeURIComponent(searchKeyword);
     const memberPage = await feed("?q=" + query);
-    expect(recordIds(memberPage)).toEqual([rOther, rFeature]);
+    expect(recordIds(memberPage)).toEqual([rOther, rModuleB]);
 
     const adminPage = await feed("?q=" + query + "&status=ALL", adminCookie);
-    expect(recordIds(adminPage)).toEqual([rOther, rVoid, rFeature]);
+    expect(recordIds(adminPage)).toEqual([rOther, rVoid, rModuleB]);
 
     const empty = await feed("?q=" + encodeURIComponent("没有这个关键词"));
     expect(empty.items).toEqual([]);
@@ -666,7 +639,7 @@ describe("GET /api/v1/change-records（B-3b 跨项目记录清单）", () => {
     const second = await feed(
       "?limit=2&cursor=" + encodeURIComponent(first.nextCursor as string),
     );
-    expect(recordIds(second)).toEqual([rMain, rFeature]);
+    expect(recordIds(second)).toEqual([rMain, rModuleB]);
     expect(second.hasMore).toBe(true);
 
     const third = await feed(
@@ -714,13 +687,11 @@ describe("GET /api/v1/me/record-drafts（B-3b 我的草稿）", () => {
       readonly draft: { readonly id: number; readonly projectId: number };
       readonly projectName: string;
       readonly moduleName: string;
-      readonly featureName: string | null;
     }[];
     expect(items.map((item) => item.projectName).sort()).toEqual(
       ["Project " + projectA!.code, "Project " + projectB!.code].sort(),
     );
     expect(items.every((item) => item.moduleName === "未分类")).toBe(true);
-    expect(items.every((item) => item.featureName === null)).toBe(true);
 
     const outsiderPage = await drafts("", outsiderCookie);
     expect(draftIds(outsiderPage)).toEqual([dOutsider]);

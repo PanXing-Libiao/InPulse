@@ -1,5 +1,4 @@
 import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { TaskGroupsService } from "../src/modules/task-groups/task-groups.service.js";
 import { TaskGroupRepository } from "../src/modules/task-groups/task-group.repository.js";
 import { ExternalLinkController } from "../src/workflows/external-link.controller.js";
@@ -9,10 +8,6 @@ import {
   ProjectLinkQueryPort,
   ProjectLinkCommandPort,
 } from "../src/modules/projects/external-link-target.port.js";
-import {
-  FeatureLinkQueryPort,
-  FeatureLinkCommandPort,
-} from "../src/modules/features/external-link-target.port.js";
 import {
   TaskLinkQueryPort,
   TaskLinkCommandPort,
@@ -55,7 +50,6 @@ import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { RecordDraftRepository } from "../src/modules/change-records/record-draft.repository.js";
@@ -124,7 +118,6 @@ beforeAll(async () => {
     gate = new RecordPublicationAccess(
       access,
       new PostgresModuleQueryPort(),
-      new PostgresFeatureQueryPort(),
       new PostgresTaskQueryPort(),
       repository,
       postgresProjectMemberPermissions(),
@@ -139,7 +132,6 @@ beforeAll(async () => {
     new RecordDraftRepository(),
     new PublishedRecordRepository(),
     new PostgresProjectCodePort(),
-    new PostgresFeatureReadPort(),
     new RecordPublicationEffects(
       audit,
       activity,
@@ -184,13 +176,10 @@ beforeAll(async () => {
           new ExternalLinkWorkflow(
             access,
             new PostgresModuleQueryPort(),
-            new PostgresFeatureQueryPort(),
             new ProjectLinkQueryPort(),
-            new FeatureLinkQueryPort(),
             new TaskLinkQueryPort(),
             new RecordLinkQueryPort(),
             new ProjectLinkCommandPort(),
-            new FeatureLinkCommandPort(),
             new TaskLinkCommandPort(),
             new RecordLinkCommandPort(),
             new ExternalLinksQueryPort(new ExternalLinksRepository()),
@@ -215,7 +204,6 @@ beforeAll(async () => {
           new RecordLifecycleService(
             access,
             new PostgresModuleQueryPort(),
-            new PostgresFeatureQueryPort(),
             repository,
             new PublishedRecordRepository(),
             new RecordLifecycleRepository(),
@@ -267,28 +255,22 @@ async function fixture(
     readonly id?: number;
     readonly content: string;
   }[] = content.remainingIssues,
-  feature = false,
 ) {
   const userId = await createUser(db.sql),
     p = await createProject(db.sql, userId),
     creator = await createUser(db.sql);
   await db.sql`INSERT INTO app.project_members(project_id,user_id) VALUES(${p.projectId},${creator})`;
-  const [f] = await db.sql<
-    { id: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES(${p.projectId},${p.moduleId},${p.code + "-F-1"},'关联功能',${creator}) RETURNING id`;
   const draft = await uow.run((tx) =>
     new RecordDraftRepository().create(
       tx,
       {
         ...p,
-        featureId: feature ? f!.id : null,
-        impactFeatureIds: feature ? [] : [f!.id],
       },
       userId,
       { ...content, remainingIssues: [...remainingIssues] },
     ),
   );
-  return { ...p, userId, creator, featureId: f!.id, draft };
+  return { ...p, userId, creator, draft };
 }
 const publish = (f: Awaited<ReturnType<typeof fixture>>) =>
   uow.run((tx) =>
@@ -312,8 +294,8 @@ async function failure(response: Response, status: number) {
   );
 }
 
-async function lifecycleFixture(feature = false) {
-  const f = await fixture(content.remainingIssues, feature);
+async function lifecycleFixture() {
+  const f = await fixture(content.remainingIssues);
   const record = await publish(f);
   const adminId = await createUser(db.sql, { admin: true });
   const admin = await session(adminId);
@@ -412,7 +394,7 @@ async function taskFixture(f: Awaited<ReturnType<typeof fixture>>, number = 1) {
   const task = await uow.run((tx) =>
     new TaskManagementRepository().create(
       tx,
-      { projectId: f.projectId, moduleId: f.moduleId, featureId: f.featureId },
+      { projectId: f.projectId, moduleId: f.moduleId },
       f.userId,
       f.code + "-T-" + number,
       {
@@ -511,8 +493,8 @@ describe("F22 typed external links", () => {
     );
     await failure(
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "CHANGE_RECORD",
+        f.draft.id,
         actor,
         1,
         "https://github.com/inpulse/core",
@@ -619,7 +601,7 @@ describe("F22 typed external links", () => {
     ).toBe("EXTERNAL_LINK_INVALID_URL");
   });
 
-  it.each(["PROJECT", "FEATURE", "TASK", "CHANGE_RECORD"])(
+  it.each(["PROJECT", "TASK", "CHANGE_RECORD"])(
     "%s lists/adds/removes and preserves link entity plus audit",
     async (type) => {
       const f = await fixture(),
@@ -627,11 +609,9 @@ describe("F22 typed external links", () => {
       const id =
         type === "PROJECT"
           ? f.projectId
-          : type === "FEATURE"
-            ? f.featureId
-            : type === "TASK"
-              ? await taskFixture(f)
-              : f.draft.id;
+          : type === "TASK"
+            ? await taskFixture(f)
+            : f.draft.id;
       const before = await listLinks(type, id, actor);
       expect(before.status).toBe(200);
       const added = await linkRequest(type, id, actor);
@@ -693,12 +673,13 @@ describe("F22 typed external links", () => {
       );
     },
   );
-  it("项目面板聚合任务、功能与已发布记录的关联并标注来源", async () => {
+  it("项目面板聚合任务与已发布记录的关联并标注来源", async () => {
     const f = await fixture(),
       g = await fixture(),
       actor = await session(f.userId),
       other = await session(g.userId),
-      taskId = await taskFixture(f);
+      taskId = await taskFixture(f),
+      issueTaskId = await taskFixture(f, 2);
     for (const response of [
       await linkRequest(
         "PROJECT",
@@ -718,8 +699,8 @@ describe("F22 typed external links", () => {
         "https://github.com/inpulse/core/commit/408ade2023dbdcaa8fe7bfed7bdf2d759d71695",
       ),
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "TASK",
+        issueTaskId,
         actor,
         1,
         "https://github.com/inpulse/core/issues/7",
@@ -773,7 +754,7 @@ describe("F22 typed external links", () => {
     expect(links.items.find((item) => item.kind === "ISSUE")).toMatchObject({
       label: "Issue #7",
       sources: [
-        { targetType: "FEATURE", targetId: f.featureId, title: "关联功能" },
+        { targetType: "TASK", targetId: issueTaskId, title: "链接任务" },
       ],
     });
     expect(
@@ -793,11 +774,11 @@ describe("F22 typed external links", () => {
       await (await listLinks("TASK", taskId, actor)).json(),
     );
     expect(taskList.items[0]?.sources).toBeUndefined();
-    // 同一链接被任务与功能共同关联时合并成一行并列出全部来源。
+    // 同一链接被两个任务共同关联时合并成一行并列出全部来源。
     const shared = "https://github.com/inpulse/core/pull/900";
     for (const [type, id, version] of [
       ["TASK", taskId, 2],
-      ["FEATURE", f.featureId, 2],
+      ["TASK", issueTaskId, 2],
     ] as const)
       expect((await linkRequest(type, id, actor, version, shared)).status).toBe(
         200,
@@ -808,10 +789,15 @@ describe("F22 typed external links", () => {
     expect(merged.items).toHaveLength(5);
     expect(
       merged.items.find((item) => item.normalizedUrl === shared)?.sources,
-    ).toMatchObject([
-      { targetType: "TASK", targetId: taskId },
-      { targetType: "FEATURE", targetId: f.featureId },
-    ]);
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ targetType: "TASK", targetId: taskId }),
+        expect.objectContaining({ targetType: "TASK", targetId: issueTaskId }),
+      ]),
+    );
+    expect(
+      merged.items.find((item) => item.normalizedUrl === shared)?.sources,
+    ).toHaveLength(2);
   });
   it("项目面板聚合只呈现已发布记录，草稿与已作废记录不出现", async () => {
     const f = await fixture(),
@@ -885,7 +871,6 @@ describe("F22 typed external links", () => {
       scope = {
         projectId: f.projectId,
         moduleId: f.moduleId,
-        featureId: f.featureId,
       },
       transition = (to: "CANCELED" | "TODO") =>
         uow.run(async (tx) => {
@@ -987,12 +972,28 @@ describe("F22 typed external links", () => {
       actor = await session(f.userId),
       key = randomUUID();
     const responses = await Promise.all([
-      linkRequest("FEATURE", f.featureId, actor, 1, undefined, undefined, key),
-      linkRequest("FEATURE", f.featureId, actor, 1, undefined, undefined, key),
+      linkRequest(
+        "CHANGE_RECORD",
+        f.draft.id,
+        actor,
+        1,
+        undefined,
+        undefined,
+        key,
+      ),
+      linkRequest(
+        "CHANGE_RECORD",
+        f.draft.id,
+        actor,
+        1,
+        undefined,
+        undefined,
+        key,
+      ),
     ]);
     expect(responses.map((r) => r.status)).toEqual([200, 200]);
     expect(await responses[0]!.json()).toEqual(await responses[1]!.json());
-    const duplicate = await linkRequest("FEATURE", f.featureId, actor, 2);
+    const duplicate = await linkRequest("CHANGE_RECORD", f.draft.id, actor, 2);
     await failure(duplicate.clone(), 409);
     expect(
       schemaRegistry.ErrorResponse.schema.parse(await duplicate.json()).code,
@@ -1002,11 +1003,12 @@ describe("F22 typed external links", () => {
     const f = await fixture(),
       g = await fixture(),
       a = await session(f.userId),
-      b = await session(g.userId);
+      b = await session(g.userId),
+      taskId = await taskFixture(f);
     const [one, two, three] = await Promise.all([
-      linkRequest("FEATURE", f.featureId, a),
+      linkRequest("TASK", taskId, a),
       linkRequest("CHANGE_RECORD", f.draft.id, a),
-      linkRequest("FEATURE", g.featureId, b),
+      linkRequest("CHANGE_RECORD", g.draft.id, b),
     ]);
     for (const r of [one, two, three])
       expect(r.status, await r.clone().text()).toBe(200);
@@ -1015,17 +1017,17 @@ describe("F22 typed external links", () => {
       z = schemaRegistry.ExternalLinkResult.schema.parse(await three.json());
     expect(x.linkId).toBe(y.linkId);
     expect(z.linkId).not.toBe(x.linkId);
-    await failure(
-      await linkRequest("FEATURE", f.featureId, a, 2, "", z.linkId),
-      404,
-    );
+    await failure(await linkRequest("TASK", taskId, a, 2, "", z.linkId), 404);
   });
   it("rejects unauthenticated/inaccessible targets and strict path kinds", async () => {
     const f = await fixture(),
       outsider = await session(await createUser(db.sql));
-    await failure(await listLinks("FEATURE", f.featureId), 401);
-    await failure(await listLinks("FEATURE", f.featureId, outsider), 404);
-    await failure(await linkRequest("FEATURE", f.featureId, outsider), 404);
+    await failure(await listLinks("CHANGE_RECORD", f.draft.id), 401);
+    await failure(await listLinks("CHANGE_RECORD", f.draft.id, outsider), 404);
+    await failure(
+      await linkRequest("CHANGE_RECORD", f.draft.id, outsider),
+      404,
+    );
     await failure(await listLinks("MODULE", f.moduleId, outsider), 422);
   });
   it.each([
@@ -1038,8 +1040,8 @@ describe("F22 typed external links", () => {
     const f = await fixture();
     await failure(
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "CHANGE_RECORD",
+        f.draft.id,
         await session(f.userId),
         1,
         url,
@@ -1061,11 +1063,11 @@ describe("F22 typed external links", () => {
     ];
     for (let i = 0; i < urls.length; i++)
       expect(
-        (await linkRequest("FEATURE", f.featureId, actor, i + 1, urls[i]!))
+        (await linkRequest("CHANGE_RECORD", f.draft.id, actor, i + 1, urls[i]!))
           .status,
       ).toBe(200);
     const list = schemaRegistry.ExternalLinkList.schema.parse(
-      await (await listLinks("FEATURE", f.featureId, actor)).json(),
+      await (await listLinks("CHANGE_RECORD", f.draft.id, actor)).json(),
     );
     expect(list.items.map((x: { kind: string }) => x.kind)).toEqual([
       "OTHER",
@@ -1088,8 +1090,8 @@ describe("F22 typed external links", () => {
     expect(
       (
         await linkRequest(
-          "FEATURE",
-          f.featureId,
+          "CHANGE_RECORD",
+          f.draft.id,
           actor,
           1,
           undefined,
@@ -1101,8 +1103,8 @@ describe("F22 typed external links", () => {
     await removeMember(db.sql, f.projectId, f.userId);
     await failure(
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "CHANGE_RECORD",
+        f.draft.id,
         actor,
         1,
         undefined,
@@ -1175,7 +1177,8 @@ describe("F22 typed external links", () => {
     "rolls back association/entity/target on %s failure",
     async (point) => {
       const f = await fixture(),
-        actor = await session(f.userId);
+        actor = await session(f.userId),
+        taskId = await taskFixture(f);
       if (point === "audit")
         vi.spyOn(audit, "append").mockRejectedValueOnce(new Error("synthetic"));
       if (point === "activity")
@@ -1187,9 +1190,9 @@ describe("F22 typed external links", () => {
           ExternalLinkSearchPort.prototype,
           "refresh",
         ).mockRejectedValueOnce(new Error("synthetic"));
-      await failure(await linkRequest("FEATURE", f.featureId, actor), 500);
+      await failure(await linkRequest("TASK", taskId, actor), 500);
       expect(
-        await (await listLinks("FEATURE", f.featureId, actor)).json(),
+        await (await listLinks("TASK", taskId, actor)).json(),
       ).toMatchObject({ rowVersion: 1, items: [] });
       expect(
         await db.sql`SELECT id FROM app.external_links WHERE project_id=${f.projectId}`,
@@ -1317,7 +1320,7 @@ describe("F22 typed external links", () => {
     expect(after.search[0]!.raw_text).toContain("修订后正文");
     expect(after.search[0]!.raw_text).not.toContain(url);
   });
-  it.each(["PROJECT", "FEATURE", "TASK", "CHANGE_RECORD"])(
+  it.each(["PROJECT", "TASK", "CHANGE_RECORD"])(
     "%s concurrent different keys allow exactly one row version",
     async (type) => {
       const f = await fixture(),
@@ -1325,11 +1328,9 @@ describe("F22 typed external links", () => {
         id =
           type === "PROJECT"
             ? f.projectId
-            : type === "FEATURE"
-              ? f.featureId
-              : type === "TASK"
-                ? await taskFixture(f)
-                : f.draft.id;
+            : type === "TASK"
+              ? await taskFixture(f)
+              : f.draft.id;
       const results = await Promise.all([
         linkRequest(type, id, actor, 1, "https://github.com/a/b/issues/1"),
         linkRequest(type, id, actor, 1, "https://github.com/a/b/issues/2"),
@@ -1342,20 +1343,19 @@ describe("F22 typed external links", () => {
       ).toHaveLength(1);
     },
   );
-  it("waits for the feature row lock then commits the association", async () => {
+  it("waits for the task row lock then commits the association", async () => {
     const f = await fixture(),
       actor = await session(f.userId),
       taskId = await taskFixture(f);
-    const id = f.featureId;
+    const id = taskId;
     let locked!: () => void, release!: () => void;
     const ready = new Promise<void>((r) => (locked = r)),
       gate = new Promise<void>((r) => (release = r));
     const blocker = db.sql.begin(async (tx) => {
-      await tx`SELECT id FROM app.features WHERE id=${id} FOR UPDATE`;
+      await tx`SELECT id FROM app.tasks WHERE id=${id} FOR UPDATE`;
       locked();
       await gate;
-      // ADR-045：功能不再有归档只读态，持锁方只做一次普通改名。
-      await tx`UPDATE app.features SET name='持锁改名',row_version=row_version+1,updated_at=now() WHERE id=${id}`;
+      // 持锁方不改行内容，只验证关联写入会等待目标行的 FOR UPDATE 释放。
     });
     await ready;
     let completed = false;
@@ -1380,9 +1380,10 @@ describe("F22 typed external links", () => {
     "removal rollback retains the association on %s failure",
     async (point) => {
       const f = await fixture(),
-        actor = await session(f.userId);
+        actor = await session(f.userId),
+        taskId = await taskFixture(f);
       const result = schemaRegistry.ExternalLinkResult.schema.parse(
-        await (await linkRequest("FEATURE", f.featureId, actor)).json(),
+        await (await linkRequest("TASK", taskId, actor)).json(),
       );
       if (point === "audit")
         vi.spyOn(audit, "append").mockRejectedValueOnce(new Error("synthetic"));
@@ -1396,12 +1397,12 @@ describe("F22 typed external links", () => {
           "refresh",
         ).mockRejectedValueOnce(new Error("synthetic"));
       await failure(
-        await linkRequest("FEATURE", f.featureId, actor, 2, "", result.linkId),
+        await linkRequest("TASK", taskId, actor, 2, "", result.linkId),
         500,
       );
       expect(
         schemaRegistry.ExternalLinkList.schema.parse(
-          await (await listLinks("FEATURE", f.featureId, actor)).json(),
+          await (await listLinks("TASK", taskId, actor)).json(),
         ),
       ).toMatchObject({ rowVersion: 2, items: [{ id: result.linkId }] });
     },
@@ -1413,8 +1414,8 @@ describe("F22 typed external links", () => {
     expect(
       (
         await linkRequest(
-          "FEATURE",
-          f.featureId,
+          "CHANGE_RECORD",
+          f.draft.id,
           actor,
           1,
           undefined,
@@ -1425,8 +1426,8 @@ describe("F22 typed external links", () => {
     ).toBe(200);
     await failure(
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "CHANGE_RECORD",
+        f.draft.id,
         actor,
         1,
         "https://github.com/a/b",
@@ -1437,8 +1438,8 @@ describe("F22 typed external links", () => {
     );
     await failure(
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "CHANGE_RECORD",
+        f.draft.id,
         actor,
         2,
         undefined,
@@ -1450,8 +1451,8 @@ describe("F22 typed external links", () => {
     await db.sql`UPDATE app.user_sessions SET revoked_at=now() WHERE user_id=${f.userId}`;
     await failure(
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "CHANGE_RECORD",
+        f.draft.id,
         actor,
         1,
         undefined,
@@ -1474,7 +1475,6 @@ describe("F22 typed external links", () => {
       new PostgresProjectAccessQueryPort(db),
       new PostgresProjectCodePort(),
       new PostgresModuleQueryPort(),
-      new PostgresFeatureQueryPort(),
       new PostgresTaskQueryPort(),
       new TaskGroupRepository(),
       audit,
@@ -1518,8 +1518,8 @@ describe("F22 typed external links", () => {
       actor = await session(f.userId);
     await failure(
       await linkRequest(
-        "FEATURE",
-        f.featureId,
+        "CHANGE_RECORD",
+        f.draft.id,
         actor,
         1,
         "https://github.com/a/b%20c/pull/1",
@@ -1531,7 +1531,7 @@ describe("F22 typed external links", () => {
   it.each(["GET", "ADD_REPLAY", "REMOVE_REPLAY"])(
     "%s rechecks VOID after waiting for the real parent lock",
     async (operation) => {
-      const f = await lifecycleFixture(true),
+      const f = await lifecycleFixture(),
         actor = await session(f.userId);
       const addKey = randomUUID(),
         removeKey = randomUUID();
@@ -1567,7 +1567,6 @@ describe("F22 typed external links", () => {
       const lifecycle = new RecordLifecycleService(
         new PostgresProjectAccessQueryPort(db),
         new PostgresModuleQueryPort(),
-        new PostgresFeatureQueryPort(),
         new RecordPublicationRepository(),
         new PublishedRecordRepository(),
         new RecordLifecycleRepository(),

@@ -1,15 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import {
-  taskItemSchema,
   moduleTaskItemSchema,
   type ModuleTaskItem,
-  type TaskItem,
   type TaskEditRequest,
 } from "@inpulse/api-contract";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import { taskListOrderBy } from "./task-list-order.js";
 
-export type TaskRecord = TaskItem | ModuleTaskItem;
+export type TaskRecord = ModuleTaskItem;
 export interface TaskStatusHistoryRow {
   readonly id: string;
   readonly fromWorkStatus: "TODO" | "DONE" | "CANCELED" | null;
@@ -25,15 +23,10 @@ type Row = Omit<TaskRecord, "createdAt" | "updatedAt" | "dueAt"> & {
   createdAt: Date;
   updatedAt: Date;
   dueAt: Date | null;
-  impactFeatureIds: number[];
 };
 const dto = (row: Row): TaskRecord =>
-  (row.featureId === null ? moduleTaskItemSchema : taskItemSchema).parse({
-    ...Object.fromEntries(
-      Object.entries(row).filter(
-        ([key]) => row.featureId === null || key !== "impactFeatureIds",
-      ),
-    ),
+  moduleTaskItemSchema.parse({
+    ...row,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: new Date(row.updatedAt).toISOString(),
     dueAt: row.dueAt === null ? null : new Date(row.dueAt).toISOString(),
@@ -42,7 +35,6 @@ const dto = (row: Row): TaskRecord =>
 export interface TaskScope {
   projectId: number;
   moduleId: number;
-  featureId: number | null;
 }
 
 /** ADR-096：物理删除后的结果快照与影响面计数。 */
@@ -50,7 +42,6 @@ export interface TaskHardDeletedRow {
   id: number;
   projectId: number;
   moduleId: number;
-  featureId: number | null;
   code: string;
   title: string;
   workStatus: "TODO" | "DONE" | "CANCELED";
@@ -124,39 +115,10 @@ export class TaskManagementRepository {
         ${reason},${actorId},u.updated_at FROM updated u CROSS JOIN previous p RETURNING id`;
     return rows.length ? this.find(tx, current, current.id) : undefined;
   }
-  async impacts(tx: TransactionContext, scope: TaskScope, taskId: number) {
-    const rows = await tx.sql<
-      {
-        taskId: number;
-        featureId: number;
-        moduleId: number;
-        projectId: number;
-        relationType: string;
-        createdAt: Date;
-      }[]
-    >`SELECT task_id AS "taskId",feature_id AS "featureId",module_id AS "moduleId",project_id AS "projectId",relation_type AS "relationType",created_at AS "createdAt" FROM app.task_feature_impacts WHERE task_id=${taskId} AND project_id=${scope.projectId} AND module_id=${scope.moduleId} ORDER BY feature_id`;
-    return rows.map((row) => ({
-      ...row,
-      createdAt: new Date(row.createdAt).toISOString(),
-    }));
-  }
-  async replaceImpacts(
-    tx: TransactionContext,
-    task: TaskRecord,
-    target: readonly number[],
-  ): Promise<void> {
-    const previous = await this.impacts(tx, task, task.id);
-    for (const relation of previous)
-      if (!target.includes(relation.featureId))
-        await tx.sql`DELETE FROM app.task_feature_impacts WHERE task_id=${task.id} AND feature_id=${relation.featureId} AND project_id=${task.projectId} AND module_id=${task.moduleId}`;
-    for (const featureId of target)
-      if (!previous.some((row) => row.featureId === featureId))
-        await tx.sql`INSERT INTO app.task_feature_impacts (task_id,feature_id,module_id,project_id) VALUES (${task.id},${featureId},${task.moduleId},${task.projectId})`;
-  }
   async list(tx: TransactionContext, scope: TaskScope): Promise<TaskRecord[]> {
     const rows = await tx.sql<
       Row[]
-    >`SELECT t.id, t.project_id AS "projectId", t.module_id AS "moduleId", t.feature_id AS "featureId", t.scope_type AS "scopeType", t.code, t.title, t.description, a.ids AS "assigneeIds", a.ids[1] AS "assigneeId", t.creator_id AS "creatorId", t.creator_snapshot->>'name' AS "creatorName", a.names AS "assigneeNames", t.priority, t.work_status AS "workStatus", t.lifecycle_status AS "lifecycleStatus", t.due_at AS "dueAt", t.row_version AS "rowVersion", t.created_at AS "createdAt", t.updated_at AS "updatedAt", ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=t.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks t LEFT JOIN LATERAL (SELECT array_agg(ta.user_id ORDER BY ta.user_id) AS ids, array_agg(ta.user_snapshot->>'name' ORDER BY ta.user_id) AS names FROM app.task_assignees ta WHERE ta.task_id=t.id) AS a ON true WHERE t.deleted_at IS NULL AND t.project_id = ${scope.projectId} AND t.module_id = ${scope.moduleId} AND ${scope.featureId === null ? tx.sql`t.scope_type = 'MODULE' AND t.feature_id IS NULL` : tx.sql`((t.feature_id = ${scope.featureId} AND t.scope_type = 'FEATURE') OR (t.scope_type = 'MODULE' AND EXISTS (SELECT 1 FROM app.task_feature_impacts i WHERE i.task_id = t.id AND i.feature_id = ${scope.featureId})))`} ORDER BY ${taskListOrderBy(tx.sql)}`;
+    >`SELECT t.id, t.project_id AS "projectId", t.module_id AS "moduleId", t.code, t.title, t.description, a.ids AS "assigneeIds", a.ids[1] AS "assigneeId", t.creator_id AS "creatorId", t.creator_snapshot->>'name' AS "creatorName", a.names AS "assigneeNames", t.priority, t.work_status AS "workStatus", t.lifecycle_status AS "lifecycleStatus", t.due_at AS "dueAt", t.row_version AS "rowVersion", t.created_at AS "createdAt", t.updated_at AS "updatedAt" FROM app.tasks t LEFT JOIN LATERAL (SELECT array_agg(ta.user_id ORDER BY ta.user_id) AS ids, array_agg(ta.user_snapshot->>'name' ORDER BY ta.user_id) AS names FROM app.task_assignees ta WHERE ta.task_id=t.id) AS a ON true WHERE t.deleted_at IS NULL AND t.project_id = ${scope.projectId} AND t.module_id = ${scope.moduleId} ORDER BY ${taskListOrderBy(tx.sql)}`;
     return rows.map(dto);
   }
   async find(
@@ -167,7 +129,7 @@ export class TaskManagementRepository {
   ): Promise<TaskRecord | undefined> {
     const [row] = await tx.sql<
       Row[]
-    >`SELECT id, project_id AS "projectId", module_id AS "moduleId", feature_id AS "featureId", scope_type AS "scopeType", code, title, description, (SELECT array_agg(ta.user_id ORDER BY ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeIds", (SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId", (SELECT array_agg(ta.user_snapshot->>'name' ORDER BY ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeNames", creator_id AS "creatorId", creator_snapshot->>'name' AS "creatorName", priority, work_status AS "workStatus", lifecycle_status AS "lifecycleStatus", due_at AS "dueAt", row_version AS "rowVersion", created_at AS "createdAt", updated_at AS "updatedAt", ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=app.tasks.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks WHERE deleted_at IS NULL AND project_id = ${scope.projectId} AND module_id = ${scope.moduleId} AND ${scope.featureId === null ? tx.sql`scope_type = 'MODULE' AND feature_id IS NULL` : tx.sql`scope_type = 'FEATURE' AND feature_id = ${scope.featureId}`} AND id = ${taskId} ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
+    >`SELECT id, project_id AS "projectId", module_id AS "moduleId", code, title, description, (SELECT array_agg(ta.user_id ORDER BY ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeIds", (SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId", (SELECT array_agg(ta.user_snapshot->>'name' ORDER BY ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeNames", creator_id AS "creatorId", creator_snapshot->>'name' AS "creatorName", priority, work_status AS "workStatus", lifecycle_status AS "lifecycleStatus", due_at AS "dueAt", row_version AS "rowVersion", created_at AS "createdAt", updated_at AS "updatedAt" FROM app.tasks WHERE deleted_at IS NULL AND project_id = ${scope.projectId} AND module_id = ${scope.moduleId} AND id = ${taskId} ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
     return row ? dto(row) : undefined;
   }
   async create(
@@ -179,7 +141,7 @@ export class TaskManagementRepository {
   ): Promise<TaskRecord> {
     const [row] = await tx.sql<
       { id: number }[]
-    >`INSERT INTO app.tasks (project_id, module_id, feature_id, scope_type, code, title, description, creator_id, priority, due_at, work_status, lifecycle_status) VALUES (${scope.projectId}, ${scope.moduleId}, ${scope.featureId}, ${scope.featureId === null ? "MODULE" : "FEATURE"}, ${code}, ${edit.title}, ${edit.description}, ${actorId}, ${edit.priority}, ${edit.dueAt}, 'TODO', 'ACTIVE') RETURNING id`;
+    >`INSERT INTO app.tasks (project_id, module_id, code, title, description, creator_id, priority, due_at, work_status, lifecycle_status) VALUES (${scope.projectId}, ${scope.moduleId}, ${code}, ${edit.title}, ${edit.description}, ${actorId}, ${edit.priority}, ${edit.dueAt}, 'TODO', 'ACTIVE') RETURNING id`;
     await this.replaceAssignees(tx, scope.projectId, row!.id, edit.assigneeIds);
     await tx.sql`INSERT INTO app.task_status_history (task_id, project_id, from_work_status, to_work_status, changed_by) VALUES (${row!.id}, ${scope.projectId}, NULL, 'TODO', ${actorId})`;
     return (await this.find(tx, scope, row!.id))!;
@@ -202,7 +164,7 @@ export class TaskManagementRepository {
     return this.find(tx, current, current.id);
   }
   /**
-   * ADR-096：任务物理删除。任务本体、状态历史、负责人、影响关系、外部链接关联、
+   * ADR-096：任务物理删除。任务本体、状态历史、负责人、外部链接关联、
    * 聚合组关系与该任务全部迭代记录由数据库窄口函数在同一事务内删除。
    */
   async hardDelete(

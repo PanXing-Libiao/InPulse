@@ -13,10 +13,6 @@ import {
   ProjectLinkCommandPort,
 } from "../modules/projects/external-link-target.port.js";
 import {
-  FeatureLinkQueryPort,
-  FeatureLinkCommandPort,
-} from "../modules/features/external-link-target.port.js";
-import {
   TaskLinkQueryPort,
   TaskLinkCommandPort,
 } from "../modules/tasks/external-link-target.port.js";
@@ -30,7 +26,6 @@ import {
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
-import { FeatureQueryPort } from "../modules/features/index.js";
 import {
   ExternalLinksQueryPort,
   ExternalLinksCommandPort,
@@ -74,13 +69,10 @@ export class ExternalLinkWorkflow {
     @Inject(PROJECT_ACCESS_QUERY_PORT)
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
     @Inject(ProjectLinkQueryPort) project: ProjectLinkQueryPort,
-    @Inject(FeatureLinkQueryPort) feature: FeatureLinkQueryPort,
     @Inject(TaskLinkQueryPort) task: TaskLinkQueryPort,
     @Inject(RecordLinkQueryPort) record: RecordLinkQueryPort,
     @Inject(ProjectLinkCommandPort) projectCommand: ProjectLinkCommandPort,
-    @Inject(FeatureLinkCommandPort) featureCommand: FeatureLinkCommandPort,
     @Inject(TaskLinkCommandPort) taskCommand: TaskLinkCommandPort,
     @Inject(RecordLinkCommandPort) recordCommand: RecordLinkCommandPort,
     @Inject(ExternalLinksQueryPort)
@@ -96,13 +88,11 @@ export class ExternalLinkWorkflow {
   ) {
     this.queries = {
       PROJECT: project,
-      FEATURE: feature,
       TASK: task,
       CHANGE_RECORD: record,
     };
     this.commands = {
       PROJECT: projectCommand,
-      FEATURE: featureCommand,
       TASK: taskCommand,
       CHANGE_RECORD: recordCommand,
     };
@@ -143,22 +133,13 @@ export class ExternalLinkWorkflow {
       });
       if (module.kind === "not-found") throw missing();
     }
-    if (before.featureId !== null && type !== "FEATURE") {
-      const feature = await this.features.checkFeatureForWrite(tx, {
-        projectId: before.projectId,
-        moduleId: before.moduleId!,
-        featureId: before.featureId,
-      });
-      if (feature.kind === "not-found") throw missing();
-    }
     // Parent waits can invalidate the pre-read. Lock and re-read every target,
     // including GET/replay, then retain that lock through result authorization.
     const current = await query.find(tx, id, write ? "update" : "share");
     if (!current) throw missing();
     if (
       current.projectId !== before.projectId ||
-      current.moduleId !== before.moduleId ||
-      current.featureId !== before.featureId
+      current.moduleId !== before.moduleId
     )
       throw conflict();
     if (
@@ -171,11 +152,8 @@ export class ExternalLinkWorkflow {
       writable &&
       (type === "CHANGE_RECORD"
         ? ["DRAFT", "PUBLISHED"].includes(current.status)
-        : type === "FEATURE"
-          ? // ADR-045：功能不再有归档态，功能目标恒可写。
-            true
-          : // ADR-054：任务只剩 ACTIVE/INVALID 两态，只有无效任务只读。
-            current.status !== "INVALID");
+        : // ADR-054：任务只剩 ACTIVE/INVALID 两态，只有无效任务只读。
+          current.status !== "INVALID");
     if (write && !writable)
       throw new ExternalLinkError(
         409,
@@ -206,7 +184,7 @@ export class ExternalLinkWorkflow {
       projectId: target.projectId,
       rowVersion: target.rowVersion,
       writable,
-      // 项目视图是聚合读：项目级关联 + 有效任务 / 功能 / 已发布记录上的关联，并标注来源。
+      // 项目视图是聚合读：项目级关联 + 有效任务 / 已发布记录上的关联，并标注来源。
       items:
         type === "PROJECT"
           ? await this.links.listProjectLibrary(tx, target.projectId)

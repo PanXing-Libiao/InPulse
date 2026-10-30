@@ -18,7 +18,6 @@ const response: TaskBoardResponse = {
     dueToday: 2,
     completedThisWeek: 5,
     completionRate: 69,
-    featureCount: 8,
     memberCount: 4,
   },
   modules: [],

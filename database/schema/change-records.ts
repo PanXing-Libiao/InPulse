@@ -12,7 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { appSchema } from "./shared.js";
-import { features, modules, tasks } from "./work.js";
+import { modules, tasks } from "./work.js";
 
 const timestamptz = (name: string) =>
   timestamp(name, { mode: "date", withTimezone: true });
@@ -24,8 +24,6 @@ export const changeRecords = appSchema.table(
     projectId: integer("project_id").notNull(),
     taskId: integer("task_id"),
     moduleId: integer("module_id").notNull(),
-    featureId: integer("feature_id"),
-    scopeType: text("scope_type").notNull(),
     code: text("code"),
     title: text("title").notNull(),
     handlerId: integer("handler_id").notNull(),
@@ -65,11 +63,6 @@ export const changeRecords = appSchema.table(
       columns: [table.taskId, table.projectId],
       foreignColumns: [tasks.id, tasks.projectId],
     }).onDelete("restrict"),
-    foreignKey({
-      name: "change_records_feature_module_project_fk",
-      columns: [table.featureId, table.moduleId, table.projectId],
-      foreignColumns: [features.id, features.moduleId, features.projectId],
-    }).onDelete("restrict"),
     index("change_records_project_task_idx")
       .on(table.projectId, table.taskId, table.id)
       .where(sql.raw("task_id IS NOT NULL")),
@@ -88,16 +81,6 @@ export const changeRecords = appSchema.table(
       table.status,
       table.createdAt.desc(),
       table.id.desc(),
-    ),
-    check(
-      "change_records_scope_check",
-      sql.raw("scope_type IN ('FEATURE', 'MODULE')"),
-    ),
-    check(
-      "change_records_scope_feature_check",
-      sql.raw(
-        "(scope_type = 'FEATURE' AND feature_id IS NOT NULL) OR (scope_type = 'MODULE' AND feature_id IS NULL)",
-      ),
     ),
     check(
       "change_records_code_check",
@@ -292,41 +275,5 @@ export const leftoverTaskLinks = appSchema.table(
       columns: [table.taskId, table.projectId],
       foreignColumns: [tasks.id, tasks.projectId],
     }).onDelete("restrict"),
-  ],
-);
-
-export const changeRecordFeatureImpacts = appSchema.table(
-  "change_record_feature_impacts",
-  {
-    changeRecordId: integer("change_record_id").notNull(),
-    featureId: integer("feature_id").notNull(),
-    moduleId: integer("module_id").notNull(),
-    projectId: integer("project_id").notNull(),
-    relationType: text("relation_type").notNull().default("IMPACT"),
-    createdAt: timestamptz("created_at").notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({
-      name: "change_record_feature_impacts_pk",
-      columns: [table.changeRecordId, table.featureId],
-    }),
-    foreignKey({
-      name: "change_record_feature_impacts_record_fk",
-      columns: [table.changeRecordId, table.moduleId, table.projectId],
-      foreignColumns: [
-        changeRecords.id,
-        changeRecords.moduleId,
-        changeRecords.projectId,
-      ],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "change_record_feature_impacts_feature_fk",
-      columns: [table.featureId, table.moduleId, table.projectId],
-      foreignColumns: [features.id, features.moduleId, features.projectId],
-    }).onDelete("restrict"),
-    check(
-      "change_record_feature_impacts_type_check",
-      sql.raw("relation_type = 'IMPACT'"),
-    ),
   ],
 );

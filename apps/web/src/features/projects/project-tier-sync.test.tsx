@@ -26,7 +26,6 @@ const baseProject = {
   memberCount: 1,
   stats: {
     activeModuleCount: 0,
-    activeFeatureCount: 0,
     openTaskCount: 0,
     completedTaskCount: 0,
   },
@@ -70,7 +69,6 @@ describe("项目分档与侧栏项目树", () => {
         .fn()
         .mockResolvedValue({ items: [openProject, maintenanceProject] }),
       listModules: vi.fn().mockResolvedValue({ items: [] }),
-      listFeatures: vi.fn().mockResolvedValue({ items: [] }),
     } as unknown as InpulseApiClient;
 
     render(
@@ -136,7 +134,6 @@ describe("项目星标与侧栏项目树同步", () => {
     const client = {
       listProjects: vi.fn().mockResolvedValue({ items: projects }),
       listModules: vi.fn().mockResolvedValue({ items: [] }),
-      listFeatures: vi.fn().mockResolvedValue({ items: [] }),
     } as unknown as InpulseApiClient;
     globalThis.localStorage.setItem("inpulse.projects.starred.7", "[23]");
 

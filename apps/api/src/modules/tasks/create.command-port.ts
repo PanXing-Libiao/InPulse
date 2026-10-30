@@ -21,7 +21,7 @@ export class TaskCreateCommandPort {
       actorId,
       edit,
       requestId,
-      operation: scope.featureId === null ? "createModuleTask" : "createTask",
+      operation: "createModuleTask",
     });
   }
   replay(
@@ -34,9 +34,6 @@ export class TaskCreateCommandPort {
       projectId: scope.projectId,
       moduleId: scope.moduleId,
       taskId,
-      ...(scope.featureId === null
-        ? { impactFeatureIds: scope.impactFeatureIds }
-        : { featureId: scope.featureId }),
     });
   }
 }

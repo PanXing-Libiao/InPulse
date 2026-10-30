@@ -34,7 +34,6 @@ const current: ProjectChangeRecord = {
   memberCount: 2,
   stats: {
     activeModuleCount: 2,
-    activeFeatureCount: 1,
     openTaskCount: 3,
     completedTaskCount: 1,
   },
@@ -43,16 +42,15 @@ const current: ProjectChangeRecord = {
 const wrapRecord: ProjectWrapRecord = {
   projectId: 7,
   sealedAt: "2026-09-10T00:00:00.000Z",
-  templateVersion: 1,
+  templateVersion: 2,
   snapshot: {
-    version: 1,
+    version: 2,
     project: { id: 7, code: "SHOP", name: "商城系统" },
     stats: {
       completedTaskCount: 5,
       publishedRecordCount: 3,
       activeMemberCount: 2,
       activeModuleCount: 2,
-      activeFeatureCount: 1,
       openTaskCount: 0,
       durationDays: 12,
       completionPercent: 100,
@@ -314,7 +312,7 @@ describe("ProjectManagementService", () => {
         requestId: "req-status",
         eventPayload: expect.objectContaining({
           wrapped: true,
-          wrapTemplateVersion: 1,
+          wrapTemplateVersion: 2,
         }),
       }),
     );

@@ -104,9 +104,9 @@ export const taskGroupRoutes: readonly RouteDefinition[] = [
     versionPolicy: "none",
     concurrencyPolicy: {
       rowVersion: "none",
-      lockOrder: ["project", "module", "feature", "task", "taskGroup"],
+      lockOrder: ["project", "module", "task", "taskGroup"],
       retry:
-        "bounded 3 attempts; sorted project/module/feature FOR SHARE then task FOR UPDATE ascending, then group FOR UPDATE with member re-read",
+        "bounded 3 attempts; sorted project/module FOR SHARE then task FOR UPDATE ascending, then group FOR UPDATE with member re-read",
     },
     auditAction: "task.merge",
   },
@@ -160,9 +160,9 @@ export const taskGroupRoutes: readonly RouteDefinition[] = [
     versionPolicy: "none",
     concurrencyPolicy: {
       rowVersion: "none",
-      lockOrder: ["project", "module", "feature", "task", "taskGroup"],
+      lockOrder: ["project", "module", "task", "taskGroup"],
       retry:
-        "bounded 3 attempts; sorted project/module/feature FOR SHARE then task FOR UPDATE ascending, then group FOR UPDATE with member re-read",
+        "bounded 3 attempts; sorted project/module FOR SHARE then task FOR UPDATE ascending, then group FOR UPDATE with member re-read",
     },
     auditAction: "task.unmerge",
   },

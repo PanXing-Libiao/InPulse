@@ -18,9 +18,6 @@ function cardOf(overrides: Partial<TaskBoardCard> = {}): TaskBoardCard {
     code: "T-1001",
     title: "实现任务看板",
     moduleId: 3,
-    featureId: 5,
-    featureName: "任务看板",
-    scopeType: "FEATURE",
     priority: "NORMAL",
     workStatus: "TODO",
     dueAt: "2026-09-20T02:00:00.000Z",
@@ -39,7 +36,6 @@ function laneOf(
   return {
     moduleId,
     name: "模块 " + moduleId,
-    featureCount: 1,
     stats: {
       total: tasks.length,
       done: 0,
@@ -222,17 +218,16 @@ describe("matchesTaskBoardCard", () => {
     ).toBe(false);
   });
 
-  it("关键词覆盖编号、标题、功能名与负责人，且忽略大小写", () => {
+  it("关键词覆盖编号、标题与负责人，且忽略大小写", () => {
     const card = cardOf({
       code: "AGV-12",
       title: "Fix Board",
-      featureName: "调度",
       assignees: [
         { userId: 9, name: "Ada", avatarUrl: null },
         { userId: 10, name: "林沐", avatarUrl: null },
       ],
     });
-    for (const term of ["agv-12", "fix board", "调度", "ada", "林沐"]) {
+    for (const term of ["agv-12", "fix board", "ada", "林沐"]) {
       expect(
         matchesTaskBoardCard(card, {
           ...DEFAULT_TASK_BOARD_FILTERS,

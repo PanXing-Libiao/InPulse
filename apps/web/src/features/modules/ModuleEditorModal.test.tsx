@@ -25,7 +25,7 @@ const normalModule: ModuleItem = {
   rowVersion: 7,
   createdAt: "2026-09-09T00:00:00.000Z",
   updatedAt: "2026-09-09T00:00:00.000Z",
-  stats: { activeFeatureCount: 2, openTaskCount: 3, completedTaskCount: 1 },
+  stats: { openTaskCount: 3, completedTaskCount: 1 },
 };
 
 const unclassifiedModule: ModuleItem = {
@@ -34,7 +34,7 @@ const unclassifiedModule: ModuleItem = {
   code: "PAY-M-0",
   name: "未分类模块",
   kind: "UNCLASSIFIED",
-  stats: { activeFeatureCount: 0, openTaskCount: 0, completedTaskCount: 1 },
+  stats: { openTaskCount: 0, completedTaskCount: 1 },
 };
 
 const project: ProjectDetailResponse["project"] = {
@@ -51,7 +51,6 @@ const project: ProjectDetailResponse["project"] = {
   memberCount: 3,
   stats: {
     activeModuleCount: 2,
-    activeFeatureCount: 4,
     openTaskCount: 3,
     completedTaskCount: 1,
   },
@@ -92,7 +91,6 @@ function mount(options: {
         code: options.item.code,
         name: options.item.name,
         kind: options.item.kind,
-        deletedFeatureCount: 2,
         deletedTaskCount: 4,
         deletedRecordCount: 1,
         removedLinkCount: 3,
@@ -140,7 +138,7 @@ describe("ADR-096 模块编辑弹窗的删除入口", () => {
 
     expect(await screen.findByText("确认删除模块")).toBeTruthy();
     expect(
-      screen.getByText(/该模块下有 2 个功能、3 项未完成任务与 1 项已完成任务/),
+      screen.getByText(/该模块下有 3 项未完成任务与 1 项已完成任务/),
     ).toBeTruthy();
     expect(
       screen.getAllByText(/全部迭代记录、版本、遗留项与 GitHub 链接关联/)
@@ -172,7 +170,6 @@ describe("ADR-096 模块编辑弹窗的删除入口", () => {
       item: {
         ...normalModule,
         stats: {
-          activeFeatureCount: 0,
           openTaskCount: 0,
           completedTaskCount: 0,
         },
@@ -185,7 +182,7 @@ describe("ADR-096 模块编辑弹窗的删除入口", () => {
 
     expect(
       await screen.findByText(
-        /该模块下没有功能，也没有未完成或已完成的任务：确认删除只影响模块自身。/,
+        /该模块下没有未完成或已完成的任务：确认删除只影响模块自身。/,
       ),
     ).toBeTruthy();
   });

@@ -28,7 +28,6 @@ describe("SearchPageView", () => {
             entityType: "PROJECT",
             entityId: 1,
             moduleId: null,
-            featureId: null,
             recordId: null,
             title: "InPulse 项目",
             summary: "项目摘要",
@@ -44,7 +43,6 @@ describe("SearchPageView", () => {
             entityType: "TASK",
             entityId: 2,
             moduleId: 3,
-            featureId: 4,
             recordId: null,
             title: "InPulse 任务",
             summary: "任务摘要",
@@ -79,7 +77,6 @@ describe("SearchPageView", () => {
           entityType: "LEFTOVER",
           entityId: 9,
           moduleId: null,
-          featureId: null,
           recordId: 2048,
           title: "登录页偶发闪白",
           summary: "待处理 · CR-2048 登录页偶发闪白",
@@ -109,7 +106,6 @@ describe("SearchPageView", () => {
           entityType: "TASK",
           entityId: 42,
           moduleId: 3,
-          featureId: null,
           recordId: null,
           title: "模块级任务",
           summary: "任务摘要",
@@ -119,7 +115,6 @@ describe("SearchPageView", () => {
           entityType: "LEFTOVER",
           entityId: 9,
           moduleId: null,
-          featureId: null,
           recordId: 2048,
           title: "登录页偶发闪白",
           summary: "待处理",
@@ -129,7 +124,6 @@ describe("SearchPageView", () => {
           entityType: "EXTERNAL_LINK",
           entityId: 77,
           moduleId: null,
-          featureId: null,
           recordId: null,
           title: "PR #12 修复登录",
           summary: "已合并 Pull Request",
@@ -150,7 +144,7 @@ describe("SearchPageView", () => {
       </QueryClientProvider>,
     );
 
-    // 模块级任务：功能为空也必须落到所属模块的任务列表并带上任务深链
+    // 模块任务：落到所属模块的任务列表并带上任务深链
     await user.click(await screen.findByRole("link", { name: /模块级任务/ }));
     expect(onOpenResult).toHaveBeenCalledWith(
       "/projects/5/modules/3/tasks?taskId=42",

@@ -88,8 +88,7 @@ export class ExternalLinksRepository {
     }));
   }
   /**
-   * 项目面板的聚合读取（2026-10-09 用户指示）：项目级关联 + 其任务 / 功能 /
-   * 已发布记录上的关联，按链接去重后标注全部来源。草稿与已作废记录不聚合
+   * 项目面板的聚合读取：项目级关联 + 其任务 /    * 已发布记录上的关联，按链接去重后标注全部来源。草稿与已作废记录不聚合
    * （草稿是私域内容，作废在搜索与统计口径上已对成员隐藏）；任务只取「有效
    * 任务」（排除已取消与无效，2026-10-09 用户指示：取消任务后项目面板隐藏
    * 其链接，仅在任务自身入口保留）。只读、不取锁，调用方必须先完成项目授权。
@@ -133,23 +132,6 @@ export class ExternalLinksRepository {
         JOIN app.tasks t ON t.id=a.task_id
        WHERE a.project_id=${projectId}          AND t.deleted_at IS NULL         AND t.lifecycle_status <> 'INVALID'
          AND t.work_status <> 'CANCELED'
-      UNION ALL
-      SELECT l.id,
-             l.project_id,
-             l.normalized_url,
-             false,
-             l.kind,
-             l.repository,
-             l.external_number::text,
-             l.external_sha,
-             'FEATURE',
-             f.id,
-             left(f.name, 500),
-             3
-        FROM app.external_links l
-        JOIN app.feature_external_links a ON a.project_id=l.project_id AND a.link_id=l.id
-        JOIN app.features f ON f.id=a.feature_id
-       WHERE a.project_id=${projectId} AND f.deleted_at IS NULL
       UNION ALL
       SELECT l.id,
              l.project_id,

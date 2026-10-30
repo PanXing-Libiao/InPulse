@@ -33,8 +33,8 @@ const defaults: ProjectMemberPermissionsUpdateRequest = {
   projectLeaderTransfer: "LEADERS_ONLY",
   projectDelete: "LEADERS_ONLY",
   projectDocumentImport: "ALL_MEMBERS",
-  moduleFeatureEdit: "ALL_MEMBERS",
-  moduleFeatureDelete: "LEADERS_ONLY",
+  moduleEdit: "ALL_MEMBERS",
+  moduleDelete: "LEADERS_ONLY",
   taskEdit: "ALL_MEMBERS",
   taskLifecycle: "ALL_MEMBERS",
   recordWrite: "ALL_MEMBERS",
@@ -79,15 +79,15 @@ function requireAuditReader(): Sql {
 
 async function resetSettings(): Promise<void> {
   await requireRuntime().unsafe(
-    "UPDATE app.project_member_permission_settings SET project_edit = $1, project_member_manage = $2, project_leader_transfer = $3, project_delete = $4, project_document_import = $5, module_feature_edit = $6, module_feature_delete = $7, task_edit = $8, task_lifecycle = $9, record_write = $10, project_wecom_group = $11, updated_by = NULL, updated_at = now(), row_version = 1 WHERE id = 1",
+    "UPDATE app.project_member_permission_settings SET project_edit = $1, project_member_manage = $2, project_leader_transfer = $3, project_delete = $4, project_document_import = $5, module_edit = $6, module_delete = $7, task_edit = $8, task_lifecycle = $9, record_write = $10, project_wecom_group = $11, updated_by = NULL, updated_at = now(), row_version = 1 WHERE id = 1",
     [
       defaults.projectEdit,
       defaults.projectMemberManage,
       defaults.projectLeaderTransfer,
       defaults.projectDelete,
       defaults.projectDocumentImport,
-      defaults.moduleFeatureEdit,
-      defaults.moduleFeatureDelete,
+      defaults.moduleEdit,
+      defaults.moduleDelete,
       defaults.taskEdit,
       defaults.taskLifecycle,
       defaults.recordWrite,

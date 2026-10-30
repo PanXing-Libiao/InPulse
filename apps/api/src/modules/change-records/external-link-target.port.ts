@@ -15,7 +15,7 @@ export class RecordLinkQueryPort implements LinkTargetQueryPort {
   ): Promise<LinkTarget | undefined> {
     const [row] = await tx.sql<
       LinkTarget[]
-    >`SELECT id,project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",status AS status,row_version AS "rowVersion",code,title FROM app.change_records WHERE id=${id} ${lock === "update" ? tx.sql`FOR UPDATE` : lock === "share" ? tx.sql`FOR SHARE` : tx.sql``}`;
+    >`SELECT id,project_id AS "projectId",module_id AS "moduleId",status AS status,row_version AS "rowVersion",code,title FROM app.change_records WHERE id=${id} ${lock === "update" ? tx.sql`FOR UPDATE` : lock === "share" ? tx.sql`FOR SHARE` : tx.sql``}`;
     return row;
   }
 }

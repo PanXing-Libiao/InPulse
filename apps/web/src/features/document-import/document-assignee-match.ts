@@ -109,11 +109,7 @@ export function collectDocumentAssigneeNames(
     }
   }
   for (const module of view.modules) {
-    const tasks = [
-      ...module.tasks,
-      ...module.features.flatMap((feature) => feature.tasks),
-    ];
-    for (const task of tasks) {
+    for (const task of module.tasks) {
       const assignee = readFieldValue(task.fields, [ASSIGNEE_FIELD_NAME]);
       if (assignee === null) continue;
       pushNames(assignee.value, task.lineIndex, task.title, "TASK_ASSIGNEE");
@@ -272,7 +268,6 @@ function collectViewTasks(
   const tasks: DocumentDraftTaskView[] = [];
   for (const module of view.modules) {
     tasks.push(...module.tasks);
-    for (const feature of module.features) tasks.push(...feature.tasks);
   }
   return tasks;
 }

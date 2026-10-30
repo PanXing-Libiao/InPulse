@@ -153,7 +153,6 @@ export async function createTask(
       INSERT INTO app.tasks (
         project_id,
         module_id,
-        scope_type,
         code,
         title,
         creator_id
@@ -161,7 +160,6 @@ export async function createTask(
       VALUES (
         ${fixture.projectId},
         ${fixture.moduleId},
-        'MODULE',
         ${`${fixture.code}-T-${ordinal}`},
         ${`Task ${ordinal}`},
         ${fixture.userId}

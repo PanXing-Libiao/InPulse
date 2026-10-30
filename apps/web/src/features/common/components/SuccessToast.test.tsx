@@ -36,15 +36,15 @@ describe("SuccessToast", () => {
     render(
       <SuccessToast
         testId="operation-success"
-        title="功能操作成功"
-        description="功能档案已更新"
-        actions={<button type="button">查看功能</button>}
+        title="模块操作成功"
+        description="模块任务已更新"
+        actions={<button type="button">查看模块</button>}
         onDismiss={onDismiss}
       />,
     );
 
-    expect(screen.getByText("功能档案已更新")).toBeTruthy();
-    expect(screen.getByText("查看功能")).toBeTruthy();
+    expect(screen.getByText("模块任务已更新")).toBeTruthy();
+    expect(screen.getByText("查看模块")).toBeTruthy();
     await userEvent.click(screen.getByRole("button", { name: "关闭成功提示" }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });

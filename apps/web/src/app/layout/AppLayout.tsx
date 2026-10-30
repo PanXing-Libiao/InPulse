@@ -92,7 +92,7 @@ const sections = [
 
 /** 项目子页面：/projects/:projectId/<segment> 的分段、选中键与面包屑标签。 */
 const projectPages = [
-  { segment: "modules", key: "project-catalog", label: "项目与功能" },
+  { segment: "modules", key: "project-catalog", label: "项目与模块" },
   { segment: "task-board", key: "project-task-board", label: "任务看板" },
   { segment: "members", key: "project-members", label: "项目成员" },
   { segment: "activity", key: "project-activity", label: "项目动态" },
@@ -110,21 +110,18 @@ function resolveProjectPage(
   return projectPages.find((page) => page.segment === match[1]) ?? null;
 }
 
-/** `/projects/:projectId[/modules/:moduleId[/features/:featureId]]` 的路径解析。 */
+/** `/projects/:projectId[/modules/:moduleId[/tasks]]` 的路径解析。 */
 interface CatalogScope {
   readonly projectId: number | null;
   readonly moduleId: number | null;
-  readonly featureId: number | null;
 }
 
 const EMPTY_CATALOG_SCOPE: CatalogScope = {
   projectId: null,
   moduleId: null,
-  featureId: null,
 };
 
-const CATALOG_SCOPE_PATTERN =
-  /^\/projects\/(\d+)(?:\/modules\/(\d+)(?:\/features(?:\/(\d+))?)?)?(?:\/|$)/;
+const CATALOG_SCOPE_PATTERN = /^\/projects\/(\d+)(?:\/modules\/(\d+))?(?:\/|$)/;
 
 function readEntityId(raw: string | undefined): number | null {
   if (!raw) {
@@ -148,7 +145,6 @@ function readCatalogScope(pathname: string): CatalogScope {
   return {
     projectId,
     moduleId: readEntityId(match[2]),
-    featureId: readEntityId(match[3]),
   };
 }
 

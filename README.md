@@ -1,6 +1,6 @@
 # InPulse
 
-软件研发功能迭代记录与任务协作系统，用于统一管理项目、模块、功能、任务、迭代记录及其历史关系。
+软件研发功能迭代记录与任务协作系统，用于统一管理项目、模块、任务、迭代记录及其历史关系。
 
 > 当前状态：阶段 0 实施中。PostgreSQL 数据库、`0000-0005` 显式迁移（含 PGroonga 索引与旧 `pg_trgm` contract 清理）、角色隔离和真实数据库集成测试基线已落地；阶段 0 CI 最小链路已按[技术设计 §12.4](./技术设计v1.2.2.md#124-ci-门禁)顺序落库（安装、lint、format check、typecheck、单测、空库迁移、真实 PostgreSQL 集成测试、契约漂移与完整性、生产构建、Playwright 浏览器 E2E 基座、Compose/镜像 ref 预检、依赖边界、权限矩阵、依赖/Secret 扫描），CI 用仓库内探针 Dockerfile 基于 digest 固定的 `postgres:18.6` 构建带 PGroonga 的测试库；API 契约生成链路已落库，生成工具决策见 [ADR-027](./docs/adr/ADR-027.md)（`Accepted`，2026-09-07）；PGroonga V1 搜索 PoC 已在 PostgreSQL 18.6 探针镜像上通过语义、Recall@20、边界、跨项目隔离、默认查询计划和逻辑恢复，ADR-025 已记录；SearchQueryService 服务层与生产 `ProjectAccessQueryPort` 适配器、通用 `SessionAuthService` 已落地；`GET /api/v1/search` 契约纵切片已落地 Schema、Route Registry、OpenAPI、生成客户端、最小 Controller、服务端签名游标与真实 `hasMore`，C-006 已由 A 于 2026-09-08 正式确认；认证纵切片已包含 `GET /auth/csrf`、`POST /auth/login`、`POST /auth/logout`、`GET /me`，并已加入登录限流与 Session 统一失效。真实 HTTP API 集成测试已落库并在本机真实 PostgreSQL 上通过，搜索相关 PR #68 GitHub Actions 已通过；搜索页面最小纵切片已通过生成客户端接入真实 `GET /api/v1/search`，支持关键词、分类展示与签名游标分页，搜索边界、F-27/F-28 项目动态与通知状态 Playwright E2E 已本地 16/16（含 F-13 功能档案）；F-27 项目动态与 F-28 站内通知的 API 契约、读写端口和前端页面已落地；F-04 项目创建后端 Workflow 与前端纵切片已落地，并通过真实 E2E 验证创建 → 动态 → 搜索 → 站内通知；创建表单已接入 `GET /api/v1/users` 选择项目成员，公共应用壳、项目页、全局命令面板、通知弹层与活动页已按设计师最新视觉迁移，通知可直达项目动态；生产容器镜像（API/Migration/Web/DB-bootstrap/Ops，`deploy/docker/*.Dockerfile`）与 Nginx 生产配置、镜像构建/Trivy 扫描门禁已落库，基础镜像 digest 已按 [ADR-017](./docs/adr/ADR-017.md) 固定；真实镜像 Tag/digest 绑定与签名发布清单仍由发布环节完成；任务完成、记录作废/恢复、合并/解除任务组、遗留项转任务等业务事件已接入活动/通知写端口；其余 Playwright 完整关键路径 E2E 仍待补齐；Playwright 浏览器测试基座、Compose 稳态拓扑与镜像 ref 预检已落库，但仅校验结构与格式，不代表可启动生产部署。
 
@@ -56,6 +56,8 @@ InPulse 面向国内单企业、单实例的软件研发团队，目标规模为
 > 2026-10-28 企业微信 Webhook 项目群通知（当时为 [ADR-105](./docs/adr/ADR-105.md)，后由 ADR-106 部分取代）：项目组长或系统管理员可从项目主页顶部的企微入口添加企业微信群机器人 Webhook；该历史版本曾与智能机器人群通知并存，完整 URL 使用机器人 keyring 加密且不在页面、审计、日志或响应中回显。当时新增 `POST /api/v1/projects/{projectId}/wecom-group/webhooks` 与 `DELETE .../webhooks/{bindingId}`（133 → 135）及迁移 `0063_project_wecom_webhooks.sql`。
 
 > 2026-10-29 项目群通知收敛为 Webhook-only（用户要求，[ADR-106](./docs/adr/ADR-106.md)）：项目群只保留企业微信群机器人 Webhook，删除项目群绑定码签发与项目群解绑两条路由（135 → 133）及迁移 `0064_project_wecom_webhook_only.sql`。项目群状态只由 ACTIVE Webhook 决定；保存五类通知开关和同 Key 重放都要求至少一个 ACTIVE Webhook。历史 BOT 目标、绑定码和投递记录只保留追溯，数据库禁止新的 ACTIVE BOT；管理员更换机器人只撤销个人绑定，不影响 Webhook。个人单聊机器人、个人绑定码、欢迎语和个人通知保持不变。
+
+> 2026-10-30 移除功能层（用户要求，[ADR-109](./docs/adr/ADR-109.md)）：业务层级收敛为“项目 → 模块 → 任务 → 迭代记录”。历史功能级任务与迭代记录一次性上提原模块；功能 API、页面、搜索实体、外部链接目标、影响关系和导入功能段下线，历史 `FEATURE` 审计 / 动态 / 通知只保留追溯。文档导入模板升级为版本 `2`，历史 `1` 只读兼容；模块删除继续级联其下任务与记录。新增迁移 `0065_contract_remove_feature_layer.sql`，路由总数 133 → 119；本地演示库已迁移并重新导出种子，测试 VM 与生产环境尚未同步。
 
 下列根级命令已真实可运行，并与 GitHub Actions 的 `CI / workspace` job 按[技术设计 §12.4](./技术设计v1.2.2.md#124-ci-门禁)顺序执行同一组命令；五个生产容器镜像（API/Migration/Web/DB-bootstrap/Ops）的构建与 Trivy 扫描已在 main CI（[run 34620173140](https://github.com/256-code/InPulse/actions/runs/34620173140)）实际通过，基础镜像 digest 已按 [ADR-017](./docs/adr/ADR-017.md) 固定；§12.4 中其余 Playwright 完整关键路径 E2E（`/audit` 审计页已补齐，见[测试矩阵](./docs/test-matrix.md)）、真实镜像 Tag/digest 绑定与签名发布清单、以及生产加密备份的真实全新主机恢复演练与启用仍未落库，补齐前请勿假设这些检查已执行。
 
@@ -160,7 +162,7 @@ pnpm db:poc:search:local
 Secret、角色和功能开发事务契约见[数据库说明](./database/README.md)。
 
 仓库内的 `database/seed/demo-data.sql` 是真实演示环境的业务数据快照（账号、
-项目、模块、功能点、任务、迭代记录、外部链接、项目动态、审计链与站内通知），
+项目、模块、任务、迭代记录、外部链接、项目动态、审计链与站内通知），
 可直接灌进空库得到完整可点的演示环境；导出与校验规则、口令说明见
 [数据库说明的演示种子数据章节](./database/README.md#演示种子数据)。
 

@@ -18,15 +18,13 @@ import { repositoryDisplayPath } from "./repository-path";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
 type TargetType = ExternalLinkTargetPath["targetType"];
 type ExternalLinkSource = NonNullable<ExternalLinkItem["sources"]>[number];
-/** 来源标注文案：项目面板聚合任务 / 功能 / 记录上的链接时展示（2026-10-09）。 */
+/** 来源标注文案：项目面板聚合任务 / 记录上的链接时展示（2026-10-09）。 */
 export function externalLinkSourceLabel(source: ExternalLinkSource): string {
   switch (source.targetType) {
     case "PROJECT":
       return "本项目";
     case "TASK":
       return "任务「" + source.title + "」";
-    case "FEATURE":
-      return "功能「" + source.title + "」";
     case "CHANGE_RECORD":
       return "记录「" + source.title + "」";
   }
@@ -37,7 +35,7 @@ export function externalLinkSourceText(item: ExternalLinkItem): string | null {
   return item.sources.map(externalLinkSourceLabel).join("、");
 }
 /**
- * 聚合条目可能只来自任务 / 功能 / 记录：解除只在链接仍有项目级关联时提供，
+ * 聚合条目可能只来自任务 / 记录：解除只在链接仍有项目级关联时提供，
  * 来源处各自保留自己的解除入口（写入模型不变）。
  */
 export function canRemoveExternalLink(
@@ -184,7 +182,6 @@ export function ExternalLinksPanel({
       for (const key of [
         "projects",
         "project-repository",
-        "features",
         "tasks",
         "record-drafts",
         "record-draft",
@@ -552,7 +549,7 @@ export function ExternalLinksPanel({
                   ) : (
                     <ul className="external-links-list">
                       {linkedItems.map((item) => {
-                        // 项目视图会把任务 / 功能 / 记录上的链接一并聚合进来，并标注来源。
+                        // 项目视图会把任务 / 记录上的链接一并聚合进来，并标注来源。
                         const sourceText = externalLinkSourceText(item);
                         return (
                           <li key={item.id}>
@@ -596,7 +593,7 @@ export function ExternalLinksPanel({
                     (item) => !canRemoveExternalLink("PROJECT", item),
                   ) && (
                     <p className="muted">
-                      来自任务 / 功能 / 迭代记录的链接请在各自入口解除关联。
+                      来自任务 / 迭代记录的链接请在各自入口解除关联。
                     </p>
                   )}
                 </>

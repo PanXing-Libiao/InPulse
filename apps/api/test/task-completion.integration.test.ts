@@ -39,8 +39,6 @@ import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { PostgresTaskCompletionCommandPort } from "../src/modules/tasks/task-completion.port.js";
@@ -95,8 +93,6 @@ beforeAll(async () => {
   uow = new PostgresUnitOfWork(db);
   const access = new PostgresProjectAccessQueryPort(db),
     modules = new PostgresModuleQueryPort(),
-    features = new PostgresFeatureQueryPort(),
-    featureRead = new PostgresFeatureReadPort(),
     taskQuery = new PostgresTaskQueryPort(),
     pubRepo = new RecordPublicationRepository();
   audit = new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key });
@@ -108,8 +104,6 @@ beforeAll(async () => {
     access,
     modules,
     new PostgresModuleReadPort(),
-    features,
-    featureRead,
     records,
     uow,
     audit,
@@ -120,7 +114,6 @@ beforeAll(async () => {
     new RecordPublicationAccess(
       access,
       modules,
-      features,
       taskQuery,
       pubRepo,
       postgresProjectMemberPermissions(),
@@ -129,7 +122,6 @@ beforeAll(async () => {
     records,
     new PublishedRecordRepository(),
     new PostgresProjectCodePort(),
-    featureRead,
     new RecordPublicationEffects(
       audit,
       activity,
@@ -141,7 +133,6 @@ beforeAll(async () => {
   workflow = new TaskCompletionWorkflow(
     access,
     modules,
-    features,
     taskQuery,
     new PostgresTaskBranchQueryPort(groups),
     drafts,
@@ -190,8 +181,6 @@ beforeAll(async () => {
             new TasksManagementService(
               access,
               modules,
-              features,
-              featureRead,
               new PostgresProjectCodePort(),
               new PostgresProjectMembersQueryPort(),
               uow,
@@ -233,30 +222,21 @@ afterAll(async () => {
   await db?.close();
   await auditDb?.close();
 });
-async function fixture(feature = false) {
+async function fixture() {
   const actor = await createUser(db.sql),
     p = await createProject(db.sql, actor),
     author = await createUser(db.sql);
   await db.sql`INSERT INTO app.project_members(project_id,user_id) VALUES(${p.projectId},${author})`;
-  const [f] = await db.sql<
-    { id: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES(${p.projectId},${p.moduleId},${p.code + "-F-1"},'真实功能',${actor}) RETURNING id`;
-  const scope = { ...p, featureId: feature ? f!.id : null },
-    task = await uow.run(async (tx) => {
-      const task = await tasks.create(tx, scope, actor, p.code + "-T-1", {
-        title: "待完成任务",
-        description: "说明",
-        assigneeIds: [actor],
-        priority: "NORMAL",
-        dueAt: null,
-      });
-      if (!feature) {
-        await tasks.replaceImpacts(tx, task, [f!.id]);
-        return (await tasks.find(tx, scope, task.id))!;
-      }
-      return task;
-    });
-  return { ...scope, actor, author, impactFeatureId: f!.id, task };
+  const task = await uow.run((tx) =>
+    tasks.create(tx, p, actor, p.code + "-T-1", {
+      title: "待完成任务",
+      description: "说明",
+      assigneeIds: [actor],
+      priority: "NORMAL",
+      dueAt: null,
+    }),
+  );
+  return { ...p, actor, author, task };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 const complete = (
@@ -274,7 +254,7 @@ const draft = (f: Fixture, bound = false) =>
   uow.run((tx) =>
     records.create(
       tx,
-      { ...f, impactFeatureIds: [] },
+      f,
       f.author,
       content,
       bound ? { taskId: f.task.id, handlerId: f.actor } : undefined,
@@ -312,60 +292,56 @@ async function unchanged(
     await auditDb.sql`SELECT 1 FROM app.audit_logs WHERE project_id=${f.projectId}`,
   ).toHaveLength(0);
 }
-for (const feature of [true, false]) {
-  it(`completes ${feature ? "FEATURE" : "MODULE"} inline with one immutable v1 and two events`, async () => {
-    const f = await fixture(feature),
-      result = await complete(f);
-    expect(result.task).toMatchObject({ workStatus: "DONE", rowVersion: 2 });
-    expect(result.record).toMatchObject({
-      taskId: f.task.id,
-      handlerId: f.actor,
-      authorId: f.actor,
-      currentVersion: 1,
-      status: "PUBLISHED",
-      impactFeatureIds: feature ? [] : [f.impactFeatureId],
-    });
-    expect(
-      await db.sql`SELECT version_no FROM app.change_record_versions WHERE record_id=${result.record!.id}`,
-    ).toEqual([{ version_no: 1 }]);
-    const activityTypes = (
-      (await db.sql`SELECT activity_type FROM app.activity_projection WHERE project_id=${f.projectId}`) as unknown as readonly {
-        activity_type: string;
-      }[]
-    ).map((row) => row.activity_type);
-    // ADR-035：首个任务完成会同事务写入项目开工活动。
-    expect(activityTypes.sort()).toEqual([
-      "PROJECT_STATUS_CHANGED",
-      "record.publish",
-      "task.complete",
-    ]);
+it("completes inline with one immutable v1 and two events", async () => {
+  const f = await fixture(),
+    result = await complete(f);
+  expect(result.task).toMatchObject({ workStatus: "DONE", rowVersion: 2 });
+  expect(result.record).toMatchObject({
+    taskId: f.task.id,
+    handlerId: f.actor,
+    authorId: f.actor,
+    currentVersion: 1,
+    status: "PUBLISHED",
   });
-  it(`binds matching ${feature ? "FEATURE" : "MODULE"} independent draft without replacing frozen identities or impacts`, async () => {
-    const f = await fixture(feature),
-      saved = await draft(f),
-      result = await complete(f, {
-        mode: "WITH_RECORD",
-        expectedRowVersion: 1,
-        recordDraftId: saved.id,
-        recordExpectedRowVersion: 1,
-      });
-    expect(result.record).toMatchObject({
-      id: saved.id,
-      taskId: f.task.id,
-      authorId: f.author,
-      handlerId: f.author,
-      impactFeatureIds: [],
-      rowVersion: 3,
+  expect(
+    await db.sql`SELECT version_no FROM app.change_record_versions WHERE record_id=${result.record!.id}`,
+  ).toEqual([{ version_no: 1 }]);
+  const activityTypes = (
+    (await db.sql`SELECT activity_type FROM app.activity_projection WHERE project_id=${f.projectId}`) as unknown as readonly {
+      activity_type: string;
+    }[]
+  ).map((row) => row.activity_type);
+  // ADR-035：首个任务完成会同事务写入项目开工活动。
+  expect(activityTypes.sort()).toEqual([
+    "PROJECT_STATUS_CHANGED",
+    "record.publish",
+    "task.complete",
+  ]);
+});
+it("binds a matching independent draft without replacing frozen identities", async () => {
+  const f = await fixture(),
+    saved = await draft(f),
+    result = await complete(f, {
+      mode: "WITH_RECORD",
+      expectedRowVersion: 1,
+      recordDraftId: saved.id,
+      recordExpectedRowVersion: 1,
     });
-    expect(
-      await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${f.projectId} AND notification_type='task.complete' ORDER BY recipient_id`,
-    ).toEqual(
-      [f.actor, f.author]
-        .sort((a, b) => a - b)
-        .map((recipient_id) => ({ recipient_id })),
-    );
+  expect(result.record).toMatchObject({
+    id: saved.id,
+    taskId: f.task.id,
+    authorId: f.author,
+    handlerId: f.author,
+    rowVersion: 3,
   });
-}
+  expect(
+    await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${f.projectId} AND notification_type='task.complete' ORDER BY recipient_id`,
+  ).toEqual(
+    [f.actor, f.author]
+      .sort((a, b) => a - b)
+      .map((recipient_id) => ({ recipient_id })),
+  );
+});
 it("completes without a new record, preserving multiple historical records and notifying their currently authorized authors", async () => {
   const f = await fixture(),
     one = await draft(f, true);
@@ -381,7 +357,7 @@ it("completes without a new record, preserving multiple historical records and n
   expect(
     (await uow.run((tx) => tasks.history(tx, f, f.task.id)))[1]!
       .completionNoteSnapshot,
-  ).toBe("测试验证，不涉及功能变化：无需代码变化");
+  ).toBe("测试验证，不关联迭代记录：无需代码变化");
   expect(
     await db.sql`SELECT id FROM app.change_records WHERE project_id=${f.projectId}`,
   ).toHaveLength(2);
@@ -568,7 +544,7 @@ it("runs real HTTP authentication, CSRF, strict contract and concurrent idempote
   expect((await post(f, actor, input, key)).status).toBe(404);
 });
 it("replays the WITHOUT_RECORD null result and rejects competing keys without creating records", async () => {
-  const f = await fixture(true),
+  const f = await fixture(),
     actor = await session(f.actor),
     input: TaskCompletionRequest = {
       mode: "WITHOUT_RECORD",
@@ -590,8 +566,8 @@ it("replays the WITHOUT_RECORD null result and rejects competing keys without cr
     await db.sql`SELECT id FROM app.change_records WHERE project_id=${g.projectId}`,
   ).toHaveLength(0);
 });
-it("rejects wrong scope, foreign project, another source, revoked actor and stale task without partial writes", async () => {
-  const f = await fixture(true),
+it("rejects wrong module, foreign project, another source, revoked actor and stale task without partial writes", async () => {
+  const f = await fixture(),
     g = await fixture(),
     foreign = await draft(g);
   await expect(
@@ -603,10 +579,16 @@ it("rejects wrong scope, foreign project, another source, revoked actor and stal
     }),
   ).rejects.toMatchObject({ status: 404 });
   await unchanged(f);
+  const [otherModule] = await db.sql<{ id: number }[]>`
+    INSERT INTO app.modules (project_id, name, created_by)
+    VALUES (${f.projectId}, '其他模块', ${f.actor})
+    RETURNING id
+  `;
+  if (otherModule === undefined) throw new Error("module fixture failed");
   const mismatch = await uow.run((tx) =>
     records.create(
       tx,
-      { ...f, featureId: null, impactFeatureIds: [] },
+      { projectId: f.projectId, moduleId: otherModule.id },
       f.author,
       content,
     ),
@@ -644,7 +626,7 @@ it("rejects wrong scope, foreign project, another source, revoked actor and stal
       }),
     );
   const wrong = await uow.run((tx) =>
-    records.create(tx, { ...j, impactFeatureIds: [] }, j.author, content, {
+    records.create(tx, j, j.author, content, {
       taskId: other.id,
       handlerId: j.actor,
     }),
@@ -846,7 +828,7 @@ it("rechecks edited draft contents and task versions after real lock waits", asy
   ).toEqual([{ work_status: "TODO" }]);
 });
 it("serializes independent publication against binding/completion", async () => {
-  // ADR-045：功能层下线归档后不再有父级归档拒写，这里只覆盖两条并发写入的互斥。
+  // ADR-045：功能归档下线后不再有父级归档拒写；ADR-109 已移除功能层，这里只覆盖两条并发写入的互斥。
   const g = await fixture(),
     saved = await draft(g);
   const outcomes = await Promise.allSettled([
@@ -873,56 +855,6 @@ it("serializes independent publication against binding/completion", async () => 
       ? task?.workStatus === "TODO"
       : task?.workStatus === "DONE",
   ).toBe(true);
-});
-it("locks the union of current MODULE impacts and draft impacts before acquiring the task", async () => {
-  const f = await fixture();
-  const [old] = await db.sql<
-    { id: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES(${f.projectId},${f.moduleId},${f.code + "-F-2"},'历史影响',${f.actor}) RETURNING id`;
-  const saved = await uow.run((tx) =>
-    records.create(
-      tx,
-      { ...f, impactFeatureIds: [old!.id] },
-      f.author,
-      content,
-    ),
-  );
-  let release!: () => void, acquired!: () => void;
-  const gate = new Promise<void>((r) => {
-      release = r;
-    }),
-    ready = new Promise<void>((r) => {
-      acquired = r;
-    });
-  // ADR-045：功能不再有归档态，持锁方只做一次改名，锁序与等待行为不变。
-  const archiving = uow.run(async (tx) => {
-    await tx.sql`UPDATE app.features SET name='持锁改名',row_version=row_version+1 WHERE id=${old!.id}`;
-    acquired();
-    await gate;
-  });
-  await ready;
-  const pending = complete(f, {
-    mode: "WITH_RECORD",
-    expectedRowVersion: 1,
-    recordDraftId: saved.id,
-    recordExpectedRowVersion: 1,
-  });
-  try {
-    await waitBlocked();
-    await uow.run(async (tx) => {
-      expect(
-        await tx.sql`SELECT id FROM app.tasks WHERE id=${f.task.id} FOR UPDATE NOWAIT`,
-      ).toHaveLength(1);
-    });
-  } finally {
-    release();
-    await archiving;
-  }
-  const result = await pending;
-  expect(result.record?.impactFeatureIds).toEqual([old!.id]);
-  expect(
-    "impactFeatureIds" in result.task ? result.task.impactFeatureIds : null,
-  ).toEqual([f.impactFeatureId]);
 });
 it("publishes a new record after reopening a task with existing formal history and preserves its old snapshot", async () => {
   const f = await fixture(),
@@ -975,9 +907,8 @@ function legacyPost(
   version = 1,
   key = randomUUID(),
 ) {
-  const scope = f.featureId === null ? "" : `/features/${f.featureId}`;
   return fetch(
-    `${base}/api/v1/projects/${f.projectId}/modules/${f.moduleId}${scope}/tasks/${f.task.id}/status`,
+    `${base}/api/v1/projects/${f.projectId}/modules/${f.moduleId}/tasks/${f.task.id}/status`,
     {
       method: "POST",
       headers: {
@@ -993,84 +924,70 @@ function legacyPost(
     },
   );
 }
-for (const feature of [false, true]) {
-  it(`preserves legacy ${feature ? "FEATURE" : "MODULE"} envelopes, notifies record authors and retains other transitions`, async () => {
-    const f = await fixture(feature),
-      saved = await draft(f, true),
-      actor = await session(f.actor),
-      key = randomUUID();
-    const first = await legacyPost(f, actor, legacyCommand, 1, key);
-    expect(first.status, await first.clone().text()).toBe(200);
-    const body = await first.json();
-    expect(body).toMatchObject({
+it("preserves legacy envelopes, notifies record authors and retains other transitions", async () => {
+  const f = await fixture(),
+    saved = await draft(f, true),
+    actor = await session(f.actor),
+    key = randomUUID();
+  const first = await legacyPost(f, actor, legacyCommand, 1, key);
+  expect(first.status, await first.clone().text()).toBe(200);
+  const body = await first.json();
+  expect(body).toMatchObject({
+    id: f.task.id,
+    workStatus: "DONE",
+    rowVersion: 2,
+  });
+  expect(body).not.toHaveProperty("task");
+  expect(body).not.toHaveProperty("record");
+  expect(
+    await (await legacyPost(f, actor, legacyCommand, 1, key)).json(),
+  ).toEqual(body);
+  expect(
+    await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${f.projectId} AND notification_type='task.complete' ORDER BY recipient_id`,
+  ).toEqual(
+    [f.actor, f.author]
+      .sort((a, b) => a - b)
+      .map((recipient_id) => ({ recipient_id })),
+  );
+  expect(
+    await uow.run((tx) => records.find(tx, f.projectId, saved.id)),
+  ).toEqual(saved);
+  let version = 2;
+  for (const action of ["REOPEN", "CANCEL", "RESTORE"] as const) {
+    const operationKey = randomUUID(),
+      command = { action, reason: "兼容回归" };
+    const response = await legacyPost(f, actor, command, version, operationKey);
+    expect(response.status, await response.clone().text()).toBe(200);
+    const changed = await response.json();
+    expect(changed).toMatchObject({
       id: f.task.id,
-      workStatus: "DONE",
-      rowVersion: 2,
+      workStatus: action === "CANCEL" ? "CANCELED" : "TODO",
+      rowVersion: version + 1,
     });
-    expect(body).not.toHaveProperty("task");
-    expect(body).not.toHaveProperty("record");
     expect(
-      await (await legacyPost(f, actor, legacyCommand, 1, key)).json(),
-    ).toEqual(body);
-    expect(
-      await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${f.projectId} AND notification_type='task.complete' ORDER BY recipient_id`,
-    ).toEqual(
-      [f.actor, f.author]
-        .sort((a, b) => a - b)
-        .map((recipient_id) => ({ recipient_id })),
-    );
-    expect(
-      await uow.run((tx) => records.find(tx, f.projectId, saved.id)),
-    ).toEqual(saved);
-    let version = 2;
-    for (const action of ["REOPEN", "CANCEL", "RESTORE"] as const) {
-      const operationKey = randomUUID(),
-        command = { action, reason: "兼容回归" };
-      const response = await legacyPost(
-        f,
-        actor,
-        command,
-        version,
-        operationKey,
-      );
-      expect(response.status, await response.clone().text()).toBe(200);
-      const changed = await response.json();
-      expect(changed).toMatchObject({
-        id: f.task.id,
-        workStatus: action === "CANCEL" ? "CANCELED" : "TODO",
-        rowVersion: version + 1,
-      });
-      expect(
-        await (
-          await legacyPost(f, actor, command, version, operationKey)
-        ).json(),
-      ).toEqual(changed);
-      version++;
-    }
-    expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
-      5,
-    );
-    await removeMember(db.sql, f.projectId, f.actor);
-    expect((await legacyPost(f, actor, legacyCommand, 1, key)).status).toBe(
-      404,
-    );
-  });
-  it(`rejects previous-contract keys at legacy ${feature ? "FEATURE" : "MODULE"} endpoint without additional writes`, async () => {
-    const f = await fixture(feature),
-      actor = await session(f.actor),
-      key = randomUUID();
-    expect((await legacyPost(f, actor, legacyCommand, 1, key)).status).toBe(
-      200,
-    );
-    const operation = feature ? "transitionTask" : "transitionModuleTask";
-    await db.sql`UPDATE app.idempotency_records SET idempotency_contract_version='1.0.0',replay_auth_policy_version='1.0.0' WHERE actor_id=${f.actor} AND operation_id=${operation} AND idempotency_key=${key}`;
-    const retry = await legacyPost(f, actor, legacyCommand, 1, key);
-    expect(retry.status, await retry.clone().text()).toBe(409);
-    expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
-      2,
-    );
-  });
-}
+      await (await legacyPost(f, actor, command, version, operationKey)).json(),
+    ).toEqual(changed);
+    version++;
+  }
+  expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
+    5,
+  );
+  await removeMember(db.sql, f.projectId, f.actor);
+  expect((await legacyPost(f, actor, legacyCommand, 1, key)).status).toBe(404);
+});
+it("rejects previous-contract keys at the legacy endpoint without additional writes", async () => {
+  const f = await fixture(),
+    actor = await session(f.actor),
+    key = randomUUID();
+  expect((await legacyPost(f, actor, legacyCommand, 1, key)).status).toBe(200);
+  const operation = "transitionModuleTask";
+  await db.sql`UPDATE app.idempotency_records SET idempotency_contract_version='1.0.0',replay_auth_policy_version='1.0.0' WHERE actor_id=${f.actor} AND operation_id=${operation} AND idempotency_key=${key}`;
+  const retry = await legacyPost(f, actor, legacyCommand, 1, key);
+  expect(retry.status, await retry.clone().text()).toBe(409);
+  expect(await uow.run((tx) => tasks.history(tx, f, f.task.id))).toHaveLength(
+    2,
+  );
+});
 it("applies SOURCE/HISTORICAL and current replay gates to the legacy endpoint while allowing MAIN and ACTIVE", async () => {
   const active = await branchFixture("ACTIVE");
   await uow.run(active.add);

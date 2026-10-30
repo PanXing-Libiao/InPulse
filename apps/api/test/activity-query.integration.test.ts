@@ -447,7 +447,6 @@ describe("ActivityQueryService 聚合动态 (real PostgreSQL)", () => {
       ["task", [203, 103, 101]],
       ["record", [201]],
       ["module", [102]],
-      ["feature", []],
       ["project", [104]],
       ["member", []],
       ["github", []],

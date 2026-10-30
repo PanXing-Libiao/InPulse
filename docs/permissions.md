@@ -41,9 +41,9 @@ F-12 本地接口已登记到可执行权限矩阵，真实 HTTP/数据库验收
 | listModules | 当前活跃项目成员、系统管理员 | 匿名/无效 Session 401，其他项目/已移除成员 404；ADR-044 起模块已无归档态，返回该项目全部模块 |
 | createModule | 当前活跃项目成员、系统管理员 | 同上；父项目三态下均可写（ADR-043，项目已无归档态），Session/CSRF 与幂等必需，只能创建 NORMAL |
 | updateModule | 当前活跃项目成员、系统管理员 | 同上；真实模块归属与父项目可写（ADR-043），If-Match；允许编辑未分类名称/描述 |
-| deleteModule | **仅系统管理员或本项目 ACTIVE 组长（LEADER）**（[ADR-096](adr/ADR-096.md)，承接 ADR-039 的第五处例外） | 匿名/停用 401；非成员、已移除成员与不存在统一 404 MODULE_NOT_FOUND（不泄露存在性）；普通成员与项目管理员 403 MODULE_DELETE_FORBIDDEN；未分类模块一律 409 MODULE_UNCLASSIFIED_PROTECTED；If-Match（模块 row_version）不符 409 MODULE_VERSION_CONFLICT；要求同源 / CSRF、数据库幂等；reason 可空 1～10000 字符，空白回落「模块已被删除」；**物理删除**模块及其下全部功能、任务、这些实体的全部迭代记录、版本、遗留项与链接关联，只保留审计、项目动态与 module.delete 事件；重放由 moduleDeleteReplayAuthorizer 复核当前认证与实时 scopeDeleterRole |
+| deleteModule | **仅系统管理员或本项目 ACTIVE 组长（LEADER）**（[ADR-096](adr/ADR-096.md)，承接 ADR-039 的第五处例外；ADR-109 移除功能删除） | 匿名/停用 401；非成员、已移除成员与不存在统一 404 MODULE_NOT_FOUND（不泄露存在性）；普通成员与项目管理员 403 MODULE_DELETE_FORBIDDEN；未分类模块一律 409 MODULE_UNCLASSIFIED_PROTECTED；If-Match（模块 row_version）不符 409 MODULE_VERSION_CONFLICT；要求同源 / CSRF、数据库幂等；reason 可空 1～10000 字符，空白回落「模块已被删除」；**物理删除**模块及其下全部任务、任务与模块直属迭代记录、版本、遗留项与链接关联，只保留审计、项目动态与 module.delete 事件；重放由 moduleDeleteReplayAuthorizer 复核当前认证与实时 scopeDeleterRole |
 
-全部写接口重放前重查当前 Session/CSRF、原操作权限和结果模块可读权限。项目、模块与功能自 ADR-043 / ADR-044 / ADR-045 起都不再有归档只读态，不存在「父级已归档」的写入或重放拒绝；这些状态门禁不作用于普通 GET。
+全部写接口重放前重查当前 Session/CSRF、原操作权限和结果模块可读权限。项目与模块自 ADR-043 / ADR-044 起都不再有归档只读态，不存在「父级已归档」的写入或重放拒绝；ADR-109 起功能层已移除。这些状态门禁不作用于普通 GET。
 
 | 操作 | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 额外条件 |
 |---|---:|---:|---:|---:|---:|---:|---|
@@ -53,29 +53,29 @@ F-12 本地接口已登记到可执行权限矩阵，真实 HTTP/数据库验收
 | 项目列表（`listProjects` · `GET /api/v1/projects`）与项目详情（`getProject` · `GET /api/v1/projects/{projectId}`） | 401 | 列表返回本人全部活跃项目，详情按资源允许 | 列表只返回本人活跃项目，详情 404 | 列表只返回本人其他活跃项目，已移除项目不返回，详情 404 | 401 | 列表与详情均返回全部项目 | 服务端从 Session 解析 actor 并先取得 `AuthorizedProjectScope`，SQL 前限制项目范围，不接受客户端传入范围；无权限与不存在统一 404；历史数据仍可读；响应 `no-store`；`projectId` 非法时 422 |
 | 编辑项目（`updateProject` · `PATCH /api/v1/projects/{projectId}`） | 401 | 允许 | 404 | 404 | 401 | 允许 | 项目编码创建后不可修改，只允许整笔替换 `name` 与 `description`；项目三态下都可写（ADR-043 起项目已无归档态）；CSRF 与 `Idempotency-Key` 必填、`If-Match` 乐观锁（版本冲突 409）；名称/描述、审计 `project.update`、活动与搜索投影同一事务；重放前重新验证当前成员关系与项目可写性 |
 | 变更项目状态（`changeProjectStatus` · `PATCH /api/v1/projects/{projectId}/status`） | 401 | 403 | 404 | 404 | 401 | 允许 | ADR-039/ADR-043：本项目任意活跃成员或系统管理员可把项目在未开始 / 进行中 / 维护中之间切换（三态即全部状态，归档已下线），非成员或跨项目 404；请求体只收三个目标态（ARCHIVED 422 `PROJECT_VALIDATION_FAILED`）；版本不符 409 `PROJECT_VERSION_CONFLICT`，进入维护中且项目下仍有未收尾任务（`lifecycle_status = 'ACTIVE'` 且 `work_status NOT IN ('DONE','CANCELED')`）409 `PROJECT_MAINTENANCE_TASKS_OPEN`，目标与当前状态相同 409 `PROJECT_STATE_CONFLICT`；未开始与维护中禁止直接互改 409 `PROJECT_STATUS_LEVEL_SKIP`，项目内出现过已完成任务后不可回退未开始 409 `PROJECT_STATUS_NOT_STARTED_LOCKED`；CSRF、`Idempotency-Key` 与 `If-Match` 必填；ADR-092 起纯状态变更保持项目 `row_version`，`If-Match` 继续保护内容并发，状态并发由项目行锁与三态规则串行化；只有「未开始 → 进行中」通知全体活跃成员，维护中不通知；审计 `project.status.change`、活动与搜索投影在同一事务提交；重放前重新验证当前成员关系与项目可读权限 |
-| 删除项目（`deleteProject` · `DELETE /api/v1/projects/{projectId}`） | 401 | 403 | 404 | 404 | 401 | 允许 | [ADR-062](adr/ADR-062.md)（项目审计链保留口径由 [ADR-085](adr/ADR-085.md) 修订；替代 ADR-049 / ADR-050 / ADR-051 / ADR-052 / ADR-055 的项目删除链路）：只有系统管理员与本项目 ACTIVE 组长（实时成员关系，不缓存进 Session）可以删除，普通成员与项目管理员一律 403 `PROJECT_DELETE_FORBIDDEN`，非成员、已移除成员与不存在统一 404 `PROJECT_NOT_FOUND`（不泄露存在性）。删除是**不可逆的物理删除**：单一事务内经 `app.purge_project(integer)`（`SECURITY DEFINER` 窄口，运行时角色没有逐表 `DELETE` 权限）按外键序清空该项目的业务数据（模块、功能、任务、任务组、迭代记录、遗留项、全部关联表、通知、动态与搜索投影、`code_sequences`、`project_members`、外部链接）后再删 `projects` 行（非 1 行即整体失败）；项目自己的 `PROJECT:<id>` 审计日志与链头按 ADR-085 保留，形成只读历史；函数内 `fail closed` 拒绝不存在的项目，未分类模块的禁删触发器仅在同一事务的 `app.purge_project_id` 豁免下放行；项目编码随之释放，可被新建项目复用。请求无正文（204），CSRF、`Idempotency-Key` 与 `If-Match` 必填，版本不符 409 `PROJECT_VERSION_CONFLICT`；**不写项目动态、不发通知**，SYSTEM 审计链新增一条 `project.delete`（操作者与角色、项目编码与名称、状态、`rowVersion`、逐项删除行数与 `retainedAuditLogs`）记录本次操作，且只对系统管理员可见（`getAuditLogs` 的 `adminSession` 策略不变）；重放只复核当前认证（项目行已不存在，项目审计链保留但不参与资源级复核，任何资源级复核都会把合法重放变成 404，故 `replayAuthorizationPolicy` 为 `actorOnly`），幂等记录按操作者隔离 |
+| 删除项目（`deleteProject` · `DELETE /api/v1/projects/{projectId}`） | 401 | 403 | 404 | 404 | 401 | 允许 | [ADR-062](adr/ADR-062.md)（项目审计链保留口径由 [ADR-085](adr/ADR-085.md) 修订；替代 ADR-049 / ADR-050 / ADR-051 / ADR-052 / ADR-055 的项目删除链路）：只有系统管理员与本项目 ACTIVE 组长（实时成员关系，不缓存进 Session）可以删除，普通成员与项目管理员一律 403 `PROJECT_DELETE_FORBIDDEN`，非成员、已移除成员与不存在统一 404 `PROJECT_NOT_FOUND`（不泄露存在性）。删除是**不可逆的物理删除**：单一事务内经 `app.purge_project(integer)`（`SECURITY DEFINER` 窄口，运行时角色没有逐表 `DELETE` 权限）按外键序清空该项目的业务数据（模块、任务、任务组、迭代记录、遗留项、全部关联表、通知、动态与搜索投影、`code_sequences`、`project_members`、外部链接）后再删 `projects` 行（非 1 行即整体失败）；项目自己的 `PROJECT:<id>` 审计日志与链头按 ADR-085 保留，形成只读历史；函数内 `fail closed` 拒绝不存在的项目，未分类模块的禁删触发器仅在同一事务的 `app.purge_project_id` 豁免下放行；项目编码随之释放，可被新建项目复用。请求无正文（204），CSRF、`Idempotency-Key` 与 `If-Match` 必填，版本不符 409 `PROJECT_VERSION_CONFLICT`；**不写项目动态、不发通知**，SYSTEM 审计链新增一条 `project.delete`（操作者与角色、项目编码与名称、状态、`rowVersion`、逐项删除行数与 `retainedAuditLogs`）记录本次操作，且只对系统管理员可见（`getAuditLogs` 的 `adminSession` 策略不变）；重放只复核当前认证（项目行已不存在，项目审计链保留但不参与资源级复核，任何资源级复核都会把合法重放变成 404，故 `replayAuthorizationPolicy` 为 `actorOnly`），幂等记录按操作者隔离 |
 | 读取项目及下级资源 | 401 | 允许 | 404 | 404 | 401 | 允许 | 资源型接口隐藏存在性；归档数据仍可读；VOID 记录按下一行 |
 | 读取 VOID 迭代记录详情 | 401 | 404 | 404 | 404 | 401 | 允许 | `status` 是可见性真相；恢复为 PUBLISHED 后活跃成员重新可读 |
-| 新建或编辑模块、功能、任务、记录、链接 | 401 | 允许 | 404 | 404 | 401 | 允许 | 父级模块 / 功能可写（ADR-043，项目无归档态）；写接口默认幂等；未分类模块允许编辑名称、描述，kind 不变，但按 [ADR-096](adr/ADR-096.md) 一律禁止删除（deleteModule 返回 409 MODULE_UNCLASSIFIED_PROTECTED，前端不渲染删除入口） |
-| 删除模块（deleteModule · POST /api/v1/projects/{projectId}/modules/{moduleId}/delete）与删除功能（deleteFeature · POST /api/v1/projects/{projectId}/modules/{moduleId}/features/{featureId}/delete） | 401 | **仅本项目 ACTIVE 组长**（普通成员与项目管理员 403） | 404 | 404 | 401 | 允许 | [ADR-096](adr/ADR-096.md)：只对系统管理员与组长开放；两者都是**物理删除**，不提供还原入口。删除模块会永久清除模块、其下全部功能与任务、这些实体的全部迭代记录、版本、遗留项与链接关联；删除功能会永久清除功能、其下任务及归属于该功能的全部记录、版本、遗留项与链接关联，所属模块保留。只保留审计、项目动态与顶层 module.delete / feature.delete 事件；If-Match 与 Idempotency-Key 必填，同事务完成，不发通知 |
+| 新建或编辑模块、任务、记录、链接 | 401 | 允许 | 404 | 404 | 401 | 允许 | 父级模块可写（ADR-043，项目无归档态；ADR-109 起任务直接归属模块）；写接口默认幂等；未分类模块允许编辑名称、描述，kind 不变，但按 [ADR-096](adr/ADR-096.md) 一律禁止删除（deleteModule 返回 409 MODULE_UNCLASSIFIED_PROTECTED，前端不渲染删除入口） |
+| 删除模块（`deleteModule` · `POST /api/v1/projects/{projectId}/modules/{moduleId}/delete`） | 401 | **仅本项目 ACTIVE 组长**（普通成员与项目管理员 403） | 404 | 404 | 401 | 允许 | [ADR-096](adr/ADR-096.md) / ADR-109：只对系统管理员与组长开放；**物理删除**模块、其下全部任务及任务 / 模块直属迭代记录、版本、遗留项与链接关联，模块本身保留所属项目。只保留审计、项目动态与顶层 `module.delete` 事件；`deleteFeature` 已删除且旧路径 404。If-Match 与 Idempotency-Key 必填，同事务完成，不发通知 |
 | 任务完成、重新打开、取消、恢复、合并、解除，遗留转任务 | 401 | 允许 | 404 | 404 | 401 | 允许 | 状态机、If-Match 与幂等约束 |
 | 搜索（`getSearch` · `GET /api/v1/search`） | 401 | 仅本人活跃项目 | 不返回本项目（可搜索其他活跃成员项目） | 不返回本项目（可搜索其他活跃成员项目） | 401 | 按服务端 Scope | SQL 前强制 AuthorizedProjectScope；`q` 最短 2、最长 200，`limit` 1～50、默认 20，`q`/`limit`/`cursor` 字段校验失败统一返回 422；`cursor` 为服务端 HMAC 签名、校验并带过期时间的不透明字符串，绑定当前用户与规范化查询，TTL 15 分钟，A 已于 2026-09-08 正式确认；VOID 默认不返回，仅系统管理员显式传 `includeVoid=true` 时可见，普通成员传该参数也不会扩大范围；`app_runtime` 只允许 `app` schema USAGE、业务事务内对 `search_projection` 执行 `SELECT/INSERT/UPDATE`、查询 `search_projection` 及执行 `pgroonga_query_escape`/`&@~` 所需函数，不允许 `DELETE`、DDL 或管理函数；`LEFTOVER`（遗留问题）投影由父记录发布/修订/作废/恢复与遗留项转任务在同一事务维护，其可见性与状态跟随父记录与遗留项，不单独放宽授权 |
-| 查看项目动态（`getProjectActivity` · `GET /api/v1/projects/{projectId}/activity`） | 401 | 允许 | 404 | 404 | 401 | 允许（默认 MEMBER；显式 `includeAdminOnly=true` 时可见 ADMIN_ONLY） | SQL 前强制服务端 `AuthorizedProjectScope`，不接受客户端传入授权范围；`projectId`、`limit`、`cursor`、`category` 校验失败统一 422；`cursor` 为服务端 HMAC 签名、绑定当前用户、项目与分类筛选、带过期时间的不透明字符串；普通成员传 `includeAdminOnly=true` 不扩大范围；`category`（`all`/`task`/`record`/`feature`/`module`/`project`/`member`/`github`）在 SQL 层按 `activityType` / `sourceEntityType` 过滤；`dayTotals` 按 Asia/Shanghai 自然日给出范围内全量总数（与当前 `includeAdminOnly`、`category` 同口径），不随分页增长；响应只暴露脱敏白名单字段；项目物理删除后不再产生任何动态（[ADR-062](adr/ADR-062.md) 起项目删除是物理删除，原 ADR-050 / ADR-052 的「已删除项目链对全部登录用户可见」例外随之下线），「不存在」「无权访问」「已移除成员」仍是 404 |
+| 查看项目动态（`getProjectActivity` · `GET /api/v1/projects/{projectId}/activity`） | 401 | 允许 | 404 | 404 | 401 | 允许（默认 MEMBER；显式 `includeAdminOnly=true` 时可见 ADMIN_ONLY） | SQL 前强制服务端 `AuthorizedProjectScope`，不接受客户端传入授权范围；`projectId`、`limit`、`cursor`、`category` 校验失败统一 422；`cursor` 为服务端 HMAC 签名、绑定当前用户、项目与分类筛选、带过期时间的不透明字符串；普通成员传 `includeAdminOnly=true` 不扩大范围；`category`（`all`/`task`/`record`/`module`/`project`/`member`/`github`；历史 FEATURE 动态只在 `all` 中追溯）在 SQL 层按 `activityType` / `sourceEntityType` 过滤；`dayTotals` 按 Asia/Shanghai 自然日给出范围内全量总数（与当前 `includeAdminOnly`、`category` 同口径），不随分页增长；响应只暴露脱敏白名单字段；项目物理删除后不再产生任何动态（[ADR-062](adr/ADR-062.md) 起项目删除是物理删除，原 ADR-050 / ADR-052 的「已删除项目链对全部登录用户可见」例外随之下线），「不存在」「无权访问」「已移除成员」仍是 404 |
 | 聚合动态（`listActivity` · `GET /api/v1/activity`） | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 跨项目聚合只读：服务端按实时 `AuthorizedProjectScope` 在单一结果集上按 `occurred_at DESC, id DESC` 全局游标分页——「加载更多」只会追加更早的条目，不会把新条目插入已展示的时间段；`projectIds`（逗号分隔的 1～100 个正整数，数量、格式或重复校验失败统一 422）只用于收窄，越权或未知项目静默排除，不返回 403 / 404；`category` 在 SQL 层过滤，未知取值 422；`includeAdminOnly` 只对系统管理员在本人的活跃成员项目扩大 ADMIN_ONLY；`dayTotals` 按 Asia/Shanghai 自然日给出范围内**全量**总数（与当前 `projectIds` / `category` / `includeAdminOnly` 同口径），不随分页增长，`dayTotalsTruncated` 为真时只覆盖最近 400 个自然日；`limit` 1～50、默认 20；游标为服务端 HMAC 签名、绑定当前用户、范围参数、分类与 `includeAdminOnly` 有效值，TTL 15 分钟；响应 `no-store` |
 | 任务聚合组视图（`getTaskGroup` · `GET /api/v1/task-groups/{groupId}`） | 401 | 允许 | 404 | 404 | 401 | 允许 | 先按 `groupId` 反查项目归属，再按实时成员关系授权；非成员与不存在统一 404；返回组与全部成员（含已解除成员）及每任务 PUBLISHED 记录数，不返回审计快照；记录列表见下一行 |
 | 任务聚合组记录（`listTaskGroupRecords` · `GET /api/v1/task-groups/{groupId}/records`） | 401 | 允许 | 404 | 404 | 401 | 允许 | 只返回 PUBLISHED 与 VOID（DRAFT 不可见）；`memberTaskId`/`limit`/`cursor` 校验失败统一 422；游标为服务端 HMAC 签名、绑定当前用户、聚合组与筛选，TTL 15 分钟；链接标题与状态为关联时刻快照，不得用于实时状态判断 |
-| 项目概览（`getProjectOverview` · `GET /api/v1/projects/{projectId}/overview`） | 401 | 允许 | 404 | 404 | 401 | 允许 | 服务端聚合活跃模块、活跃功能、未完成任务、迭代记录数、最近迭代与待处理遗留问题；统计口径按功能设计 §29（历史来源分支不计入未完成、模块级记录不按影响功能去重、版本不增加记录数）；`recentRecordLimit`/`activeLeftoverLimit` 默认 3/2、上限 10，越界 422；`activeLeftoverTotal` 与 `activeLeftovers` 同一过滤（`status = 'ACTIVE'`）且不受 `activeLeftoverLimit` 影响；遗留行附来源记录当前标题 `recordTitle`（1～500，与 `recordCode` 并存） |
+| 项目概览（`getProjectOverview` · `GET /api/v1/projects/{projectId}/overview`） | 401 | 允许 | 404 | 404 | 401 | 允许 | 服务端聚合活跃模块、未完成任务、迭代记录数、最近迭代与待处理遗留问题；统计口径按功能设计 §29（历史来源分支不计入未完成、版本不增加记录数；ADR-109 起不再有功能计数或影响功能去重）；`recentRecordLimit`/`activeLeftoverLimit` 默认 3/2、上限 10，越界 422；`activeLeftoverTotal` 与 `activeLeftovers` 同一过滤（`status = 'ACTIVE'`）且不受 `activeLeftoverLimit` 影响；遗留行附来源记录当前标题 `recordTitle`（1～500，与 `recordCode` 并存） |
 | 任务看板（`getProjectTaskBoard` · `GET /api/v1/projects/{projectId}/task-board`） | 401 | 允许 | 404 | 404 | 401 | 允许 | 只读聚合：SQL 前强制服务端 `AuthorizedProjectScope`，非成员与项目不存在统一 404；看板集合为项目内 `lifecycle_status = 'ACTIVE'` 任务并排除任务组历史来源分支，已取消任务保留为历史标记；完成率 = 已完成 ÷（已完成 + 未完成），已取消不计入分母；逾期、今日到期、本周完成与卡片 `dueState` 全部由 SQL 按 Asia/Shanghai 计算；单项目任务上限 1000 条，超出时 `truncated = true` 且顶部与泳道统计仍为全量口径；泳道头像最多 24 个 |
-| 我的任务（`listMyTasks` · `GET /api/v1/me/tasks`） | 401 | 仅本人 | 仅本人 | 仅本人 | 401 | 仅本人 | 负责人固定为当前用户，拒绝客户端提交 `assigneeId`/`userId`/`projectIds`；SQL 前强制 AuthorizedProjectScope；`limit` 1～100、默认 20；游标为服务端 HMAC 签名、绑定当前用户与筛选条件，TTL 15 分钟；`hasPublishedRecord` 与分页在同一条 SQL 内先过滤后分页；V1 筛选为 `projectId`/`scopeType`/`workStatus`/`hasPublishedRecord`/`priority`/`includeCanceled`/`todayTodo`（`priority` 与 `workStatus` 正交；`includeCanceled` 缺省 false，与 `workStatus` 组合表达 `TODO ∪ CANCELED`；`todayTodo` 只表达「未完成且命中 逾期 ∪ 遗留来源（`leftover_task_links` 存在链接）∪ 标记紧急（`priority = 'URGENT'`）∪ 距截止 7 个日历日内 之一」，与服务端统计卡同口径）；条目含 `priority`/`dueAt`/`completedAt`/`creatorId`/`githubLinkCount`/`publishedRecordCount`（与 `hasPublishedRecord` 同源同口径，裁决修订 D-1）/`groupId`/`hasLeftoverSource`（按 `leftover_task_links` 存在链接行判定，与来源记录当前状态无关，裁决修订 D-2）（列表不返回 `description`）；响应附 `stats`（`todayTodo`/`todayTodoBreakdown`（`overdue`/`leftover`/`urgent`/`dueWithinDays`，四项各自独立计数、可以重叠，其并集即 `todayTodo`）/`myOpen`/`completed`/`created`；前三项按负责人维度、`created` 按创建人维度（2026-09-20 口径），日界按 Asia/Shanghai 由服务端计算）、`leftoverCount` 与 `leftoverSample`（最新 ACTIVE 遗留，summary 前 200 字符、超长追加 “…”），统计基准集合不受分页与游标影响 |
+| 我的任务（`listMyTasks` · `GET /api/v1/me/tasks`） | 401 | 仅本人 | 仅本人 | 仅本人 | 401 | 仅本人 | 负责人固定为当前用户，拒绝客户端提交 `assigneeId`/`userId`/`projectIds`；SQL 前强制 AuthorizedProjectScope；`limit` 1～100、默认 20；游标为服务端 HMAC 签名、绑定当前用户与筛选条件，TTL 15 分钟；`hasPublishedRecord` 与分页在同一条 SQL 内先过滤后分页；V1 筛选为 `projectId`/`ownership`/`workStatus`/`hasPublishedRecord`/`priority`/`includeCanceled`/`todayTodo`（`ownership` 只取 `ASSIGNEE` / `CREATOR`；`priority` 与 `workStatus` 正交；`includeCanceled` 缺省 false，与 `workStatus` 组合表达 `TODO ∪ CANCELED`；`todayTodo` 只表达「未完成且命中 逾期 ∪ 遗留来源（`leftover_task_links` 存在链接）∪ 标记紧急（`priority = 'URGENT'`）∪ 距截止 7 个日历日内 之一」，与服务端统计卡同口径）；条目含 `priority`/`dueAt`/`completedAt`/`creatorId`/`githubLinkCount`/`publishedRecordCount`（与 `hasPublishedRecord` 同源同口径，裁决修订 D-1）/`groupId`/`hasLeftoverSource`（按 `leftover_task_links` 存在链接行判定，与来源记录当前状态无关，裁决修订 D-2）（列表不返回 `description`）；响应附 `stats`（`todayTodo`/`todayTodoBreakdown`（`overdue`/`leftover`/`urgent`/`dueWithinDays`，四项各自独立计数、可以重叠，其并集即 `todayTodo`）/`myOpen`/`completed`/`created`；前三项按负责人维度、`created` 按创建人维度（2026-09-20 口径），日界按 Asia/Shanghai 由服务端计算）、`leftoverCount` 与 `leftoverSample`（最新 ACTIVE 遗留，summary 前 200 字符、超长追加 “…”），统计基准集合不受分页与游标影响 |
 | 遗留问题列表（`listLeftoverItems` · `GET /api/v1/leftover-items`） | 401 | 仅本人活跃项目 | 不返回本项目（可读其他活跃成员项目） | 不返回本项目（可读其他活跃成员项目） | 401 | 按服务端 Scope | 跨项目按服务端 `AuthorizedProjectScope` 汇总可见记录（PUBLISHED / VOID）的稳定遗留项；`bucket` 只切换 OPEN（ACTIVE）与 CLOSED（CONVERTED / RESOLVED）展示分桶，不改变 `leftoverItemId DESC` 排序；内容取最新版本快照，来源任务与跟进任务只返回任务引用，不复制任务实体；`limit` 1～100、默认 20，`projectId` 只收窄范围；游标为服务端 HMAC 签名、绑定当前用户与筛选，TTL 15 分钟；非成员与不存在不返回 404 而是空页（与 `listMyTasks` 同族），字段校验失败统一 422 |
 | 聚合组列表（`listTaskGroups` · `GET /api/v1/task-groups`） | 401 | 仅本人活跃项目 | 不返回本项目（可读其他活跃成员项目） | 不返回本项目（可读其他活跃成员项目） | 401 | 按服务端 Scope | 跨项目按服务端 `AuthorizedProjectScope` 列出聚合组与当前生效（ACTIVE）分支，已解除成员不进入摘要；主任务在前、来源任务按加入顺序；`groupRole`/`sourceKind`/`workStatus` 返回原始枚举由前端映射文案；`limit` 1～100、默认 20，`projectId` 只收窄范围；游标为服务端 HMAC 签名、绑定当前用户与筛选，TTL 15 分钟；非成员与不存在不返回 404 而是空页，字段校验失败统一 422 |
 | 任务记录标记批量读（`listTaskGroupMemberships` · `GET /api/v1/task-groups/memberships`） | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 只读批量查询（裁决修订 D-1）；`taskIds` 为逗号分隔的 1～100 个正整数，数量、格式或重复校验失败统一 422；请求中每一个有权 taskId 都出现，未加入 `ACTIVE` 聚合组（含已解除）的任务以 `groupId`/`groupRole` 为 null 返回且 `publishedRecordCount` 照常（与 R-1/R-3 同口径、无记录为 0）；`hasLeftoverSource` 与 R-3 同源同口径（按 `leftover_task_links` 存在链接行判定，裁决修订 D-2）；无权、不存在（含跨项目）不出现、不泄露存在性（无 404）；不要求 CSRF 或幂等键 |
-| 跨项目记录清单（`listRecordFeed` · `GET /api/v1/change-records`） | 401 | 仅本人活跃项目 | 不返回本项目（可读其他活跃成员项目） | 不返回本项目（可读其他活跃成员项目） | 401 | 按服务端 Scope（可显式读 VOID） | 跨项目按服务端 `AuthorizedProjectScope` 汇总可见正式记录（PUBLISHED / VOID），`projectId` 只收窄范围，非成员项目不返回 404 而是空页（与 `listLeftoverItems`/`listTaskGroups` 同族）；`status` 为 PUBLISHED / VOID / ALL，非系统管理员请求 VOID 或 ALL 时收敛为只返回 PUBLISHED 行（不返回 403，也不泄露其他项目是否存在作废记录）；`source` 为 ALL / MAIN / SOURCE / MODULE / FEATURE（MAIN = 未入聚合组任务与聚合组主任务，SOURCE = ACTIVE 聚合组来源任务，MODULE = 无任务模块级记录，FEATURE = 无任务功能级记录）；`q` 走 CHANGE_RECORD 全文投影（PGroonga），最短 2、最长 200，归一化后不足 2 字返回 422；服务端批量回填项目 / 模块 / 功能名与作者引用（不含登录名与邮箱）；固定 `published_at DESC, id DESC` 排序，`limit` 1～100、默认 20，游标为服务端 HMAC 签名、绑定 actor / 命名空间 / `projectId`（null = 全部项目），TTL 15 分钟；不要求 CSRF 或幂等键 |
+| 跨项目记录清单（`listRecordFeed` · `GET /api/v1/change-records`） | 401 | 仅本人活跃项目 | 不返回本项目（可读其他活跃成员项目） | 不返回本项目（可读其他活跃成员项目） | 401 | 按服务端 Scope（可显式读 VOID） | 跨项目按服务端 `AuthorizedProjectScope` 汇总可见正式记录（PUBLISHED / VOID），`projectId` 只收窄范围，非成员项目不返回 404 而是空页（与 `listLeftoverItems`/`listTaskGroups` 同族）；`status` 为 PUBLISHED / VOID / ALL，非系统管理员请求 VOID 或 ALL 时收敛为只返回 PUBLISHED 行（不返回 403，也不泄露其他项目是否存在作废记录）；`source` 为 ALL / MAIN / SOURCE / MODULE（MAIN = 未入聚合组任务与聚合组主任务，SOURCE = ACTIVE 聚合组来源任务，MODULE = 无关联任务的模块直属记录）；`q` 走 CHANGE_RECORD 全文投影（PGroonga），最短 2、最长 200，归一化后不足 2 字返回 422；服务端批量回填项目 / 模块名与作者引用（不含登录名与邮箱）；固定 `published_at DESC, id DESC` 排序，`limit` 1～100、默认 20，游标为服务端 HMAC 签名、绑定 actor / 命名空间 / `projectId`（null = 全部项目），TTL 15 分钟；不要求 CSRF 或幂等键 |
 | 迭代总结（`getRecordSummary` · `GET /api/v1/change-records/summary`） | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 只读聚合：SQL 前强制服务端 `AuthorizedProjectScope`，`projectId` / `memberId` 只收窄范围，越权项目与非成员项目静默排除（空结果，不返回 403 / 404，与 `listRecordFeed` / `listLeftoverItems` / `listTaskGroups` 同族）；`from` / `to` 为 Asia/Shanghai 自然日（含首尾），服务端在 SQL 内换算成 `[from 00:00, to 次日 00:00)` 半开区间，不用进程时区；起止倒置、跨度超过 400 个自然日、日期格式或 `groupBy` 非法统一 422；服务端只返回事实（范围内 PUBLISHED 正式记录、未失效的已完成任务、遗留问题与「已完成但范围内没有任何记录」的缺口，外加计数），分节标题与正文措辞由客户端按事实派生；不返回草稿与 VOID 记录；不要求 CSRF 或幂等键 |
 | 我的草稿（`listMyRecordDrafts` · `GET /api/v1/me/record-drafts`） | 401 | 仅本人 | 仅本人 | 仅本人 | 401 | 仅本人 | 作者恒为当前 actor，拒绝客户端提交 `authorId`/`userId`/`projectIds` 等他人身份或授权范围参数；SQL 前强制 AuthorizedProjectScope，被移出项目后其草稿立即不可见（不返回 404 而是空页）；只返回 DRAFT，未发布不建搜索投影，故不接受 `q`；`limit` 1～100、默认 20，游标为服务端 HMAC 签名、绑定 actor 与命名空间，TTL 15 分钟；字段校验失败统一 422；不要求 CSRF 或幂等键 |
 | 通知列表、未读数、个人通知偏好、单条已读/未读、全部已读（`getNotifications`、`getNotificationUnreadCount`、`getNotificationPreferences`、`updateNotificationPreferences`、`readNotification`、`unreadNotification`、`readAllNotifications`） | 401 | 仅本人 | 仅本人 | 仅本人 | 401 | 仅本人 | 服务端始终从 Session 解析收件人，不接受客户端传入 `recipientId`；查询按 `recipient_id = 当前用户` 过滤；个人通知偏好按当前用户读写，关闭项只在通知写入前抑制后续新通知，历史通知与未读数保持原状；单条不存在或非本人统一 404，管理员也不得代读其他用户；所有写操作均要求 CSRF 与 `Idempotency-Key`，重复执行可安全重放 |
 | `listProjectMembers` · `GET /api/v1/projects/{projectId}/members` | 401 | 任意活跃成员（ADR-039） | 404 | 404 | 401 | 允许 | 完整管理员 Session 或本项目 LEADER/PROJECT_ADMIN 的认证 Session；返回项目成员完整历史（含 REMOVED）与脱敏 `name/avatarUrl/role`，不返回登录名/邮箱；不要求 CSRF 或幂等键；项目不存在或无权限统一 404；响应 `no-store` |
-| `listProjectMemberUnfinishedTasks` · `GET /api/v1/projects/{projectId}/members/{userId}/unfinished-tasks` | 401 | 条件允许（同上） | 404 | 404 | 401 | 允许 | 同上；目标必须为 ACTIVE 成员，不存在、已移除或无权限统一 404；只返回当前 TODO 且 ACTIVE 的真实任务，提供改派所需 `rowVersion/moduleId/featureId` |
+| `listProjectMemberUnfinishedTasks` · `GET /api/v1/projects/{projectId}/members/{userId}/unfinished-tasks` | 401 | 条件允许（同上） | 404 | 404 | 401 | 允许 | 同上；目标必须为 ACTIVE 成员，不存在、已移除或无权限统一 404；只返回当前 TODO 且 ACTIVE 的真实任务，提供改派所需 `rowVersion/moduleId` |
 | `addProjectMember` · `POST /api/v1/projects/{projectId}/members` | 401 | 任意活跃成员（ADR-039） | 404 | 404 | 401 | 允许 | 目标用户必须 ACTIVE；CSRF 与 `Idempotency-Key` 必填；新成员通常 `role='MEMBER'`，仅当项目当前无活跃组长时首位加入者直接写入 `role='LEADER'`（历史数据/夹具清理后的项目，[ADR-053](adr/ADR-053.md)）；成员添加、审计、活动与通知在同一事务提交；重复活跃成员 409，停用/不存在用户 422；重放前重新验证当前认证、项目可写、成员资源与操作者仍为项目活跃成员 |
 | `removeProjectMember` · `POST /api/v1/projects/{projectId}/members/{userId}/remove` | 401 | 任意活跃成员（ADR-039；目标为本项目 LEADER 时 409，[ADR-053](adr/ADR-053.md)：必须先指定其他成员为组长完成转移） | 404 | 404 | 401 | 允许（目标为本项目 LEADER 时同样 409） | 目标必须为 ACTIVE 成员；CSRF 与 `Idempotency-Key` 必填；组长不可被移除（含系统管理员），移除前必须先把组长身份转交其他活跃成员（转移后原组长降级为 MEMBER 才可移除）；「最后一名成员不可移除」由「唯一成员必然是组长」+ ADR-053 隐含，不另设错误码；可提交真实任务改派（每项可同时指定一位或多位接手成员，改派只摘掉该成员、同一任务的其他负责人不变；仅当被移除成员是唯一负责人时由所选接手成员顶上，[ADR-040](adr/ADR-040.md)），未改派任务保留原负责人但成员立即失去处理权限与角色（REMOVED 行 role 回落 MEMBER）；任务改派、成员移除、审计与活动同一事务；`created_by` 不变；重放前重新验证当前认证、项目可写、成员资源与操作者角色 |
 | `setProjectMemberRole` · `POST /api/v1/projects/{projectId}/members/{userId}/role` | 401 | 系统管理员或本项目组长（[ADR-053](adr/ADR-053.md)：组长只能把身份转交给其他活跃成员；普通成员与组长自设一律 403 `PROJECT_MEMBER_ROLE_FORBIDDEN`） | 404 | 404 | 401 | 允许（可设 LEADER 转移组长；系统管理员也可把非组长成员设为 MEMBER） | ADR-033/ADR-039/ADR-053 组长转移（撤销已取消：把 ACTIVE LEADER 改为 `MEMBER` 返回 409 `PROJECT_MEMBER_LEADER_REQUIRED`）；目标必须为 ACTIVE 成员；CSRF 与 `Idempotency-Key` 必填；LEADER 唯一性由部分唯一索引与延迟约束共同保证，冲突 409 `PROJECT_MEMBER_LEADER_CONFLICT`；`idempotencyContractVersion` 升 `2.2.0`；审计 `project.member.role.set`、活动同事务；重放前重新验证当前认证、项目可写、成员资源与操作者角色 |
@@ -89,24 +89,9 @@ F-12 本地接口已登记到可执行权限矩阵，真实 HTTP/数据库验收
 | `enableUser` · `POST /api/v1/admin/users/{userId}/enable` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标不存在 404、已启用或版本冲突 409；同事务清除停用态并递增 `row_version`、写审计；不恢复已撤销 Session 或登录限流历史 |
 | `deleteUser` · `POST /api/v1/admin/users/{userId}/delete` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session；CSRF、`Idempotency-Key` 与 `If-Match` 必填；目标必须已停用且无任何 ACTIVE 项目成员关系；禁止删除自己；同事务物理删除账号、级联清理 7 类私有运行态数据、撤销全部 Session、留档最小身份并写 `admin.user.delete` 审计；审计、项目动态与业务历史使用事件时快照保留署名；删除后目标资源返回 404，新删除请求不可再次执行 |
 
-## F-14 功能级任务接口（2026-09-09 本地实现）
+## 历史功能接口（ADR-109 已下线）
 
-F-14 功能级任务补充：`listTasks`、`getTask`、`listTaskAssignees`、`createTask`、`updateTask` 允许当前活跃项目成员与系统管理员，匿名/停用 401，非成员/已移除/归属错误 404；写接口须功能 ACTIVE（ADR-043 起项目无归档态、ADR-044 起模块无归档态），编辑还须任务生命周期为 `ACTIVE`（[ADR-054](adr/ADR-054.md) 起只有 `ACTIVE` 与 `INVALID` 两种取值，归档已下线，没有任何命令能写入），CSRF/数据库幂等，更新 If-Match。请求以 `assigneeIds`（1～20 人，服务端去重升序）提交；创建/真正新增指派须所选用户 ACTIVE 且为项目 ACTIVE 成员（管理员也不能例外），空集合、非项目活跃成员或超过 20 人 422 `TASK_ASSIGNEE_INVALID`；未改变的历史负责人允许保留，改派只替换被更换的人、其余负责人不变（[ADR-040](adr/ADR-040.md)）。重放重新验证当前资源权限与父级可写性，失败不返回已存成功内容。成员列表在同一事务内自行验证当前 actor 的项目访问，只暴露本项目活跃用户的 id/name/avatarUrl。实现与实际验证见 [F-14 交审](f14-local-handoff.md)。
-
-## F-13 功能档案接口（2026-09-09 本地实现）
-
-| operationId | 允许身份 | 拒绝与附加门禁 |
-|---|---|---|
-| listFeatures | 活跃项目成员、系统管理员 | 匿名/停用 401；非成员、已移除、模块归属错误 404；ADR-045 起功能无归档态，不再按状态过滤 |
-| getFeature | 活跃项目成员、系统管理员 | 同上，项目/模块/功能完整归属不符 404 |
-| findSimilarFeatures | 活跃项目成员、系统管理员 | 同上；SQL 在 LIMIT 前限制当前项目 FEATURE + MEMBER 投影；提示不阻止同名创建 |
-| createFeature | 活跃项目成员、系统管理员 | 项目与模块存在且归属正确（ADR-043 起项目、ADR-044 起模块都无归档态）；Session、CSRF、同源和幂等 Key；只接受 name/currentBehavior/tags |
-| updateFeature | 活跃项目成员、系统管理员 | 同上且功能存在（ADR-045 起功能只有 ACTIVE），If-Match；说明前后审计，不生成迭代记录 |
-| deleteFeature | **仅系统管理员或本项目 ACTIVE 组长（LEADER）**（[ADR-096](adr/ADR-096.md)，承接 ADR-039 的第五处例外） | 匿名/停用 401；非成员、已移除成员与不存在统一 404 FEATURE_NOT_FOUND（不泄露存在性）；普通成员与项目管理员 403 FEATURE_DELETE_FORBIDDEN；If-Match（功能 row_version）不符 409 FEATURE_VERSION_CONFLICT；要求同源 / CSRF、数据库幂等；reason 可空 1～10000 字符，空白回落「功能已被删除」；**物理删除**功能、其下全部任务、归属于该功能的全部记录、版本、遗留项与链接关联，所属模块保留；只保留审计、项目动态与 feature.delete 事件；重放由 featureDeleteReplayAuthorizer 复核当前认证与实时 scopeDeleterRole |
-
-功能删除与模块删除的现行规则由 [ADR-096](adr/ADR-096.md) 定义；两者不直接授予 app_runtime 业务表 DELETE，物理级联只通过 SECURITY DEFINER 窄口函数执行。
-
-两条写接口重放前重查 Session/CSRF、当前项目授权与完整结果归属；项目、模块或功能归属不存在时拒绝重放（ADR-043 起项目、ADR-044 起模块、ADR-045 起功能都无归档态，不再有存留的归档路由身份复核）。重复状态操作可重放原成功结果，不重复执行状态迁移。所有拒绝返回统一错误体，不泄露已存响应。真实测试入口见 [F-13 交审说明](f13-local-handoff.md)。
+旧 F-13 功能档案、F-14 功能级任务、影响功能关系与 FEATURE 外部链接目标已由 [ADR-109](adr/ADR-109.md) 全部移除；`deleteFeature` 不再存在，相关旧路径返回 404。本文不保留这些接口的现行授权表，历史实施与验证证据见 [F-13 交审说明](f13-local-handoff.md)、[F-14 交审说明](f14-local-handoff.md) 及 [测试矩阵](test-matrix.md) 的历史章节。
 
 ## 强制规则
 
@@ -119,6 +104,8 @@ F-14 功能级任务补充：`listTasks`、`getTask`、`listTaskAssignees`、`cr
 7. 迭代记录的详情、统计、搜索和时间线必须以 `status` 判定可见性，不得以保留的 `voided_at` 推断当前状态。
 8. 更改本矩阵需要同步 Route Registry、测试矩阵、相关设计与 ADR。
 9. `app_runtime` 搜索数据库权限按最小集显式授予，不得依赖 PUBLIC；业务事务内仅允许维护 `search_projection` 的 `INSERT/UPDATE`（无 `DELETE`/DDL），普通查询只允许 `normalized_search_text &@~ app.pgroonga_query_escape($1)`。
+
+> **历史说明（ADR-109，2026-10-30）：** 以下 F-15 至 F-24 的实现记录描述功能层移除前的任务 / 记录 / 聚合与链接行为，仅用于追溯；当前授权以业务操作矩阵和文末 ADR-109 章节为准。
 
 ## F-15 模块级任务接口（2026-09-09）
 
@@ -195,7 +182,7 @@ F-19 兼容收口：transitionTask/transitionModuleTask 的 COMPLETE 也必须�
 | operationId | 允许身份 | 拒绝与门禁 |
 | --- | --- | --- |
 | voidChangeRecord | 完整管理员 Session | 匿名/失效401；普通成员及其他非管理员403；原因非空、同源、CSRF、If-Match、数据库幂等；PUBLISHED→VOID；错误资源404，状态/版本/归档父级409 |
-| restoreChangeRecord | 同上 | VOID→PUBLISHED；FEATURE 所属功能 ACTIVE（ADR-043 起项目无归档态、ADR-044 起模块无归档态）；MODULE 历史影响及来源任务不是父级门禁 |
+| restoreChangeRecord | 同上 | VOID→PUBLISHED；恢复时校验真实项目与模块可写（ADR-043 / ADR-044 起均无归档态）；来源任务不是父级门禁，ADR-109 起不再有功能 scope |
 
 listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废记录；成员请求 VOID 返回404。getChangeRecord/listChangeRecordVersions/getChangeRecordVersion 允许管理员读取 VOID 详情和全部不可变版本，成员返回404。ReadableRecord 的 PUBLISHED 分支不包含作废快照；VOID 分支仅向管理员返回最近作废时间/原因。恢复后即便保留快照，成员读取仅取 PUBLISHED 分支。
 
@@ -209,7 +196,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | addExternalLink | 当前活跃项目成员、系统管理员 | 同上；目标及真实父级ACTIVE（记录DRAFT/PUBLISHED），VOID管理员409；CSRF、同源、If-Match、数据库幂等；重复当前关联409、容量超限422 |
 | removeExternalLink | 当前活跃项目成员、系统管理员 | 同上；只解除当前类型化关联，保留链接实体与不可变审计；其他项目linkId404；状态/版本冲突409 |
 
-三条路由使用严格的 PROJECT/FEATURE/TASK/CHANGE_RECORD 目标枚举。Workflow经各域公开QueryPort解析真实归属、按父到子顺序取锁，各域CommandPort递增目标row_version，不改正式current_version或不可变历史。MODULE的历史影响功能不是记录所属父级；合并来源任务的链接不转移。新写入取得目标锁后再验证Session/CSRF与实时成员关系。重放重新验证当前认证、原操作权限、真实目标和保留链接实体可读；已成功解除的关联无需仍存在，父级归档不隐藏历史成功结果，VOID成员仍404。
+三条路由使用严格的 PROJECT/TASK/CHANGE_RECORD 目标枚举；ADR-109 起不再接受 FEATURE 目标。Workflow 经各域公开 QueryPort 解析真实归属、按项目 → 模块 → 目标顺序取锁，各域 CommandPort 递增目标 row_version，不改正式 current_version 或不可变历史。合并来源任务的链接不转移。新写入取得目标锁后再验证 Session/CSRF 与实时成员关系。重放重新验证当前认证、原操作权限、真实目标和保留链接实体可读；已成功解除的关联无需仍存在，VOID 成员仍 404。
 
 ### F-22 父审核增量（2026-09-10）
 
@@ -222,7 +209,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---|---|---|---|---|---|---|
-| `createTaskWithScope` | 401 | 允许 | 404 | 404 | 401 | 允许 | 父级可写，同项目负责人和完整归属；CSRF、整笔幂等、同事务审计；失败回滚新模块/功能 |
+| `createTaskWithScope` | 401 | 允许 | 404 | 404 | 401 | 允许 | 任务直接归属指定模块；父级可写，同项目负责人和完整归属；CSRF、整笔幂等、同事务审计；失败回滚新模块与任务 |
 | `listActiveProjectMembers` | 401 | 允许 | 404 | 404 | 401 | 允许 | 仅当前项目启用成员的 id/name/avatarUrl/role/joinedAt（ADR-033）；不返回成员历史与管理写权限 |
 | `listTaskCenter` | 401 | 条件允许 | 条件允许 | 条件允许 | 401 | 允许 | 非管理员只可 mine/created/project，all 返回 403；每次 SQL 均限制当前授权项目，已移除项目不返回；project 必须指定项目；`todayTodo` 与统计卡同口径（未完成且命中 逾期 ∪ 遗留来源 ∪ 紧急 ∪ 距截止 7 个日历日内） |
 
@@ -239,19 +226,19 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---|---|---|---|---|---|---|
-| `deleteTask` | 401 | 允许 | 404 | 404 | 401 | 允许 | 父级可写（项目 / 模块 / 功能）、任务可读且未删除、`If-Match`（任务 `row_version`）锁内校验；同源 / CSRF、数据库幂等；`reason` 可空 1～10000 字符 |
-| `deleteModuleTask` | 401 | 允许 | 404 | 404 | 401 | 允许 | 同上，模块级任务无功能段 |
+| `deleteTask` | 401 | 允许 | 404 | 404 | 401 | 允许 | 父级可写（项目 / 模块）、任务可读且未删除、`If-Match`（任务 `row_version`）锁内校验；同源 / CSRF、数据库幂等；`reason` 可空 1～10000 字符 |
+| `deleteModuleTask` | 401 | 允许 | 404 | 404 | 401 | 允许 | 同上；ADR-109 后所有任务均为模块直属，不再有功能段 |
 
 删除是**物理删除**：任务本体、状态历史、负责人、影响关系、聚合组关系、外部链接关联，以及该任务全部迭代记录、版本、遗留项和搜索投影在同一事务内永久清除；只保留审计、项目动态与 task.delete 事件。app.external_links 主表保留。任一包含被删任务的活跃聚合组会关闭，剩余 ACTIVE 成员转为 DETACHED，空组删除；MAIN 任务允许直接删除。版本冲突 409 TASK_STATE_CONFLICT；删除后再次删除返回 404。
 
-重放**不要求任务仍存在**：只复核当前认证有效、缓存的 projectId / moduleId / featureId / taskId 与请求一致、以及原操作的写入门禁（项目可写 + 模块 / 功能归属）。普通项目成员即可删除，不需要管理员身份；不重建记录或链接关联，也不提供还原入口。
+重放**不要求任务仍存在**：只复核当前认证有效、缓存的 projectId / moduleId / taskId 与请求一致、以及原操作的写入门禁（项目可写 + 模块归属）。普通项目成员即可删除，不需要管理员身份；不重建记录或链接关联，也不提供还原入口。
 
 ## ADR-064 文档导入接口（2026-10-10）
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---|---|---|---|---|---|---|
 | `previewProjectDocumentImport` | 401 | 允许 | 404 | 404 | 401 | 允许 | 只读校验（不写任何持久化状态）：会话认证、无 CSRF、无幂等；`document` 1～200000 字符；项目可写门禁（非成员与不存在统一 404 `PROJECT_NOT_FOUND`） |
-| `importProjectDocument` | 401 | 允许 | 404 | 404 | 401 | 允许 | 同源 / CSRF、数据库级幂等（`Idempotency-Key` 必填，契约版本 1.0.0）；`expectedDigest` 与文档不一致 409 `DOCUMENT_IMPORT_STALE`；同摘要文档在本项目内已导入 409 `DOCUMENT_IMPORT_DUPLICATE`（迁移 0039 `app.document_import_runs` 唯一约束兜底）；行级 ERROR 422 `DOCUMENT_IMPORT_INVALID`（负责人须为项目活跃成员，否则 `ASSIGNEE_NOT_MEMBER`）；同名模块 / 功能复用不覆盖（差异仅 WARNING）；写审计 `project.documentImport`、批次行与各域既有活动 / 通知 / 搜索投影，全部同事务 |
+| `importProjectDocument` | 401 | 允许 | 404 | 404 | 401 | 允许 | 同源 / CSRF、数据库级幂等（`Idempotency-Key` 必填，契约版本 1.0.0）；`expectedDigest` 与文档不一致 409 `DOCUMENT_IMPORT_STALE`；同摘要文档在本项目内已导入 409 `DOCUMENT_IMPORT_DUPLICATE`（迁移 0039 `app.document_import_runs` 唯一约束兜底）；行级 ERROR 422 `DOCUMENT_IMPORT_INVALID`（负责人须为项目活跃成员，否则 `ASSIGNEE_NOT_MEMBER`）；同名模块复用不覆盖（差异仅 WARNING）；写审计 `project.documentImport`、批次行与各域既有活动 / 通知 / 搜索投影，全部同事务 |
 | `previewProjectImport` | 401 | 允许（任何已登录用户） | — | — | 401 | 允许 | 只读校验；整项目文档必须含项目段与项目编码（`^[A-Z][A-Z0-9_]{1,31}$`）；返回编码占用与全局重复导入提示 |
 | `importProject` | 401 | 允许（任何已登录用户） | — | — | 401 | 允许 | 同源 / CSRF、数据库级幂等；项目编码强制必填且全局唯一，被占用 409 `PROJECT_CODE_CONFLICT`；项目成员与任务负责人解析后自动加入新项目（去重、排除创建者）；同一摘要文档全局查重 409；单事务创建项目与全部下级，任一行级 ERROR 整笔 422 零残留 |
 
@@ -261,11 +248,11 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---|---|---|---|---|---|---|
-| `assistDocumentImport` | 401 | 允许（无 `target` 时任意已登录用户；携带 `target` 时须为该项目活跃成员或系统管理员） | 无 `target` 允许；携带 `target` 时 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND` | 无 `target` 允许；携带 `target` 时 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND` | 401 | 允许 | 只读校验（不写任何持久化状态）：会话认证、无 CSRF、无幂等；`mode` 取 `IN_PROJECT` / `WHOLE_PROJECT`，`text` 1～200000 字符；可选 `target` 由服务端校验项目写权限与模块 / 功能归属，整项目模式携带 `target` 由契约拒绝 422；调用管理员配置的 OpenAI 兼容端点生成模板草稿，未启用或配置非法 503 `AI_ASSIST_DISABLED`，上游鉴权 / 限流 / 超时 / 网络 / 上下文超限 / 响应非法 503 `AI_ASSIST_UPSTREAM_FAILED`（`details.reason` 为固定枚举）；不开启数据库事务执行上游请求、无 SQL 写、无审计 |
+| `assistDocumentImport` | 401 | 允许（无 `target` 时任意已登录用户；携带 `target` 时须为该项目活跃成员或系统管理员） | 无 `target` 允许；携带 `target` 时 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND` | 无 `target` 允许；携带 `target` 时 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND` | 401 | 允许 | 只读校验（不写任何持久化状态）：会话认证、无 CSRF、无幂等；`mode` 取 `IN_PROJECT` / `WHOLE_PROJECT`，`text` 1～200000 字符；可选 `target` 由服务端校验项目写权限与模块归属，整项目模式携带 `target` 由契约拒绝 422；调用管理员配置的 OpenAI 兼容端点生成模板草稿，未启用或配置非法 503 `AI_ASSIST_DISABLED`，上游鉴权 / 限流 / 超时 / 网络 / 上下文超限 / 响应非法 503 `AI_ASSIST_UPSTREAM_FAILED`（`details.reason` 为固定枚举）；不开启数据库事务执行上游请求、无 SQL 写、无审计 |
 
 本接口只服务「用户自己的文档 → 固定模板草稿」的转换，AI 永远只产出草稿文本：不写任何业务表、不写审计 / 活动 / 通知 / 搜索投影；草稿必须经用户确认后走既有 ADR-064 预览 → 执行链路，必填、负责人解析、防重复与默认值规则与手工粘贴完全一致。文件始终只在浏览器本地抽取（ADR-066 边界不变），发给上游的只有抽取后的文本；密钥只从 `/run/secrets/*` 读取并 fail closed。
 
-[ADR-094](adr/ADR-094.md) 起，项目内导入可携带可选 `target`（项目根级 / 模块 / 功能）。携带 `target` 时，服务端先在一个只读短事务内校验目标项目写权限，再按项目 → 模块 → 功能顺序校验归属和名称；非成员、已移除成员、停用用户、跨项目模块 / 功能统一返回 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND`，不区分“不存在”和“无权访问”。该只读事务不写 SQL、不写审计、不生成幂等记录，上游 AI 请求仍在事务外执行；不传 `target` 时保持 ADR-067 的兼容行为。
+[ADR-094](adr/ADR-094.md) 起，项目内导入可携带可选 `target`（项目根级 / 模块；功能目标已由 ADR-109 删除）。携带 `target` 时，服务端先在一个只读短事务内校验目标项目写权限，再校验模块归属和名称；非成员、已移除成员、停用用户、跨项目模块统一返回 404 `DOCUMENT_IMPORT_TARGET_NOT_FOUND`，不区分“不存在”和“无权访问”。该只读事务不写 SQL、不写审计、不生成幂等记录，上游 AI 请求仍在事务外执行；不传 `target` 时保持 ADR-067 的兼容行为。
 
 ## ADR-068 管理员 AI 配置接口（2026-10-13）
 
@@ -432,8 +419,8 @@ ADR-106 起项目群只保留 Webhook。createProjectWecomGroupCode 与 deletePr
 | `projectLeaderTransfer` | `LEADERS_ONLY` | 任命或转移项目组长 |
 | `projectDelete` | `LEADERS_ONLY` | 物理删除项目 |
 | `projectDocumentImport` | `ALL_MEMBERS` | 既有项目内文档导入与项目内 AI 辅助 |
-| `moduleFeatureEdit` | `ALL_MEMBERS` | 创建或编辑模块、功能与说明 |
-| `moduleFeatureDelete` | `LEADERS_ONLY` | 物理删除模块或功能 |
+| `moduleEdit` | `ALL_MEMBERS` | 创建或编辑模块与说明 |
+| `moduleDelete` | `LEADERS_ONLY` | 物理删除模块及其下任务与记录 |
 | `taskEdit` | `ALL_MEMBERS` | 创建、编辑、指派任务及遗留项转任务 |
 | `taskLifecycle` | `ALL_MEMBERS` | 任务状态、合并、解除、取消、恢复与删除 |
 | `recordWrite` | `ALL_MEMBERS` | 迭代记录、遗留问题、发布与 GitHub 链接写入 |
@@ -448,7 +435,7 @@ ADR-106 起项目群只保留 Webhook。createProjectWecomGroupCode 与 deletePr
 | `getProjectMemberPermissions` | 401 | 允许 | 允许 | 允许 | 401 | 允许 | 任意有效登录 Session；无 CSRF、无幂等；响应 `no-store` |
 | `updateProjectMemberPermissions` | 401 | 403 | 403 | 403 | 401 | 允许 | 完整管理员 Session + 同源 + 同步 CSRF + `If-Match` + 数据库级幂等（1.0.0）；单行 `FOR UPDATE`，版本冲突 409；更新与 `admin.projectMemberPermissions.update` SYSTEM 审计同一事务 |
 
-**实现口径**：11 项写入口统一在事务内读取用户状态、`is_admin`、项目 ACTIVE 成员角色与配置；系统管理员必须始终通过，非成员仍返回 404。文档导入放宽后，创建模块/功能与任务仍分别需要 `moduleFeatureEdit`、`taskEdit`。幂等重放前重新验证当前管理员、原操作人、配置行与结果资源可读权限；管理员被撤权后不得回放旧成功响应。
+**实现口径**：11 项写入口统一在事务内读取用户状态、`is_admin`、项目 ACTIVE 成员角色与配置；系统管理员必须始终通过，非成员仍返回 404。文档导入放宽后，创建模块与任务仍分别需要 `moduleEdit`、`taskEdit`；ADR-109 起不存在功能创建能力。幂等重放前重新验证当前管理员、原操作人、配置行与结果资源可读权限；管理员被撤权后不得回放旧成功响应。
 
 **前端与验证**：权限矩阵对管理员可编辑、对普通成员只读，固定项展示徽标；保存时由生成客户端携带 CSRF、`If-Match` 与幂等键，409 提示重新加载。真实 PostgreSQL + HTTP 主流程覆盖默认值、保存后即时生效、审计、普通成员 403、幂等重放、版本冲突与非 JSON 400；本次按用户要求保持精简，不堆叠重复用例。
 
@@ -479,3 +466,16 @@ GET /projects/{projectId}/wecom-group 只返回 ACTIVE Webhook 的脱敏列表�
 **登录与审计**：每次成功 SSO 登录仍全量对账 Casdoor 实体组；仅在组织层级新建或用户直接成员关系实际变化时写入 `auth.sso_organizations_synced`。完全一致的重复登录只写 `auth.sso_login`；`groups` 缺失不修改组织，也不写组织同步审计。空数组或仅 Virtual / 停用组只有在确实清空既有关系时才产生同步审计。审计 payload、中文展示、只读边界与 CASDOOR 组织权限均不变。
 
 **验证**：真实 PostgreSQL + 桩 IdP 的 `sso-login.integration.test.ts` 22 例通过，覆盖首次无组登录、同一实体组重复登录、缺失 / 空数组 / 替换与首次建组织；定向测试不替代全量 CI、Playwright 或测试 VM。
+
+## ADR-109 移除功能层级（2026-10-30）
+
+本节按 [ADR-109](adr/ADR-109.md)（Accepted）收敛权限与路由口径。层级固定为“项目 → 模块 → 任务 → 迭代记录”，不再保留任何功能层写入口。
+
+- **路由**：删除 `listFeatures`、`findSimilarFeatures`、`getFeature`、`createFeature`、`updateFeature`、`deleteFeature` 六条功能档案路由，并删除旧功能级任务路由族；路由总数由 133 收敛为 119，`securityFlow` 六条不变。旧 `/features/*` 路径不注册，直接返回 404；Web 深链只做同模块 `/tasks` 回落，不恢复旧接口。
+- **任务**：所有任务直接归属模块；契约与重放上下文只含 `projectId/moduleId/taskId`，不接收 `featureId`、`scopeType` 或 `impactFeatureIds`。`createTaskWithScope` / `createModuleTask` 等现行 operationId 的任务范围仅为模块。
+- **功能权限**：不存在功能创建、编辑、删除、恢复或文档导入目标权限。`moduleEdit` 只控制模块创建与编辑，`moduleDelete` 只控制模块物理删除；三档配置值、默认值、系统管理员始终放行与非成员 404 语义不变。
+- **删除**：`deleteModule` 物理删除模块及其全部任务、任务 / 模块直属迭代记录、版本、遗留项与链接关联，只保留审计、项目动态和 `module.delete` 事件；未分类模块继续返回 409 `MODULE_UNCLASSIFIED_PROTECTED`。不存在 `deleteFeature`。任务删除只验证项目 / 模块真实归属、任务可读、If-Match、CSRF 与幂等。
+- **投影与历史**：搜索实体 FEATURE 与功能搜索导航已删除；外部链接目标只接受 `PROJECT / TASK / CHANGE_RECORD`。历史 FEATURE 审计、项目动态、通知与快照保留只读展示，不得据此授予当前写权限或生成可导航的功能页面。
+- **导入**：文档导入模板版本为 `2`，目标只允许项目根级或模块；历史模板版本 `1` 只读保留。旧“功能”段、功能级任务段和“影响功能”字段返回 `FEATURE_LAYER_REMOVED`，不静默降级。
+
+**验证**：`permissions:check` 与 `contract:validate` 均按 119 条 operationId / 路由通过；真实 PostgreSQL 集成覆盖旧功能路由 404、历史数据上提、模块删除级联、任务直接归属和新权限字段；Web 单测与 Playwright 覆盖旧功能深链、无功能入口、模块任务创建与搜索。最终结果记录在 [测试矩阵](test-matrix.md) 的 ADR-109 小节。

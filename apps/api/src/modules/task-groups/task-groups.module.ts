@@ -9,7 +9,6 @@ import { DatabaseModule } from "../../database/database.module.js";
 import { IdempotencyModule } from "../../idempotency/idempotency.module.js";
 import { ProjectsModule } from "../projects/index.js";
 import { ModulesModule } from "../modules/index.js";
-import { FeaturesModule } from "../features/index.js";
 import { TasksManagementModule } from "../tasks/index.js";
 import { ActivityProjectionModule } from "../activity/index.js";
 import { SearchProjectionModule } from "../search/index.js";
@@ -39,7 +38,6 @@ import { TaskGroupsController } from "./task-groups.controller.js";
     IdempotencyModule,
     ProjectsModule,
     ModulesModule,
-    FeaturesModule,
     TasksManagementModule,
     ActivityProjectionModule,
     SearchProjectionModule,

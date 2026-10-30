@@ -136,8 +136,8 @@ async function insertBoardTask(
         "GREATEST(now() - interval '5 minutes', " + WEEK_START + ")")
       : "NULL";
   const statement =
-    "INSERT INTO app.tasks (project_id, module_id, feature_id, scope_type, code, title, description, creator_id, priority, work_status, lifecycle_status, completed_at, due_at)" +
-    " VALUES ($1, $2, NULL, 'MODULE', $3, $4, '', $5, $6, $7, $8, " +
+    "INSERT INTO app.tasks (project_id, module_id, code, title, description, creator_id, priority, work_status, lifecycle_status, completed_at, due_at)" +
+    " VALUES ($1, $2, $3, $4, '', $5, $6, $7, $8, " +
     completedAt +
     ", " +
     DUE_EXPRESSION[options.due ?? "none"] +
@@ -182,8 +182,8 @@ async function insertBoardTaskBatch(
 }> {
   const statement =
     "WITH inserted AS (" +
-    "INSERT INTO app.tasks (project_id, module_id, feature_id, scope_type, code, title, description, creator_id, priority, work_status, lifecycle_status)" +
-    " SELECT $1, $2, NULL, 'MODULE', $3 || n, '批量夹具任务 ' || n, '', $4, 'NORMAL', 'TODO', 'ACTIVE'" +
+    "INSERT INTO app.tasks (project_id, module_id, code, title, description, creator_id, priority, work_status, lifecycle_status)" +
+    " SELECT $1, $2, $3 || n, '批量夹具任务 ' || n, '', $4, 'NORMAL', 'TODO', 'ACTIVE'" +
     " FROM generate_series(1, $5) AS n RETURNING id, project_id, work_status), " +
     "assignees AS (" +
     "INSERT INTO app.task_assignees (task_id, user_id, project_id)" +

@@ -28,11 +28,11 @@ export const projectNotificationOptions: readonly ProjectNotificationOption[] =
     {
       key: "project.member",
       event: "项目与成员变化",
-      description: "项目状态、成员加入 / 移出 / 角色调整、模块与功能信息更新",
+      description: "项目状态、成员加入 / 移出 / 角色调整、模块信息更新",
     },
     {
       key: "scope.delete",
       event: "范围与删除",
-      description: "模块 / 功能 / 任务的删除等成员可见动态",
+      description: "模块 / 任务的删除等成员可见动态",
     },
   ];

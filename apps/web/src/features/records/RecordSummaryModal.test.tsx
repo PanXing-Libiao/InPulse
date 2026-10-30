@@ -39,10 +39,7 @@ const record: ReadableRecord = {
   id: 7,
   projectId: 1,
   moduleId: 2,
-  featureId: null,
-  scopeType: "MODULE",
   taskId: null,
-  impactFeatureIds: [],
   handlerId: 1,
   authorId: 1,
   status: "PUBLISHED",
@@ -76,7 +73,6 @@ const summary: RecordSummaryResponse = {
   totals: {
     projectCount: 1,
     moduleCount: 1,
-    featureCount: 0,
     recordCount: 1,
     completedTaskCount: 0,
     missingRecordTaskCount: 0,
@@ -100,8 +96,6 @@ const summary: RecordSummaryResponse = {
       projectName: "支付项目",
       moduleId: 2,
       moduleName: "支付模块",
-      featureId: null,
-      featureName: null,
       title: "支付修正",
       detail: "要点句",
       author: { userId: 1, name: "管理员", avatarUrl: null },
@@ -117,7 +111,7 @@ const summary: RecordSummaryResponse = {
 
 /**
  * 只读展开没有列表语境，名称由正式记录详情自己解析（与聚合组记录弹窗同一路径），
- * 因此这里要把项目详情、模块 / 功能清单与用户目录一并桩掉。
+ * 因此这里要把项目详情、模块清单与用户目录一并桩掉。
  */
 /** ADR-076：AI 改写返回的是「整段 Markdown」，弹窗再切成可逐段编辑的段落。 */
 const ASSIST_MARKDOWN = [
@@ -145,7 +139,6 @@ function baseClient() {
     listModules: vi.fn().mockResolvedValue({
       items: [{ id: 2, projectId: 1, name: "支付模块" }],
     }),
-    listFeatures: vi.fn().mockResolvedValue({ items: [] }),
     getUserDirectory: vi.fn().mockResolvedValue({
       items: [{ id: 1, name: "管理员", avatarUrl: null, isAdmin: true }],
     }),
@@ -213,7 +206,7 @@ describe("RecordSummaryModal 复制", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     const copied = String(writeText.mock.calls[0]?.[0] ?? "");
     expect(copied).toContain(
-      "| 编号 | 项目 / 模块 / 功能 | 标题与效果 | 作者 | 发布日期 |",
+      "| 编号 | 项目 / 模块 | 标题与效果 | 作者 | 发布日期 |",
     );
     expect(copied).toContain(
       "| SHOP-CR-1 | 支付项目 / 支付模块 | **支付修正**：要点句 | 管理员 | 2026-09-21 |",

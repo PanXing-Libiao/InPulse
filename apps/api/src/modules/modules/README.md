@@ -33,10 +33,10 @@ ID 与版本沿用 Schema 的 integer/number；不存在或项目归属不匹配
 锁随调用方事务提交或回滚释放。无事务创建、全局 Client、认证或成员查询。
 数据库错误原样向事务调用方传播，由外层决定安全的 HTTP 映射，禁止泄露数据库错误文本。
 此接口只用于事务内写前检查，不能用于普通详情读取（模块自 ADR-044 起已无归档操作）。
-调用方必须先通过 A 的身份解析和项目授权，按项目 → 模块 → 功能顺序持锁；
+调用方必须先通过 A 的身份解析和项目授权，按项目 → 模块顺序持锁；
 多资源同层按 ID 升序，任一步非 allowed 必须停止后续业务写入。
 
-完整调用顺序见 [FeatureQueryPort 接入说明](../features/README.md)。
+完整调用顺序见本模块 ModuleQueryPort 与项目侧 ProjectAccessQueryPort。
 新增 `write-query-ports.integration.test.ts` 的 6 个真实数据库用例已在提交 `58acbe7` 的 CI 中实际通过（334 ms），
 证据见 [本次数据库日志](https://github.com/256-code/InPulse/actions/runs/34210258609/job/102009300977?pr=42#step:17:28)。本地 Nest 注入验证已通过；待 A/C 人工评审。
 

@@ -140,10 +140,6 @@ export function normalizeWrapSnapshot(raw) {
         stats.activeModuleCount,
         "stats.activeModuleCount",
       ),
-      activeFeatureCount: asNonNegativeInteger(
-        stats.activeFeatureCount,
-        "stats.activeFeatureCount",
-      ),
       openTaskCount: asNonNegativeInteger(
         stats.openTaskCount,
         "stats.openTaskCount",
@@ -339,7 +335,7 @@ function buildSvg(snapshot, recipientName) {
     '<line x1="78" y1="890" x2="1002" y2="890" stroke="#111111" stroke-width="2.5"/>',
     statMarkup(78, String(stats.activeMemberCount), "人", "参与伙伴"),
     statMarkup(312, String(stats.durationDays), "天", "从立项到封箱"),
-    statMarkup(546, String(stats.activeFeatureCount), "个", "功能上线"),
+    statMarkup(546, String(stats.activeModuleCount), "个", "活跃模块"),
     statMarkup(780, String(stats.completionPercent), "%", "任务收尾"),
     '<line x1="78" y1="985" x2="1002" y2="985" stroke="#111111" stroke-opacity="0.25"/>',
     '<text x="78" y="1026" font-family="' +

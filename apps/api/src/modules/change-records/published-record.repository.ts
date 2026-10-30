@@ -10,8 +10,8 @@ import {
 import type { TransactionContext } from "../../database/transaction-context.js";
 import type { TimeCursorValue } from "../../cursors/time-cursor.js";
 import { normalizedLeftoverEntries } from "./leftover-entries.js";
-/** B-3b 记录清单来源筛选：主任务 / 来源任务 / 模块级 / 功能直接创建。 */
-export type RecordFeedSourceFilter = "MAIN" | "SOURCE" | "MODULE" | "FEATURE";
+/** B-3b 记录清单来源筛选：主任务 / 来源任务 / 模块级直接创建。 */
+export type RecordFeedSourceFilter = "MAIN" | "SOURCE" | "MODULE";
 /** B-3b 跨项目清单入参；projectIds 必须来自服务端 AuthorizedProjectScope。 */
 export interface RecordFeedListInput {
   readonly projectIds: readonly number[];
@@ -53,7 +53,7 @@ function activeSourceExists(tx: TransactionContext) {
              AND m.role = 'SOURCE'
         )`;
 }
-/** MAIN = 任务来源中未被 ACTIVE 组合并为来源任务的记录；MODULE / FEATURE 为无任务记录。 */
+/** MAIN = 任务来源中未被 ACTIVE 组合并为来源任务的记录；MODULE 为无任务记录。 */
 function sourceCondition(
   tx: TransactionContext,
   source: RecordFeedSourceFilter | null,
@@ -62,9 +62,7 @@ function sourceCondition(
   if (source === "SOURCE") return tx.sql`AND ${activeSourceExists(tx)}`;
   if (source === "MAIN")
     return tx.sql`AND task_id IS NOT NULL AND NOT ${activeSourceExists(tx)}`;
-  if (source === "MODULE")
-    return tx.sql`AND task_id IS NULL AND scope_type = 'MODULE'`;
-  return tx.sql`AND task_id IS NULL AND scope_type = 'FEATURE'`;
+  return tx.sql`AND task_id IS NULL`;
 }
 type Row = Omit<
   PublishedRecord,
@@ -101,7 +99,7 @@ export interface RecordListPageResult {
 @Injectable()
 export class PublishedRecordRepository {
   private columns(tx: TransactionContext) {
-    return tx.sql`id,project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",scope_type AS "scopeType",task_id AS "taskId",title,handler_id AS "handlerId",handler_snapshot->>'name' AS "handlerName",author_id AS "authorId",author_snapshot->>'name' AS "authorName",status,code,current_version AS "currentVersion",published_at AS "publishedAt",current_payload AS "currentPayload",row_version AS "rowVersion",created_at AS "createdAt",updated_at AS "updatedAt",ARRAY(SELECT i.feature_id FROM app.change_record_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.change_record_id=app.change_records.id ORDER BY i.feature_id) AS "impactFeatureIds"`;
+    return tx.sql`id,project_id AS "projectId",module_id AS "moduleId",task_id AS "taskId",title,handler_id AS "handlerId",handler_snapshot->>'name' AS "handlerName",author_id AS "authorId",author_snapshot->>'name' AS "authorName",status,code,current_version AS "currentVersion",published_at AS "publishedAt",current_payload AS "currentPayload",row_version AS "rowVersion",created_at AS "createdAt",updated_at AS "updatedAt"`;
   }
   private async dto(tx: TransactionContext, row: Row) {
     const { currentPayload, ...identity } = row;

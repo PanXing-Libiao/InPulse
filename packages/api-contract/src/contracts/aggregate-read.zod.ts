@@ -86,9 +86,8 @@ export type TaskGroupSummary = z.infer<typeof taskGroupSummarySchema>;
  * 服务端按数据库 task_group_members_snapshot_check 的同一形状返回。
  *
  * publishedRecordCount 是该任务 PUBLISHED 正式记录数（功能设计 §29.4：按
- * change_records 计数，不按版本计数，也不按影响功能去重）。
- * priority 是分支任务当前优先级，featureName 是所属功能名称；任务为模块级作用域时
- * featureId 与 featureName 同时为 null（2026-09-21 聚合组弹窗按名称展示功能）。
+ * change_records 计数，不按版本计数）。
+ * priority 是分支任务当前优先级；任务直接归属模块，成员条目只携带 moduleId。
  */
 export const taskGroupMemberDetailSchema = z
   .object({
@@ -103,8 +102,6 @@ export const taskGroupMemberDetailSchema = z
     // ADR-054：任务层面下线归档，ARCHIVED 不可达。
     lifecycleStatus: z.enum(["ACTIVE", "INVALID"]),
     moduleId: id,
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
     assignee: userRefSchema,
     joinedAt: z.iso.datetime(),
     detachedAt: z.iso.datetime().nullable(),
@@ -176,7 +173,7 @@ export type TaskGroupRecordLink = z.infer<typeof taskGroupRecordLinkSchema>;
 /**
  * R-4 记录条目：只含 PUBLISHED 与 VOID（Q-13，DRAFT 不可见）；
  * sourceLabel 为「主任务」或来源任务编号，由服务端按组成员推导；
- * featureName 是记录所属功能名称，与 featureId 同为 null 表示记录属模块级作用域。
+ * 记录直接归属模块；条目只携带任务与记录标识，不复制模块实体。
  */
 export const taskGroupRecordItemSchema = z
   .object({
@@ -186,8 +183,6 @@ export const taskGroupRecordItemSchema = z
     recordStatus: z.enum(["PUBLISHED", "VOID"]),
     taskId: id,
     sourceLabel: z.string().min(1).max(64),
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
     publishedAt: z.iso.datetime(),
     externalLinks: z.array(taskGroupRecordLinkSchema).max(100),
   })
@@ -255,14 +250,13 @@ export type ProjectOverviewProject = z.infer<
 >;
 
 /**
- * 项目概览四项统计：活跃模块 / 活跃功能按行自身 status = ACTIVE 计数（Q-05）；
+ * 项目概览三项统计：活跃模块按行自身 status = ACTIVE 计数（Q-05）；
  * openTaskCount 为功能设计 §29.1 有效任务中 work_status = TODO 的计数；
- * publishedRecordCount 只计 PUBLISHED（§29.4，版本与影响功能不重复计数）。
+ * publishedRecordCount 只计 PUBLISHED（§29.4，版本不重复计数）。
  */
 export const projectOverviewStatsSchema = z
   .object({
     activeModuleCount: z.number().int().nonnegative(),
-    activeFeatureCount: z.number().int().nonnegative(),
     openTaskCount: z.number().int().nonnegative(),
     publishedRecordCount: z.number().int().nonnegative(),
   })
@@ -271,15 +265,13 @@ export const projectOverviewStatsSchema = z
 
 export type ProjectOverviewStats = z.infer<typeof projectOverviewStatsSchema>;
 
-/** 最近迭代条目；featureName 用于「功能名：记录标题」展示，模块级记录为 null。 */
+/** 最近迭代条目；记录直接归属模块。 */
 export const recentRecordItemSchema = z
   .object({
     recordId: id,
     code: z.string().min(1).max(64),
     title: z.string().min(1).max(500),
     moduleId: id,
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
     publishedAt: z.iso.datetime(),
   })
   .strict()
@@ -346,7 +338,6 @@ export const myTasksQueryRequestSchema = z
      * 过滤，不引入任何他人身份或授权范围参数（Q-08）。
      */
     ownership: z.enum(["ASSIGNEE", "CREATOR"]).optional(),
-    scopeType: z.enum(["FEATURE", "MODULE"]).optional(),
     workStatus: z.enum(["TODO", "DONE", "CANCELED"]).optional(),
     hasPublishedRecord: queryBoolean.optional(),
     /** 单值优先级筛选；与 workStatus 正交（A 裁决 §10.3）。 */
@@ -371,7 +362,7 @@ export type MyTasksQueryRequest = z.infer<typeof myTasksQueryRequestSchema>;
 /**
  * R-3 列表项。hasPublishedRecord 为单条 SQL 内先过滤后分页的存在性判断；
  * publishedRecordCount 与它同源同口径（裁决修订 D-1：按 change_records 计数，
- * 不按版本计数、不按影响功能去重），恒有
+ * 不按版本计数），恒有
  * hasPublishedRecord === publishedRecordCount > 0；
  * groupRole 是任务在当前 ACTIVE 聚合组中的角色，不属于任何组时为 null（Q-11）；
  * hasLeftoverSource 标记任务是否由遗留问题转换而来（裁决修订 D-2）。
@@ -385,9 +376,6 @@ export const myTaskItemSchema = z
     projectName: z.string().min(1).max(200),
     moduleId: id,
     moduleName: z.string().min(1).max(200),
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
-    scopeType: z.enum(["FEATURE", "MODULE"]),
     workStatus: z.enum(["TODO", "DONE", "CANCELED"]),
     // ADR-054：任务层面下线归档，ARCHIVED 不可达。
     lifecycleStatus: z.enum(["ACTIVE", "INVALID"]),
@@ -571,7 +559,7 @@ export type TaskGroupMembershipResponse = z.infer<
 
 /**
  * 聚合读共用的任务引用；只含任务标识与所在位置，不复制任务实体。
- * featureId 为 null 表示模块级任务；前端据此还原任务深链。
+ * 任务直接归属模块；前端据此还原任务深链。
  */
 export const aggregateTaskRefSchema = z
   .object({
@@ -579,7 +567,6 @@ export const aggregateTaskRefSchema = z
     code: z.string().min(1).max(64),
     projectId: id,
     moduleId: id,
-    featureId: id.nullable(),
   })
   .strict()
   .meta({ id: "AggregateTaskRef" });
@@ -627,8 +614,6 @@ export const leftoverListItemSchema = z
     projectName: z.string().min(1).max(200),
     moduleId: id,
     moduleName: z.string().min(1).max(200),
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
     author: userRefSchema,
     publishedAt: z.iso.datetime(),
     content: z.string().min(1).max(10000),
@@ -681,8 +666,7 @@ export type TaskGroupListQueryRequest = z.infer<
  * joinedAt 与 taskId 升序；sourceKind 的可空性由 role 决定（MAIN 恒为 null）。
  * priority 是分支任务自身优先级（2026-09-21 产品要求）：组卡片的组优先级与
  * 完成态由客户端按「未完成分支中的最高优先级」派生，服务端只透传事实字段。
- * moduleId / moduleName 与 featureId / featureName 是任务所在位置
- * （featureId 与 featureName 同为 null 表示模块级任务）。
+ * moduleId / moduleName 是任务所在位置；任务直接归属模块。
  * dueAt 是分支任务自身截止时间（null = 未设置），publishedRecordCount 是该任务
  * PUBLISHED 正式记录数（与 R-1 成员项、R-3 列表项同一口径，2026-09-22 产品要求）：
  * 列表行的「归属 / 截止 / 迭代」三列同样由客户端按事实派生（归属取主任务、截止取
@@ -700,8 +684,6 @@ export const taskGroupListBranchSchema = z
     priority: z.enum(TASK_PRIORITIES),
     moduleId: id,
     moduleName: z.string().min(1).max(200),
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
     dueAt: z.iso.datetime().nullable(),
     publishedRecordCount: z.number().int().nonnegative(),
     assignee: userRefSchema,

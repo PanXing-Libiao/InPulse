@@ -29,7 +29,6 @@ interface ProjectListItemRow {
   readonly firstTaskCompletedAt: Date | null;
   readonly memberCount: number;
   readonly activeModuleCount: number;
-  readonly activeFeatureCount: number;
   readonly openTaskCount: number;
   readonly completedTaskCount: number;
   readonly currentUserRole: "MEMBER" | "LEADER" | null;
@@ -48,7 +47,6 @@ interface ProjectRow {
   readonly firstTaskCompletedAt: Date | null;
   readonly memberCount: number;
   readonly activeModuleCount: number;
-  readonly activeFeatureCount: number;
   readonly openTaskCount: number;
   readonly completedTaskCount: number;
 }
@@ -186,7 +184,6 @@ export class PostgresProjectQueryPort extends ProjectQueryPort {
       memberCount: row.memberCount,
       stats: {
         activeModuleCount: row.activeModuleCount,
-        activeFeatureCount: row.activeFeatureCount,
         openTaskCount: row.openTaskCount,
         completedTaskCount: row.completedTaskCount,
       },

@@ -16,7 +16,7 @@ import {
 import { changeRecords } from "./change-records.js";
 import { projects } from "./projects.js";
 import { appSchema } from "./shared.js";
-import { features, tasks } from "./work.js";
+import { tasks } from "./work.js";
 
 const timestamptz = (name: string) =>
   timestamp(name, { mode: "date", withTimezone: true });
@@ -145,32 +145,6 @@ export const taskExternalLinks = appSchema.table(
     }).onDelete("restrict"),
     foreignKey({
       name: "task_external_links_link_fk",
-      columns: [table.linkId, table.projectId],
-      foreignColumns: [externalLinks.id, externalLinks.projectId],
-    }).onDelete("restrict"),
-  ],
-);
-
-export const featureExternalLinks = appSchema.table(
-  "feature_external_links",
-  {
-    projectId: integer("project_id").notNull(),
-    featureId: integer("feature_id").notNull(),
-    linkId: integer("link_id").notNull(),
-    createdAt: timestamptz("created_at").notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({
-      name: "feature_external_links_pk",
-      columns: [table.projectId, table.featureId, table.linkId],
-    }),
-    foreignKey({
-      name: "feature_external_links_feature_fk",
-      columns: [table.featureId, table.projectId],
-      foreignColumns: [features.id, features.projectId],
-    }).onDelete("restrict"),
-    foreignKey({
-      name: "feature_external_links_link_fk",
       columns: [table.linkId, table.projectId],
       foreignColumns: [externalLinks.id, externalLinks.projectId],
     }).onDelete("restrict"),

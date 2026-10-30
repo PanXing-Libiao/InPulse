@@ -1,10 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type {
-  FeatureItem,
-  InpulseApiClient,
-  ModuleItem,
-  ProjectItem,
-} from "@generated/api";
+import type { InpulseApiClient, ModuleItem, ProjectItem } from "@generated/api";
 import {
   InpulseIcon,
   type InpulseIconName,
@@ -12,7 +7,6 @@ import {
 import { ProjectLogo } from "@features/common/components/ProjectLogo";
 import { projectTier } from "@features/common/resource-lifecycle";
 import { useProjectTier } from "@features/common/project-tier-context";
-import { useFeatures } from "@features/features/feature-query";
 import {
   prefetchModulesRoute,
   useModules,
@@ -58,7 +52,7 @@ export interface ProjectTreeProps {
 /**
  * 项目节点下的子页行：点击跳转既有项目页，与目录树共用导航语义。
  * 「项目成员」不再单列一行（项目主页头部的「成员与设置」已覆盖），
- * 任务看板排在模块与功能之前，但项目默认落点仍是模块与功能。
+ * 任务看板排在模块目录之前，但项目默认落点仍是项目与模块。
  */
 /** 展开键归属的项目 ID：project:<id>[:...]；非项目键返回 null。 */
 function projectOwnerOf(key: string): number | null {
@@ -72,7 +66,7 @@ const COLLAPSE_MS = 240;
 
 /**
  * 折叠区块的挂载保持：展开立即可见，收起延迟卸载。
- * 既保住模块 / 功能列表的懒加载（未展开不请求），又让收起有完整动画，
+ * 既保住模块列表的懒加载（未展开不请求），又让收起有完整动画，
  * 不会出现「容器还在收缩、内容已经消失」的断层。
  */
 function useRetainedMount(open: boolean): boolean {
@@ -94,8 +88,8 @@ const PROJECT_PAGE_ROWS: readonly {
   readonly icon: InpulseIconName;
 }[] = [
   { segment: "task-board", label: "任务看板", icon: "kanban" },
-  // 层级语义：layers=模块与功能目录，boxes=模块容器，fileText=功能档案条目。
-  { segment: "modules", label: "模块与功能", icon: "layers" },
+  // 层级语义：layers=项目与模块目录，boxes=模块容器。
+  { segment: "modules", label: "项目与模块", icon: "layers" },
 ];
 
 interface ProjectPageRowProps {
@@ -153,46 +147,38 @@ const ProjectPageRow: React.FC<ProjectPageRowProps> = ({
   );
 };
 
-interface FeatureRowProps {
-  readonly moduleId: number;
+interface ModuleBranchProps {
   readonly projectId: number;
-  readonly item: FeatureItem;
+  readonly item: ModuleItem;
   readonly selection: TreeSelection | null;
-  readonly onFeatureClick: (selection: TreeSelection) => void;
+  readonly onModuleClick: (
+    key: string,
+    projectId: number,
+    selection: TreeSelection,
+  ) => void;
 }
 
-interface FeatureListProps {
-  readonly projectId: number;
-  readonly moduleId: number;
-  readonly selection: TreeSelection | null;
-  readonly onFeatureClick: (selection: TreeSelection) => void;
-  readonly client?: InpulseApiClient | undefined;
-}
-const FeatureRow: React.FC<FeatureRowProps> = ({
-  moduleId,
+const ModuleBranch: React.FC<ModuleBranchProps> = ({
   projectId,
   item,
   selection,
-  onFeatureClick,
+  onModuleClick,
 }) => {
+  const key = `project:${projectId}:module:${item.id}`;
   const isSelected =
-    selection?.kind === "feature" &&
-    selection.moduleId === moduleId &&
-    selection.featureId === item.id;
+    selection?.kind === "module" && selection.moduleId === item.id;
   return (
     <button
       type="button"
-      className={`tree-row feature-node${isSelected ? " selected" : ""}`}
+      className={`tree-row module-node${isSelected ? " selected" : ""}`}
       aria-current={isSelected ? "true" : undefined}
       title={item.name}
-      {...usePreloadHandlers(
-        `/projects/${projectId}/modules/${moduleId}/features/${item.id}`,
-      )}
+      {...usePreloadHandlers(`/projects/${projectId}/modules/${item.id}/tasks`)}
       onClick={() =>
-        onFeatureClick({ kind: "feature", moduleId, featureId: item.id })
+        onModuleClick(key, projectId, { kind: "module", moduleId: item.id })
       }
     >
-      <InpulseIcon name="fileText" size={16} className="tree-icon" />
+      <InpulseIcon name="boxes" size={16} className="tree-icon" />
       <span className="tree-label">
         <strong>{item.name}</strong>
       </span>
@@ -200,136 +186,15 @@ const FeatureRow: React.FC<FeatureRowProps> = ({
   );
 };
 
-const FeatureList: React.FC<FeatureListProps> = ({
-  projectId,
-  moduleId,
-  selection,
-  onFeatureClick,
-  client,
-}) => {
-  const features = useFeatures(projectId, moduleId, undefined, client);
-  if (features.query.isPending) {
-    return (
-      <CalmSkeleton
-        variant="lines"
-        rows={3}
-        compact
-        tone="sidebar"
-        label="正在加载功能…"
-      />
-    );
-  }
-  if (features.query.isError) {
-    return <p className="tree-hint">功能加载失败</p>;
-  }
-  const items = features.query.data?.items ?? [];
-  if (items.length === 0) {
-    return <p className="tree-hint">暂无功能</p>;
-  }
-  return (
-    <>
-      {items.map((item) => (
-        <FeatureRow
-          key={item.id}
-          projectId={projectId}
-          item={item}
-          moduleId={moduleId}
-          selection={selection}
-          onFeatureClick={onFeatureClick}
-        />
-      ))}
-    </>
-  );
-};
-
-interface ModuleBranchProps {
-  readonly projectId: number;
-  readonly item: ModuleItem;
-  readonly expanded: boolean;
-  readonly selection: TreeSelection | null;
-  readonly onModuleClick: (
-    key: string,
-    projectId: number,
-    selection: TreeSelection,
-  ) => void;
-  readonly onFeatureClick: (
-    projectId: number,
-    selection: TreeSelection,
-  ) => void;
-  readonly client?: InpulseApiClient | undefined;
-}
-
-const ModuleBranch: React.FC<ModuleBranchProps> = ({
-  projectId,
-  item,
-  expanded,
-  selection,
-  onModuleClick,
-  onFeatureClick,
-  client,
-}) => {
-  const key = `project:${projectId}:module:${item.id}`;
-  const featuresRendered = useRetainedMount(expanded);
-  const isSelected =
-    selection?.kind === "module" && selection.moduleId === item.id;
-  const inPath =
-    selection?.kind === "feature" && selection.moduleId === item.id;
-  return (
-    <div className="tree-project">
-      <button
-        type="button"
-        className={`tree-row module-node${isSelected ? " selected" : ""}${
-          inPath ? " in-path" : ""
-        }${expanded ? " expanded" : ""}`}
-        aria-expanded={expanded}
-        aria-current={isSelected ? "true" : undefined}
-        title={item.name}
-        onClick={() =>
-          onModuleClick(key, projectId, { kind: "module", moduleId: item.id })
-        }
-      >
-        <InpulseIcon name="boxes" size={16} className="tree-icon" />
-        <span className="tree-label">
-          <strong>{item.name}</strong>
-        </span>
-      </button>
-      <div
-        className="tree-children"
-        data-open={expanded ? "true" : "false"}
-        aria-hidden={expanded ? undefined : true}
-      >
-        <div className="tree-children-clip">
-          {featuresRendered ? (
-            <FeatureList
-              projectId={projectId}
-              moduleId={item.id}
-              selection={selection}
-              onFeatureClick={(next) => onFeatureClick(projectId, next)}
-              client={client}
-            />
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 /**
- * 侧栏系统目录：项目与功能导航展开后先罗列所有项目，点击项目再罗列模块、
- * 点击模块再罗列功能；点击节点跳转到既有的项目主页、功能目录与功能档案
- * 页面，内容区功能不在此重复实现。当前路由所在链路自动展开，且展开状态在
- * 跳转到其它层级或页面后保持不变，避免回到项目概况时子级被收起。
+ * 侧栏系统目录：项目导航展开后先罗列所有项目，点击项目再罗列模块；
+ * 点击模块直接进入模块任务页。当前路由所在链路自动展开。
  */
 interface ModuleListProps {
   readonly projectId: number;
   readonly selection: TreeSelection | null;
-  readonly expandedKeys: ReadonlySet<string>;
   readonly onModuleClick: (
     key: string,
-    projectId: number,
-    selection: TreeSelection,
-  ) => void;
-  readonly onFeatureClick: (
     projectId: number,
     selection: TreeSelection,
   ) => void;
@@ -339,9 +204,7 @@ interface ModuleListProps {
 const ModuleList: React.FC<ModuleListProps> = ({
   projectId,
   selection,
-  expandedKeys,
   onModuleClick,
-  onFeatureClick,
   client,
 }) => {
   const modules = useModules(projectId, client);
@@ -370,11 +233,8 @@ const ModuleList: React.FC<ModuleListProps> = ({
           key={item.id}
           projectId={projectId}
           item={item}
-          expanded={expandedKeys.has(`project:${projectId}:module:${item.id}`)}
           selection={selection}
           onModuleClick={onModuleClick}
-          onFeatureClick={onFeatureClick}
-          client={client}
         />
       ))}
     </>
@@ -387,15 +247,10 @@ interface ProjectBranchProps {
   readonly modulesExpanded: boolean;
   readonly activeScope: TreeScope | null;
   readonly activePageSegment: string | null;
-  readonly expandedKeys: ReadonlySet<string>;
   readonly onProjectClick: (projectId: number) => void;
   readonly onPageClick: (segment: string, projectId: number) => void;
   readonly onModuleClick: (
     key: string,
-    projectId: number,
-    selection: TreeSelection,
-  ) => void;
-  readonly onFeatureClick: (
     projectId: number,
     selection: TreeSelection,
   ) => void;
@@ -408,11 +263,9 @@ const ProjectBranch: React.FC<ProjectBranchProps> = ({
   modulesExpanded,
   activeScope,
   activePageSegment,
-  expandedKeys,
   onProjectClick,
   onPageClick,
   onModuleClick,
-  onFeatureClick,
   client,
 }) => {
   const cache = useQueryClient();
@@ -486,9 +339,7 @@ const ProjectBranch: React.FC<ProjectBranchProps> = ({
                     <ModuleList
                       projectId={item.id}
                       selection={isActiveProject ? activeScope.selection : null}
-                      expandedKeys={expandedKeys}
                       onModuleClick={onModuleClick}
-                      onFeatureClick={onFeatureClick}
                       client={client}
                     />
                   ) : null}
@@ -526,7 +377,7 @@ export const ProjectTree: React.FC<ProjectTreeProps> = ({
       return keys;
     }
     keys.add(`project:${activeScope.projectId}`);
-    // 模块列表挂在「模块与功能」子页行下：只有停留在该页时才自动展开。
+    // 模块列表挂在「项目与模块」子页行下：只有停留在该页时才自动展开。
     if (activePageSegment === "modules") {
       keys.add(`project:${activeScope.projectId}:pages:modules`);
     }
@@ -620,20 +471,16 @@ export const ProjectTree: React.FC<ProjectTreeProps> = ({
   };
   const handlePageClick = (segment: string, projectId: number) => {
     onNavigate(`/projects/${projectId}/${segment}`);
-    // 只有「模块与功能」行控制模块列表开合；其余子页行只导航，不收起项目子级。
+    // 只有「项目与模块」行控制模块列表开合；其余子页行只导航，不收起项目子级。
     if (segment === "modules") {
       toggle(`project:${projectId}:pages:modules`);
     }
   };
   const handleModuleClick = (
-    key: string,
+    _key: string,
     projectId: number,
     next: TreeSelection,
   ) => {
-    onNavigate(treePath(projectId, next));
-    toggle(key);
-  };
-  const handleFeatureClick = (projectId: number, next: TreeSelection) => {
     onNavigate(treePath(projectId, next));
   };
 
@@ -685,11 +532,9 @@ export const ProjectTree: React.FC<ProjectTreeProps> = ({
                 )}
                 activeScope={activeScope}
                 activePageSegment={activePageSegment}
-                expandedKeys={expandedKeys}
                 onProjectClick={handleProjectClick}
                 onPageClick={handlePageClick}
                 onModuleClick={handleModuleClick}
-                onFeatureClick={handleFeatureClick}
                 client={client}
               />
             ))

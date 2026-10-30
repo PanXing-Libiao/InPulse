@@ -41,8 +41,6 @@ import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { RecordDraftRepository } from "../src/modules/change-records/record-draft.repository.js";
 import { RecordDraftsService } from "../src/modules/change-records/record-drafts.service.js";
@@ -81,8 +79,6 @@ beforeAll(async () => {
     new PostgresProjectAccessQueryPort(client),
     new PostgresModuleQueryPort(),
     new PostgresModuleReadPort(),
-    new PostgresFeatureQueryPort(),
-    new PostgresFeatureReadPort(),
     new RecordDraftRepository(),
     uow,
     audit,
@@ -112,7 +108,6 @@ beforeAll(async () => {
   workflow = new TaskRecordDraftWorkflow(
     new PostgresProjectAccessQueryPort(client),
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
     new PostgresTaskQueryPort(),
     service,
     service,
@@ -194,10 +189,7 @@ async function failure(response: Response, status: number) {
 async function fixture() {
   const userId = await createUser(client.sql);
   const project = await createProject(client.sql, userId);
-  const [f] = await client.sql<
-    { id: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES (${project.projectId},${project.moduleId},${project.code + "-F-1"},'功能',${userId}) RETURNING id`;
-  return { ...project, userId, featureId: f!.id };
+  return { ...project, userId };
 }
 describe("F-17 independent drafts", () => {
   it("enforces HTTP security and replay semantics using current resource permissions", async () => {
@@ -206,8 +198,6 @@ describe("F-17 independent drafts", () => {
     const path = `/projects/${f.projectId}/modules/${f.moduleId}/record-drafts`;
     const body = {
       ...content,
-      scopeType: "MODULE",
-      impactFeatureIds: [f.featureId],
     };
     const key = randomUUID();
     const response = await http(path, "POST", actor, body, undefined, key);
@@ -281,54 +271,6 @@ describe("F-17 independent drafts", () => {
     await failure(await http(path, "POST", actor, body, undefined, key), 404);
     await failure(await http(resource, "GET", actor), 404);
   });
-  it("waits for the feature row lock then commits draft creation", async () => {
-    const f = await fixture();
-    let release!: () => void, acquired!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const ready = new Promise<void>((resolve) => {
-      acquired = resolve;
-    });
-    // ADR-045：功能不再有归档只读态，持锁方只做一次改名。
-    const archive = uow.run(async (tx) => {
-      await tx.sql`UPDATE app.features SET name='持锁改名',row_version=row_version+1 WHERE id=${f.featureId}`;
-      acquired();
-      await gate;
-    });
-    await ready;
-    const pending = uow.run((tx) =>
-      service.create(
-        tx,
-        f.userId,
-        f.projectId,
-        f.moduleId,
-        { ...content, scopeType: "FEATURE", featureId: f.featureId },
-        randomUUID(),
-      ),
-    );
-    try {
-      await vi.waitFor(
-        async () =>
-          expect(
-            (
-              await client.sql`SELECT pid FROM pg_stat_activity WHERE application_name='inpulse-f17-drafts' AND wait_event_type='Lock' AND cardinality(pg_blocking_pids(pid))>0`
-            ).length,
-          ).toBeGreaterThan(0),
-        { timeout: 4000, interval: 30 },
-      );
-    } finally {
-      release();
-      await archive;
-    }
-    await expect(pending).resolves.toMatchObject({
-      scopeType: "FEATURE",
-      featureId: f.featureId,
-    });
-    expect(
-      await client.sql`SELECT 1 FROM app.change_records WHERE project_id=${f.projectId}`,
-    ).toHaveLength(1);
-  });
   it("creates a real unnumbered draft, allows another member to edit, and emits no published data", async () => {
     const f = await fixture();
     const draft = await uow.run((tx) =>
@@ -337,7 +279,7 @@ describe("F-17 independent drafts", () => {
         f.userId,
         f.projectId,
         f.moduleId,
-        { ...content, scopeType: "FEATURE", featureId: f.featureId },
+        { ...content },
         randomUUID(),
       ),
     );
@@ -392,33 +334,19 @@ describe("F-17 independent drafts", () => {
   it("rejects foreign ownership, revoked members and archived parents without leaking drafts", async () => {
     const f = await fixture();
     const other = await fixture();
-    await expect(
-      uow.run((tx) =>
-        service.create(
-          tx,
-          f.userId,
-          f.projectId,
-          f.moduleId,
-          { ...content, scopeType: "FEATURE", featureId: other.featureId },
-          randomUUID(),
-        ),
-      ),
-    ).rejects.toMatchObject({ status: 404 });
     const draft = await uow.run((tx) =>
       service.create(
         tx,
         f.userId,
         f.projectId,
         f.moduleId,
-        { ...content, scopeType: "FEATURE", featureId: f.featureId },
+        { ...content },
         randomUUID(),
       ),
     );
     await expect(
       service.read(other.userId, f.projectId, draft.id),
     ).rejects.toMatchObject({ status: 404 });
-    // ADR-045：功能不再有归档态，父级改名不影响草稿写入。
-    await client.sql`UPDATE app.features SET name='改名功能',row_version=row_version+1 WHERE id=${f.featureId}`;
     await expect(
       uow.run((tx) =>
         service.update(
@@ -440,62 +368,6 @@ describe("F-17 independent drafts", () => {
       service.read(f.userId, f.projectId, draft.id),
     ).rejects.toMatchObject({ status: 404 });
   });
-  it("keeps independent MODULE impact snapshots and rejects foreign impacts", async () => {
-    const f = await fixture();
-    const other = await fixture();
-    await expect(
-      uow.run((tx) =>
-        service.create(
-          tx,
-          f.userId,
-          f.projectId,
-          f.moduleId,
-          {
-            ...content,
-            scopeType: "MODULE",
-            impactFeatureIds: [other.featureId],
-          },
-          randomUUID(),
-        ),
-      ),
-    ).rejects.toMatchObject({ status: 404 });
-    const draft = await uow.run((tx) =>
-      service.create(
-        tx,
-        f.userId,
-        f.projectId,
-        f.moduleId,
-        { ...content, scopeType: "MODULE", impactFeatureIds: [f.featureId] },
-        randomUUID(),
-      ),
-    );
-    // ADR-045：功能不再有归档态，已有影响功能在编辑后原样保留，也可以再次引用。
-    expect(
-      await uow.run((tx) =>
-        service.update(
-          tx,
-          f.userId,
-          f.projectId,
-          draft.id,
-          1,
-          { ...content, title: "保留历史" },
-          randomUUID(),
-        ),
-      ),
-    ).toMatchObject({ impactFeatureIds: [f.featureId] });
-    await expect(
-      uow.run((tx) =>
-        service.create(
-          tx,
-          f.userId,
-          f.projectId,
-          f.moduleId,
-          { ...content, scopeType: "MODULE", impactFeatureIds: [f.featureId] },
-          randomUUID(),
-        ),
-      ),
-    ).resolves.toMatchObject({ impactFeatureIds: [f.featureId] });
-  });
   it("serializes concurrent edits and rolls back a failed audit with content and version", async () => {
     const f = await fixture();
     const draft = await uow.run((tx) =>
@@ -504,7 +376,7 @@ describe("F-17 independent drafts", () => {
         f.userId,
         f.projectId,
         f.moduleId,
-        { ...content, scopeType: "MODULE", impactFeatureIds: [] },
+        { ...content },
         randomUUID(),
       ),
     );
@@ -527,8 +399,6 @@ describe("F-17 independent drafts", () => {
       authorName: expect.any(String),
       handlerName: expect.any(String),
       moduleName: "未分类",
-      featureName: null,
-      impactFeatureNames: [],
     });
     const results = await Promise.allSettled(
       ["甲", "乙"].map((title) =>
@@ -560,7 +430,7 @@ describe("F-17 independent drafts", () => {
           f.userId,
           f.projectId,
           f.moduleId,
-          { ...content, title, scopeType: "MODULE", impactFeatureIds: [] },
+          { ...content, title },
           randomUUID(),
         ),
       );
@@ -602,7 +472,7 @@ describe("F-17 independent drafts", () => {
           authorId,
           f.projectId,
           f.moduleId,
-          { ...content, title, scopeType: "MODULE", impactFeatureIds: [] },
+          { ...content, title },
           randomUUID(),
         ),
       );
@@ -655,7 +525,7 @@ describe("F-17 independent drafts", () => {
     await failure(await http(`${list}?authorId=0`, "GET", actor), 422);
   });
 });
-async function taskFixture(scope: "FEATURE" | "MODULE" = "FEATURE") {
+async function taskFixture() {
   const f = await fixture();
   const member = await createUser(client.sql);
   await client.sql`INSERT INTO app.project_members(project_id,user_id) VALUES (${f.projectId},${member})`;
@@ -663,7 +533,7 @@ async function taskFixture(scope: "FEATURE" | "MODULE" = "FEATURE") {
   const task = await uow.run(async (tx) => {
     const task = await repo.create(
       tx,
-      { ...f, featureId: scope === "FEATURE" ? f.featureId : null },
+      { projectId: f.projectId, moduleId: f.moduleId },
       f.userId,
       f.code + "-T-1",
       {
@@ -674,7 +544,6 @@ async function taskFixture(scope: "FEATURE" | "MODULE" = "FEATURE") {
         dueAt: null,
       },
     );
-    if (scope === "MODULE") await repo.replaceImpacts(tx, task, [f.featureId]);
     return task;
   });
   return {
@@ -705,7 +574,6 @@ describe("F-17 source drafts", () => {
       taskId: f.task.id,
       handlerId: f.userId,
       authorId: f.member,
-      featureId: f.featureId,
       status: "DRAFT",
       code: null,
       currentVersion: 0,
@@ -828,8 +696,8 @@ describe("F-17 source drafts", () => {
       ).toEqual(history);
     },
   );
-  it("freezes MODULE impacts and handler despite later task changes", async () => {
-    const f = await taskFixture("MODULE");
+  it("freezes handler despite later task changes", async () => {
+    const f = await taskFixture();
     const draft = await uow.run((tx) =>
       workflow.execute(
         tx,
@@ -842,7 +710,6 @@ describe("F-17 source drafts", () => {
     );
     await uow.run(async (tx) => {
       await tx.sql`SELECT id FROM app.tasks WHERE id=${f.task.id} FOR UPDATE`;
-      await f.repo.replaceImpacts(tx, f.task, []);
       await tx.sql`UPDATE app.tasks SET title='已改名',row_version=row_version+1 WHERE id=${f.task.id}`;
       // ADR-040：任务负责人已改为关联表，用关联表写入保持原「改派给 f.member」语义。
       await tx.sql`DELETE FROM app.task_assignees WHERE task_id=${f.task.id}`;
@@ -859,7 +726,6 @@ describe("F-17 source drafts", () => {
       ),
     );
     expect(edited).toMatchObject({
-      impactFeatureIds: [f.featureId],
       handlerId: f.userId,
       authorId: f.member,
       taskId: f.task.id,
@@ -875,7 +741,6 @@ describe("F-17 source drafts", () => {
       ),
     );
     expect(next).toMatchObject({
-      impactFeatureIds: [],
       handlerId: f.member,
       title: "已改名",
     });
@@ -914,8 +779,6 @@ describe("F-17 source drafts", () => {
       await http(f.url, "POST", { ...actor, csrf: "a".repeat(43) }, body, 1),
       401,
     );
-    // ADR-045：功能不再有归档态，父级改名后草稿仍可写、同 Key 重放返回原响应。
-    await client.sql`UPDATE app.features SET name='改名功能',row_version=row_version+1 WHERE id=${f.featureId}`;
     const replay = await http(f.url, "POST", actor, body, 1, key);
     expect(replay.status, await replay.clone().text()).toBe(200);
     const patched = await http(
@@ -929,7 +792,7 @@ describe("F-17 source drafts", () => {
     expect((await workflow.read(f.member, f.path)).items).toHaveLength(1);
   });
   it("rolls back failed audit and accepts only one concurrent content edit", async () => {
-    const f = await taskFixture("MODULE");
+    const f = await taskFixture();
     vi.spyOn(audit, "append").mockRejectedValueOnce(
       new Error("draft audit failure"),
     );
@@ -976,7 +839,7 @@ describe("F-17 source drafts", () => {
     });
   });
   it("retries from parent locks when a task update commits during its row-lock wait", async () => {
-    const f = await taskFixture("MODULE");
+    const f = await taskFixture();
     let release!: () => void, acquired!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -986,7 +849,6 @@ describe("F-17 source drafts", () => {
     });
     const update = uow.run(async (tx) => {
       await tx.sql`SELECT id FROM app.tasks WHERE id=${f.task.id} FOR UPDATE`;
-      await f.repo.replaceImpacts(tx, f.task, []);
       await tx.sql`UPDATE app.tasks SET title='锁后最新标题',row_version=row_version+1 WHERE id=${f.task.id}`;
       // ADR-040：同上，改派经关联表完成。
       await tx.sql`DELETE FROM app.task_assignees WHERE task_id=${f.task.id}`;
@@ -1022,7 +884,6 @@ describe("F-17 source drafts", () => {
     expect(await pending).toMatchObject({
       title: "锁后最新标题",
       handlerId: f.member,
-      impactFeatureIds: [],
     });
   });
 });
@@ -1084,7 +945,7 @@ describe("F-17 草稿删除", () => {
       `/projects/${f.projectId}/modules/${f.moduleId}/record-drafts`,
       "POST",
       actor,
-      { ...content, scopeType: "MODULE", impactFeatureIds: [f.featureId] },
+      { ...content },
     );
     expect(created.status, await created.clone().text()).toBe(200);
     const saved = schemaRegistry.RecordDraftItem.schema.parse(
@@ -1092,9 +953,6 @@ describe("F-17 草稿删除", () => {
     );
     const resource = `/projects/${f.projectId}/record-drafts/${saved.id}`;
     // 子行确实存在，删除必须一起清掉，否则 restrict 外键会挡住。
-    expect(
-      await client.sql`SELECT 1 FROM app.change_record_feature_impacts WHERE change_record_id=${saved.id}`,
-    ).toHaveLength(1);
     const key = randomUUID();
     const deleted = await http(resource, "DELETE", actor, undefined, 1, key);
     expect(deleted.status, await deleted.clone().text()).toBe(200);
@@ -1105,15 +963,10 @@ describe("F-17 草稿删除", () => {
       projectId: f.projectId,
       recordId: saved.id,
       moduleId: f.moduleId,
-      featureId: null,
       taskId: null,
-      impactFeatureIds: [f.featureId],
     });
     expect(
       await client.sql`SELECT 1 FROM app.change_records WHERE id=${saved.id}`,
-    ).toHaveLength(0);
-    expect(
-      await client.sql`SELECT 1 FROM app.change_record_feature_impacts WHERE change_record_id=${saved.id}`,
     ).toHaveLength(0);
     expect(await auditEventFor(f.projectId, "record.draft.delete")).toEqual([
       { action: "record.draft.delete", targetId: String(saved.id) },
@@ -1139,8 +992,6 @@ describe("F-17 草稿删除", () => {
       path = `/projects/${f.projectId}/modules/${f.moduleId}/record-drafts`;
     const first = await http(path, "POST", actor, {
       ...content,
-      scopeType: "MODULE",
-      impactFeatureIds: [f.featureId],
     });
     const saved = schemaRegistry.RecordDraftItem.schema.parse(
       await first.json(),
@@ -1175,9 +1026,6 @@ describe("F-17 草稿删除", () => {
     expect(
       await client.sql`SELECT * FROM app.change_records WHERE id=${saved.id}`,
     ).toEqual(published);
-    expect(
-      await client.sql`SELECT 1 FROM app.change_record_feature_impacts WHERE change_record_id=${saved.id}`,
-    ).toHaveLength(1);
     expect(
       await auditEventFor(f.projectId, "record.draft.delete"),
     ).toHaveLength(0);

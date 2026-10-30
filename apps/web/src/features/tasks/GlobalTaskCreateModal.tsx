@@ -10,7 +10,6 @@ import {
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { AppModal as Modal } from "@features/common/components/AppModal";
-import { CalmSegmented } from "@features/common/components/Calm";
 import { CalmSelect } from "@features/common/components/CalmSelect";
 import {
   CalmDateTimeInput,
@@ -20,12 +19,9 @@ import { priorityDotColor } from "@features/common/priority-select-option";
 import { projectSelectOption } from "@features/common/project-select-option";
 import { useProjects } from "@features/projects/project-query";
 import { useModules } from "@features/modules/module-query";
-import { useFeatures } from "@features/features/feature-query";
 import { isFirstLoad, taskError } from "./task-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
-/** 任务范围与后端路由一一对应：功能级走功能任务，模块级走模块任务。 */
-type TaskScope = "FEATURE" | "MODULE";
 type Priority = TaskEditRequest["priority"];
 
 const priorityLabels: Record<Priority, string> = {
@@ -33,10 +29,6 @@ const priorityLabels: Record<Priority, string> = {
   HIGH: "高",
   URGENT: "紧急",
 };
-const scopeOptions: ReadonlyArray<{ value: TaskScope; label: string }> = [
-  { value: "FEATURE", label: "功能级" },
-  { value: "MODULE", label: "模块级" },
-];
 
 function linksOf(text: string): string[] {
   return [
@@ -53,33 +45,29 @@ export interface GlobalTaskCreateModalProps {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly client?: InpulseApiClient | undefined;
-  /** 从项目/模块/功能页面打开时预置归属，避免用户重复选择。 */
+  /**
+   * 从项目页或模块任务页打开时预置归属。传入 moduleId 时项目与模块都锁定为
+   * 当前页面归属；只传 projectId 时仍允许用户选择或新建模块。
+   */
   readonly preset?:
     | {
         readonly projectId?: number;
         readonly moduleId?: number;
-        readonly featureId?: number;
       }
     | undefined;
-  /**
-   * 调用它的页面已经固定任务范围时传值：隐藏「任务范围」分段控件并锁定该范围，
-   * 其余字段与任务中心完全一致。
-   */
-  readonly lockedScope?: TaskScope | undefined;
   readonly onCreated?: (taskId: number) => void;
   readonly onCreatedLocation?: ((task: TaskLocation) => void) | undefined;
 }
 
 /**
- * 跨项目新建任务。归属由用户显式选择后再启用表单，
- * 因为指派人列表与影响功能选项都必须先确定真实归属才能读取。
+ * 跨项目新建任务。归属固定为项目 → 模块 → 任务；模块由用户显式选择或与任务
+ * 一并创建，指派人列表必须等真实项目归属确定后才能读取。
  */
 export function GlobalTaskCreateModal({
   open,
   onClose,
   client,
   preset,
-  lockedScope,
   onCreated,
   onCreatedLocation,
 }: GlobalTaskCreateModalProps) {
@@ -87,69 +75,45 @@ export function GlobalTaskCreateModal({
   const cache = useQueryClient();
   const retryKeys = useRef(new Map<string, string>());
 
-  const [scope, setScope] = useState<TaskScope>(
-    lockedScope ??
-      (preset?.featureId ? "FEATURE" : preset?.moduleId ? "MODULE" : "FEATURE"),
-  );
-  const [projectId, setProjectId] = useState<number>(preset?.projectId ?? 0);
-  const [moduleId, setModuleId] = useState<number>(preset?.moduleId ?? 0);
-  const [featureId, setFeatureId] = useState<number>(preset?.featureId ?? 0);
   const [createdLocation, setCreatedLocation] = useState<TaskLocation | null>(
     null,
   );
+  const [projectId, setProjectId] = useState(preset?.projectId ?? 0);
+  const [moduleId, setModuleId] = useState(preset?.moduleId ?? 0);
   const [newModule, setNewModule] = useState("");
-  const [newFeature, setNewFeature] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>("NORMAL");
   const [assigneeIds, setAssigneeIds] = useState<number[]>([]);
   const [dueAt, setDueAt] = useState<string | null>(null);
-  const [impactFeatureIds, setImpactFeatureIds] = useState<number[]>([]);
   const [linkText, setLinkText] = useState("");
   const [invalid, setInvalid] = useState<string | null>(null);
   const [failedLinks, setFailedLinks] = useState<string[]>([]);
 
   const presetProjectId = preset?.projectId ?? 0;
   const presetModuleId = preset?.moduleId ?? 0;
-  const presetFeatureId = preset?.featureId ?? 0;
+  const lockedModule = presetModuleId > 0;
 
   useEffect(() => {
     if (!open) return;
     setCreatedLocation(null);
-    setScope(
-      lockedScope ??
-        (presetFeatureId ? "FEATURE" : presetModuleId ? "MODULE" : "FEATURE"),
-    );
     setProjectId(presetProjectId);
     setModuleId(presetModuleId);
-    // 模块级任务不指定所属功能：锁定为模块级时清掉可能预置的功能归属。
-    setFeatureId(lockedScope === "MODULE" ? 0 : presetFeatureId);
     setNewModule("");
-    setNewFeature("");
     setTitle("");
     setDescription("");
     setPriority("NORMAL");
     setAssigneeIds([]);
     setDueAt(null);
-    setImpactFeatureIds([]);
     setLinkText("");
     setInvalid(null);
     setFailedLinks([]);
     retryKeys.current.clear();
-  }, [open, presetProjectId, presetModuleId, presetFeatureId, lockedScope]);
+  }, [open, presetProjectId, presetModuleId]);
 
   const projects = useProjects({ client, enabled: open });
   const modules = useModules(open ? projectId : 0, client);
-  const features = useFeatures(
-    open ? projectId : 0,
-    moduleId,
-    undefined,
-    client,
-  );
 
-  // 锁定模块级的页面（模块任务列表）已由路由固定模块：与所属项目一样只回显名称，
-  // 不再让用户重选（2026-09-24 产品反馈）。
-  const lockedModule = lockedScope === "MODULE";
   const lockedModuleName = lockedModule
     ? ((modules.query.data?.items ?? []).find((item) => item.id === moduleId)
         ?.name ?? null)
@@ -157,29 +121,14 @@ export function GlobalTaskCreateModal({
 
   const targetReady =
     projectId > 0 &&
-    (moduleId > 0 || (moduleId === -1 && newModule.trim().length > 0)) &&
-    (scope === "MODULE" ||
-      featureId > 0 ||
-      (featureId === -1 && newFeature.trim().length > 0));
+    (moduleId > 0 || (moduleId === -1 && newModule.trim().length > 0));
 
   const assignees = useQuery({
-    queryKey: [
-      "task-assignees",
-      projectId,
-      moduleId,
-      scope === "MODULE" ? null : featureId,
-    ],
+    queryKey: ["task-assignees", projectId],
     queryFn: ({ signal }) =>
       api.listActiveProjectMembers(projectId, { signal }),
     retry: false,
     enabled: open && projectId > 0,
-  });
-
-  const impactOptions = useQuery({
-    queryKey: ["task-impact-options", projectId, moduleId],
-    queryFn: ({ signal }) => api.listFeatures(projectId, moduleId, { signal }),
-    retry: false,
-    enabled: open && scope === "MODULE" && projectId > 0 && moduleId > 0,
   });
 
   function keyFor(signature: string): string {
@@ -200,82 +149,45 @@ export function GlobalTaskCreateModal({
         assigneeIds,
         dueAt,
       };
-      const impacts = [...new Set(impactFeatureIds)].sort((a, b) => a - b);
       const init = {
         headers: {
           "x-csrf-token": (await api.issueCsrfToken()).csrfToken,
           "Idempotency-Key": keyFor(
-            JSON.stringify([
-              projectId,
-              moduleId,
-              featureId,
-              scope,
-              body,
-              impacts,
-              newModule,
-              newFeature,
-            ]),
+            JSON.stringify([projectId, moduleId, body, newModule]),
           ),
         },
       };
-      const createdScope =
-        moduleId === -1 || (scope === "FEATURE" && featureId === -1)
+      const created =
+        moduleId === -1
           ? await api.createTaskWithScope(
               projectId,
               {
-                module:
-                  moduleId === -1
-                    ? {
-                        kind: "new",
-                        input: { name: newModule.trim(), description: "" },
-                      }
-                    : { kind: "existing", id: moduleId },
-                feature:
-                  scope === "MODULE"
-                    ? null
-                    : featureId === -1
-                      ? {
-                          kind: "new",
-                          input: {
-                            name: newFeature.trim(),
-                            currentBehavior: "",
-                            acceptanceCriteria: "",
-                            tags: [],
-                          },
-                        }
-                      : { kind: "existing", id: featureId },
+                module: {
+                  kind: "new",
+                  input: { name: newModule.trim(), description: "" },
+                },
                 task: body,
-                impactFeatureIds: scope === "MODULE" ? impacts : [],
               },
               init,
             )
-          : null;
-      const task = createdScope
-        ? { id: createdScope.taskId }
-        : scope === "MODULE"
-          ? await api.createModuleTask(
-              projectId,
-              moduleId,
-              { ...body, impactFeatureIds: impacts },
-              init,
-            )
-          : await api.createTask(projectId, moduleId, featureId, body, init);
-      // 关联链接是创建后的独立写入：任务已落库时只报告未成功的链接，
-      // 不用回滚任务，避免用户丢失已填写的表单。
+          : await api.createModuleTask(projectId, moduleId, body, init);
+      const taskId = "taskId" in created ? created.taskId : created.id;
+      const resolvedModuleId =
+        "taskId" in created ? created.moduleId : created.moduleId;
       const rejected: string[] = [];
       for (const url of linksOf(linkText)) {
         try {
-          const currentLinks = await api.listExternalLinks("TASK", task.id);
+          const currentLinks = await api.listExternalLinks("TASK", taskId);
           await api.addExternalLink(
             "TASK",
-            task.id,
+            taskId,
             { url },
             {
               headers: {
                 "x-csrf-token": init.headers["x-csrf-token"],
                 "If-Match": `"${currentLinks.rowVersion}"`,
                 "Idempotency-Key": keyFor(
-                  JSON.stringify(["link", task.id, url]),
+                  JSON.stringify(["link", taskId, url]),
                 ),
               },
             },
@@ -285,17 +197,16 @@ export function GlobalTaskCreateModal({
         }
       }
       return {
-        task,
+        taskId,
         rejected,
-        location: createdScope ?? {
+        location: {
           projectId,
-          moduleId,
-          featureId: scope === "MODULE" ? null : featureId,
-          taskId: task.id,
-        },
+          moduleId: resolvedModuleId,
+          taskId,
+        } satisfies TaskLocation,
       };
     },
-    onSuccess: async ({ task, rejected, location }) => {
+    onSuccess: async ({ taskId, rejected, location }) => {
       retryKeys.current.clear();
       setFailedLinks(rejected);
       setCreatedLocation(location);
@@ -304,7 +215,6 @@ export function GlobalTaskCreateModal({
           "tasks",
           "task-board",
           "modules",
-          "features",
           "activity",
           "search",
           "notifications",
@@ -314,9 +224,7 @@ export function GlobalTaskCreateModal({
           "task-groups",
         ].map((key) => cache.invalidateQueries({ queryKey: [key] })),
       );
-      // 任务已经落库，无论链接是否全部关联成功都要通知调用方；
-      // 只有全部成功才自动关闭，否则保留弹窗让用户看到失败明细。
-      onCreated?.(task.id);
+      onCreated?.(taskId);
       if (rejected.length === 0) {
         reset();
         onClose();
@@ -328,13 +236,11 @@ export function GlobalTaskCreateModal({
   function reset(): void {
     setCreatedLocation(null);
     setNewModule("");
-    setNewFeature("");
     setTitle("");
     setDescription("");
     setPriority("NORMAL");
     setAssigneeIds([]);
     setDueAt(null);
-    setImpactFeatureIds([]);
     setLinkText("");
     setInvalid(null);
     setFailedLinks([]);
@@ -350,7 +256,7 @@ export function GlobalTaskCreateModal({
     event.preventDefault();
     if (createdLocation || mutation.isPending) return;
     if (!targetReady) {
-      setInvalid("请选择任务归属，或填写自定义模块、功能名称。");
+      setInvalid("请选择任务归属，或填写新模块名称。");
       return;
     }
     if (title.trim().length === 0) {
@@ -376,13 +282,6 @@ export function GlobalTaskCreateModal({
   const projectName = projects.data?.items.find(
     (project) => project.id === projectId,
   )?.name;
-  /** 影响功能只有在模块确定后才能读选项；自定义新建模块同理不可选。 */
-  const impactPlaceholder =
-    moduleId === -1
-      ? "新建模块暂不支持影响功能"
-      : moduleId === 0
-        ? "请先选择模块"
-        : "可多选，可为空";
 
   const busy = mutation.isPending;
   const createError =
@@ -423,56 +322,14 @@ export function GlobalTaskCreateModal({
             className="task-form-fields"
             disabled={busy || createdLocation !== null}
           >
-            {lockedScope ? (
-              // 页面已经固定归属：项目只回显名称，不再让用户重选（2026-09-24 产品反馈）。
+            {lockedModule ? (
               <div className="calm-field">
                 <span className="field-label">所属项目</span>
                 <p className="task-fixed-project">
                   {projectName ?? "正在加载项目…"}
                 </p>
               </div>
-            ) : null}
-            {lockedModule ? (
-              <div className="calm-field">
-                <span className="field-label">所属模块</span>
-                <p className="task-fixed-project">
-                  {lockedModuleName ?? "正在加载模块…"}
-                </p>
-              </div>
-            ) : null}
-            <div className="calm-field">
-              <label htmlFor="global-task-title">任务标题</label>
-              <input
-                id="global-task-title"
-                value={title}
-                maxLength={500}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </div>
-
-            {lockedScope ? null : (
-              <div className="calm-field">
-                <span
-                  className="field-label"
-                  title="功能级：推进一个具体功能；模块级：跨功能或模块整体工作。"
-                >
-                  任务范围
-                </span>
-                <CalmSegmented
-                  label="任务范围"
-                  options={scopeOptions}
-                  value={scope}
-                  onChange={(next) => {
-                    setScope(next);
-                    setAssigneeIds([]);
-                    if (next === "MODULE") setFeatureId(0);
-                  }}
-                />
-              </div>
-            )}
-
-            {/* 锁定归属时项目已由上面的只读行给出，这里不再渲染选择器。 */}
-            {lockedScope ? null : (
+            ) : (
               <div className="calm-field">
                 <label htmlFor="global-task-project">所属项目</label>
                 <CalmSelect
@@ -483,12 +340,10 @@ export function GlobalTaskCreateModal({
                   onChange={(next) => {
                     setProjectId(Number(next));
                     setModuleId(0);
-                    setFeatureId(0);
+                    setNewModule("");
                     setAssigneeIds([]);
-                    setImpactFeatureIds([]);
                   }}
                   options={[
-                    // 占位项只作提示，禁用以防用户主动选回「未选择」清掉归属（2026-09-22 产品反馈）。
                     { value: 0, label: "请选择项目", disabled: true },
                     ...(projects.data?.items ?? []).map(projectSelectOption),
                   ]}
@@ -500,38 +355,46 @@ export function GlobalTaskCreateModal({
               </div>
             )}
 
-            {/* 锁定模块级时模块已由上面的只读行给出，这里不再渲染选择器。 */}
-            {lockedModule ? null : (
+            {lockedModule ? (
               <div className="calm-field">
-                <label htmlFor="global-task-module">所属模块</label>
-                <CalmSelect
-                  id="global-task-module"
-                  ariaLabel="所属模块"
-                  value={moduleId}
-                  disabled={projectId === 0}
-                  appearance="menu"
-                  onChange={(next) => {
-                    setModuleId(Number(next));
-                    setFeatureId(Number(next) === -1 ? -1 : 0);
-                    setAssigneeIds([]);
-                    setImpactFeatureIds([]);
-                  }}
-                  options={[
-                    {
-                      value: 0,
-                      label: projectId === 0 ? "请先选择项目" : "请选择模块",
-                      disabled: true,
-                    },
-                    { value: -1, label: "自定义 · 创建新模块" },
-                    // ADR-044：模块已无归档只读态，模块选项全部可选。
-                    ...(modules.query.data?.items ?? []).map((module) => ({
-                      value: module.id,
-                      label: module.name,
-                    })),
-                  ]}
-                  animated
-                />
+                <span className="field-label">所属模块</span>
+                <p className="task-fixed-project">
+                  {lockedModuleName ?? "正在加载模块…"}
+                </p>
               </div>
+            ) : (
+              <>
+                <div className="calm-field">
+                  <label htmlFor="global-task-module">所属模块</label>
+                  <CalmSelect
+                    id="global-task-module"
+                    ariaLabel="所属模块"
+                    value={moduleId}
+                    disabled={projectId === 0}
+                    appearance="menu"
+                    onChange={(next) => {
+                      setModuleId(Number(next));
+                      setAssigneeIds([]);
+                    }}
+                    options={[
+                      {
+                        value: 0,
+                        label: projectId === 0 ? "请先选择项目" : "请选择模块",
+                        disabled: true,
+                      },
+                      { value: -1, label: "自定义 · 创建新模块" },
+                      ...(modules.query.data?.items ?? []).map((module) => ({
+                        value: module.id,
+                        label: module.name,
+                      })),
+                    ]}
+                    animated
+                  />
+                </div>
+                {modules.query.isError && (
+                  <p role="alert">模块加载失败，请重试。</p>
+                )}
+              </>
             )}
 
             {moduleId === -1 && (
@@ -541,101 +404,22 @@ export function GlobalTaskCreateModal({
                   id="new-module-name"
                   value={newModule}
                   maxLength={200}
-                  onChange={(e) => setNewModule(e.target.value)}
+                  onChange={(event) => setNewModule(event.target.value)}
                 />
                 <small>提交任务时一起创建。</small>
               </div>
             )}
-            {modules.query.isError && (
-              <p role="alert">模块加载失败，请重试。</p>
-            )}
 
-            {scope === "MODULE" && (
-              // 2026-09-24 产品反馈：影响功能紧跟在所属模块下面，并用下拉多选与其它归属选择器同一交互。
-              <div className="calm-field">
-                <label htmlFor="global-task-impact-features">影响功能</label>
-                <CalmSelect
-                  id="global-task-impact-features"
-                  ariaLabel="影响功能"
-                  value={impactFeatureIds}
-                  multiple
-                  maxTagCount={2}
-                  appearance="menu"
-                  placeholder={impactPlaceholder}
-                  disabled={moduleId <= 0}
-                  loading={moduleId > 0 && isFirstLoad(impactOptions)}
-                  onChange={(next) =>
-                    setImpactFeatureIds(
-                      [...new Set(next.map(Number))].sort((a, b) => a - b),
-                    )
-                  }
-                  options={(impactOptions.data?.items ?? []).map((feature) => ({
-                    value: feature.id,
-                    label: feature.name,
-                  }))}
-                  animated
-                />
-                {impactOptions.isError && (
-                  <Alert
-                    type="error"
-                    title={taskError(impactOptions.error)}
-                    action={
-                      <Button
-                        className="secondary-button"
-                        onClick={() => void impactOptions.refetch()}
-                      >
-                        重试影响功能
-                      </Button>
-                    }
-                  />
-                )}
-              </div>
-            )}
+            <div className="calm-field">
+              <label htmlFor="global-task-title">任务标题</label>
+              <input
+                id="global-task-title"
+                value={title}
+                maxLength={500}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </div>
 
-            {scope === "FEATURE" && (
-              <div className="calm-field">
-                <label htmlFor="global-task-feature">所属功能</label>
-                <CalmSelect
-                  id="global-task-feature"
-                  ariaLabel="所属功能"
-                  value={featureId}
-                  disabled={moduleId === 0}
-                  appearance="menu"
-                  onChange={(next) => {
-                    setFeatureId(Number(next));
-                    setAssigneeIds([]);
-                  }}
-                  options={[
-                    {
-                      value: 0,
-                      label: moduleId === 0 ? "请先选择模块" : "请选择功能",
-                      disabled: true,
-                    },
-                    { value: -1, label: "自定义 · 创建新功能" },
-                    ...(features.query.data?.items ?? []).map((feature) => ({
-                      value: feature.id,
-                      label: feature.name,
-                    })),
-                  ]}
-                  animated
-                />
-              </div>
-            )}
-
-            {scope === "FEATURE" && featureId === -1 && (
-              <div className="calm-field">
-                <label htmlFor="new-feature-name">新功能名称</label>
-                <input
-                  id="new-feature-name"
-                  value={newFeature}
-                  maxLength={500}
-                  onChange={(e) => setNewFeature(e.target.value)}
-                />
-                <small>
-                  提交任务时一起创建，稍后可在功能档案补充说明与验收标准。
-                </small>
-              </div>
-            )}
             <div className="calm-field">
               <label htmlFor="global-task-assignee">指派给</label>
               <CalmSelect

@@ -48,7 +48,7 @@ export interface ProjectOverviewPageViewProps {
   readonly onOpenModules?: (() => void) | undefined;
   /** 项目名右侧的「编辑项目」入口；省略或项目未加载时不渲染。 */
   readonly onEditProject?: (() => void) | undefined;
-  /** 标题左侧的返回箭头（与功能/模块页同款圆钮）；省略时不渲染。 */
+  /** 标题左侧的返回箭头（与模块页同款圆钮）；省略时不渲染。 */
   readonly onBack?: (() => void) | undefined;
   readonly onOpenMembers: () => void;
   /** 打开企业微信项目群的机器人 / Webhook 绑定与通知管理弹窗。 */
@@ -103,7 +103,6 @@ export const ProjectOverviewPageView: React.FC<
   const result = overviewQuery.data;
   const stats = result?.stats ?? {
     activeModules: 0,
-    activeFeatures: 0,
     openTasks: 0,
     publishedRecords: 0,
     openLeftovers: 0,
@@ -111,8 +110,7 @@ export const ProjectOverviewPageView: React.FC<
   const iterations = result?.recentIterations ?? [];
   const leftovers = result?.leftovers ?? [];
 
-  // 指标小卡只保留任务/记录/成员/遗留四项：活跃模块与活跃功能按用户要求
-  // 从展示层取消（服务端口径不变，仍由 R-2 提供，供后续接线）。
+  // 指标小卡保留任务、记录、成员与遗留四项。
   const metrics: ReadonlyArray<{
     readonly key: string;
     readonly label: string;
@@ -155,7 +153,6 @@ export const ProjectOverviewPageView: React.FC<
       <button type="button" onClick={() => onOpenRecord(item)}>
         <InpulseIcon name="gitBranch" size={15} />
         <span>
-          {item.featureName === null ? "" : item.featureName + "："}
           {item.title}
           <small>
             {item.code} · {formatPublishedAt(item.publishedAt)}

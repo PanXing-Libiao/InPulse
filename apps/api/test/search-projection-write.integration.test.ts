@@ -28,7 +28,6 @@ interface SearchProjectionRow {
   readonly source_status: string;
   readonly source_row_version: number;
   readonly module_id: number | null;
-  readonly feature_id: number | null;
   readonly record_id: number | null;
 }
 
@@ -37,38 +36,29 @@ let fixture: ProjectFixture;
 let unitOfWork: PostgresUnitOfWork;
 let writer: PostgresSearchProjectionWritePort;
 
-async function createFeatureEntity(): Promise<number> {
-  const code = `${fixture.code}-F-${randomInt(1, 2_000_000_000)}`;
-  const [feature] = await client!.sql<{ id: number }[]>`
-    INSERT INTO app.features (
-      project_id,
-      module_id,
-      code,
-      name,
-      created_by
-    )
-    VALUES (
-      ${fixture.projectId},
-      ${fixture.moduleId},
-      ${code},
-      'Search projection test feature',
-      ${fixture.userId}
-    )
-    RETURNING id
-  `;
-  if (!feature) {
-    throw new Error("Feature fixture insert returned no row");
-  }
-  return feature.id;
+async function createTaskEntity(): Promise<number> {
+  const code = `${fixture.code}-T-${randomInt(1, 2_000_000_000)}`;
+  return client!.sql.begin(async (tx) => {
+    const [task] = await tx<{ id: number }[]>`
+      INSERT INTO app.tasks (project_id, module_id, code, title, creator_id)
+      VALUES (${fixture.projectId}, ${fixture.moduleId}, ${code}, 'Search projection test task', ${fixture.userId})
+      RETURNING id
+    `;
+    if (!task) throw new Error("Task fixture insert returned no row");
+    await tx`
+      INSERT INTO app.task_status_history (task_id, project_id, from_work_status, to_work_status, changed_by)
+      VALUES (${task.id}, ${fixture.projectId}, NULL, 'TODO', ${fixture.userId})
+    `;
+    return task.id;
+  });
 }
 
 function writeInput(entityId: number): SearchProjectionWriteInput {
   return {
     projectId: fixture.projectId,
-    entityType: "FEATURE",
+    entityType: "TASK",
     entityId,
     moduleId: fixture.moduleId,
-    featureId: entityId,
     recordId: null,
     title: "登录功能",
     summary: "统一认证入口",
@@ -90,11 +80,10 @@ async function projectionRow(entityId: number) {
       source_status,
       source_row_version,
       module_id,
-      feature_id,
       record_id
     FROM app.search_projection
     WHERE project_id = ${fixture.projectId}
-      AND entity_type = 'FEATURE'
+      AND entity_type = 'TASK'
       AND entity_id = ${entityId}
   `;
   return rows[0] ?? null;
@@ -105,7 +94,7 @@ async function projectionCount(entityId: number): Promise<number> {
     SELECT count(*)::INTEGER AS count
     FROM app.search_projection
     WHERE project_id = ${fixture.projectId}
-      AND entity_type = 'FEATURE'
+      AND entity_type = 'TASK'
       AND entity_id = ${entityId}
   `;
   return row?.count ?? 0;
@@ -131,7 +120,7 @@ describe("PostgresSearchProjectionWritePort", () => {
   });
 
   test("normalizes a new projection and upserts the same entity without duplicates", async () => {
-    const entityId = await createFeatureEntity();
+    const entityId = await createTaskEntity();
     const first = {
       ...writeInput(entityId),
       rawText: "ＩｎＰｕｌｓｅ　搜索。ＡＢＣ-１２３",
@@ -147,7 +136,6 @@ describe("PostgresSearchProjectionWritePort", () => {
       source_status: "ACTIVE",
       source_row_version: 1,
       module_id: fixture.moduleId,
-      feature_id: entityId,
       record_id: null,
     });
 
@@ -160,7 +148,6 @@ describe("PostgresSearchProjectionWritePort", () => {
         visibilityScope: "ADMIN_ONLY",
         sourceStatus: "VOID",
         sourceRowVersion: 2,
-        featureId: null,
       }),
     );
 
@@ -175,12 +162,11 @@ describe("PostgresSearchProjectionWritePort", () => {
       source_row_version: 2,
       // 父级 id 必须随冲突更新改写，不能在旧值上粘住
       module_id: fixture.moduleId,
-      feature_id: null,
     });
   });
 
   test("rejects a parent id that belongs to another project", async () => {
-    const entityId = await createFeatureEntity();
+    const entityId = await createTaskEntity();
     const otherUserId = await createUser(client!.sql);
     const otherProject = await createProject(client!.sql, otherUserId);
 
@@ -191,23 +177,23 @@ describe("PostgresSearchProjectionWritePort", () => {
           moduleId: otherProject.moduleId,
         }),
       ),
-    ).rejects.toThrow(/search_projection_(module|feature)_project_fk/);
+    ).rejects.toThrow(/search_projection_(module|task)_project_fk/);
     expect(await projectionCount(entityId)).toBe(0);
   });
 
-  test("rejects a feature projection without its parent module", async () => {
-    const entityId = await createFeatureEntity();
+  test("rejects a task projection without its parent module", async () => {
+    const entityId = await createTaskEntity();
 
     await expect(
       unitOfWork.run((tx) =>
         writer.upsert(tx, { ...writeInput(entityId), moduleId: null }),
       ),
-    ).rejects.toThrow(/search_projection_navigation_shape_check/);
+    ).rejects.toThrow(/TASK search projection requires moduleId/);
     expect(await projectionCount(entityId)).toBe(0);
   });
 
   test("a later caller failure rolls back the projection write", async () => {
-    const entityId = await createFeatureEntity();
+    const entityId = await createTaskEntity();
     const cause = new Error("Injected workflow failure");
     await expect(
       unitOfWork.run(async (tx) => {
@@ -219,7 +205,7 @@ describe("PostgresSearchProjectionWritePort", () => {
   });
 
   test("a stale source row version does not overwrite newer projection state", async () => {
-    const entityId = await createFeatureEntity();
+    const entityId = await createTaskEntity();
     await unitOfWork.run((tx) =>
       writer.upsert(tx, {
         ...writeInput(entityId),
@@ -248,7 +234,7 @@ describe("PostgresSearchProjectionWritePort", () => {
   });
 
   test("rejects text that produces an empty normalized value", async () => {
-    const entityId = await createFeatureEntity();
+    const entityId = await createTaskEntity();
     await expect(
       unitOfWork.run((tx) =>
         writer.upsert(tx, {

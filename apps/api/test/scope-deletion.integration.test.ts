@@ -27,8 +27,6 @@ import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgre
 import { ProjectRoleGateService } from "../src/modules/projects/project-role-gate.service.js";
 import { ModuleManagementRepository } from "../src/modules/modules/module-management.repository.js";
 import { SqlModuleDeletionCommandPort } from "../src/modules/modules/module-deletion.command-port.js";
-import { FeatureManagementRepository } from "../src/modules/features/feature-management.repository.js";
-import { SqlFeatureDeletionCommandPort } from "../src/modules/features/feature-deletion.command-port.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { ScopeDeletionWorkflow } from "../src/workflows/scope-deletion.workflow.js";
@@ -77,10 +75,6 @@ beforeAll(async () => {
       uow,
       access,
       new SqlModuleDeletionCommandPort(roles, modules),
-      new SqlFeatureDeletionCommandPort(
-        roles,
-        new FeatureManagementRepository(),
-      ),
       audit,
       activity,
     ),
@@ -171,7 +165,6 @@ async function transferLeader(
 
 interface Scope {
   readonly moduleId: number;
-  readonly featureId: number | null;
 }
 
 let moduleSequences = 0;
@@ -186,22 +179,6 @@ async function createNormalModule(
     { id: number; code: string; rowVersion: number }[]
   >`INSERT INTO app.modules(project_id,name,kind,code,created_by) VALUES (${project.projectId},${name},'NORMAL',${code},${actorId}) RETURNING id, code, row_version AS "rowVersion"`;
   if (!row) throw new Error("module fixture returned no row");
-  return { id: row.id, code: row.code, rowVersion: row.rowVersion };
-}
-
-let featureSequences = 0;
-async function createFeature(
-  project: ProjectFixture,
-  moduleId: number,
-  actorId: number,
-  name: string,
-): Promise<{ id: number; code: string; rowVersion: number }> {
-  featureSequences += 1;
-  const code = `${project.code}-F-${featureSequences}`;
-  const [row] = await client.sql<
-    { id: number; code: string; rowVersion: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES (${project.projectId},${moduleId},${code},${name},${actorId}) RETURNING id, code, row_version AS "rowVersion"`;
-  if (!row) throw new Error("feature fixture returned no row");
   return { id: row.id, code: row.code, rowVersion: row.rowVersion };
 }
 
@@ -222,7 +199,7 @@ async function createTask(
   return client.sql.begin(async (tx) => {
     const [row] = await tx<
       { id: number; rowVersion: number }[]
-    >`INSERT INTO app.tasks(project_id,module_id,feature_id,scope_type,code,title,creator_id,work_status,lifecycle_status) VALUES (${project.projectId},${scope.moduleId},${scope.featureId},${scope.featureId === null ? "MODULE" : "FEATURE"},${`${project.code}-T-${taskSequences}`},${title},${creatorId},'TODO','ACTIVE') RETURNING id, row_version AS "rowVersion"`;
+    >`INSERT INTO app.tasks(project_id,module_id,code,title,creator_id,work_status,lifecycle_status) VALUES (${project.projectId},${scope.moduleId},${`${project.code}-T-${taskSequences}`},${title},${creatorId},'TODO','ACTIVE') RETURNING id, row_version AS "rowVersion"`;
     if (!row) throw new Error("task fixture returned no row");
     await tx`INSERT INTO app.task_assignees (task_id, user_id, project_id) VALUES (${row.id}, ${creatorId}, ${project.projectId})`;
     await tx`INSERT INTO app.task_status_history (task_id, project_id, from_work_status, to_work_status, completed_at_snapshot, changed_by) VALUES (${row.id}, ${project.projectId}, NULL, 'TODO', NULL, ${creatorId})`;
@@ -252,7 +229,7 @@ async function publishRecord(
   return client.sql.begin(async (tx) => {
     const [row] = await tx<
       { id: number }[]
-    >`INSERT INTO app.change_records(project_id,module_id,feature_id,scope_type,code,title,handler_id,author_id,status,current_version,current_payload,published_at) VALUES (${project.projectId},${scope.moduleId},${scope.featureId},${scope.featureId === null ? "MODULE" : "FEATURE"},${`${project.code}-CR-${recordSequences}`},${title},${authorId},${authorId},'PUBLISHED',1,${JSON.stringify(payload)}::jsonb,now()) RETURNING id`;
+    >`INSERT INTO app.change_records(project_id,module_id,code,title,handler_id,author_id,status,current_version,current_payload,published_at) VALUES (${project.projectId},${scope.moduleId},${`${project.code}-CR-${recordSequences}`},${title},${authorId},${authorId},'PUBLISHED',1,${JSON.stringify(payload)}::jsonb,now()) RETURNING id`;
     if (!row) throw new Error("record fixture returned no row");
     await tx`INSERT INTO app.change_record_versions(record_id,project_id,version_no,title_snapshot,payload,created_by) VALUES (${row.id},${project.projectId},1,${title},${JSON.stringify(payload)}::jsonb,${authorId})`;
     return row.id;
@@ -269,7 +246,7 @@ async function createDraftRecord(
   recordSequences += 1;
   const [row] = await client.sql<
     { id: number }[]
-  >`INSERT INTO app.change_records(project_id,module_id,feature_id,scope_type,code,title,handler_id,author_id,status,current_version,current_payload) VALUES (${project.projectId},${scope.moduleId},${scope.featureId},${scope.featureId === null ? "MODULE" : "FEATURE"},NULL,${title},${authorId},${authorId},'DRAFT',0,'{}'::jsonb) RETURNING id`;
+  >`INSERT INTO app.change_records(project_id,module_id,code,title,handler_id,author_id,status,current_version,current_payload) VALUES (${project.projectId},${scope.moduleId},NULL,${title},${authorId},${authorId},'DRAFT',0,'{}'::jsonb) RETURNING id`;
   if (!row) throw new Error("draft fixture returned no row");
   return row.id;
 }
@@ -290,42 +267,16 @@ async function attachTaskLink(
   });
 }
 
-async function attachFeatureLink(
-  project: ProjectFixture,
-  featureId: number,
-  creatorId: number,
-  url: string,
-): Promise<number> {
-  return client.sql.begin(async (tx) => {
-    const [link] = await tx<
-      { id: number }[]
-    >`INSERT INTO app.external_links (project_id,display_url,normalized_url,provider,kind,created_by) VALUES (${project.projectId},${url},${url},'GITHUB','OTHER',${creatorId}) RETURNING id`;
-    if (!link) throw new Error("link fixture returned no row");
-    await tx`INSERT INTO app.feature_external_links (project_id,feature_id,link_id) VALUES (${project.projectId},${featureId},${link.id})`;
-    return link.id;
-  });
-}
-
-async function addImpact(
-  project: ProjectFixture,
-  taskId: number,
-  featureId: number,
-  moduleId: number,
-): Promise<void> {
-  await client.sql`INSERT INTO app.task_feature_impacts(task_id,feature_id,module_id,project_id) VALUES (${taskId},${featureId},${moduleId},${project.projectId})`;
-}
-
 async function addSearchRow(
   project: ProjectFixture,
-  entityType: "MODULE" | "FEATURE" | "TASK",
+  entityType: "MODULE" | "TASK",
   entityId: number,
   moduleId: number,
-  featureId: number | null,
   title: string,
 ): Promise<void> {
   await client.sql`
-    INSERT INTO app.search_projection(project_id,entity_type,entity_id,title,summary,raw_text,normalized_search_text,visibility_scope,source_status,source_row_version,module_id,feature_id)
-    VALUES (${project.projectId},${entityType},${entityId},${title},'',${title},${title},'MEMBER','TODO',1,${entityType === "MODULE" ? null : moduleId},${featureId})`;
+    INSERT INTO app.search_projection(project_id,entity_type,entity_id,title,summary,raw_text,normalized_search_text,visibility_scope,source_status,source_row_version,module_id)
+    VALUES (${project.projectId},${entityType},${entityId},${title},'',${title},${title},'MEMBER','TODO',1,${entityType === "MODULE" ? null : moduleId})`;
 }
 
 let groupSequences = 0;
@@ -427,24 +378,6 @@ function deleteModule(
   );
 }
 
-function deleteFeature(
-  actor: Actor | undefined,
-  project: ProjectFixture,
-  moduleId: number,
-  featureId: number,
-  version: number,
-  options: RequestOptions = {},
-) {
-  return fetch(
-    `${base}/api/v1/projects/${project.projectId}/modules/${moduleId}/features/${featureId}/delete`,
-    {
-      method: "POST",
-      headers: headers(actor, options, version),
-      body: JSON.stringify(options.body ?? { reason: "功能下线" }),
-    },
-  );
-}
-
 async function purgeProject(projectId: number): Promise<void> {
   await client.sql`SELECT * FROM app.purge_project(${projectId})`;
 }
@@ -506,45 +439,43 @@ const searchRows = (projectId: number, entityType: string, entityId: number) =>
     { id: number }[]
   >`SELECT id FROM app.search_projection WHERE project_id = ${projectId} AND entity_type = ${entityType} AND entity_id = ${entityId}`;
 
-describe("ADR-096 物理删除模块与功能", () => {
+describe("ADR-096 物理删除模块", () => {
   it("删除模块会物理清除全部下级、记录与关联，只保留审计和项目动态", async () => {
     const project = await fixture(),
       module = await createNormalModule(project, project.userId, "结算模块"),
-      alpha = await createFeature(project, module.id, project.userId, "对账"),
-      beta = await createFeature(project, module.id, project.userId, "开票"),
       moduleTask = await createTask(
         project,
-        { moduleId: module.id, featureId: null },
+        { moduleId: module.id },
         project.userId,
         "模块级任务",
       ),
       alphaTask = await createTask(
         project,
-        { moduleId: module.id, featureId: alpha.id },
+        { moduleId: module.id },
         project.userId,
         "对账任务",
       ),
       betaTask = await createTask(
         project,
-        { moduleId: module.id, featureId: beta.id },
+        { moduleId: module.id },
         project.userId,
         "开票任务",
       ),
       moduleRecord = await publishRecord(
         project,
-        { moduleId: module.id, featureId: null },
+        { moduleId: module.id },
         project.userId,
         "模块级记录",
       ),
       alphaRecord = await publishRecord(
         project,
-        { moduleId: module.id, featureId: alpha.id },
+        { moduleId: module.id },
         project.userId,
         "对账记录",
       ),
       draftRecord = await createDraftRecord(
         project,
-        { moduleId: module.id, featureId: alpha.id },
+        { moduleId: module.id },
         project.userId,
         "未发布草稿",
       ),
@@ -560,12 +491,6 @@ describe("ADR-096 物理删除模块与功能", () => {
         project.userId,
         "https://github.com/256-code/InPulse/commit/1a2b3c4d5e6f",
       ),
-      featureLinkId = await attachFeatureLink(
-        project,
-        alpha.id,
-        project.userId,
-        "https://github.com/256-code/InPulse/issues/559",
-      ),
       recordLinkId = await attachRecordLink(
         project,
         moduleRecord,
@@ -573,30 +498,8 @@ describe("ADR-096 物理删除模块与功能", () => {
         "https://github.com/256-code/InPulse/pull/560",
       );
 
-    await addSearchRow(
-      project,
-      "MODULE",
-      module.id,
-      module.id,
-      null,
-      "结算模块",
-    );
-    await addSearchRow(
-      project,
-      "FEATURE",
-      alpha.id,
-      module.id,
-      alpha.id,
-      "对账",
-    );
-    await addSearchRow(
-      project,
-      "TASK",
-      alphaTask.id,
-      module.id,
-      alpha.id,
-      "对账任务",
-    );
+    await addSearchRow(project, "MODULE", module.id, module.id, "结算模块");
+    await addSearchRow(project, "TASK", alphaTask.id, module.id, "对账任务");
 
     const response = await deleteModule(
       project.actor,
@@ -614,15 +517,12 @@ describe("ADR-096 物理删除模块与功能", () => {
       code: module.code,
       name: "结算模块",
       kind: "NORMAL",
-      deletedFeatureCount: 2,
       deletedTaskCount: 3,
       deletedRecordCount: 3,
-      removedLinkCount: 3,
+      removedLinkCount: 2,
     });
 
     expect(await rowCount("modules", module.id)).toBe(0);
-    expect(await rowCount("features", alpha.id)).toBe(0);
-    expect(await rowCount("features", beta.id)).toBe(0);
     for (const taskId of [moduleTask.id, alphaTask.id, betaTask.id]) {
       expect(await rowCount("tasks", taskId)).toBe(0);
       expect(await columnCount("task_status_history", "task_id", taskId)).toBe(
@@ -649,9 +549,6 @@ describe("ADR-096 物理删除模块与功能", () => {
       await columnCount("task_external_links", "task_id", alphaTask.id),
     ).toBe(0);
     expect(
-      await columnCount("feature_external_links", "feature_id", alpha.id),
-    ).toBe(0);
-    expect(
       await columnCount(
         "change_record_external_links",
         "change_record_id",
@@ -659,14 +556,10 @@ describe("ADR-096 物理删除模块与功能", () => {
       ),
     ).toBe(0);
     expect(await rowCount("external_links", taskLinkId)).toBe(1);
-    expect(await rowCount("external_links", featureLinkId)).toBe(1);
     expect(await rowCount("external_links", recordLinkId)).toBe(1);
 
     expect(
       (await searchRows(project.projectId, "MODULE", module.id)).length,
-    ).toBe(0);
-    expect(
-      (await searchRows(project.projectId, "FEATURE", alpha.id)).length,
     ).toBe(0);
     expect(
       (await searchRows(project.projectId, "TASK", alphaTask.id)).length,
@@ -680,15 +573,11 @@ describe("ADR-096 物理删除模块与功能", () => {
       code: module.code,
       name: "结算模块",
       kind: "NORMAL",
-      deletedFeatureCount: 2,
       deletedTaskCount: 3,
       deletedRecordCount: 3,
-      removedLinkCount: 3,
+      removedLinkCount: 2,
       reason: "模块下线",
     });
-    expect(await auditRows(project.projectId, "feature.delete")).toHaveLength(
-      0,
-    );
     expect(await auditRows(project.projectId, "task.delete")).toHaveLength(0);
 
     const moduleActivity = await activityRows(project.projectId, module.id);
@@ -701,13 +590,11 @@ describe("ADR-096 物理删除模块与功能", () => {
         moduleId: module.id,
         code: module.code,
         kind: "NORMAL",
-        deletedFeatureCount: 2,
         deletedTaskCount: 3,
         deletedRecordCount: 3,
-        removedLinkCount: 3,
+        removedLinkCount: 2,
       },
     });
-    expect(await activityRows(project.projectId, alpha.id)).toHaveLength(0);
     expect(await activityRows(project.projectId, alphaTask.id)).toHaveLength(0);
 
     const listed = await uow.run((tx) => modules.list(tx, project.projectId));
@@ -737,12 +624,6 @@ describe("ADR-096 物理删除模块与功能", () => {
   it("删除仅限系统管理员或本项目组长，其余 403 / 404 / 401", async () => {
     const project = await fixture(),
       module = await createNormalModule(project, project.userId, "权限模块"),
-      feature = await createFeature(
-        project,
-        module.id,
-        project.userId,
-        "权限功能",
-      ),
       memberId = await joinMember(project.projectId),
       member = await session(memberId),
       outsider = await session(await createUser(client.sql));
@@ -758,39 +639,11 @@ describe("ADR-096 物理删除模块与功能", () => {
     expect(
       (
         await failure(
-          await deleteFeature(
-            member,
-            project,
-            module.id,
-            feature.id,
-            feature.rowVersion,
-          ),
-          403,
-        )
-      ).code,
-    ).toBe("FEATURE_DELETE_FORBIDDEN");
-    expect(
-      (
-        await failure(
           await deleteModule(outsider, project, module.id, module.rowVersion),
           404,
         )
       ).code,
     ).toBe("MODULE_NOT_FOUND");
-    expect(
-      (
-        await failure(
-          await deleteFeature(
-            outsider,
-            project,
-            module.id,
-            feature.id,
-            feature.rowVersion,
-          ),
-          404,
-        )
-      ).code,
-    ).toBe("FEATURE_NOT_FOUND");
     expect(
       (
         await failure(
@@ -829,7 +682,6 @@ describe("ADR-096 物理删除模块与功能", () => {
     ).toBe("CSRF_ORIGIN_REJECTED");
 
     expect(await rowCount("modules", module.id)).toBe(1);
-    expect(await rowCount("features", feature.id)).toBe(1);
 
     const adminId = await createUser(client.sql, { admin: true }),
       adminActor = await session(adminId);
@@ -849,24 +701,18 @@ describe("ADR-096 物理删除模块与功能", () => {
     ).toBe(adminId);
   });
 
-  it("版本不匹配时 409，且模块、功能与任务都保持原状", async () => {
+  it("版本不匹配时 409，且模块、任务与记录都保持原状", async () => {
     const project = await fixture(),
       module = await createNormalModule(project, project.userId, "版本模块"),
-      feature = await createFeature(
-        project,
-        module.id,
-        project.userId,
-        "版本功能",
-      ),
       task = await createTask(
         project,
-        { moduleId: module.id, featureId: feature.id },
+        { moduleId: module.id },
         project.userId,
         "版本任务",
       ),
       recordId = await publishRecord(
         project,
-        { moduleId: module.id, featureId: feature.id },
+        { moduleId: module.id },
         project.userId,
         "版本记录",
       );
@@ -884,197 +730,24 @@ describe("ADR-096 物理删除模块与功能", () => {
         )
       ).code,
     ).toBe("MODULE_VERSION_CONFLICT");
-    expect(
-      (
-        await failure(
-          await deleteFeature(
-            project.actor,
-            project,
-            module.id,
-            feature.id,
-            feature.rowVersion + 7,
-          ),
-          409,
-        )
-      ).code,
-    ).toBe("FEATURE_VERSION_CONFLICT");
     expect(await rowCount("modules", module.id)).toBe(1);
-    expect(await rowCount("features", feature.id)).toBe(1);
     expect(await rowCount("tasks", task.id)).toBe(1);
     expect(await rowCount("change_records", recordId)).toBe(1);
     expect(await auditRows(project.projectId, "module.delete")).toHaveLength(0);
-    expect(await auditRows(project.projectId, "feature.delete")).toHaveLength(
-      0,
-    );
-  });
-
-  it("删除功能只清除本功能、其任务与记录，模块、同级功能和模块级数据保留", async () => {
-    const project = await fixture(),
-      module = await createNormalModule(project, project.userId, "混合模块"),
-      target = await createFeature(
-        project,
-        module.id,
-        project.userId,
-        "待删功能",
-      ),
-      survivor = await createFeature(
-        project,
-        module.id,
-        project.userId,
-        "保留功能",
-      ),
-      moduleTask = await createTask(
-        project,
-        { moduleId: module.id, featureId: null },
-        project.userId,
-        "模块级保留任务",
-      ),
-      survivorTask = await createTask(
-        project,
-        { moduleId: module.id, featureId: survivor.id },
-        project.userId,
-        "同级保留任务",
-      ),
-      targetTask = await createTask(
-        project,
-        { moduleId: module.id, featureId: target.id },
-        project.userId,
-        "待删功能的任务",
-      ),
-      moduleRecord = await publishRecord(
-        project,
-        { moduleId: module.id, featureId: null },
-        project.userId,
-        "模块级保留记录",
-      ),
-      targetRecord = await publishRecord(
-        project,
-        { moduleId: module.id, featureId: target.id },
-        project.userId,
-        "待删功能的记录",
-      ),
-      targetLeftover = await addLeftover(
-        project,
-        targetRecord,
-        project.userId,
-        "待删功能的遗留项",
-      ),
-      taskLink = await attachTaskLink(
-        project,
-        targetTask.id,
-        project.userId,
-        "https://github.com/256-code/InPulse/commit/targettask",
-      ),
-      featureLink = await attachFeatureLink(
-        project,
-        target.id,
-        project.userId,
-        "https://github.com/256-code/InPulse/issues/targetfeature",
-      ),
-      recordLink = await attachRecordLink(
-        project,
-        targetRecord,
-        project.userId,
-        "https://github.com/256-code/InPulse/pull/targetrecord",
-      );
-    await addImpact(project, moduleTask.id, target.id, module.id);
-
-    const response = await deleteFeature(
-      project.actor,
-      project,
-      module.id,
-      target.id,
-      target.rowVersion,
-      { body: { reason: null } },
-    );
-    expect(response.status, await response.clone().text()).toBe(200);
-    expect(
-      schemaRegistry.FeatureDeletionResponse.schema.parse(
-        await response.json(),
-      ),
-    ).toEqual({
-      id: target.id,
-      projectId: project.projectId,
-      moduleId: module.id,
-      code: target.code,
-      name: "待删功能",
-      deletedTaskCount: 1,
-      deletedRecordCount: 1,
-      removedLinkCount: 3,
-    });
-    expect(await rowCount("features", target.id)).toBe(0);
-    expect(await rowCount("features", survivor.id)).toBe(1);
-    expect(await rowCount("modules", module.id)).toBe(1);
-    expect(await rowCount("tasks", targetTask.id)).toBe(0);
-    expect(await rowCount("tasks", moduleTask.id)).toBe(1);
-    expect(await rowCount("tasks", survivorTask.id)).toBe(1);
-    expect(await rowCount("change_records", targetRecord)).toBe(0);
-    expect(await rowCount("change_records", moduleRecord)).toBe(1);
-    expect(
-      await columnCount("change_record_versions", "record_id", targetRecord),
-    ).toBe(0);
-    expect(await rowCount("change_record_leftover_items", targetLeftover)).toBe(
-      0,
-    );
-    expect(
-      await columnCount("task_feature_impacts", "task_id", moduleTask.id),
-    ).toBe(0);
-    expect(
-      await columnCount("task_external_links", "task_id", targetTask.id),
-    ).toBe(0);
-    expect(
-      await columnCount("feature_external_links", "feature_id", target.id),
-    ).toBe(0);
-    expect(
-      await columnCount(
-        "change_record_external_links",
-        "change_record_id",
-        targetRecord,
-      ),
-    ).toBe(0);
-    expect(await rowCount("external_links", taskLink)).toBe(1);
-    expect(await rowCount("external_links", featureLink)).toBe(1);
-    expect(await rowCount("external_links", recordLink)).toBe(1);
-
-    const audit = await auditRows(project.projectId, "feature.delete");
-    expect(audit).toHaveLength(1);
-    expect(audit[0]?.payload).toMatchObject({
-      featureId: target.id,
-      moduleId: module.id,
-      code: target.code,
-      name: "待删功能",
-      deletedTaskCount: 1,
-      deletedRecordCount: 1,
-      removedLinkCount: 3,
-      reason: "功能已被删除",
-    });
-    expect(await auditRows(project.projectId, "task.delete")).toHaveLength(0);
-    expect(await activityRows(project.projectId, target.id)).toMatchObject([
-      { activityType: "FEATURE_DELETED", sourceStatus: "DELETED" },
-    ]);
-    expect(await activityRows(project.projectId, targetTask.id)).toHaveLength(
-      0,
-    );
   });
 
   it("幂等重放返回原响应且不重复删除，角色变化后重放被拒绝", async () => {
     const project = await fixture(),
       module = await createNormalModule(project, project.userId, "幂等模块"),
-      feature = await createFeature(
-        project,
-        module.id,
-        project.userId,
-        "幂等功能",
-      ),
       task = await createTask(
         project,
-        { moduleId: module.id, featureId: feature.id },
+        { moduleId: module.id },
         project.userId,
         "幂等任务",
       ),
       recordId = await publishRecord(
         project,
-        { moduleId: module.id, featureId: feature.id },
+        { moduleId: module.id },
         project.userId,
         "幂等记录",
       ),
@@ -1104,7 +777,6 @@ describe("ADR-096 物理删除模块与功能", () => {
     ).toEqual(original);
     expect(await auditRows(project.projectId, "module.delete")).toHaveLength(1);
     expect(await rowCount("modules", module.id)).toBe(0);
-    expect(await rowCount("features", feature.id)).toBe(0);
     expect(await rowCount("tasks", task.id)).toBe(0);
     expect(await rowCount("change_records", recordId)).toBe(0);
 
@@ -1144,7 +816,7 @@ describe("ADR-096 物理删除模块与功能", () => {
       module = await createNormalModule(project, project.userId, "并发模块"),
       task = await createTask(
         project,
-        { moduleId: module.id, featureId: null },
+        { moduleId: module.id },
         project.userId,
         "并发任务",
       );
@@ -1215,13 +887,13 @@ describe("ADR-096 物理删除模块与功能", () => {
       module = await createNormalModule(project, project.userId, "聚合组模块"),
       source = await createTask(
         project,
-        { moduleId: module.id, featureId: null },
+        { moduleId: module.id },
         project.userId,
         "来源任务",
       ),
       main = await createTask(
         project,
-        { moduleId: module.id, featureId: null },
+        { moduleId: module.id },
         project.userId,
         "主任务",
       ),
@@ -1240,79 +912,5 @@ describe("ADR-096 物理删除模块与功能", () => {
     expect(await rowCount("tasks", source.id)).toBe(0);
     expect(await groupState(groupId)).toEqual([]);
     expect(await auditRows(project.projectId, "module.delete")).toHaveLength(1);
-  });
-
-  it("已物理删除的功能不再参与后续模块级联计数", async () => {
-    const project = await fixture(),
-      module = await createNormalModule(
-        project,
-        project.userId,
-        "二次级联模块",
-      ),
-      removed = await createFeature(
-        project,
-        module.id,
-        project.userId,
-        "先删功能",
-      ),
-      kept = await createFeature(
-        project,
-        module.id,
-        project.userId,
-        "后删功能",
-      ),
-      removedTask = await createTask(
-        project,
-        { moduleId: module.id, featureId: removed.id },
-        project.userId,
-        "先删任务",
-      ),
-      keptTask = await createTask(
-        project,
-        { moduleId: module.id, featureId: kept.id },
-        project.userId,
-        "后删任务",
-      ),
-      removedRecord = await publishRecord(
-        project,
-        { moduleId: module.id, featureId: removed.id },
-        project.userId,
-        "先删记录",
-      );
-    expect(
-      (
-        await deleteFeature(
-          project.actor,
-          project,
-          module.id,
-          removed.id,
-          removed.rowVersion,
-        )
-      ).status,
-    ).toBe(200);
-    const response = await deleteModule(
-      project.actor,
-      project,
-      module.id,
-      module.rowVersion,
-    );
-    expect(response.status, await response.clone().text()).toBe(200);
-    expect(
-      schemaRegistry.ModuleDeletionResponse.schema.parse(await response.json()),
-    ).toMatchObject({
-      deletedFeatureCount: 1,
-      deletedTaskCount: 1,
-      deletedRecordCount: 0,
-    });
-    expect(await rowCount("features", removed.id)).toBe(0);
-    expect(await rowCount("features", kept.id)).toBe(0);
-    expect(await rowCount("tasks", removedTask.id)).toBe(0);
-    expect(await rowCount("tasks", keptTask.id)).toBe(0);
-    expect(await rowCount("change_records", removedRecord)).toBe(0);
-    expect(await auditRows(project.projectId, "feature.delete")).toHaveLength(
-      1,
-    );
-    expect(await auditRows(project.projectId, "module.delete")).toHaveLength(1);
-    expect(await auditRows(project.projectId, "task.delete")).toHaveLength(0);
   });
 });

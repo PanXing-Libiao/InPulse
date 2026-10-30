@@ -27,15 +27,12 @@ export const moduleVersionHeadersSchema = moduleMutationHeadersSchema
  * `status` / `archivedAt`；模块列表的「进行中 / 未开始」由 stats.completedTaskCount 推导。
  */
 /**
- * 模块卡统计：activeFeatureCount 只计模块下 status = ACTIVE 的功能；
- * openTaskCount 与项目卡同口径（work_status = TODO，排除 INVALID 与历史来源分支），
- * 统计范围是模块下全部任务（含功能级任务），与模块任务列表一致；
- * completedTaskCount 是同一口径下 work_status = DONE 的任务数，前端据此显示
- * 「未开始」标签（模块内没有已完成任务即未开始）。
+ * 模块卡统计：openTaskCount 与项目卡同口径（work_status = TODO，排除 INVALID
+ * 与历史来源分支），统计范围是模块下全部直属任务；completedTaskCount 是同一
+ * 口径下 work_status = DONE 的任务数，前端据此显示「未开始」标签。
  */
 export const moduleStatsSchema = z
   .object({
-    activeFeatureCount: z.number().int().nonnegative(),
     openTaskCount: z.number().int().nonnegative(),
     completedTaskCount: z.number().int().nonnegative(),
   })

@@ -1,6 +1,5 @@
 import { postgresProjectMemberPermissions } from "./project-member-permission.helpers.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
 import { PostgresProjectsWritePort } from "../src/modules/projects/postgres-projects-write-port.js";
 import { ProjectStartNotifier } from "../src/modules/projects/project-start.notifier.js";
@@ -8,7 +7,6 @@ import { ProjectNotificationDispatcher } from "../src/modules/projects/project-n
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
 import "reflect-metadata";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Module, type INestApplication } from "@nestjs/common";
@@ -121,8 +119,6 @@ beforeAll(async () => {
   management = new TasksManagementService(
     new PostgresProjectAccessQueryPort(client),
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
-    new PostgresFeatureReadPort(),
     new PostgresProjectCodePort(),
     new PostgresProjectMembersQueryPort(),
     uow,
@@ -144,8 +140,6 @@ beforeAll(async () => {
   const http = new TasksHttpService(auth, mutation, idempotency, management);
   const access = new PostgresProjectAccessQueryPort(client),
     modules = new PostgresModuleQueryPort(),
-    features = new PostgresFeatureQueryPort(),
-    featureRead = new PostgresFeatureReadPort(),
     taskQuery = new PostgresTaskQueryPort(),
     records = new RecordDraftRepository(),
     pubRepo = new RecordPublicationRepository();
@@ -153,8 +147,6 @@ beforeAll(async () => {
     access,
     modules,
     new PostgresModuleReadPort(),
-    features,
-    featureRead,
     records,
     uow,
     audit,
@@ -165,7 +157,6 @@ beforeAll(async () => {
     new RecordPublicationAccess(
       access,
       modules,
-      features,
       taskQuery,
       pubRepo,
       postgresProjectMemberPermissions(),
@@ -174,7 +165,6 @@ beforeAll(async () => {
     records,
     new PublishedRecordRepository(),
     new PostgresProjectCodePort(),
-    featureRead,
     new RecordPublicationEffects(
       audit,
       activity,
@@ -186,7 +176,6 @@ beforeAll(async () => {
   const completion = new TaskCompletionWorkflow(
     access,
     modules,
-    features,
     taskQuery,
     new PostgresTaskBranchQueryPort(new TaskGroupRepository()),
     drafts,
@@ -251,17 +240,14 @@ async function actor(admin = false): Promise<Actor> {
     csrf,
   };
 }
-type ScopeFixture = ProjectFixture & { featureId: number };
+type ScopeFixture = ProjectFixture;
 async function fixture(): Promise<{ member: Actor; project: ScopeFixture }> {
   const member = await actor();
   const project = await createProject(client.sql, member.userId);
-  const [f] = await client.sql<
-    { id: number }[]
-  >`INSERT INTO app.features (project_id,module_id,code,name,created_by) VALUES (${project.projectId},${project.moduleId},${project.code + "-F-1"},'支付',${member.userId}) RETURNING id`;
-  return { member, project: { ...project, featureId: f!.id } };
+  return { member, project };
 }
 async function request(
-  project: { projectId: number; moduleId: number; featureId: number | null },
+  project: Pick<ProjectFixture, "projectId" | "moduleId">,
   method: string,
   who?: Actor,
   body?: unknown,
@@ -270,7 +256,7 @@ async function request(
   idempotencyKey: string = randomUUID(),
 ) {
   return fetch(
-    `${base}/api/v1/projects/${project.projectId}/modules/${project.moduleId}${project.featureId === null ? "" : `/features/${project.featureId}`}/tasks${suffix}`,
+    `${base}/api/v1/projects/${project.projectId}/modules/${project.moduleId}/tasks${suffix}`,
     {
       method,
       headers: {
@@ -578,6 +564,7 @@ describe("F-16 status history", () => {
   });
   it("protects status and history with session, CSRF, ownership and If-Match", async () => {
     const { project, member } = await fixture();
+    const other = await fixture();
     const task = await create(project, member);
     const outsider = await actor();
     await error(
@@ -603,7 +590,7 @@ describe("F-16 status history", () => {
     );
     await error(
       await request(
-        { ...project, featureId: null },
+        { ...project, moduleId: other.project.moduleId },
         "POST",
         member,
         complete,
@@ -639,127 +626,106 @@ describe("F-16 status history", () => {
       ).status,
     ).toBe(200);
   });
-  for (const moduleScope of [false, true])
-    it(`serializes concurrent complete/cancel, keeping the winning status searchable (${moduleScope})`, async () => {
-      const { project, member } = await fixture();
-      const scope = {
-        ...project,
-        featureId: moduleScope ? null : project.featureId,
-      };
-      const original = (
-        moduleScope ? moduleTaskItemSchema : taskItemSchema
-      ).parse(
-        await (
-          await request(scope, "POST", member, {
-            ...edit(member.userId),
-            ...(moduleScope ? { impactFeatureIds: [project.featureId] } : {}),
-          })
-        ).json(),
-      );
-      const results = await Promise.all(
-        [complete, { action: "CANCEL", reason: "重复" }].map((body) =>
-          request(scope, "POST", member, body, `/${original.id}/status`, 1),
-        ),
-      );
-      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-      const winner = (
-        moduleScope ? moduleTaskItemSchema : taskItemSchema
-      ).parse(await results.find((r) => r.status === 200)!.json());
-      expect(
-        await client.sql`SELECT 1 FROM app.task_status_history WHERE task_id=${original.id}`,
-      ).toHaveLength(2);
-      expect(
-        await client.sql`SELECT source_status FROM app.search_projection WHERE entity_type='TASK' AND entity_id=${original.id} AND normalized_search_text &@~ app.pgroonga_query_escape(${original.code})`,
-      ).toMatchObject([{ source_status: winner.workStatus }]);
-      if (winner.scopeType === "MODULE")
-        expect(winner.impactFeatureIds).toEqual([project.featureId]);
-    });
-  for (const moduleScope of [false, true]) {
-    it(`retains repeated completion snapshots, cancellation and restoration (${moduleScope ? "MODULE" : "FEATURE"})`, async () => {
-      const { project, member } = await fixture();
-      const scope = {
-        ...project,
-        featureId: moduleScope ? null : project.featureId,
-      };
-      const created = await request(scope, "POST", member, {
-        ...edit(member.userId),
-        ...(moduleScope ? { impactFeatureIds: [project.featureId] } : {}),
-      });
-      const original = (
-        moduleScope ? moduleTaskItemSchema : taskItemSchema
-      ).parse(await created.json());
-      let current = original;
-      for (const body of [
-        complete,
-        { action: "REOPEN", reason: "补充验证" },
-        { ...complete, completionReason: "技术调研", note: "再次完成" },
-        { action: "REOPEN", reason: "新增验证" },
-        { action: "CANCEL", reason: "已无必要" },
-        { action: "RESTORE", reason: "需求恢复" },
-      ]) {
-        const response = await request(
-          scope,
-          "POST",
-          member,
-          body,
-          `/${current.id}/status`,
-          current.rowVersion,
-        );
-        expect(response.status, await response.clone().text()).toBe(200);
-        current = (moduleScope ? moduleTaskItemSchema : taskItemSchema).parse(
-          await response.json(),
-        );
-      }
-      expect(current).toMatchObject({
-        ...original,
-        rowVersion: 7,
-        updatedAt: expect.any(String),
-      });
+  it("serializes concurrent complete/cancel, keeping the winning status searchable", async () => {
+    const { project, member } = await fixture();
+    const scope = {
+      ...project,
+    };
+    const original = moduleTaskItemSchema.parse(
+      await (await request(scope, "POST", member, edit(member.userId))).json(),
+    );
+    const results = await Promise.all(
+      [complete, { action: "CANCEL", reason: "重复" }].map((body) =>
+        request(scope, "POST", member, body, `/${original.id}/status`, 1),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    const winner = moduleTaskItemSchema.parse(
+      await results.find((r) => r.status === 200)!.json(),
+    );
+    expect(
+      await client.sql`SELECT 1 FROM app.task_status_history WHERE task_id=${original.id}`,
+    ).toHaveLength(2);
+    expect(
+      await client.sql`SELECT source_status FROM app.search_projection WHERE entity_type='TASK' AND entity_id=${original.id} AND normalized_search_text &@~ app.pgroonga_query_escape(${original.code})`,
+    ).toMatchObject([{ source_status: winner.workStatus }]);
+  });
+  it("retains repeated completion snapshots, cancellation and restoration", async () => {
+    const { project, member } = await fixture();
+    const scope = {
+      ...project,
+    };
+    const created = await request(scope, "POST", member, edit(member.userId));
+    const original = moduleTaskItemSchema.parse(await created.json());
+    let current = original;
+    for (const body of [
+      complete,
+      { action: "REOPEN", reason: "补充验证" },
+      { ...complete, completionReason: "技术调研", note: "再次完成" },
+      { action: "REOPEN", reason: "新增验证" },
+      { action: "CANCEL", reason: "已无必要" },
+      { action: "RESTORE", reason: "需求恢复" },
+    ]) {
       const response = await request(
         scope,
-        "GET",
+        "POST",
         member,
-        undefined,
-        `/${current.id}/status-history`,
+        body,
+        `/${current.id}/status`,
+        current.rowVersion,
       );
-      expect(response.status).toBe(200);
-      const history = schemaRegistry.TaskStatusHistoryResponse.schema.parse(
-        await response.json(),
-      );
-      expect(
-        history.items.map((h: { toWorkStatus: string }) => h.toWorkStatus),
-      ).toEqual(["TODO", "DONE", "TODO", "DONE", "TODO", "CANCELED", "TODO"]);
-      expect(history.items[2]).toMatchObject({
-        completedAtSnapshot: history.items[1]!.completedAtSnapshot,
-        completionNoteSnapshot: history.items[1]!.completionNoteSnapshot,
-        changedBy: member.userId,
-        reason: "补充验证",
-      });
-      expect(history.items[4]).toMatchObject({
-        completedAtSnapshot: history.items[3]!.completedAtSnapshot,
-        completionNoteSnapshot: "技术调研，不涉及功能变化：再次完成",
-      });
-      expect(
-        new Date(history.items[3]!.completedAtSnapshot!).getTime(),
-      ).toBeGreaterThan(
-        new Date(history.items[1]!.completedAtSnapshot!).getTime(),
-      );
-      expect(history.items[5]).toMatchObject({
-        reason: "已无必要",
-        completedAtSnapshot: null,
-      });
-      expect(history.items[6]).toMatchObject({
-        reason: "需求恢复",
-        completedAtSnapshot: null,
-      });
-      await expect(
-        client.sql`UPDATE app.task_status_history SET reason='tamper' WHERE task_id=${current.id}`,
-      ).rejects.toThrow();
-      await expect(
-        client.sql`DELETE FROM app.task_status_history WHERE task_id=${current.id}`,
-      ).rejects.toThrow();
+      expect(response.status, await response.clone().text()).toBe(200);
+      current = moduleTaskItemSchema.parse(await response.json());
+    }
+    expect(current).toMatchObject({
+      ...original,
+      rowVersion: 7,
+      updatedAt: expect.any(String),
     });
-  }
+    const response = await request(
+      scope,
+      "GET",
+      member,
+      undefined,
+      `/${current.id}/status-history`,
+    );
+    expect(response.status).toBe(200);
+    const history = schemaRegistry.TaskStatusHistoryResponse.schema.parse(
+      await response.json(),
+    );
+    expect(
+      history.items.map((h: { toWorkStatus: string }) => h.toWorkStatus),
+    ).toEqual(["TODO", "DONE", "TODO", "DONE", "TODO", "CANCELED", "TODO"]);
+    expect(history.items[2]).toMatchObject({
+      completedAtSnapshot: history.items[1]!.completedAtSnapshot,
+      completionNoteSnapshot: history.items[1]!.completionNoteSnapshot,
+      changedBy: member.userId,
+      reason: "补充验证",
+    });
+    expect(history.items[4]).toMatchObject({
+      completedAtSnapshot: history.items[3]!.completedAtSnapshot,
+      completionNoteSnapshot: "技术调研，不关联迭代记录：再次完成",
+    });
+    expect(
+      new Date(history.items[3]!.completedAtSnapshot!).getTime(),
+    ).toBeGreaterThan(
+      new Date(history.items[1]!.completedAtSnapshot!).getTime(),
+    );
+    expect(history.items[5]).toMatchObject({
+      reason: "已无必要",
+      completedAtSnapshot: null,
+    });
+    expect(history.items[6]).toMatchObject({
+      reason: "需求恢复",
+      completedAtSnapshot: null,
+    });
+    await expect(
+      client.sql`UPDATE app.task_status_history SET reason='tamper' WHERE task_id=${current.id}`,
+    ).rejects.toThrow();
+    await expect(
+      client.sql`DELETE FROM app.task_status_history WHERE task_id=${current.id}`,
+    ).rejects.toThrow();
+  });
   it("rejects actual-change completion, injected fields and illegal transitions", async () => {
     const { project, member } = await fixture();
     const task = await create(project, member);
@@ -811,14 +777,13 @@ describe("F-16 status history", () => {
 });
 
 describe("F-15 module tasks", () => {
-  it("rechecks module task permissions and all saved impact resources before replay", async () => {
+  it("rechecks module task permissions before replay", async () => {
     const { project, member } = await fixture();
     const other = await fixture();
-    const scope = { ...project, featureId: null };
+    const scope = project;
     const key = randomUUID();
     const input = {
       ...edit(member.userId),
-      impactFeatureIds: [project.featureId],
     };
     const first = await request(
       scope,
@@ -842,308 +807,6 @@ describe("F-15 module tasks", () => {
       await request(scope, "POST", member, input, "", undefined, key),
       404,
     );
-  });
-  const moduleScope = (project: ScopeFixture) => ({
-    ...project,
-    featureId: null,
-  });
-  async function anotherFeature(project: ScopeFixture, member: Actor) {
-    const [row] = await client.sql<
-      { id: number }[]
-    >`INSERT INTO app.features (project_id,module_id,code,name,created_by) VALUES (${project.projectId},${project.moduleId},${project.code + "-F-" + Math.floor(Math.random() * 100000 + 2)},'影响功能',${member.userId}) RETURNING id`;
-    return row!.id;
-  }
-  async function createModule(
-    project: ScopeFixture,
-    member: Actor,
-    ids: number[] = [],
-  ) {
-    const response = await request(moduleScope(project), "POST", member, {
-      ...edit(member.userId),
-      impactFeatureIds: ids,
-    });
-    expect(response.status, await response.clone().text()).toBe(200);
-    return moduleTaskItemSchema.parse(await response.json());
-  }
-  it("stores one task with deduplicated same-module impacts and references once per feature", async () => {
-    const { project, member } = await fixture();
-    const second = await anotherFeature(project, member);
-    const item = await createModule(project, member, [
-      second,
-      project.featureId,
-      second,
-    ]);
-    expect(item).toMatchObject({
-      scopeType: "MODULE",
-      featureId: null,
-      impactFeatureIds: [project.featureId, second],
-    });
-    expect(
-      await client.sql`SELECT 1 FROM app.tasks WHERE project_id=${project.projectId}`,
-    ).toHaveLength(1);
-    for (const featureId of [project.featureId, second])
-      expect(
-        taskListResponseSchema.parse(
-          await (
-            await request({ ...project, featureId }, "GET", member)
-          ).json(),
-        ).items,
-      ).toEqual([item]);
-    expect(
-      moduleTaskItemSchema.parse(
-        await (
-          await request(
-            moduleScope(project),
-            "GET",
-            member,
-            undefined,
-            `/${item.id}`,
-          )
-        ).json(),
-      ),
-    ).toEqual(item);
-    expect(
-      await client.sql`SELECT 1 FROM app.task_feature_impacts WHERE task_id=${item.id}`,
-    ).toHaveLength(2);
-    await expect(
-      client.sql`INSERT INTO app.task_feature_impacts(task_id,feature_id,module_id,project_id) VALUES (${item.id},${second},${project.moduleId},${project.projectId})`,
-    ).rejects.toMatchObject({ code: "23505" });
-    const foreign = await fixture();
-    await expect(
-      client.sql`INSERT INTO app.task_feature_impacts(task_id,feature_id,module_id,project_id) VALUES (${item.id},${foreign.project.featureId},${project.moduleId},${project.projectId})`,
-    ).rejects.toMatchObject({ code: "23503" });
-    const featureTask = await create(project, member);
-    await expect(
-      client.sql`INSERT INTO app.task_feature_impacts(task_id,feature_id,module_id,project_id) VALUES (${featureTask.id},${second},${project.moduleId},${project.projectId})`,
-    ).rejects.toMatchObject({ code: "23514" });
-  });
-  it("accepts empty impacts, preserves one project number sequence and normalizes same-key reordered duplicates", async () => {
-    const { project, member } = await fixture();
-    const featureTask = await create(project, member);
-    const module = await createModule(project, member);
-    expect(featureTask.code).toBe(project.code + "-T-1");
-    expect(module.code).toBe(project.code + "-T-2");
-    const key = randomUUID();
-    const input = {
-      ...edit(member.userId),
-      impactFeatureIds: [project.featureId, project.featureId],
-    };
-    const a = await request(
-      moduleScope(project),
-      "POST",
-      member,
-      input,
-      "",
-      undefined,
-      key,
-    );
-    const body = await a.json();
-    expect(
-      await (
-        await request(
-          moduleScope(project),
-          "POST",
-          member,
-          { ...input, impactFeatureIds: [project.featureId] },
-          "",
-          undefined,
-          key,
-        )
-      ).json(),
-    ).toEqual(body);
-  });
-  it("rejects foreign project/module impacts and scope injection, with no partial insert", async () => {
-    const { project, member } = await fixture();
-    const foreign = await fixture();
-    await error(
-      await request(moduleScope(project), "POST", member, {
-        ...edit(member.userId),
-        impactFeatureIds: [foreign.project.featureId],
-      }),
-      404,
-    );
-    const [module] = await client.sql<
-      { id: number }[]
-    >`INSERT INTO app.modules(project_id,name,created_by) VALUES (${project.projectId},'另一模块',${member.userId}) RETURNING id`;
-    const wrong = await anotherFeature(
-      { ...project, moduleId: module!.id },
-      member,
-    );
-    await error(
-      await request(moduleScope(project), "POST", member, {
-        ...edit(member.userId),
-        impactFeatureIds: [project.featureId, wrong],
-      }),
-      404,
-    );
-    await error(
-      await request(moduleScope(project), "POST", member, {
-        ...edit(member.userId),
-        featureId: project.featureId,
-        impactFeatureIds: [],
-      }),
-      422,
-    );
-    expect(
-      await client.sql`SELECT 1 FROM app.tasks WHERE project_id=${project.projectId}`,
-    ).toHaveLength(0);
-  });
-  it("removes and readds current relations with complete immutable audit snapshots", async () => {
-    const { project, member } = await fixture();
-    const item = await createModule(project, member, [project.featureId]);
-    const [old] = await client.sql<
-      { created_at: Date }[]
-    >`SELECT created_at FROM app.task_feature_impacts WHERE task_id=${item.id}`;
-    const patch = (ids: number[], version: number) =>
-      request(
-        moduleScope(project),
-        "PATCH",
-        member,
-        { ...edit(member.userId), impactFeatureIds: ids },
-        `/${item.id}`,
-        version,
-      );
-    expect((await patch([], 1)).status).toBe(200);
-    expect(
-      taskListResponseSchema.parse(
-        await (await request(project, "GET", member)).json(),
-      ).items,
-    ).toEqual([]);
-    expect((await patch([project.featureId], 2)).status).toBe(200);
-    const [fresh] = await client.sql<
-      { created_at: Date }[]
-    >`SELECT created_at FROM app.task_feature_impacts WHERE task_id=${item.id}`;
-    expect(new Date(fresh!.created_at).getTime()).toBeGreaterThan(
-      new Date(old!.created_at).getTime(),
-    );
-    const logs = await auditReader.sql<
-      {
-        event_payload: {
-          impactsBefore: unknown[];
-          impactsAfter: unknown[];
-          removed: number[];
-        };
-      }[]
-    >`SELECT event_payload FROM app.audit_logs WHERE project_id=${project.projectId} AND action='task.update' ORDER BY sequence_no`;
-    expect(logs[0]!.event_payload.impactsBefore).toEqual([
-      expect.objectContaining({
-        taskId: item.id,
-        projectId: project.projectId,
-        moduleId: project.moduleId,
-        featureId: project.featureId,
-        relationType: "IMPACT",
-        createdAt: new Date(old!.created_at).toISOString(),
-      }),
-    ]);
-    expect(logs[0]!.event_payload.impactsAfter).toEqual([]);
-    expect(logs[0]!.event_payload.removed).toEqual([project.featureId]);
-  });
-  it("keeps, removes and re-adds existing impacts now that features cannot be archived (ADR-045)", async () => {
-    const { project, member } = await fixture();
-    const item = await createModule(project, member, [project.featureId]);
-    const patch = (ids: number[], version: number) =>
-      request(
-        moduleScope(project),
-        "PATCH",
-        member,
-        { ...edit(member.userId, "编辑模块任务"), impactFeatureIds: ids },
-        `/${item.id}`,
-        version,
-      );
-    expect((await patch([project.featureId], 1)).status).toBe(200);
-    expect((await patch([], 2)).status).toBe(200);
-    // ADR-045：影响功能不再有归档态，移除后可以重新加回。
-    expect((await patch([project.featureId], 3)).status).toBe(200);
-  });
-  it("rolls back relation removal on audit failure and rejects stale concurrent updates", async () => {
-    const { project, member } = await fixture();
-    const second = await anotherFeature(project, member);
-    const item = await createModule(project, member, [project.featureId]);
-    const patch = (ids: number[]) =>
-      request(
-        moduleScope(project),
-        "PATCH",
-        member,
-        { ...edit(member.userId), impactFeatureIds: ids },
-        `/${item.id}`,
-        1,
-      );
-    vi.spyOn(audit, "append").mockRejectedValueOnce(
-      new Error("audit unavailable"),
-    );
-    await error(await patch([]), 500);
-    expect(
-      moduleTaskItemSchema.parse(
-        await (
-          await request(
-            moduleScope(project),
-            "GET",
-            member,
-            undefined,
-            `/${item.id}`,
-          )
-        ).json(),
-      ),
-    ).toEqual(item);
-    const results = await Promise.all([patch([second]), patch([])]);
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
-    const success = moduleTaskItemSchema.parse(
-      await results.find((r) => r.status === 200)!.json(),
-    );
-    expect(
-      moduleTaskItemSchema.parse(
-        await (
-          await request(
-            moduleScope(project),
-            "GET",
-            member,
-            undefined,
-            `/${item.id}`,
-          )
-        ).json(),
-      ),
-    ).toEqual(success);
-  });
-  it("waits for the feature row lock before adding an influence then commits it", async () => {
-    const { project, member } = await fixture();
-    let release!: () => void;
-    let acquired!: () => void;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
-    const ready = new Promise<void>((r) => {
-      acquired = r;
-    });
-    // ADR-045：功能不再有归档态，持锁方只做一次改名；影响功能写入必须等它解锁。
-    const archive = uow.run(async (tx) => {
-      await tx.sql`UPDATE app.features SET name='持锁改名',row_version=row_version+1 WHERE id=${project.featureId}`;
-      acquired();
-      await gate;
-    });
-    await ready;
-    const pending = request(moduleScope(project), "POST", member, {
-      ...edit(member.userId),
-      impactFeatureIds: [project.featureId],
-    });
-    try {
-      await vi.waitFor(
-        async () =>
-          expect(
-            (
-              await client.sql`SELECT pid FROM pg_stat_activity WHERE application_name='inpulse-f14-http' AND wait_event_type='Lock' AND cardinality(pg_blocking_pids(pid))>0`
-            ).length,
-          ).toBeGreaterThan(0),
-        { timeout: 4000, interval: 30 },
-      );
-    } finally {
-      release();
-      await archive;
-    }
-    const response = await pending;
-    expect(response.status, await response.clone().text()).toBe(200);
-    expect(
-      moduleTaskItemSchema.parse(await response.json()).impactFeatureIds,
-    ).toEqual([project.featureId]);
   });
 });
 
@@ -1258,7 +921,7 @@ describe("F-14 real HTTP / PostgreSQL", () => {
     await uow.run(async (tx) => {
       const [task] = await tx.sql<
         { id: number }[]
-      >`INSERT INTO app.tasks (project_id,module_id,feature_id,scope_type,code,title,creator_id) VALUES (${project.projectId},${project.moduleId},${project.featureId},'FEATURE',${project.code + "-T-1"},'导入任务',${member.userId}) RETURNING id`;
+      >`INSERT INTO app.tasks (project_id,module_id,code,title,creator_id) VALUES (${project.projectId},${project.moduleId},${project.code + "-T-1"},'导入任务',${member.userId}) RETURNING id`;
       await tx.sql`INSERT INTO app.task_assignees (task_id,user_id,project_id) VALUES (${task!.id},${member.userId},${project.projectId})`;
       await tx.sql`INSERT INTO app.task_status_history (task_id,project_id,to_work_status,changed_by) VALUES (${task!.id},${project.projectId},'TODO',${member.userId})`;
     });
@@ -1335,7 +998,7 @@ describe("F-14 real HTTP / PostgreSQL", () => {
     ]);
   });
 
-  it("keeps the task writable and replays the same key after an unrelated parent change (ADR-045)", async () => {
+  it("keeps the task writable and replays the same key after a module rename", async () => {
     const { project, member } = await fixture();
     const key = randomUUID();
     const body = edit(member.userId);
@@ -1349,8 +1012,8 @@ describe("F-14 real HTTP / PostgreSQL", () => {
       key,
     );
     const item = taskItemSchema.parse(await first.json());
-    // ADR-045：功能改名不产生只读态，任务仍可读、可编辑，同 Key 重放返回原响应。
-    await client.sql`UPDATE app.features SET name='改名功能',row_version=row_version+1 WHERE id=${project.featureId}`;
+    // 模块改名不产生只读态，任务仍可读、可编辑，同 Key 重放返回原响应。
+    await client.sql`UPDATE app.modules SET name='改名模块',row_version=row_version+1 WHERE id=${project.moduleId}`;
     expect(
       (await request(project, "GET", member, undefined, `/${item.id}`)).status,
     ).toBe(200);
@@ -1377,7 +1040,7 @@ describe("F-14 real HTTP / PostgreSQL", () => {
       id: item.id,
     });
   });
-  // ADR-043/ADR-044/ADR-045：项目、模块与功能都已无归档态，
+  // ADR-043/ADR-044：项目与模块都已无归档态，
   // 并发父级状态变更只覆盖成员停用与用户停用。
   for (const target of ["member", "user"] as const)
     it(`waits for concurrent ${target} removal then rechecks`, async () => {
@@ -1464,8 +1127,6 @@ describe("F-14 real HTTP / PostgreSQL", () => {
     const item = await create(project, member);
     expect(item).toMatchObject({
       code: project.code + "-T-1",
-      scopeType: "FEATURE",
-      featureId: project.featureId,
       workStatus: "TODO",
       lifecycleStatus: "ACTIVE",
       rowVersion: 1,
@@ -1503,7 +1164,7 @@ describe("F-14 real HTTP / PostgreSQL", () => {
       await client.sql`SELECT 1 FROM app.search_projection WHERE project_id=${project.projectId} AND entity_type='TASK'`,
     ).toHaveLength(1);
   });
-  it("rejects anonymous/foreign/removed/disabled actors and wrong project/module/feature identity", async () => {
+  it("rejects anonymous/foreign/removed/disabled actors and wrong project/module identity", async () => {
     const { project, member } = await fixture();
     const other = await fixture();
     const item = await create(project, member);
@@ -1514,16 +1175,6 @@ describe("F-14 real HTTP / PostgreSQL", () => {
         { ...project, moduleId: other.project.moduleId },
         "GET",
         member,
-      ),
-      404,
-    );
-    await error(
-      await request(
-        { ...project, featureId: other.project.featureId },
-        "GET",
-        member,
-        undefined,
-        `/${item.id}`,
       ),
       404,
     );
@@ -1780,23 +1431,20 @@ describe("F-14 real HTTP / PostgreSQL", () => {
 });
 
 describe("ADR-054 task archive removal", () => {
-  it("serves no archive or restore route for module or feature tasks", async () => {
+  it("serves no archive or restore route for module tasks", async () => {
     const { project, member } = await fixture();
-    const scope = { ...project, featureId: null };
+    const scope = project;
     const moduleTask = moduleTaskItemSchema.parse(
       await (
         await request(scope, "POST", member, {
           ...edit(member.userId),
-          impactFeatureIds: [project.featureId],
         })
       ).json(),
     );
-    const featureTask = await create(project, member);
 
     // ADR-054：任务归档已下线，归档/恢复路由从 Route Registry、Controller 与生成客户端一并移除。
     for (const [label, target] of [
       ["模块任务归档", [scope, moduleTask.id] as const],
-      ["功能任务归档", [project, featureTask.id] as const],
     ] as const) {
       for (const action of ["archive", "restore"] as const) {
         const response = await request(

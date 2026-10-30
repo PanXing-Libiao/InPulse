@@ -4,11 +4,6 @@ import type { TransactionContext } from "../database/transaction-context.js";
 import { PostgresUnitOfWork } from "../database/unit-of-work.js";
 import { ActivityWritePort } from "../modules/activity/index.js";
 import {
-  FeatureDeletionCommandPort,
-  featureDeletionMissing,
-  featureDeletionVersionConflict,
-} from "../modules/features/feature-deletion.command-port.js";
-import {
   ModuleDeletionCommandPort,
   moduleDeletionMissing,
   moduleDeletionVersionConflict,
@@ -27,34 +22,19 @@ export interface ModuleDeletionResult {
   readonly code: string;
   readonly name: string;
   readonly kind: ModuleHardDeletedRow["kind"];
-  readonly deletedFeatureCount: number;
-  readonly deletedTaskCount: number;
-  readonly deletedRecordCount: number;
-  readonly removedLinkCount: number;
-}
-
-/** ADR-096：删除功能的响应，字段与 FeatureDeletionResponse 契约一一对应。 */
-export interface FeatureDeletionResult {
-  readonly id: number;
-  readonly projectId: number;
-  readonly moduleId: number;
-  readonly code: string;
-  readonly name: string;
   readonly deletedTaskCount: number;
   readonly deletedRecordCount: number;
   readonly removedLinkCount: number;
 }
 
 const DEFAULT_MODULE_REASON = "模块已被删除";
-const DEFAULT_FEATURE_REASON = "功能已被删除";
 
 /**
- * ADR-096：删除模块与删除功能的跨域编排。数据库窄口函数在同一事务内完成
- * 全部物理级联：模块删除包含其下所有功能、任务、迭代记录与下级数据；功能删除
- * 包含功能自身、其下任务与这些任务的记录。
+ * ADR-096 / ADR-109：删除模块的跨域编排。数据库窄口函数在同一事务内完成
+ * 全部物理级联：模块删除包含其下全部任务、迭代记录与下级数据。
  *
- * 工作流只追加一条顶层删除事件（module.delete / feature.delete）和项目动态，
- * 不再为级联任务逐条伪造删除事件，也不保留记录快照。
+ * 工作流只追加一条顶层 module.delete 事件和项目动态，不再为级联任务逐条
+ * 伪造删除事件，也不保留记录快照。
  */
 @Injectable()
 export class ScopeDeletionWorkflow {
@@ -64,8 +44,6 @@ export class ScopeDeletionWorkflow {
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleDeletionCommandPort)
     private readonly modules: ModuleDeletionCommandPort,
-    @Inject(FeatureDeletionCommandPort)
-    private readonly features: FeatureDeletionCommandPort,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
   ) {}
@@ -116,7 +94,6 @@ export class ScopeDeletionWorkflow {
           code: deleted.code,
           name: deleted.name,
           kind: deleted.kind,
-          deletedFeatureCount: deleted.deletedFeatureCount,
           deletedTaskCount: deleted.deletedTaskCount,
           deletedRecordCount: deleted.deletedRecordCount,
           removedLinkCount: deleted.removedLinkCount,
@@ -144,7 +121,6 @@ export class ScopeDeletionWorkflow {
           moduleId,
           code: deleted.code,
           kind: deleted.kind,
-          deletedFeatureCount: deleted.deletedFeatureCount,
           deletedTaskCount: deleted.deletedTaskCount,
           deletedRecordCount: deleted.deletedRecordCount,
           removedLinkCount: deleted.removedLinkCount,
@@ -157,100 +133,6 @@ export class ScopeDeletionWorkflow {
         code: deleted.code,
         name: deleted.name,
         kind: deleted.kind,
-        deletedFeatureCount: deleted.deletedFeatureCount,
-        deletedTaskCount: deleted.deletedTaskCount,
-        deletedRecordCount: deleted.deletedRecordCount,
-        removedLinkCount: deleted.removedLinkCount,
-      };
-    });
-  }
-
-  async deleteFeature(
-    actorId: number,
-    projectId: number,
-    moduleId: number,
-    featureId: number,
-    expectedRowVersion: number,
-    reason: string | null,
-    requestId: string,
-  ): Promise<FeatureDeletionResult> {
-    const deletionReason = reason?.trim()
-      ? reason.trim()
-      : DEFAULT_FEATURE_REASON;
-    return this.uow.run(async (tx) => {
-      await this.features.authorize(tx, actorId, projectId);
-      if (!(await this.lockProject(tx, actorId, projectId)))
-        throw featureDeletionMissing();
-      const current = await this.features.findForDeletion(
-        tx,
-        projectId,
-        moduleId,
-        featureId,
-        true,
-      );
-      if (!current) throw featureDeletionMissing();
-      if (current.rowVersion !== expectedRowVersion)
-        throw featureDeletionVersionConflict();
-
-      const deleted = await this.features.hardDelete(
-        tx,
-        current,
-        actorId,
-        deletionReason,
-      );
-      if (!deleted) throw featureDeletionVersionConflict();
-      const occurredAt = new Date(deleted.deletedAt);
-      const event = await this.audit.append(tx, {
-        projectId,
-        actorType: "USER",
-        actorId,
-        action: "feature.delete",
-        targetType: "FEATURE",
-        targetId: String(featureId),
-        eventPayload: {
-          featureId,
-          moduleId,
-          code: deleted.code,
-          name: deleted.name,
-          deletedTaskCount: deleted.deletedTaskCount,
-          deletedRecordCount: deleted.deletedRecordCount,
-          removedLinkCount: deleted.removedLinkCount,
-          reason: deletionReason,
-        },
-        requestId,
-      });
-      const visibility = {
-        projectId,
-        sourceEntityType: "FEATURE" as const,
-        sourceEntityId: featureId,
-        visibilityScope: "MEMBER" as const,
-        sourceStatus: "DELETED",
-        sourceRowVersion: current.rowVersion + 1,
-      };
-      await this.activity.updateEntityVisibility(tx, visibility);
-      await this.activity.append(tx, {
-        ...visibility,
-        sourceChainId: event.chainId,
-        sourceSequence: event.sequenceNo,
-        activityType: "FEATURE_DELETED",
-        actorId,
-        summary: "删除功能：" + deleted.name,
-        metadata: {
-          featureId,
-          moduleId,
-          code: deleted.code,
-          deletedTaskCount: deleted.deletedTaskCount,
-          deletedRecordCount: deleted.deletedRecordCount,
-          removedLinkCount: deleted.removedLinkCount,
-        },
-        occurredAt,
-      });
-      return {
-        id: deleted.id,
-        projectId: deleted.projectId,
-        moduleId: deleted.moduleId,
-        code: deleted.code,
-        name: deleted.name,
         deletedTaskCount: deleted.deletedTaskCount,
         deletedRecordCount: deleted.deletedRecordCount,
         removedLinkCount: deleted.removedLinkCount,

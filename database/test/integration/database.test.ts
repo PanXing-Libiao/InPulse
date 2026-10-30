@@ -52,6 +52,160 @@ describe("PostgreSQL schema, invariants, and roles", () => {
     );
   });
 
+  test("ADR-109 移除功能层表、列、投影与删除入口", async () => {
+    const [tables] = (await bootstrap`
+      SELECT to_regclass('app.features')::TEXT AS features,
+             to_regclass('app.feature_external_links')::TEXT AS "featureLinks",
+             to_regclass('app.task_feature_impacts')::TEXT AS "taskImpacts",
+             to_regclass('app.change_record_feature_impacts')::TEXT AS "recordImpacts"
+    `) as unknown as readonly {
+      readonly features: string | null;
+      readonly featureLinks: string | null;
+      readonly taskImpacts: string | null;
+      readonly recordImpacts: string | null;
+    }[];
+    expect(tables).toEqual({
+      features: null,
+      featureLinks: null,
+      taskImpacts: null,
+      recordImpacts: null,
+    });
+
+    const featureColumns = (await bootstrap`
+      SELECT table_name AS "tableName", column_name AS "columnName"
+        FROM information_schema.columns
+       WHERE table_schema = 'app'
+         AND (
+           (table_name IN ('tasks', 'change_records')
+            AND column_name IN ('feature_id', 'scope_type'))
+           OR (table_name = 'search_projection' AND column_name = 'feature_id')
+         )
+    `) as unknown as readonly {
+      readonly tableName: string;
+      readonly columnName: string;
+    }[];
+    expect(featureColumns).toEqual([]);
+
+    const permissionColumns = (await bootstrap`
+      SELECT column_name AS "columnName"
+        FROM information_schema.columns
+       WHERE table_schema = 'app'
+         AND table_name = 'project_member_permission_settings'
+         AND column_name IN (
+           'module_edit',
+           'module_delete',
+           'module_feature_edit',
+           'module_feature_delete'
+         )
+       ORDER BY column_name
+    `) as unknown as readonly { readonly columnName: string }[];
+    expect(permissionColumns.map((row) => row.columnName)).toEqual([
+      "module_delete",
+      "module_edit",
+    ]);
+
+    const [projectionCheck] = (await bootstrap`
+      SELECT string_agg(pg_get_constraintdef(oid), ' ') AS definition
+        FROM pg_constraint
+       WHERE conrelid = 'app.search_projection'::REGCLASS
+         AND contype = 'c'
+    `) as unknown as readonly { readonly definition: string }[];
+    expect(projectionCheck?.definition).not.toMatch(/FEATURE/);
+
+    const [sequenceUsage] = (await bootstrap`
+      SELECT count(*)::INTEGER AS "featureProjection",
+             (SELECT count(*)::INTEGER
+                FROM app.code_sequences
+               WHERE entity_type = 'FEATURE') AS "featureSequence"
+        FROM app.search_projection
+       WHERE entity_type = 'FEATURE'
+    `) as unknown as readonly {
+      readonly featureProjection: number;
+      readonly featureSequence: number;
+    }[];
+    expect(sequenceUsage).toEqual({
+      featureProjection: 0,
+      featureSequence: 0,
+    });
+
+    const [deletion] = (await bootstrap`
+      SELECT (
+               SELECT count(*)::INTEGER
+                 FROM pg_proc AS p
+                 JOIN pg_namespace AS n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'app'
+                  AND p.proname = 'hard_delete_feature'
+             ) AS "featureFunctionCount",
+             has_function_privilege(
+               'app_runtime',
+               'app.hard_delete_business_scope(integer,integer,integer,integer,text)',
+               'EXECUTE'
+             ) AS "helperExecute"
+    `) as unknown as readonly {
+      readonly featureFunctionCount: number;
+      readonly helperExecute: boolean;
+    }[];
+    expect(deletion).toEqual({
+      featureFunctionCount: 0,
+      helperExecute: false,
+    });
+  });
+
+  test("ADR-109 文档导入模板版本保留历史 1 并接受当前 2", async () => {
+    const fixture = await createProject(runtime);
+    for (const version of ["1", "2"]) {
+      await runtime`
+        INSERT INTO app.document_import_runs (
+          project_id,
+          document_digest,
+          template_version,
+          actor_id,
+          module_count,
+          task_count,
+          reused_module_count,
+          added_member_count
+        )
+        VALUES (
+          ${fixture.projectId},
+          ${version.repeat(64)},
+          ${version},
+          ${fixture.userId},
+          0,
+          0,
+          0,
+          0
+        )
+      `;
+    }
+    for (const version of ["0", "3"]) {
+      await expectPostgresError(
+        runtime`
+          INSERT INTO app.document_import_runs (
+            project_id,
+            document_digest,
+            template_version,
+            actor_id,
+            module_count,
+            task_count,
+            reused_module_count,
+            added_member_count
+          )
+          VALUES (
+            ${fixture.projectId},
+            ${(version + "x").repeat(32)},
+            ${version},
+            ${fixture.userId},
+            0,
+            0,
+            0,
+            0
+          )
+        `,
+        "23514",
+      );
+    }
+  });
+
   test("project status-only updates keep row_version while content updates require a bump", async () => {
     const userId = await createUser(runtime);
     const project = await createProject(runtime, userId);
@@ -781,43 +935,18 @@ describe("PostgreSQL schema, invariants, and roles", () => {
     const left = await createProject(runtime, userId);
     const right = await createProject(runtime, userId);
 
-    const [feature] = await runtime<Array<{ id: number }>>`
-      INSERT INTO app.features (
-        project_id,
-        module_id,
-        code,
-        name,
-        created_by
-      )
-      VALUES (
-        ${left.projectId},
-        ${left.moduleId},
-        ${`${left.code}-F-1`},
-        'Left feature',
-        ${userId}
-      )
-      RETURNING id
-    `;
-    if (!feature) {
-      throw new Error("Feature fixture insert returned no row");
-    }
-
     await expectPostgresError(
       runtime`
         INSERT INTO app.tasks (
           project_id,
           module_id,
-          feature_id,
-          scope_type,
           code,
           title,
           creator_id
         )
         VALUES (
           ${right.projectId},
-          ${right.moduleId},
-          ${feature.id},
-          'FEATURE',
+          ${left.moduleId},
           ${`${right.code}-T-1`},
           'Cross-project task',
           ${userId}
@@ -979,7 +1108,6 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       INSERT INTO app.change_records (
         project_id,
         module_id,
-        scope_type,
         title,
         handler_id,
         author_id
@@ -987,7 +1115,6 @@ describe("PostgreSQL schema, invariants, and roles", () => {
       VALUES (
         ${fixture.projectId},
         ${fixture.moduleId},
-        'MODULE',
         '数据库不变量',
         ${fixture.userId},
         ${fixture.userId}
@@ -1219,89 +1346,9 @@ describe("PostgreSQL schema, invariants, and roles", () => {
     );
   });
 
-  test("invalid task state jumps and FEATURE-scoped impact rows are rejected", async () => {
+  test("invalid task state jumps are rejected", async () => {
     const fixture = await createProject(runtime);
-    const [feature] = await runtime<Array<{ id: number }>>`
-      INSERT INTO app.features (
-        project_id,
-        module_id,
-        code,
-        name,
-        created_by
-      )
-      VALUES (
-        ${fixture.projectId},
-        ${fixture.moduleId},
-        ${`${fixture.code}-F-1`},
-        'Scoped feature',
-        ${fixture.userId}
-      )
-      RETURNING id
-    `;
-    if (!feature) {
-      throw new Error("Feature fixture insert returned no row");
-    }
-    const featureTaskId = await runtime.begin(async (transaction) => {
-      const [task] = await transaction<Array<{ id: number }>>`
-        INSERT INTO app.tasks (
-          project_id,
-          module_id,
-          feature_id,
-          scope_type,
-          code,
-          title,
-          creator_id
-        )
-        VALUES (
-          ${fixture.projectId},
-          ${fixture.moduleId},
-          ${feature.id},
-          'FEATURE',
-          ${`${fixture.code}-T-1`},
-          'Feature task',
-          ${fixture.userId}
-        )
-        RETURNING id
-      `;
-      if (!task) {
-        throw new Error("Task fixture insert returned no row");
-      }
-      await transaction`
-        INSERT INTO app.task_status_history (
-          task_id,
-          project_id,
-          from_work_status,
-          to_work_status,
-          changed_by
-        )
-        VALUES (
-          ${task.id},
-          ${fixture.projectId},
-          NULL,
-          'TODO',
-          ${fixture.userId}
-        )
-      `;
-      return task.id;
-    });
-
-    await expectPostgresError(
-      runtime`
-        INSERT INTO app.task_feature_impacts (
-          task_id,
-          feature_id,
-          module_id,
-          project_id
-        )
-        VALUES (
-          ${featureTaskId},
-          ${feature.id},
-          ${fixture.moduleId},
-          ${fixture.projectId}
-        )
-      `,
-      "23514",
-    );
+    const taskId = await createTask(runtime, fixture, 1);
 
     await runtime.begin(async (transaction) => {
       await transaction`
@@ -1309,7 +1356,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
            SET work_status = 'CANCELED',
                row_version = row_version + 1,
                updated_at = now()
-         WHERE id = ${featureTaskId}
+         WHERE id = ${taskId}
       `;
       await transaction`
         INSERT INTO app.task_status_history (
@@ -1320,7 +1367,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
           changed_by
         )
         VALUES (
-          ${featureTaskId},
+          ${taskId},
           ${fixture.projectId},
           'TODO',
           'CANCELED',
@@ -1328,6 +1375,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
         )
       `;
     });
+
     await expectPostgresError(
       runtime`
         UPDATE app.tasks
@@ -1335,7 +1383,7 @@ describe("PostgreSQL schema, invariants, and roles", () => {
                completed_at = now(),
                row_version = row_version + 1,
                updated_at = now()
-         WHERE id = ${featureTaskId}
+         WHERE id = ${taskId}
       `,
       "23514",
     );

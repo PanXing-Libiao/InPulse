@@ -17,7 +17,6 @@ const project: ProjectItem = {
   memberCount: 2,
   stats: {
     activeModuleCount: 2,
-    activeFeatureCount: 1,
     openTaskCount: 3,
     completedTaskCount: 1,
   },

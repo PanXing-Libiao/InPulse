@@ -20,8 +20,6 @@ describe("F-17 draft content", () => {
       "taskId",
       "projectId",
       "moduleId",
-      "featureId",
-      "impactFeatureIds",
       "handlerId",
       "authorId",
       "status",
@@ -68,44 +66,19 @@ describe("F-17 draft content", () => {
         recordDraftContentSchema.safeParse({ ...content, [field]: 1 }).success,
       ).toBe(false);
   });
-  it("requires one explicit independent scope and deduplicates module impacts", () => {
-    expect(
-      independentRecordDraftSchema.parse({
-        ...content,
-        scopeType: "MODULE",
-        impactFeatureIds: [4, 3, 4],
-      }),
-    ).toMatchObject({ impactFeatureIds: [3, 4] });
-    expect(
-      independentRecordDraftSchema.safeParse({
-        ...content,
-        scopeType: "FEATURE",
-        featureId: 2,
-      }).success,
-    ).toBe(true);
-    expect(
-      independentRecordDraftSchema.safeParse({
-        ...content,
-        scopeType: "FEATURE",
-        featureId: 2,
-        impactFeatureIds: [3],
-      }).success,
-    ).toBe(false);
-    expect(
-      independentRecordDraftSchema.safeParse({
-        ...content,
-        scopeType: "MODULE",
-        featureId: 2,
-        impactFeatureIds: [],
-      }).success,
-    ).toBe(false);
-    expect(
-      independentRecordDraftSchema.safeParse({
-        ...content,
-        scopeType: "MODULE",
-        impactFeatureIds: [0],
-      }).success,
-    ).toBe(false);
+  it("rejects client-owned module and removed feature scope fields", () => {
+    expect(independentRecordDraftSchema.safeParse(content).success).toBe(true);
+    for (const extra of [
+      { moduleId: 2 },
+      { scopeType: "MODULE" },
+      { featureId: 2 },
+      { impactFeatureIds: [3] },
+    ]) {
+      expect(
+        independentRecordDraftSchema.safeParse({ ...content, ...extra })
+          .success,
+      ).toBe(false);
+    }
   });
 });
 

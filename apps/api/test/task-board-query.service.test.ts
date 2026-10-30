@@ -6,7 +6,6 @@ import type { TransactionContext } from "../src/database/transaction-context.js"
 import type { UnitOfWork } from "../src/database/unit-of-work.js";
 import { TaskBoardQueryService } from "../src/modules/aggregate-read/task-board-query.service.js";
 import type { ChangeRecordReadPort } from "../src/modules/change-records/index.js";
-import type { FeatureReadPort } from "../src/modules/features/index.js";
 import type { ModuleReadPort } from "../src/modules/modules/index.js";
 import type {
   ProjectAccessQueryPort,
@@ -40,7 +39,6 @@ function projectFixture(id: number, name: string): ProjectItem {
     memberCount: 4,
     stats: {
       activeModuleCount: 2,
-      activeFeatureCount: 3,
       openTaskCount: 2,
       completedTaskCount: 1,
     },
@@ -69,8 +67,6 @@ function rowFixture(
   return {
     taskId,
     moduleId: 3,
-    featureId: 5,
-    scopeType: "FEATURE",
     code: "SHOP-T-" + String(taskId),
     title: "任务 " + String(taskId),
     assigneeIds: [9],
@@ -99,12 +95,6 @@ interface SetupOptions {
     readonly moduleId: number;
     readonly name: string;
   }[];
-  readonly featureNames?: readonly {
-    readonly featureId: number;
-    readonly name: string;
-  }[];
-  readonly projectFeatureCount?: number;
-  readonly moduleFeatureCounts?: Readonly<Record<number, number>>;
   readonly users?: readonly UserRefItem[];
   readonly publishedRecordCounts?: readonly {
     readonly taskId: number;
@@ -147,29 +137,6 @@ function boardSetup(options: SetupOptions = {}) {
         name: "模块 " + String(moduleId),
       })),
   );
-  const listFeatureNames = vi.fn().mockResolvedValue(
-    options.featureNames ??
-      [
-        ...new Set(
-          rows.flatMap((row) =>
-            row.featureId === null ? [] : [row.featureId],
-          ),
-        ),
-      ].map((featureId) => ({
-        featureId,
-        name: "功能 " + String(featureId),
-      })),
-  );
-  const projectFeatureCount = options.projectFeatureCount ?? 2;
-  const moduleFeatureCounts = options.moduleFeatureCounts ?? {};
-  const featuresCount = vi
-    .fn()
-    .mockImplementation(
-      async (_tx: unknown, input: { readonly moduleId?: number }) =>
-        input.moduleId === undefined
-          ? projectFeatureCount
-          : (moduleFeatureCounts[input.moduleId] ?? 0),
-    );
   const countPublishedByTask = vi
     .fn()
     .mockResolvedValue(options.publishedRecordCounts ?? []);
@@ -183,10 +150,6 @@ function boardSetup(options: SetupOptions = {}) {
     { find } as unknown as ProjectQueryPort,
     { listForBoard, boardStats } as unknown as TaskQueryPort,
     { listNames: listModuleNames } as unknown as ModuleReadPort,
-    {
-      listNames: listFeatureNames,
-      count: featuresCount,
-    } as unknown as FeatureReadPort,
     { countPublishedByTask } as unknown as ChangeRecordReadPort,
     { listHistoricalSourceTaskIds } as unknown as TaskGroupMembershipReadPort,
     { listByIds: listUsers } as unknown as UserReadPort,
@@ -200,8 +163,6 @@ function boardSetup(options: SetupOptions = {}) {
     listForBoard,
     boardStats,
     listModuleNames,
-    listFeatureNames,
-    featuresCount,
     countPublishedByTask,
     listHistoricalSourceTaskIds,
     listUsers,
@@ -260,12 +221,10 @@ describe("TaskBoardQueryService.getBoard", () => {
           dueAt: null,
           dueState: "NONE",
         }),
-        rowFixture(23, { moduleId: 4, featureId: null, scopeType: "MODULE" }),
+        rowFixture(23, { moduleId: 4 }),
       ],
       totals: totalsFixture({ total: 39, done: 12, open: 27, canceled: 0 }),
       publishedRecordCounts: [{ taskId: 22, count: 2 }],
-      moduleFeatureCounts: { 3: 2, 4: 1 },
-      featureNames: [{ featureId: 5, name: "任务看板" }],
     });
 
     const result = await setup.service.getBoard({
@@ -283,17 +242,14 @@ describe("TaskBoardQueryService.getBoard", () => {
       done: 12,
       open: 27,
       completionRate: 31,
-      featureCount: 2,
       memberCount: 4,
     });
     expect(result.modules.map((lane) => lane.moduleId)).toEqual([3, 4]);
     const [first, second] = result.modules;
     expect(first?.name).toBe("模块 3");
-    expect(first?.featureCount).toBe(2);
     expect(first?.tasks).toHaveLength(2);
     expect(first?.tasks[1]).toMatchObject({
       taskId: 22,
-      featureName: "任务看板",
       workStatus: "DONE",
       dueState: "NONE",
       publishedRecordCount: 2,
@@ -302,9 +258,6 @@ describe("TaskBoardQueryService.getBoard", () => {
     expect(first?.tasks[1]?.completedAt).toBe("2026-09-17T02:00:00.000Z");
     expect(second?.tasks[0]).toMatchObject({
       taskId: 23,
-      featureId: null,
-      featureName: null,
-      scopeType: "MODULE",
     });
   });
 
@@ -410,47 +363,5 @@ describe("TaskBoardQueryService.getBoard", () => {
       status: 500,
       code: "AGGREGATE_READ_INCONSISTENT",
     });
-  });
-
-  it("覆盖功能数按项目级计数，模块功能数逐模块计数", async () => {
-    const setup = boardSetup({
-      rows: [
-        rowFixture(21),
-        rowFixture(22, { moduleId: 4, featureId: null, scopeType: "MODULE" }),
-      ],
-      moduleFeatureCounts: { 3: 2, 4: 1 },
-    });
-
-    const result = await setup.service.getBoard({
-      actorUserId: 5,
-      projectId: 7,
-    });
-
-    // ADR-045：功能已无归档态，项目级与模块级计数都不再带 status 过滤。
-    expect(setup.featuresCount).toHaveBeenNthCalledWith(
-      1,
-      {},
-      {
-        projectId: 7,
-      },
-    );
-    expect(setup.featuresCount).toHaveBeenNthCalledWith(
-      2,
-      {},
-      {
-        projectId: 7,
-        moduleId: 3,
-      },
-    );
-    expect(setup.featuresCount).toHaveBeenNthCalledWith(
-      3,
-      {},
-      {
-        projectId: 7,
-        moduleId: 4,
-      },
-    );
-    expect(result.stats.featureCount).toBe(2);
-    expect(result.modules.map((lane) => lane.featureCount)).toEqual([2, 1]);
   });
 });

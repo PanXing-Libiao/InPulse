@@ -189,7 +189,6 @@ export class ProjectManagementService {
       entityType: "PROJECT",
       entityId: updated.projectId,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: updated.name,
       summary: updated.description.slice(0, 5000),
@@ -354,7 +353,6 @@ export class ProjectManagementService {
       entityType: "PROJECT",
       entityId: updated.projectId,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: updated.name,
       summary: updated.description.slice(0, 5000),
@@ -399,7 +397,7 @@ export class ProjectManagementService {
    *
    * 删除完全交给数据库的 `app.purge_project`：`app_runtime` 没有业务表的
    * DELETE 权限，只有这个 SECURITY DEFINER 窄口能在同一事务内按外键顺序清空
-   * 模块、功能、任务、聚合组、迭代记录、遗留项、外部链接、成员关系、通知、
+   * 模块、任务、聚合组、迭代记录、遗留项、外部链接、成员关系、通知、
    * 动态与搜索投影，最后删除项目行本身。
    *
    * ADR-085：项目自己的 `PROJECT:<id>` 审计日志与链头不随项目删除，继续作为

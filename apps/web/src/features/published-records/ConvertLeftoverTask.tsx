@@ -43,7 +43,7 @@ function message(error: unknown) {
     if (error.code === "LEFTOVER_TASK_DESCRIPTION_TOO_LONG")
       return "任务说明加上来源记录与遗留原文后超过 50000 字，请缩短说明。";
     if (error.status === 409)
-      return "记录、遗留项或影响功能已变化，请刷新预览并确认后重试。";
+      return "记录或遗留项已变化，请刷新预览并确认后重试。";
     if (error.status === 401) return SESSION_EXPIRED_MESSAGE;
     if (error.status === 404) return "记录或任务不存在，或当前无法访问。";
     if (error.status === 403) return "请求未通过安全校验，请刷新后重试。";
@@ -54,9 +54,7 @@ function message(error: unknown) {
 }
 /**
  * 来源行（2026-09-30 版 1 排版）：记录、版本、稳定遗留项编号、遗留原文与继承的
- * 影响功能压成标题下一行灰字，不再占独立分区；原文过长时在行内滚动，不截断内容。
- * 继承影响仍按 F-20 口径展示，「影响集合确认」的语义不变；没有任何继承影响时
- * 只留「记录 · 版本 · 编号 · 原文」，不再多出一句「影响功能：无」（2026-09-30 与版 1 对照稿对齐）。
+ * 来源信息压成标题下一行灰字，原文过长时在行内滚动，不截断内容。
  */
 function SourceLine({
   value,
@@ -65,7 +63,6 @@ function SourceLine({
   value: LeftoverTaskPreview;
   recordTitle?: string | undefined;
 }) {
-  const impacts = value.inheritedImpacts.map((f) => f.name).join("、");
   return (
     <div className="leftover-convert-source">
       <p>
@@ -74,12 +71,6 @@ function SourceLine({
         <span className="leftover-convert-quote">
           {value.content || "当前版本没有遗留问题"}
         </span>
-        {impacts === "" ? null : (
-          <>
-            <span className="leftover-convert-sep">·</span>
-            影响功能：{impacts}
-          </>
-        )}
       </p>
       {value.linkedTask && (
         <a href={taskDetailPath(value.linkedTask)}>查看已有跟进任务</a>
@@ -95,7 +86,6 @@ function SourceLine({
 export interface LeftoverConvertTarget {
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
   readonly recordId: number;
   readonly recordTitle: string;
   /** 目标遗留项：一条记录可以有多条遗留问题，预览与转换必须锁定其中一条。 */
@@ -136,20 +126,9 @@ export function LeftoverTaskConvertModal({
     [priority, setPriority] =
       useState<LeftoverTaskRequest["priority"]>("NORMAL");
   const members = useQuery({
-    queryKey: [
-      "leftover-assignees",
-      target.projectId,
-      target.moduleId,
-      target.featureId,
-    ],
+    queryKey: ["leftover-assignees", target.projectId, target.moduleId],
     queryFn: () =>
-      target.featureId === null
-        ? api.listModuleTaskAssignees(target.projectId, target.moduleId)
-        : api.listTaskAssignees(
-            target.projectId,
-            target.moduleId,
-            target.featureId,
-          ),
+      api.listModuleTaskAssignees(target.projectId, target.moduleId),
     enabled: open,
     retry: false,
   });
@@ -216,7 +195,6 @@ export function LeftoverTaskConvertModal({
         recordVersion: preview.recordVersion,
         expectedRowVersion: preview.rowVersion,
         leftoverExpectedRowVersion: preview.leftoverRowVersion,
-        expectedImpactFeatureIds: preview.inheritedImpacts.map((f) => f.id),
         title: title.trim(),
         assigneeIds,
         priority,
@@ -321,7 +299,7 @@ export function LeftoverTaskConvertModal({
               className="leftover-convert-latest"
               aria-label="最新转换预览"
             >
-              <h3>请确认最新遗留内容与影响功能</h3>
+              <h3>请确认最新遗留内容</h3>
               <SourceLine value={latest} recordTitle={target.recordTitle} />
               <Button
                 disabled={busy}
@@ -481,7 +459,6 @@ export function ConvertLeftoverTask({
         target={{
           projectId: item.projectId,
           moduleId: item.moduleId,
-          featureId: item.featureId,
           recordId: item.id,
           recordTitle: item.title,
           leftoverItemId: leftover.id,

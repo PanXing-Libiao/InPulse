@@ -75,7 +75,7 @@ export interface RecordDetailModalProps {
   /**
    * 就地打开来源任务：传入后记录详情里的「查看来源任务」渲染成按钮、交回宿主在
    * 当前页面打开任务弹窗（遗留问题页等），关掉后回到本记录弹窗；缺省仍是深链到
-   * 功能档案的 ?taskId=。
+   * 模块任务页的 ?taskId=。
    */
   readonly onOpenTask?: ((location: TaskLocation) => void) | undefined;
 }

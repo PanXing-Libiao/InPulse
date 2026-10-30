@@ -14,7 +14,7 @@ export const taskCreateRoutes: readonly RouteDefinition[] = [
     method: "POST",
     path: "/projects/{projectId}/tasks",
     operationId: "createTaskWithScope",
-    summary: "同事务创建任务与可选新模块、新功能，整笔幂等。",
+    summary: "同事务创建任务与可选新模块，整笔幂等。",
     request: {
       path: "ProjectPath",
       query: "none",
@@ -30,7 +30,8 @@ export const taskCreateRoutes: readonly RouteDefinition[] = [
     csrfPolicy: "required",
     idempotencyPolicy: "idempotencyRequired",
     idempotencyExceptionAdr: "none",
-    idempotencyContractVersion: "1.0.0",
+    // ADR-109：移除功能创建与影响集合，破坏性契约变更。
+    idempotencyContractVersion: "2.0.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: [],
     idempotencyReplayPolicy: {
@@ -39,12 +40,7 @@ export const taskCreateRoutes: readonly RouteDefinition[] = [
         "200": {
           body: {
             responseSchemaRef: "TaskCreateResult",
-            safeBodyFieldPaths: [
-              "projectId",
-              "moduleId",
-              "featureId",
-              "taskId",
-            ],
+            safeBodyFieldPaths: ["projectId", "moduleId", "taskId"],
           },
         },
       },
@@ -61,7 +57,7 @@ export const taskCreateRoutes: readonly RouteDefinition[] = [
     versionPolicy: "none",
     concurrencyPolicy: {
       rowVersion: "none",
-      lockOrder: ["project", "module", "feature"],
+      lockOrder: ["project", "module"],
       retry: "none; same transaction",
     },
     auditAction: "task.create",

@@ -7,9 +7,7 @@ export interface RecordSourceSnapshot {
   taskId: number;
   projectId: number;
   moduleId: number;
-  featureId: number | null;
   assigneeId: number;
-  impactFeatureIds: number[];
 }
 /** Workflow has authorized/locked the real source and parents in the shared transaction. */
 export abstract class RecordDraftCommandPort {

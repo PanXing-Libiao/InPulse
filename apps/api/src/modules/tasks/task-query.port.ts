@@ -7,13 +7,11 @@ import {
   type TaskListSortKey,
 } from "./task-list-order.js";
 
-/** 任务身份、归属、状态与影响功能的稳定读模型。 */
+/** 任务身份、归属与状态的稳定读模型。 */
 export interface TaskReadModel {
   taskId: number;
   projectId: number;
   moduleId: number;
-  featureId: number | null;
-  scopeType: "FEATURE" | "MODULE";
   code: string;
   title: string;
   creatorId: number;
@@ -25,12 +23,10 @@ export interface TaskReadModel {
   /** 截止时间（null = 未设置）；由适配器在读取边界还原为 Date。 */
   dueAt: Date | null;
   rowVersion: number;
-  impactFeatureIds: number[];
 }
 
 export type TaskWorkStatus = "TODO" | "DONE" | "CANCELED";
 export type TaskLifecycleStatus = "ACTIVE" | "INVALID";
-export type TaskScopeType = "FEATURE" | "MODULE";
 
 /** excludedTaskIds 的条目上限：超限即拒绝，禁止把无界集合带进 SQL 参数。 */
 export const TASK_EXCLUDED_IDS_MAX = 1000;
@@ -60,7 +56,6 @@ export interface TaskListFilter {
   readonly projectIds: readonly number[];
   readonly assigneeId?: number;
   readonly workStatuses?: readonly TaskWorkStatus[];
-  readonly scopeTypes?: readonly TaskScopeType[];
   /**
    * 功能设计 §29.1「有效任务」中 B 侧可表达的部分：
    * lifecycle_status <> 'INVALID' AND work_status <> 'CANCELED'。
@@ -86,8 +81,6 @@ export interface TaskListRow {
   readonly taskId: number;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly scopeType: TaskScopeType;
   readonly code: string;
   readonly title: string;
   readonly assigneeId: number;
@@ -185,8 +178,6 @@ export interface TaskBoardListInput {
 export interface TaskBoardTaskRow {
   readonly taskId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly scopeType: TaskScopeType;
   readonly code: string;
   readonly title: string;
   /** 全部负责人，按 user_id 升序（ADR-040）；无负责人的任务在适配器边界归一为空数组。 */
@@ -258,8 +249,6 @@ export interface SummaryTaskRow {
   readonly code: string;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly scopeType: TaskScopeType;
   readonly title: string;
   readonly completedAt: Date;
   readonly assigneeId: number | null;
@@ -275,7 +264,7 @@ interface SummaryTaskRowRaw extends Omit<SummaryTaskRow, "completedAt"> {
   readonly completedAt: string;
 }
 
-/** Caller authorizes the project. lock requires project/module/sorted feature locks first. */
+/** Caller authorizes the project. lock requires project/module locks first. */
 export abstract class TaskQueryPort {
   /**
    * 项目无关的预读，供请求只携带任务 ID、需要先解析真实归属的命令使用。
@@ -433,15 +422,13 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
   async findByTaskId(tx: TransactionContext, taskId: number) {
     const [row] = await tx.sql<
       TaskReadRowRaw[]
-    >`SELECT id AS "taskId",project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",scope_type AS "scopeType",code,title,creator_id AS "creatorId",(SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId",priority,work_status AS "workStatus",lifecycle_status AS "lifecycleStatus",due_at AS "dueAt",row_version AS "rowVersion",
-      ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=app.tasks.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks WHERE id=${taskId} AND deleted_at IS NULL`;
+    >`SELECT id AS "taskId",project_id AS "projectId",module_id AS "moduleId",code,title,creator_id AS "creatorId",(SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId",priority,work_status AS "workStatus",lifecycle_status AS "lifecycleStatus",due_at AS "dueAt",row_version AS "rowVersion"FROM app.tasks WHERE id=${taskId} AND deleted_at IS NULL`;
     return row === undefined ? undefined : mapTaskReadRow(row);
   }
   async find(tx: TransactionContext, projectId: number, taskId: number) {
     const [row] = await tx.sql<
       TaskReadRowRaw[]
-    >`SELECT id AS "taskId",project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",scope_type AS "scopeType",code,title,creator_id AS "creatorId",(SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId",priority,work_status AS "workStatus",lifecycle_status AS "lifecycleStatus",due_at AS "dueAt",row_version AS "rowVersion",
-      ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=app.tasks.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks WHERE id=${taskId} AND project_id=${projectId} AND deleted_at IS NULL`;
+    >`SELECT id AS "taskId",project_id AS "projectId",module_id AS "moduleId",code,title,creator_id AS "creatorId",(SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId",priority,work_status AS "workStatus",lifecycle_status AS "lifecycleStatus",due_at AS "dueAt",row_version AS "rowVersion"FROM app.tasks WHERE id=${taskId} AND project_id=${projectId} AND deleted_at IS NULL`;
     return row === undefined ? undefined : mapTaskReadRow(row);
   }
   async lock(tx: TransactionContext, projectId: number, taskId: number) {
@@ -463,8 +450,7 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
     const tasks = [...taskIds];
     const rows = await tx.sql<
       TaskReadRowRaw[]
-    >`SELECT id AS "taskId",project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",scope_type AS "scopeType",code,title,creator_id AS "creatorId",(SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId",priority,work_status AS "workStatus",lifecycle_status AS "lifecycleStatus",due_at AS "dueAt",row_version AS "rowVersion",
-      ARRAY(SELECT i.feature_id FROM app.task_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.task_id=app.tasks.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.tasks WHERE project_id = ANY(${projects}::integer[]) AND id = ANY(${tasks}::integer[]) AND deleted_at IS NULL ORDER BY id ASC`;
+    >`SELECT id AS "taskId",project_id AS "projectId",module_id AS "moduleId",code,title,creator_id AS "creatorId",(SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id=app.tasks.id) AS "assigneeId",priority,work_status AS "workStatus",lifecycle_status AS "lifecycleStatus",due_at AS "dueAt",row_version AS "rowVersion"FROM app.tasks WHERE project_id = ANY(${projects}::integer[]) AND id = ANY(${tasks}::integer[]) AND deleted_at IS NULL ORDER BY id ASC`;
     return rows.map(mapTaskReadRow);
   }
 
@@ -480,7 +466,6 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
     const projectIds = [...input.projectIds];
     const assigneeId = input.assigneeId ?? null;
     const workStatuses = input.workStatuses ? [...input.workStatuses] : null;
-    const scopeTypes = input.scopeTypes ? [...input.scopeTypes] : null;
     const effectiveOnly = input.effectiveOnly === true;
     const excludedTaskIds = input.excludedTaskIds
       ? [...input.excludedTaskIds]
@@ -491,8 +476,6 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
       SELECT t.id AS "taskId",
              t.project_id AS "projectId",
              t.module_id AS "moduleId",
-             t.feature_id AS "featureId",
-             t.scope_type AS "scopeType",
              t.code,
              t.title,
              (SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id = t.id) AS "assigneeId",
@@ -504,7 +487,6 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
         FROM app.tasks t
        WHERE t.project_id = ANY(${projectIds}::integer[])          AND t.deleted_at IS NULL         AND (${assigneeId}::integer IS NULL OR EXISTS (SELECT 1 FROM app.task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ${assigneeId}))
          AND (${workStatuses}::text[] IS NULL OR t.work_status = ANY(${workStatuses}::text[]))
-         AND (${scopeTypes}::text[] IS NULL OR t.scope_type = ANY(${scopeTypes}::text[]))
          AND (${effectiveOnly}::boolean = false OR (t.lifecycle_status <> 'INVALID' AND t.work_status <> 'CANCELED'))
          AND (${excludedTaskIds}::integer[] IS NULL OR t.id <> ALL(${excludedTaskIds}::integer[]))
          AND ${taskListKeysetPredicate(tx.sql, after)}
@@ -534,7 +516,6 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
     const projectIds = [...filter.projectIds];
     const assigneeId = filter.assigneeId ?? null;
     const workStatuses = filter.workStatuses ? [...filter.workStatuses] : null;
-    const scopeTypes = filter.scopeTypes ? [...filter.scopeTypes] : null;
     const effectiveOnly = filter.effectiveOnly === true;
     const excludedTaskIds = filter.excludedTaskIds
       ? [...filter.excludedTaskIds]
@@ -545,7 +526,6 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
         FROM app.tasks t
        WHERE t.project_id = ANY(${projectIds}::integer[])          AND t.deleted_at IS NULL         AND (${assigneeId}::integer IS NULL OR EXISTS (SELECT 1 FROM app.task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = ${assigneeId}))
          AND (${workStatuses}::text[] IS NULL OR t.work_status = ANY(${workStatuses}::text[]))
-         AND (${scopeTypes}::text[] IS NULL OR t.scope_type = ANY(${scopeTypes}::text[]))
          AND (${effectiveOnly}::boolean = false OR (t.lifecycle_status <> 'INVALID' AND t.work_status <> 'CANCELED'))
          AND (${excludedTaskIds}::integer[] IS NULL OR t.id <> ALL(${excludedTaskIds}::integer[]))
     `;
@@ -563,8 +543,6 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
     const rows = await tx.sql<TaskBoardTaskRowRaw[]>`
       SELECT t.id AS "taskId",
              t.module_id AS "moduleId",
-             t.feature_id AS "featureId",
-             t.scope_type AS "scopeType",
              t.code,
              t.title,
              (SELECT array_agg(ta.user_id ORDER BY ta.user_id) FROM app.task_assignees ta WHERE ta.task_id = t.id) AS "assigneeIds",
@@ -683,8 +661,6 @@ export class PostgresTaskQueryPort extends TaskQueryPort {
              t.code AS code,
              t.project_id AS "projectId",
              t.module_id AS "moduleId",
-             t.feature_id AS "featureId",
-             t.scope_type AS "scopeType",
              t.title AS title,
              t.completed_at AS "completedAt",
              (SELECT min(ta.user_id) FROM app.task_assignees ta WHERE ta.task_id = t.id) AS "assigneeId"

@@ -125,8 +125,8 @@ export const TaskBoardOverview: React.FC<TaskBoardOverviewProps> = ({
           <b>{stats.completedThisWeek}</b>
         </div>
         <div className="tb-metric">
-          <span>覆盖功能</span>
-          <b>{stats.featureCount}</b>
+          <span>已取消任务</span>
+          <b>{stats.canceled}</b>
         </div>
         <div className="tb-metric">
           <span>参与成员</span>

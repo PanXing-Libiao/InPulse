@@ -22,7 +22,6 @@ import { CalmSelect } from "@features/common/components/CalmSelect";
 import { formatBeijingMinute } from "@features/common/beijing-time";
 import { useModules } from "@features/modules/module-query";
 import { useProjectDetail } from "@features/projects/project-query";
-import { useProjectFeatureNames } from "@features/records/feature-name-map";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import { SESSION_EXPIRED_MESSAGE } from "@shared/api/request-messages";
@@ -107,9 +106,7 @@ export function PublishedRecordDetail({
     | {
         readonly project: string;
         readonly module: string;
-        readonly feature: string | null;
         readonly author: string;
-        readonly impactFeatures: readonly string[];
       }
     | undefined;
   /**
@@ -122,7 +119,7 @@ export function PublishedRecordDetail({
   /**
    * 就地打开来源任务（遗留问题页等已挂任务详情宿主时传入）：传了就渲染成按钮，
    * 点击交回宿主在当前页面打开任务弹窗、关掉后回到本条记录弹窗，不改变地址栏；
-   * 缺省仍是深链到功能档案的 ?taskId=，由目标页自己打开任务详情。
+   * 缺省仍是深链到模块任务页的 ?taskId=，由目标页自己打开任务详情。
    */
   readonly onOpenTask?: ((location: TaskLocation) => void) | undefined;
   /** 受控展开：发布后独立详情切换为列表卡片时，页面可保留用户刚打开的关联区。 */
@@ -155,7 +152,7 @@ export function PublishedRecordDetail({
   });
   /**
    * 记录接口只回传归属与作者的 ID。列表语境把名称带进来（`labels`），弹窗、深链与
-   * 聚合组等没有列表的语境就地解析：项目详情、模块清单、功能名表与用户目录，
+   * 聚合组等没有列表的语境就地解析：项目详情、模块清单与用户目录，
    * 与记录页卡片共用同一批查询键，命中缓存时不额外发请求。
    */
   const needsLabels = labels === undefined;
@@ -165,10 +162,6 @@ export function PublishedRecordDetail({
     enabled: needsLabels,
   });
   const modules = useModules(needsLabels ? projectId : 0, client);
-  const featureNames = useProjectFeatureNames(
-    needsLabels ? projectId : 0,
-    client,
-  );
   const directory = useUserDirectoryQuery({ client, enabled: needsLabels });
   const history = versions.data?.items ?? [];
   const before =
@@ -211,23 +204,11 @@ export function PublishedRecordDetail({
     modules.query.data?.items.find((item) => item.id === record.moduleId)
       ?.name ??
     `模块 #${record.moduleId}`;
-  const featureName =
-    record.featureId === null
-      ? null
-      : (labels?.feature ??
-        featureNames.get(record.featureId) ??
-        `功能 #${record.featureId}`);
   const authorName =
     labels?.author ??
     record.authorName ??
     (directory.data ?? []).find((item) => item.id === record.authorId)?.name ??
     `用户 #${record.authorId}`;
-  const impactNames =
-    labels?.impactFeatures && labels.impactFeatures.length > 0
-      ? labels.impactFeatures
-      : record.impactFeatureIds
-          .map((id) => featureNames.get(id))
-          .filter((name): name is string => typeof name === "string");
   // 已解决的遗留项不在当前版本的列表里，只能通过相邻版本的条目数差判断是否移除过。
   const removedLeftovers = (() => {
     const current = history.find(
@@ -240,14 +221,13 @@ export function PublishedRecordDetail({
       ? 0
       : previous.leftovers.length - current.leftovers.length;
   })();
-  // 来源任务位置（模块级任务回模块任务页、功能级任务回功能页）；taskId 为空时整个入口不渲染。
+  // 来源任务位置统一落到模块任务页；taskId 为空时整个入口不渲染。
   const sourceTask: TaskLocation | null =
     record.taskId === null
       ? null
       : {
           projectId,
           moduleId: record.moduleId,
-          featureId: record.featureId,
           taskId: record.taskId,
         };
   return (
@@ -257,21 +237,11 @@ export function PublishedRecordDetail({
           <h3>{record.title}</h3>
         </div>
       ) : null}
-      {/* 事实区（归属 / 影响功能 / 作者与时间）提到正文之上（2026-10-10 定案），
+      {/* 事实区（归属 / 作者与时间）提到正文之上（2026-10-10 定案），
           进弹窗先看到「这条记录属于谁、谁在什么时候写的」。 */}
       <dl className="record-facts">
         <dt>归属</dt>
-        <dd>
-          {[projectName, moduleName, featureName]
-            .filter((part) => part !== null)
-            .join(" / ")}
-        </dd>
-        {impactNames.length > 0 && (
-          <>
-            <dt>影响功能</dt>
-            <dd>{impactNames.join("、")}</dd>
-          </>
-        )}
+        <dd>{[projectName, moduleName].join(" / ")}</dd>
         <dt>作者与时间</dt>
         <dd>
           {authorName} · 创建 {formatBeijingMinute(record.createdAt)}
@@ -324,7 +294,6 @@ export function PublishedRecordDetail({
                           href={taskDetailPath({
                             projectId: record.projectId,
                             moduleId: record.moduleId,
-                            featureId: record.featureId,
                             taskId: leftover.linkedTaskId,
                           })}
                         >

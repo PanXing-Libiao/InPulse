@@ -4,7 +4,7 @@ const id = z.number().int().positive().max(2147483647);
 const reason = z.string().trim().min(1).max(10000).nullable();
 
 /**
- * ADR-096：模块删除。模块本体、其下全部功能与任务、这些实体的全部迭代记录、
+ * ADR-096 / ADR-109：模块删除。模块本体、其下全部任务、这些实体的全部迭代记录、
  * 版本、遗留项与链接关联会被永久删除；只保留审计日志、项目动态与
  * `module.delete` 删除事件。删除不可恢复：没有还原路由。
  *
@@ -25,11 +25,9 @@ export const moduleDeletionResponseSchema = z
     name: z.string().min(1).max(200),
     /** 删除时刻的模块类型快照；删除不改变 kind。 */
     kind: z.enum(["NORMAL", "UNCLASSIFIED"]),
-    /** 同事务物理删除的功能数。 */
-    deletedFeatureCount: z.number().int().min(0),
-    /** 同事务物理删除的任务数（模块级任务与其功能下的任务之和）。 */
+    /** 同事务物理删除的任务数。 */
     deletedTaskCount: z.number().int().min(0),
-    /** 同事务物理删除的迭代记录数（模块级、功能级与任务级之和）。 */
+    /** 同事务物理删除的迭代记录数（模块级与任务级之和）。 */
     deletedRecordCount: z.number().int().min(0),
     /** 同事务删除的外部链接关联数（含级联任务自身关联）。 */
     removedLinkCount: z.number().int().min(0),

@@ -173,14 +173,13 @@ export function MergeIntoMainTaskModal({
           "Idempotency-Key": retry.current.key,
         },
       });
-      // modules / features / project-overview：来源任务并入活跃聚合组后不再计入
-      // 有效任务口径，功能与模块卡的档位和概览统计必须同批失效（2026-09-24 修）。
+      // 来源任务并入活跃聚合组后会改变模块卡与项目概览的有效任务统计，
+      // 需同时失效任务、模块和概览查询。
       await Promise.all([
         cache.invalidateQueries({ queryKey: ["tasks"] }),
         cache.invalidateQueries({ queryKey: ["task-board"] }),
         cache.invalidateQueries({ queryKey: ["my-tasks"] }),
         cache.invalidateQueries({ queryKey: ["modules"] }),
-        cache.invalidateQueries({ queryKey: ["features"] }),
         cache.invalidateQueries({ queryKey: ["project-overview"] }),
         cache.invalidateQueries({ queryKey: ["task-group"] }),
         cache.invalidateQueries({ queryKey: ["task-group-records"] }),

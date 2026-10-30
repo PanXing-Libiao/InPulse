@@ -689,10 +689,9 @@ export function RecordSummaryModal({
           <strong>{data.totals.completedTaskCount}</strong>
         </div>
         <div>
-          <span>涉及项目 / 模块 / 功能</span>
+          <span>涉及项目 / 模块</span>
           <strong>
-            {data.totals.projectCount} / {data.totals.moduleCount} /{" "}
-            {data.totals.featureCount}
+            {data.totals.projectCount} / {data.totals.moduleCount}
           </strong>
         </div>
         <div>
@@ -712,7 +711,7 @@ export function RecordSummaryModal({
           <tr>
             <th className="summary-detail-toggle-head" aria-label="展开详情" />
             <th>编号</th>
-            <th>项目 / 模块 / 功能</th>
+            <th>项目 / 模块</th>
             <th>标题与效果</th>
             <th>作者</th>
             <th>发布日</th>
@@ -762,9 +761,6 @@ export function RecordSummaryModal({
                   <td>{point.recordCode}</td>
                   <td>
                     {point.projectName} / {point.moduleName}
-                    {point.featureName === null
-                      ? ""
-                      : ` / ${point.featureName}`}
                   </td>
                   <td>
                     <b>{point.title}</b>

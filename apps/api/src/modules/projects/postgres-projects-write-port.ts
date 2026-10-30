@@ -16,6 +16,7 @@ import {
   type ProjectPurgeCounts,
   type ProjectRecord,
   type ProjectWrapRecord,
+  PROJECT_WRAP_TEMPLATE_VERSION,
   ProjectsWritePort,
 } from "./projects-write.port.js";
 
@@ -70,14 +71,12 @@ interface ProjectChangeRow {
   readonly updatedAt: Date;
   readonly memberCount: number;
   readonly activeModuleCount: number;
-  readonly activeFeatureCount: number;
   readonly openTaskCount: number;
   readonly completedTaskCount: number;
 }
 
 interface PurgeCountRow {
   readonly modules: number;
-  readonly features: number;
   readonly tasks: number;
   readonly change_records: number;
   readonly audit_logs: number;
@@ -402,13 +401,6 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
                ) AS active_module_count,
                (
                  SELECT COUNT(*)::integer
-                   FROM app.features f
-                  WHERE f.project_id = target.id
-                    AND f.status = 'ACTIVE'
-                    AND f.deleted_at IS NULL
-               ) AS active_feature_count,
-               (
-                 SELECT COUNT(*)::integer
                    FROM app.tasks t
                   WHERE t.project_id = target.id
                     AND t.deleted_at IS NULL
@@ -436,9 +428,9 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
              ${input.sealedAt.toISOString()}::TIMESTAMPTZ,
              ${input.actorId},
              jsonb_build_object('id', ${input.actorId}::integer, 'name', s.actor_name),
-             1,
+             ${PROJECT_WRAP_TEMPLATE_VERSION},
              jsonb_build_object(
-               'version', 1,
+               'version', ${PROJECT_WRAP_TEMPLATE_VERSION}::integer,
                'project', jsonb_build_object(
                  'id', s.id,
                  'code', s.code,
@@ -449,7 +441,6 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
                  'publishedRecordCount', s.published_record_count,
                  'activeMemberCount', s.active_member_count,
                  'activeModuleCount', s.active_module_count,
-                 'activeFeatureCount', s.active_feature_count,
                  'openTaskCount', s.open_task_count,
                  'durationDays', s.duration_days,
                  'completionPercent', 100
@@ -533,7 +524,6 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
   ): Promise<ProjectPurgeCounts> {
     const rows = (await tx.sql`
       SELECT modules,
-             features,
              tasks,
              change_records,
              audit_logs,
@@ -547,7 +537,6 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
     }
     return {
       modules: row.modules,
-      features: row.features,
       tasks: row.tasks,
       changeRecords: row.change_records,
       retainedAuditLogs: row.audit_logs,
@@ -821,7 +810,6 @@ export class PostgresProjectsWritePort extends ProjectsWritePort {
       memberCount: row.memberCount,
       stats: {
         activeModuleCount: row.activeModuleCount,
-        activeFeatureCount: row.activeFeatureCount,
         openTaskCount: row.openTaskCount,
         completedTaskCount: row.completedTaskCount,
       },

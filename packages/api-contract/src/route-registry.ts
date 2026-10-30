@@ -17,8 +17,7 @@ import {
 } from "./record-draft-routes.js";
 import { taskGroupRoutes } from "./task-group-routes.js";
 import { taskCompletionRoutes } from "./task-completion-routes.js";
-import { featureRoutes } from "./feature-routes.js";
-import { taskRoutes, moduleTaskRoutes } from "./task-routes.js";
+import { moduleTaskRoutes } from "./task-routes.js";
 import { apiBasePath, type RouteDefinition } from "./route-definition.js";
 import { moduleRoutes } from "./module-routes.js";
 import { adminUserRoutes } from "./user-admin-routes.js";
@@ -52,8 +51,6 @@ export const routeRegistry = [
   ...projectRoutes,
   ...moduleRoutes,
   ...taskCreateRoutes,
-  ...featureRoutes,
-  ...taskRoutes,
   ...recordDraftRoutes,
   ...recordDraftDeleteRoutes,
   ...publishedRecordRoutes,

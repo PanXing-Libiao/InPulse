@@ -7,7 +7,7 @@ import {
 } from "./record-summary-document";
 
 // F-33 正文派生：服务端只给事实，正文措辞与编号在这里推导，因此逐条锁住口径——
-// 小节编号从「一」起且整体概览不占号、模块级记录不重复计入功能、缺口与遗留问题
+// 小节编号从「一」起且整体概览不占号、记录按模块归属、缺口与遗留问题
 // 的文案不引入服务端没有的数据。
 
 function response(
@@ -25,7 +25,6 @@ function response(
     totals: {
       projectCount: 2,
       moduleCount: 3,
-      featureCount: 4,
       recordCount: 5,
       completedTaskCount: 6,
       missingRecordTaskCount: 1,
@@ -56,8 +55,6 @@ function response(
         projectName: "商城系统",
         moduleId: 3,
         moduleName: "订单模块",
-        featureId: 4,
-        featureName: "下单",
         title: "下单链路拆分",
         detail: "下单耗时从 900ms 降到 240ms",
         author: { userId: 5, name: "王浩", avatarUrl: null },
@@ -72,8 +69,6 @@ function response(
         projectName: "会员中心",
         moduleId: 9,
         moduleName: "积分模块",
-        featureId: null,
-        featureName: null,
         title: "积分对账口径对齐",
         detail: "对账差异归零",
         author: { userId: 6, name: "刘一诺", avatarUrl: null },
@@ -120,8 +115,6 @@ function response(
         projectName: "商城系统",
         moduleId: 3,
         moduleName: "订单模块",
-        featureId: 5,
-        featureName: "退款",
         title: "退款回调补偿",
         completedAt: "2026-09-12T02:00:00.000Z",
         assignee: { userId: 5, name: "王浩", avatarUrl: null },
@@ -259,10 +252,10 @@ describe("buildSummaryDetailMarkdown", () => {
     );
     expect(text).toContain("共 5 条迭代记录。");
     expect(text).toContain(
-      "| 编号 | 项目 / 模块 / 功能 | 标题与效果 | 作者 | 发布日期 |",
+      "| 编号 | 项目 / 模块 | 标题与效果 | 作者 | 发布日期 |",
     );
     expect(text).toContain(
-      "| SHOP-CR-100 | 商城系统 / 订单模块 / 下单 | **下单链路拆分**：下单耗时从 900ms 降到 240ms | 王浩 | 2026-09-20 |",
+      "| SHOP-CR-100 | 商城系统 / 订单模块 | **下单链路拆分**：下单耗时从 900ms 降到 240ms | 王浩 | 2026-09-20 |",
     );
     expect(text).toContain(
       "| SHOP-CR-101 | 会员中心 / 积分模块 | **积分对账口径对齐**：对账差异归零 | 刘一诺 | 2026-09-22 |",
@@ -280,7 +273,7 @@ describe("buildSummaryDetailMarkdown", () => {
       points: [{ ...first, title: "含|竖线", detail: "第一行\n第二行" }],
     });
     expect(text).toContain(
-      "| SHOP-CR-100 | 商城系统 / 订单模块 / 下单 | **含\\|竖线**：第一行 第二行 | 王浩 | 2026-09-20 |",
+      "| SHOP-CR-100 | 商城系统 / 订单模块 | **含\\|竖线**：第一行 第二行 | 王浩 | 2026-09-20 |",
     );
     expect(
       text.split("\n").filter((line) => line.includes("含\\|竖线")),

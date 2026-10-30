@@ -25,7 +25,7 @@ export const recordFeedRoutes: readonly RouteDefinition[] = [
     path: "/change-records",
     operationId: "listRecordFeed",
     summary:
-      "B-3b 跨项目迭代记录清单：按 AuthorizedProjectScope 汇总所有可读项目的正式记录（PUBLISHED / VOID），支持按项目收窄、状态（PUBLISHED / VOID / ALL）、来源（主任务 / 来源任务 / 模块级 / 功能直接创建）与 q 全文检索筛选；服务端批量回填项目 / 模块 / 功能名与作者引用；固定 published_at DESC, id DESC 游标分页，limit 1～100、默认 20；projectId 只收窄范围，非成员项目为空页而不是 404。",
+      "B-3b 跨项目迭代记录清单：按 AuthorizedProjectScope 汇总所有可读项目的正式记录（PUBLISHED / VOID），支持按项目收窄、状态（PUBLISHED / VOID / ALL）、来源（主任务 / 来源任务 / 模块级）与 q 全文检索筛选；服务端批量回填项目 / 模块名与作者引用；固定 published_at DESC, id DESC 游标分页，limit 1～100、默认 20；projectId 只收窄范围，非成员项目为空页而不是 404。",
     request: {
       path: "none",
       query: "RecordFeedQueryRequest",
@@ -55,7 +55,7 @@ export const recordFeedRoutes: readonly RouteDefinition[] = [
     path: "/me/record-drafts",
     operationId: "listMyRecordDrafts",
     summary:
-      "B-3b 我的草稿（全局）：跨项目列出当前用户为作者的未发布草稿，服务端批量回填项目 / 模块 / 功能名；作者恒为当前 actor，不接受 assigneeId / userId / projectIds 等他人身份或授权范围参数；固定 created_at DESC, id DESC 游标分页，limit 1～100、默认 20；被移出项目后其草稿立即不再返回。",
+      "B-3b 我的草稿（全局）：跨项目列出当前用户为作者的未发布草稿，服务端批量回填项目 / 模块名；作者恒为当前 actor，不接受 assigneeId / userId / projectIds 等他人身份或授权范围参数；固定 created_at DESC, id DESC 游标分页，limit 1～100、默认 20；被移出项目后其草稿立即不再返回。",
     request: {
       path: "none",
       query: "MyRecordDraftListQuery",

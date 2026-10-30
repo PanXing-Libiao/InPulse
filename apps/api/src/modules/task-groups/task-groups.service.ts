@@ -22,7 +22,6 @@ import {
   type ProjectAccessQueryPort,
 } from "../projects/index.js";
 import { ModuleQueryPort } from "../modules/index.js";
-import { FeatureQueryPort } from "../features/index.js";
 import { TaskQueryPort, type TaskReadModel } from "../tasks/index.js";
 import {
   TaskGroupRepository,
@@ -107,8 +106,8 @@ interface TaskPair {
 /**
  * F-23 任务合并与 F-24 解除合并（技术设计 6.4 / 6.5）。
  *
- * 两个命令共用同一锁序：项目 FOR SHARE -> 模块 FOR SHARE -> 影响功能 FOR SHARE ->
- * source/main 任务 ID 升序 FOR UPDATE -> 聚合组 FOR UPDATE；获得任务锁后重新读取
+ * 两个命令共用同一锁序：项目 FOR SHARE -> 模块 FOR SHARE -> source/main 任务 ID
+ * 升序 FOR UPDATE -> 聚合组 FOR UPDATE；获得任务锁后重新读取
  * 并比对预读结果，变化时回滚到保存点从头有限重试。
  * 合并只建立关系与来源快照；解除只把成员标记为 DETACHED。两者都不修改任何任务字段。
  */
@@ -119,7 +118,6 @@ export class TaskGroupsService {
     private readonly access: ProjectAccessQueryPort,
     @Inject(ProjectCodePort) private readonly codes: ProjectCodePort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
     @Inject(TaskGroupRepository) private readonly groups: TaskGroupRepository,
     @Inject(AuditWritePort) private readonly audit: AuditWritePort,
@@ -151,7 +149,7 @@ export class TaskGroupsService {
     });
   }
 
-  /** 父级锁：模块按 ID 升序、影响功能按所属模块分组后按 ID 升序取 FOR SHARE。 */
+  /** 父级锁：模块按 ID 升序取 FOR SHARE；任务不再有功能级父级。 */
   private async lockParents(
     tx: TransactionContext,
     projectId: number,
@@ -167,22 +165,6 @@ export class TaskGroupsService {
         moduleId,
       });
       if (module.kind === "not-found") throw errors.missing();
-    }
-    for (const task of tasks) {
-      const featureIds = [
-        ...new Set([
-          ...(task.featureId === null ? [] : [task.featureId]),
-          ...task.impactFeatureIds,
-        ]),
-      ].sort((a, b) => a - b);
-      for (const featureId of featureIds) {
-        const feature = await this.features.checkFeatureForWrite(tx, {
-          projectId,
-          moduleId: task.moduleId,
-          featureId,
-        });
-        if (feature.kind === "not-found") throw errors.missing();
-      }
     }
   }
 
@@ -418,7 +400,6 @@ export class TaskGroupsService {
           taskId: source.taskId,
           code: source.code,
           moduleId: source.moduleId,
-          featureId: source.featureId,
           workStatus: source.workStatus,
           assigneeId: source.assigneeId,
           lifecycleStatus: source.lifecycleStatus,
@@ -427,7 +408,6 @@ export class TaskGroupsService {
           taskId: main.taskId,
           code: main.code,
           moduleId: main.moduleId,
-          featureId: main.featureId,
           workStatus: main.workStatus,
           assigneeId: main.assigneeId,
           lifecycleStatus: main.lifecycleStatus,
@@ -462,10 +442,7 @@ export class TaskGroupsService {
       sourceRowVersion: group.rowVersion,
       occurredAt,
     });
-    const targetPath =
-      main.featureId === null
-        ? `/projects/${projectId}/modules/${main.moduleId}/tasks?taskId=${main.taskId}`
-        : `/projects/${projectId}/modules/${main.moduleId}/features/${main.featureId}?taskId=${main.taskId}`;
+    const targetPath = `/projects/${projectId}/modules/${main.moduleId}/tasks?taskId=${main.taskId}`;
     const recipients = [
       main.assigneeId,
       source.assigneeId,
@@ -495,7 +472,6 @@ export class TaskGroupsService {
       entityType: "TASK_GROUP",
       entityId: group.groupId,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: group.name,
       summary: input.mergeNote ?? "",
@@ -750,7 +726,6 @@ export class TaskGroupsService {
           taskId: source.taskId,
           code: source.code,
           moduleId: source.moduleId,
-          featureId: source.featureId,
           workStatus: source.workStatus,
           assigneeId: source.assigneeId,
           lifecycleStatus: source.lifecycleStatus,
@@ -759,7 +734,6 @@ export class TaskGroupsService {
           taskId: main.taskId,
           code: main.code,
           moduleId: main.moduleId,
-          featureId: main.featureId,
           workStatus: main.workStatus,
           assigneeId: main.assigneeId,
           lifecycleStatus: main.lifecycleStatus,
@@ -794,10 +768,7 @@ export class TaskGroupsService {
       occurredAt,
     });
     // 解除后来源任务恢复独立展示，通知统一深链到来源任务。
-    const targetPath =
-      source.featureId === null
-        ? `/projects/${projectId}/modules/${source.moduleId}/tasks?taskId=${source.taskId}`
-        : `/projects/${projectId}/modules/${source.moduleId}/features/${source.featureId}?taskId=${source.taskId}`;
+    const targetPath = `/projects/${projectId}/modules/${source.moduleId}/tasks?taskId=${source.taskId}`;
     const recipients = [
       source.assigneeId,
       main.assigneeId,
@@ -829,7 +800,6 @@ export class TaskGroupsService {
       entityType: "TASK_GROUP",
       entityId: updated.groupId,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: updated.name,
       summary: input.unmergeReason ?? "",

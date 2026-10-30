@@ -52,7 +52,6 @@ import {
   type MyTaskFilters,
   type MyTaskGithubFilter,
   type MyTaskGroupItem,
-  type MyTaskLevel,
   type MyTaskListItem,
   type MyTaskPriority,
   type MyTaskRecordFilter,
@@ -528,7 +527,7 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
       : "当前项目没有逾期、遗留、紧急或 7 天内到期的未完成任务。"
     : filters.projectId !== null
       ? "当前项目没有符合条件的任务，可调整筛选或新建任务。"
-      : "调整筛选条件，或到对应功能页创建新任务。";
+      : "调整筛选条件，或到对应模块任务页创建新任务。";
   const activeFilterCount = countActiveMyTaskFilters(filters);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -629,16 +628,15 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
   );
 
   /**
-   * 任务中心只做跨项目查看与定位，不复制功能档案的写入口（状态推进 / 生成迭代记录 /
+   * 任务中心只做跨项目查看与定位，不复制模块任务页的写入口（状态推进 / 生成迭代记录 /
    * 合并 / 关联链接 / 任务编辑只在任务详情弹窗中提供）。卡片与列表行点击后经
-   * onOpenTask 交回页面，由 TasksPage 在当前页面就地打开功能档案同款的任务详情
+   * onOpenTask 交回页面，由 TasksPage 在当前页面就地打开模块任务页同款的任务详情
    * 弹窗（不改变地址栏、不跳转），写入口仍只有这一个。
    */
   const openTask = (item: MyTaskListItem) =>
     onOpenTask?.({
       projectId: item.projectId,
       moduleId: item.moduleId,
-      featureId: item.featureId,
       taskId: item.taskId,
     });
 
@@ -650,7 +648,7 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
 
   /**
    * 任务负责人展示（ADR-040）：负责人是平权集合，卡片与列表行都要列出全部人，
-   * 用「、」连接，与聚合组卡、功能档案任务面板同一口径。
+   * 用「、」连接，与聚合组卡、模块任务面板同一口径。
    */
   const assigneeNamesOf = (item: MyTaskListItem): string => {
     const names = item.assignees.map((assignee) => assignee.name);
@@ -661,9 +659,7 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
     const due = dueLabel(item);
     const assigneeNames = assigneeNamesOf(item);
     const projectCode = projectCodes.get(item.projectId);
-    const belongingScope =
-      item.moduleName +
-      (item.featureName === null ? "" : " · " + item.featureName);
+    const belongingScope = item.moduleName;
     return (
       <button
         type="button"
@@ -682,7 +678,7 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
           <ProjectLogo code={projectCode} className="watermark" />
         )}
         <h3>{item.title}</h3>
-        {/* 归属行（2026-10-10 产品要求）：加大加粗的项目名 + 「模块 · 功能」，一行省略；
+        {/* 归属行（2026-10-10 产品要求）：加大加粗的项目名 + 模块名，一行省略；
             项目标识已上移到卡片右下角的水印，不再在这行占位。 */}
         <p className="task-belonging">
           <strong className="belonging-project">{projectNameOf(item)}</strong>
@@ -702,9 +698,6 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
             >
               {taskPriorityLabel(item.priority)}
             </CalmBadge>
-            {item.scopeType === "MODULE" ? (
-              <CalmBadge tone="violet">模块级</CalmBadge>
-            ) : null}
             {item.groupRole !== null ? (
               <CalmBadge tone={item.groupRole === "MAIN" ? "violet" : "cyan"}>
                 {item.groupRole === "MAIN" ? "主任务" : "分支任务"}
@@ -818,18 +811,11 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
       group.branches.length === 0
         ? "已关闭的聚合组：分支历史保留在详情中"
         : doneCount + " / " + group.branches.length + " 条分支任务已完成";
-    // 列表行的「归属 / 截止 / 迭代」三列（2026-09-22 产品口径）：归属跟随主任务所在
-    // 模块 / 功能；截止取未完成（TODO）分支中最早的一条——该条完成后自动落到下一条，
+    // 列表行的「归属 / 截止 / 迭代」三列（2026-09-22 产品口径）：归属跟随主任务所在模块；截止取未完成（TODO）分支中最早的一条——该条完成后自动落到下一条，
     // 未完成分支都没设截止时与任务行同文案「未设置截止」（2026-09-22 产品补充）；
     // 迭代汇总全部分支的 PUBLISHED 记录数（与任务行同口径，含分支任务而不只是主任务）。
     // 三列都只读服务端透传的事实字段，不在渲染处另算。
-    const ownershipText =
-      mainBranch === null
-        ? "—"
-        : mainBranch.moduleName +
-          (mainBranch.featureName === null
-            ? ""
-            : " / " + mainBranch.featureName);
+    const ownershipText = mainBranch === null ? "—" : mainBranch.moduleName;
     const ownershipTitle =
       mainBranch === null
         ? "已关闭的聚合组：分支归属保留在详情中"
@@ -1034,7 +1020,7 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
    * 与任务行共用同一张表格与表头，列语义保持一致——任务列给组名、「编号 · 聚合组」
    * 与分支数，负责人取去重后的分支名单；优先级取未完成分支最高一档，状态取「未开始 /
    * 进行中 / 已完成」三态（与组卡同源，见 describeTaskGroup）。归属跟随主任务所在
-   * 模块 / 功能；截止取未完成分支中最早的一条（该条完成后自动落到下一条）；迭代汇总
+   * 模块；截止取未完成分支中最早的一条（该条完成后自动落到下一条）；迭代汇总
    * 全部分支的 PUBLISHED 记录数——三列与卡片共用 `describeTaskGroup`，不在渲染处另算。
    * 整行沿用派生优先级配色，与卡片视图及任务行同一套 `tone-prio-*` 色值（组行只吃浅色变量）。
    */
@@ -1183,18 +1169,12 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
                     {/* 编号不再是独立列：并入标题下方小字，把列宽让给标题。 */}
                     <span>
                       {entry.item.code + " · " + relationLabelOf(entry.item)}
-                      {entry.item.scopeType === "MODULE" ? " · 模块级" : ""}
                       {entry.item.hasLeftoverSource ? " · 遗留问题" : ""}
                     </span>
                   </button>
                 </td>
                 <td>{projectNameOf(entry.item)}</td>
-                <td>
-                  {entry.item.moduleName +
-                    (entry.item.featureName === null
-                      ? ""
-                      : " / " + entry.item.featureName)}
-                </td>
+                <td>{entry.item.moduleName}</td>
                 <td title={assigneeNamesOf(entry.item)}>
                   {assigneeNamesOf(entry.item)}
                 </td>
@@ -1355,22 +1335,6 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
                 label: taskPriorityLabel(priority),
                 dotColor: priorityDotColor(priority),
               })),
-            ]}
-          />
-          <CalmSelect
-            ariaLabel="任务范围"
-            animated
-            value={filters.level ?? ""}
-            appearance="notion"
-            onChange={(next) =>
-              update({
-                level: next === "" ? null : (next as MyTaskLevel),
-              })
-            }
-            options={[
-              { value: "", label: "功能级与模块级" },
-              { value: "FEATURE", label: "功能级任务", emoji: "\u{1F3AF}" },
-              { value: "MODULE", label: "模块级任务", emoji: "\u{1F9E9}" },
             ]}
           />
           <button

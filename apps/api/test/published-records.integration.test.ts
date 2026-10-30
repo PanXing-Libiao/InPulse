@@ -5,7 +5,6 @@ import { beforeAll, afterAll, describe, it, expect, vi } from "vitest";
 import { RecordPublicationAccess } from "../src/modules/change-records/record-publication-access.js";
 import { RecordPublicationRepository } from "../src/modules/change-records/record-publication.repository.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import {
@@ -75,8 +74,6 @@ async function fixture() {
       {
         projectId: project.projectId,
         moduleId: project.moduleId,
-        featureId: null,
-        impactFeatureIds: [],
       },
       userId,
       content,
@@ -100,8 +97,6 @@ async function publishAdditionalRecord(
       {
         projectId: f.projectId,
         moduleId: f.moduleId,
-        featureId: null,
-        impactFeatureIds: [],
       },
       f.userId,
       { ...content, title },
@@ -145,8 +140,6 @@ describe("F18 formal record reads", () => {
         {
           projectId: f.projectId,
           moduleId: f.moduleId,
-          featureId: null,
-          impactFeatureIds: [],
         },
         f.userId,
         { ...content, title: "仍为草稿" },
@@ -253,7 +246,6 @@ function publicationAccess() {
   return new RecordPublicationAccess(
     new PostgresProjectAccessQueryPort(client),
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
     new PostgresTaskQueryPort(),
     new RecordPublicationRepository(),
     postgresProjectMemberPermissions(),
@@ -266,7 +258,7 @@ async function sourceFixture(status: "TODO" | "DONE" | "CANCELED") {
   const task = await uow.run(async (tx) => {
     const t = await tasks.create(
       tx,
-      { ...project, featureId: null },
+      { projectId: project.projectId, moduleId: project.moduleId },
       userId,
       project.code + "-T-1",
       {
@@ -291,7 +283,7 @@ async function sourceFixture(status: "TODO" | "DONE" | "CANCELED") {
   const draft = await uow.run((tx) =>
     new RecordDraftRepository().create(
       tx,
-      { ...project, featureId: null, impactFeatureIds: [] },
+      { projectId: project.projectId, moduleId: project.moduleId },
       userId,
       content,
       { taskId: task.id, handlerId: userId },
@@ -332,7 +324,7 @@ describe("F18 publishing lock prerequisites", () => {
         await uow.run((tx) =>
           f.tasks.find(
             tx,
-            { projectId: f.projectId, moduleId: f.moduleId, featureId: null },
+            { projectId: f.projectId, moduleId: f.moduleId },
             f.task.id,
           ),
         ),

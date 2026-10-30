@@ -1,13 +1,6 @@
 import { z } from "zod";
 import { taskEditRequestSchema } from "./tasks.zod.js";
 const id = z.number().int().positive().max(2147483647);
-const ids = z
-  .array(id)
-  .max(300)
-  .refine(
-    (values) => new Set(values).size === values.length,
-    "影响功能不能重复",
-  );
 export const leftoverTaskRequestSchema = taskEditRequestSchema
   .omit({ description: true })
   .extend({
@@ -20,12 +13,11 @@ export const leftoverTaskRequestSchema = taskEditRequestSchema
     recordVersion: id,
     expectedRowVersion: id,
     leftoverExpectedRowVersion: id,
-    expectedImpactFeatureIds: ids,
   })
   .strict()
   .meta({ id: "LeftoverTaskRequest" });
 export const leftoverTaskReferenceSchema = z
-  .object({ projectId: id, moduleId: id, featureId: id.nullable(), taskId: id })
+  .object({ projectId: id, moduleId: id, taskId: id })
   .strict();
 export const leftoverTaskResponseSchema = leftoverTaskReferenceSchema
   .extend({
@@ -34,7 +26,6 @@ export const leftoverTaskResponseSchema = leftoverTaskReferenceSchema
     recordVersion: id,
     recordRowVersion: id,
     leftoverRowVersion: id,
-    impactFeatureIds: z.array(id),
   })
   .meta({ id: "LeftoverTaskResponse" });
 export const leftoverTaskPreviewSchema = z
@@ -46,7 +37,6 @@ export const leftoverTaskPreviewSchema = z
     leftoverRowVersion: id,
     status: z.enum(["ACTIVE", "CONVERTED", "RESOLVED"]),
     content: z.string().max(10000),
-    inheritedImpacts: z.array(z.object({ id, name: z.string() }).strict()),
     linkedTask: leftoverTaskReferenceSchema.nullable(),
   })
   .strict()
@@ -74,7 +64,7 @@ export const leftoverTaskSourceSchema = z
 export const leftoverTaskSchemas = {
   LeftoverTaskRequest: {
     schema: leftoverTaskRequestSchema,
-    summary: "当前版本稳定遗留转任务与影响集合确认",
+    summary: "当前版本稳定遗留转任务确认",
     sensitiveFieldPaths: [],
   },
   LeftoverTaskResponse: {
@@ -84,7 +74,7 @@ export const leftoverTaskSchemas = {
   },
   LeftoverTaskPreview: {
     schema: leftoverTaskPreviewSchema,
-    summary: "服务端推导的当前遗留内容和影响继承预览",
+    summary: "服务端推导的当前遗留内容预览",
     sensitiveFieldPaths: [],
   },
   LeftoverTaskPreviewQuery: {

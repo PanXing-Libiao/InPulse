@@ -27,7 +27,6 @@ import { DatabaseModule } from "../../database/database.module.js";
 import { IdempotencyModule } from "../../idempotency/idempotency.module.js";
 import { ProjectsModule } from "../projects/index.js";
 import { ModulesModule } from "../modules/index.js";
-import { FeaturesModule } from "../features/index.js";
 import { ActivityProjectionModule } from "../activity/index.js";
 import { SearchProjectionModule } from "../search/index.js";
 import { NotificationProjectionModule } from "../notifications/index.js";
@@ -45,7 +44,6 @@ import { ProjectMemberTaskCommandPort } from "./project-member-task.command-port
     IdempotencyModule,
     ProjectsModule,
     ModulesModule,
-    FeaturesModule,
     ActivityProjectionModule,
     SearchProjectionModule,
     NotificationProjectionModule,

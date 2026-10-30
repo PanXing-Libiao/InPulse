@@ -16,7 +16,6 @@ const validItem = {
   title: "实现搜索契约",
   summary: "契约纵切片",
   moduleId: null,
-  featureId: null,
   recordId: null,
 };
 
@@ -82,12 +81,11 @@ describe("SearchItem/SearchPage 契约", () => {
     const withParents = {
       ...validItem,
       moduleId: 3,
-      featureId: 4,
       recordId: 5,
     };
     expect(searchItemSchema.parse(withParents)).toEqual(withParents);
 
-    for (const key of ["moduleId", "featureId", "recordId"] as const) {
+    for (const key of ["moduleId", "recordId"] as const) {
       const missing: Record<string, unknown> = { ...validItem };
       delete missing[key];
       expect(searchItemSchema.safeParse(missing).success).toBe(false);

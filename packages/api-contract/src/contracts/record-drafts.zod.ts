@@ -8,10 +8,6 @@ import {
 
 const id = z.number().int().positive().max(2147483647);
 const pathId = z.coerce.number().int().positive().max(2147483647);
-const impactIds = z
-  .array(id)
-  .max(1000)
-  .overwrite((values) => [...new Set(values)].sort((a, b) => a - b));
 /**
  * 一条遗留问题。`id` 只在正式记录的版本提交/响应里出现：草稿与发布请求
  * 都按新增处理，服务端在发布时分配稳定遗留项。提交已有条目的 `id` 表示
@@ -33,32 +29,18 @@ export const recordDraftContentSchema = z
   })
   .strict()
   .meta({ id: "RecordDraftContent" });
-export const independentRecordDraftSchema = z
-  .discriminatedUnion("scopeType", [
-    recordDraftContentSchema.extend({
-      scopeType: z.literal("FEATURE"),
-      featureId: id,
-    }),
-    recordDraftContentSchema.extend({
-      scopeType: z.literal("MODULE"),
-      impactFeatureIds: impactIds,
-    }),
-  ])
-  .meta({ id: "IndependentRecordDraftRequest" });
+export const independentRecordDraftSchema = recordDraftContentSchema.meta({
+  id: "IndependentRecordDraftRequest",
+});
 export const recordDraftItemSchema = recordDraftContentSchema
   .extend({
     id,
     projectId: id,
     moduleId: id,
-    featureId: id.nullable(),
-    scopeType: z.enum(["FEATURE", "MODULE"]),
     taskId: id.nullable(),
-    impactFeatureIds: impactIds,
     handlerId: id,
     authorId: id,
     moduleName: z.string().nullable().optional(),
-    featureName: z.string().nullable().optional(),
-    impactFeatureNames: z.array(z.string()).optional(),
     authorName: z.string().nullable().optional(),
     handlerName: z.string().nullable().optional(),
     status: z.literal("DRAFT"),
@@ -101,16 +83,14 @@ export const recordDraftResourcePathSchema = recordDraftProjectPathSchema
   .meta({ id: "RecordDraftResourcePath" });
 /**
  * 删除草稿的最小结果：只带幂等重放要复验的可写范围，不回传正文。
- * 草稿行已物理删除，重放授权改为复验项目可写与模块/功能仍存在。
+ * 草稿行已物理删除，重放授权改为复验项目可写与模块仍存在。
  */
 export const recordDraftDeleteResultSchema = z
   .object({
     projectId: id,
     recordId: id,
     moduleId: id,
-    featureId: id.nullable(),
     taskId: id.nullable(),
-    impactFeatureIds: impactIds,
   })
   .strict()
   .meta({ id: "RecordDraftDeleteResult" });
@@ -119,9 +99,7 @@ export const recordDraftReplayContextSchema = z
     projectId: id,
     recordId: id,
     moduleId: id,
-    featureId: id.nullable(),
     taskId: id.nullable(),
-    impactFeatureIds: impactIds,
   })
   .strict()
   .meta({ id: "RecordDraftReplayContext" });
@@ -171,15 +149,12 @@ export const recordDraftSchemas = {
             taskId: id,
             projectId: id,
             moduleId: id,
-            featureId: id.nullable(),
-            scopeType: z.enum(["FEATURE", "MODULE"]),
             title: z.string().max(500),
             assigneeId: id,
             assigneeName: z.string().nullable().optional(),
             workStatus: z.enum(["TODO", "DONE", "CANCELED"]),
             lifecycleStatus: z.enum(["ACTIVE", "INVALID"]),
             rowVersion: id,
-            impactFeatureIds: impactIds,
           })
           .strict(),
         items: z.array(recordDraftItemSchema),

@@ -75,7 +75,7 @@ export function buildSummaryDocument(
   const totals = data.totals;
 
   const overviewParts = [
-    `范围内 ${String(totals.projectCount)} 个项目、${String(totals.moduleCount)} 个模块、${String(totals.featureCount)} 个功能累计沉淀 ${String(totals.recordCount)} 条迭代记录，覆盖 ${String(totals.completedTaskCount)} 个已完成任务。`,
+    `范围内 ${String(totals.projectCount)} 个项目、${String(totals.moduleCount)} 个模块累计沉淀 ${String(totals.recordCount)} 条迭代记录，覆盖 ${String(totals.completedTaskCount)} 个已完成任务。`,
     `共记录 ${String(totals.leftoverCount)} 条遗留问题，其中 ${String(totals.closedLeftoverCount)} 条已处理或已作废。`,
   ];
   if (totals.missingRecordTaskCount > 0) {
@@ -192,18 +192,14 @@ export function buildSummaryDetailMarkdown(
     "",
     "共 " + String(data.totals.recordCount) + " 条迭代记录。",
     "",
-    "| 编号 | 项目 / 模块 / 功能 | 标题与效果 | 作者 | 发布日期 |",
+    "| 编号 | 项目 / 模块 | 标题与效果 | 作者 | 发布日期 |",
     "| --- | --- | --- | --- | --- |",
   ];
   if (data.points.length === 0) {
     lines.push("| — | — | 本范围内没有已发布的迭代记录。 | — | — |");
   }
   for (const point of data.points) {
-    const scope =
-      point.projectName +
-      " / " +
-      point.moduleName +
-      (point.featureName === null ? "" : " / " + point.featureName);
+    const scope = point.projectName + " / " + point.moduleName;
     lines.push(
       "| " +
         cell(point.recordCode) +

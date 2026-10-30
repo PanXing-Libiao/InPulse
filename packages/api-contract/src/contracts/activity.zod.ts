@@ -29,7 +29,6 @@ export const ACTIVITY_CATEGORIES = [
   "all",
   "task",
   "record",
-  "feature",
   "module",
   "project",
   "member",

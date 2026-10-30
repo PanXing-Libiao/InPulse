@@ -174,7 +174,6 @@ export const DisableAccountModal: React.FC<DisableAccountModalProps> = ({
       tasks.push({
         projectId: task.projectId,
         moduleId: task.moduleId,
-        featureId: task.featureId,
         taskId: task.taskId,
         rowVersion: task.rowVersion,
         assigneeIds: [...draft.selected].sort((left, right) => left - right),

@@ -25,7 +25,6 @@ const candidate: SearchItem = {
   entityType: "TASK",
   entityId: 102,
   moduleId: null,
-  featureId: null,
   recordId: null,
   title: "重复回调任务 A",
   summary: "任务",
@@ -41,15 +40,14 @@ const otherProjectCandidate: SearchItem = {
   entityId: 103,
   title: "其他项目任务",
 };
-const featureCandidate: SearchItem = {
+const moduleCandidate: SearchItem = {
   projectId: 2,
-  entityType: "FEATURE",
+  entityType: "MODULE",
   entityId: 104,
   moduleId: null,
-  featureId: null,
   recordId: null,
-  title: "退款功能",
-  summary: "功能",
+  title: "退款模块",
+  summary: "模块",
 };
 
 const searchLabel = /^主任务$/;
@@ -74,7 +72,7 @@ function selectedMainTaskText(): string | null {
 
 function createApi() {
   const getSearch = vi.fn().mockResolvedValue({
-    items: [candidate, selfCandidate, otherProjectCandidate, featureCandidate],
+    items: [candidate, selfCandidate, otherProjectCandidate, moduleCandidate],
     nextCursor: null,
     hasMore: false,
   });
@@ -162,7 +160,7 @@ describe("F-23 merge into main task", () => {
     );
     expect(listbox.queryByTitle("退款主任务")).toBeNull();
     expect(listbox.queryByTitle("其他项目任务")).toBeNull();
-    expect(listbox.queryByTitle("退款功能")).toBeNull();
+    expect(listbox.queryByTitle("退款模块")).toBeNull();
     expect(getSearch).toHaveBeenCalledWith({ q: "退款", limit: 20 });
   });
 

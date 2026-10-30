@@ -25,8 +25,6 @@ import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { RecordDraftRepository } from "../src/modules/change-records/record-draft.repository.js";
@@ -95,7 +93,6 @@ beforeAll(async () => {
     gate = new RecordPublicationAccess(
       access,
       new PostgresModuleQueryPort(),
-      new PostgresFeatureQueryPort(),
       new PostgresTaskQueryPort(),
       repository,
       postgresProjectMemberPermissions(),
@@ -111,7 +108,6 @@ beforeAll(async () => {
     new RecordDraftRepository(),
     new PublishedRecordRepository(),
     new PostgresProjectCodePort(),
-    new PostgresFeatureReadPort(),
     new RecordPublicationEffects(
       audit,
       activity,
@@ -180,28 +176,22 @@ async function fixture(
     readonly id?: number;
     readonly content: string;
   }[] = content.remainingIssues,
-  feature = false,
 ) {
   const userId = await createUser(db.sql),
     p = await createProject(db.sql, userId),
     creator = await createUser(db.sql);
   await db.sql`INSERT INTO app.project_members(project_id,user_id) VALUES(${p.projectId},${creator})`;
-  const [f] = await db.sql<
-    { id: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES(${p.projectId},${p.moduleId},${p.code + "-F-1"},'关联功能',${creator}) RETURNING id`;
   const draft = await uow.run((tx) =>
     new RecordDraftRepository().create(
       tx,
       {
         ...p,
-        featureId: feature ? f!.id : null,
-        impactFeatureIds: feature ? [] : [f!.id],
       },
       userId,
       { ...content, remainingIssues: [...remainingIssues] },
     ),
   );
-  return { ...p, userId, creator, featureId: f!.id, draft };
+  return { ...p, userId, creator, draft };
 }
 const publish = (f: Awaited<ReturnType<typeof fixture>>) =>
   uow.run((tx) =>
@@ -486,7 +476,7 @@ describe("F18 publication and immutable revisions", () => {
     const task = await uow.run(async (tx) => {
       const t = await new TaskManagementRepository().create(
         tx,
-        { ...f, featureId: null },
+        { projectId: f.projectId, moduleId: f.moduleId },
         f.userId,
         f.code + "-T-1",
         {
@@ -630,22 +620,18 @@ describe("F18 publication and immutable revisions", () => {
       await db.sql`SELECT version_no FROM app.change_record_versions WHERE record_id=${v1.id} ORDER BY version_no`,
     ).toEqual([{ version_no: 1 }, { version_no: 2 }]);
   });
-  it("deduplicates publication recipients, excludes revoked feature creators, and uses only the author for independent revisions", async () => {
-    const f = await fixture([], true);
+  it("deduplicates publication recipients and uses only the author for independent revisions", async () => {
+    const f = await fixture([]);
     await removeMember(db.sql, f.projectId, f.creator);
     const v1 = await publish(f);
     expect(
       await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${f.projectId}`,
     ).toEqual([{ recipient_id: f.userId }]);
-    const g = await fixture([], true),
+    const g = await fixture([]),
       g1 = await publish(g);
     expect(
       await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${g.projectId} ORDER BY recipient_id`,
-    ).toEqual(
-      [g.userId, g.creator]
-        .sort((a, b) => a - b)
-        .map((recipient_id) => ({ recipient_id })),
-    );
+    ).toEqual([{ recipient_id: g.userId }]);
     await edit(g, g1, { title: "修订", remainingIssues: [] });
     expect(
       await db.sql`SELECT recipient_id FROM app.notifications WHERE project_id=${g.projectId} AND notification_type='record.version.create'`,
@@ -653,7 +639,7 @@ describe("F18 publication and immutable revisions", () => {
     expect(v1.leftovers).toEqual([]);
   });
   it("uses real HTTP contract, CSRF, idempotency, two version headers and current replay authorization", async () => {
-    const f = await fixture([], true),
+    const f = await fixture([]),
       actor = await session(f.userId),
       key = randomUUID();
     const response = await post(f, actor, true, {}, 1, 1, key);
@@ -759,14 +745,14 @@ describe("F18 publication and immutable revisions", () => {
   });
 });
 it("publishes a DONE source, uses its current assignee, and replays/revises history after later reopening", async () => {
-  const f = await fixture([], true),
+  const f = await fixture([]),
     tasks = new TaskManagementRepository(),
     current = await createUser(db.sql);
   await db.sql`INSERT INTO app.project_members(project_id,user_id) VALUES(${f.projectId},${current})`;
   const task = await uow.run(async (tx) => {
     const t = await tasks.create(
       tx,
-      { ...f, featureId: f.featureId },
+      { projectId: f.projectId, moduleId: f.moduleId },
       f.userId,
       f.code + "-T-1",
       {
@@ -782,7 +768,7 @@ it("publishes a DONE source, uses its current assignee, and replays/revises hist
   const draft = await uow.run((tx) =>
     new RecordDraftRepository().create(
       tx,
-      { ...f, featureId: f.featureId, impactFeatureIds: [] },
+      { projectId: f.projectId, moduleId: f.moduleId },
       f.userId,
       { ...content, remainingIssues: [] },
       { taskId: task.id, handlerId: f.creator },
@@ -835,12 +821,12 @@ it("publishes a DONE source, uses its current assignee, and replays/revises hist
   ).toEqual([{ work_status: "TODO" }]);
 });
 it("publishes an unfinished source without touching its task state or history", async () => {
-  const f = await fixture([], true),
+  const f = await fixture([]),
     tasks = new TaskManagementRepository();
   const task = await uow.run((tx) =>
     tasks.create(
       tx,
-      { ...f, featureId: f.featureId },
+      { projectId: f.projectId, moduleId: f.moduleId },
       f.userId,
       f.code + "-T-1",
       {
@@ -855,7 +841,7 @@ it("publishes an unfinished source without touching its task state or history", 
   const draft = await uow.run((tx) =>
     new RecordDraftRepository().create(
       tx,
-      { ...f, featureId: f.featureId, impactFeatureIds: [] },
+      { projectId: f.projectId, moduleId: f.moduleId },
       f.userId,
       { ...content, remainingIssues: [] },
       { taskId: task.id, handlerId: f.creator },

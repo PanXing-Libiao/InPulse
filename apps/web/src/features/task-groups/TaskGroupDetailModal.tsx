@@ -8,7 +8,7 @@ import { useTaskGroupQuery } from "./task-groups-query";
 import type { TaskGroupAdapter } from "./task-groups-types";
 
 /**
- * F-25 聚合组详情弹窗：任务中心与功能页任务弹窗内的聚合组入口就地打开该弹层，
+ * F-25 聚合组详情弹窗：任务中心与模块任务页内的任务弹窗中，聚合组入口就地打开该弹层，
  * 不再跳转整页详情（`/task-groups/{id}` 页面已随方案 A 删除）。正文由
  * TaskGroupDetailPanels 承载；记录筛选只在本次打开期间有效（弹层的局部状态），
  * 换组或重新打开都从「全部记录」开始。成员任务标题由宿主下发的 `onOpenTask`

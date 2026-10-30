@@ -13,24 +13,19 @@ export interface IssueOriginParts {
 }
 
 /**
- * 来源行：`项目名 · 记录「记录标题」 · 模块 / 功能 · 作者 · 日期`。
+ * 来源行：`项目名 · 记录「记录标题」 · 模块 · 作者 · 日期`。
  *
- * 2026-10-10 用户指示：项目名从行中间提到行首单独成段，行首接项目标识，
- * 同一项目的卡片靠标识成组；项目名与记录之间改用 ` · `，
- * 模块 / 功能继续用 ` / ` 表示父子层级。
+ * 项目名从行中间提到行首单独成段，行首接项目标识，同一项目的卡片靠标识成组；
+ * 项目名与记录之间、记录与模块之间统一用 ` · ` 分隔。
  */
 export function issueOriginParts(item: LeftoverListItem): IssueOriginParts {
-  const scope = [
-    item.moduleName,
-    ...(item.featureName === null ? [] : [item.featureName]),
-  ].join(" / ");
   return {
     projectName: item.projectName,
     detail:
       "记录「" +
       item.recordTitle +
       "」 · " +
-      scope +
+      item.moduleName +
       " · " +
       item.author.name +
       " · " +

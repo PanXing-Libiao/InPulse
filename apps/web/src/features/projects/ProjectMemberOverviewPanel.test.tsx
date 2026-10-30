@@ -33,7 +33,6 @@ const projectA: ProjectListItem = {
   memberCount: 2,
   stats: {
     activeModuleCount: 2,
-    activeFeatureCount: 5,
     openTaskCount: 7,
     completedTaskCount: 4,
   },
@@ -50,7 +49,6 @@ const projectB: ProjectListItem = {
   memberCount: 1,
   stats: {
     activeModuleCount: 1,
-    activeFeatureCount: 2,
     openTaskCount: 0,
     completedTaskCount: 8,
   },
@@ -100,14 +98,12 @@ function taskBoard(
       dueToday: 0,
       completedThisWeek: 0,
       completionRate: 0,
-      featureCount: 1,
       memberCount: 1,
     },
     modules: [
       {
         moduleId: 1,
         name: "默认模块",
-        featureCount: 1,
         stats: {
           total: taskCount,
           done: 0,
@@ -122,9 +118,6 @@ function taskBoard(
           code: name + "-" + String(index + 1),
           title: "待办任务 " + String(index + 1),
           moduleId: 1,
-          featureId: 10,
-          featureName: "默认功能",
-          scopeType: "FEATURE",
           priority: "NORMAL",
           workStatus: "TODO",
           dueAt: null,

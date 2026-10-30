@@ -1,9 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type {
-  TaskStatusRequest,
-  TaskItem,
-  ModuleTaskItem,
-} from "@inpulse/api-contract";
+import type { TaskStatusRequest, ModuleTaskItem } from "@inpulse/api-contract";
 import type { TransactionContext } from "../../database/transaction-context.js";
 import {
   TasksManagementService,
@@ -12,7 +8,6 @@ import {
 export interface TaskStatusResource {
   projectId: number;
   moduleId: number;
-  featureId: number | null;
   taskId: number;
 }
 export type OtherTaskStatusRequest = Exclude<
@@ -33,7 +28,7 @@ export abstract class TaskStatusCommandPort {
     version: number,
     command: OtherTaskStatusRequest,
     requestId: string,
-  ): Promise<TaskItem | ModuleTaskItem>;
+  ): Promise<ModuleTaskItem>;
   abstract replay(
     tx: TransactionContext,
     actorId: number,

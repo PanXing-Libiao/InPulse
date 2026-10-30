@@ -12,8 +12,6 @@ interface TaskRow {
   readonly projectCode: string;
   readonly projectName: string;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly scopeType: "FEATURE" | "MODULE";
   readonly code: string;
   readonly title: string;
   readonly rowVersion: number;
@@ -47,8 +45,6 @@ export class AdminUserOffboardingRepository {
              p.code AS "projectCode",
              p.name AS "projectName",
              t.module_id AS "moduleId",
-             t.feature_id AS "featureId",
-             t.scope_type AS "scopeType",
              t.code,
              t.title,
              t.row_version AS "rowVersion",
@@ -162,8 +158,6 @@ export class AdminUserOffboardingRepository {
         taskId: row.taskId,
         projectId: row.projectId,
         moduleId: row.moduleId,
-        featureId: row.featureId,
-        scopeType: row.scopeType,
         code: row.code,
         title: row.title,
         rowVersion: row.rowVersion,

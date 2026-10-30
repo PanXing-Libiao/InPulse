@@ -14,7 +14,6 @@ import {
   type ProjectAccessQueryPort,
 } from "../modules/projects/index.js";
 import { ModuleQueryPort } from "../modules/modules/index.js";
-import { FeatureQueryPort } from "../modules/features/index.js";
 import {
   TaskQueryPort,
   TaskCompletionCommandPort,
@@ -39,7 +38,6 @@ export class TaskCompletionWorkflow {
     @Inject(PROJECT_ACCESS_QUERY_PORT)
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
     @Inject(TaskBranchQueryPort) private readonly branches: TaskBranchQueryPort,
     @Inject(RecordDraftQueryPort)
@@ -94,8 +92,7 @@ export class TaskCompletionWorkflow {
       if (
         replay &&
         (previous.projectId !== replay.projectId ||
-          previous.moduleId !== replay.moduleId ||
-          previous.featureId !== replay.featureId)
+          previous.moduleId !== replay.moduleId)
       )
         throw missing();
       const record =
@@ -106,33 +103,13 @@ export class TaskCompletionWorkflow {
         draftId !== undefined &&
         (!record ||
           record.moduleId !== previous.moduleId ||
-          record.featureId !== previous.featureId ||
-          record.scopeType !== previous.scopeType ||
           (record.taskId !== null && record.taskId !== taskId))
       )
         throw missing();
       const branch = await this.branches.find(tx, previous.projectId, taskId);
-      // ADR-044/ADR-045：模块与功能都已无归档只读态，这里只保留归属校验与父级 FOR SHARE 取锁。
+      // ADR-109：任务与记录都直接归属模块，只保留模块归属校验与父级 FOR SHARE 取锁。
       const module = await this.modules.checkModuleForWrite(tx, previous);
       if (module.kind === "not-found") throw missing();
-      const ids = [
-        ...new Set([
-          ...(previous.featureId === null
-            ? previous.impactFeatureIds
-            : [previous.featureId]),
-          ...(record?.impactFeatureIds ?? []),
-          ...(replay?.record?.impactFeatureIds ?? []),
-          ...(replay?.impactFeatureIds ?? []),
-        ]),
-      ].sort((a, b) => a - b);
-      for (const featureId of ids) {
-        const feature = await this.features.checkFeatureForWrite(tx, {
-          projectId: previous.projectId,
-          moduleId: previous.moduleId,
-          featureId,
-        });
-        if (feature.kind === "not-found") throw missing();
-      }
       const source = await this.tasks.lock(tx, previous.projectId, taskId);
       const currentBranch = await this.branches.lock(
         tx,

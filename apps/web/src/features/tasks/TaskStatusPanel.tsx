@@ -76,20 +76,9 @@ export function TaskStatusPanel({
   const history = useQuery({
     queryKey: ["task-history", item.projectId, item.id, item.rowVersion],
     queryFn: ({ signal }) =>
-      item.featureId === null
-        ? api.getModuleTaskStatusHistory(
-            item.projectId,
-            item.moduleId,
-            item.id,
-            { signal },
-          )
-        : api.getTaskStatusHistory(
-            item.projectId,
-            item.moduleId,
-            item.featureId,
-            item.id,
-            { signal },
-          ),
+      api.getModuleTaskStatusHistory(item.projectId, item.moduleId, item.id, {
+        signal,
+      }),
     retry: false,
   });
   const mutation = useMutation({
@@ -115,22 +104,13 @@ export function TaskStatusPanel({
           )
         ).task;
       }
-      return base.featureId === null
-        ? api.transitionModuleTask(
-            base.projectId,
-            base.moduleId,
-            base.id,
-            command,
-            init,
-          )
-        : api.transitionTask(
-            base.projectId,
-            base.moduleId,
-            base.featureId,
-            base.id,
-            command,
-            init,
-          );
+      return api.transitionModuleTask(
+        base.projectId,
+        base.moduleId,
+        base.id,
+        command,
+        init,
+      );
     },
     retry: false,
     onSuccess: async () => {
@@ -139,8 +119,8 @@ export function TaskStatusPanel({
       await Promise.all(
         // task-group / task-group-records：状态推进改变聚合组详情里的工作状态、
         // 已完成计数与记录可见性，同批失效才不用手动刷新（2026-09-22 修）。
-        // modules / features / project-overview：已完成任务数驱动功能与模块卡的
-        // 「进行中 / 未开始」档位，不失效会一直停留旧标签（2026-09-24 修）。
+        // modules / project-overview：已完成任务数驱动模块卡的统计，
+        // 不失效会一直停留旧数据（2026-09-24 修）。
         // projects：重新打开或恢复任务会把维护中项目带回进行中（ADR-057），
         // 项目卡片与项目详情不失效会一直停留「维护中」。
         [
@@ -148,7 +128,6 @@ export function TaskStatusPanel({
           "task-board",
           "task-history",
           "modules",
-          "features",
           "project-overview",
           "projects",
           "activity",
@@ -168,15 +147,11 @@ export function TaskStatusPanel({
   const reload = async () => {
     setReloading(true);
     try {
-      const latest =
-        base.featureId === null
-          ? await api.getModuleTask(base.projectId, base.moduleId, base.id)
-          : await api.getTask(
-              base.projectId,
-              base.moduleId,
-              base.featureId,
-              base.id,
-            );
+      const latest = await api.getModuleTask(
+        base.projectId,
+        base.moduleId,
+        base.id,
+      );
       setBase(latest);
       setReloadError(null);
       mutation.reset();
@@ -204,7 +179,7 @@ export function TaskStatusPanel({
     action !== "COMPLETE"
       ? null
       : actualChange === ""
-        ? "本次工作是否产生了实际功能变化？"
+        ? "本次工作是否产生了需要记录的变更？"
         : actualChange === "yes"
           ? "记录这次变化"
           : labels.COMPLETE;
@@ -297,7 +272,6 @@ export function TaskStatusPanel({
           <TaskOriginCrumb
             projectId={item.projectId}
             moduleId={item.moduleId}
-            featureId={item.featureId}
             client={api}
           />
         }
@@ -379,7 +353,7 @@ export function TaskStatusPanel({
                   >
                     <InpulseIcon name="check" size={22} />
                     <strong>没有，仅完成任务</strong>
-                    <span>测试、调研、文档等不改变功能的工作</span>
+                    <span>测试、调研、文档等不改变业务内容的工作</span>
                     <InpulseIcon name="chevronRight" size={17} />
                   </button>
                 </div>

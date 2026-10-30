@@ -111,7 +111,7 @@ export function hasActiveTaskBoardFilters(filters: TaskBoardFilters): boolean {
 }
 
 /**
- * 单张卡片是否命中筛选。搜索覆盖编号 / 标题 / 功能名 / 负责人姓名，
+ * 单张卡片是否命中筛选。搜索覆盖编号 / 标题 / 负责人姓名，
  * 与预览一致；时间筛选只认服务端 dueState，不在前端重算逾期。
  */
 export function matchesTaskBoardCard(
@@ -136,7 +136,6 @@ export function matchesTaskBoardCard(
     const haystack = [
       card.code,
       card.title,
-      card.featureName ?? "",
       ...card.assignees.map((assignee) => assignee.name),
     ]
       .join(" ")

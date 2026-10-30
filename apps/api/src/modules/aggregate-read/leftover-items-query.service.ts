@@ -13,7 +13,6 @@ import {
   type UnitOfWork,
 } from "../../database/unit-of-work.js";
 import { ChangeRecordReadPort } from "../change-records/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { ModuleReadPort } from "../modules/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
@@ -63,7 +62,6 @@ export class LeftoverItemsQueryService {
     private readonly projectAccess: ProjectAccessQueryPort,
     @Inject(ProjectQueryPort) private readonly projects: ProjectQueryPort,
     @Inject(ModuleReadPort) private readonly modules: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(ChangeRecordReadPort)
     private readonly records: ChangeRecordReadPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
@@ -104,13 +102,6 @@ export class LeftoverItemsQueryService {
         ...new Set(page.items.map((item) => item.projectId)),
       ];
       const moduleIds = [...new Set(page.items.map((item) => item.moduleId))];
-      const featureIds = [
-        ...new Set(
-          page.items
-            .map((item) => item.featureId)
-            .filter((featureId): featureId is number => featureId !== null),
-        ),
-      ];
       const taskIds = [
         ...new Set(
           page.items
@@ -122,15 +113,11 @@ export class LeftoverItemsQueryService {
         projectIds: pageProjectIds,
         moduleIds,
       });
-      const features = await this.features.listNames(tx, {
-        projectIds: pageProjectIds,
-        featureIds,
-      });
       const tasks = await this.tasks.listByIds(tx, pageProjectIds, taskIds);
       const authors = await this.users.listByIds(tx, [
         ...new Set(page.items.map((item) => item.authorId)),
       ]);
-      return { page, pageProjectIds, modules, features, tasks, authors };
+      return { page, pageProjectIds, modules, tasks, authors };
     });
 
     const projects = await this.projects.list(data.pageProjectIds);
@@ -139,9 +126,6 @@ export class LeftoverItemsQueryService {
     );
     const moduleNameById = new Map(
       data.modules.map((item) => [item.moduleId, item.name]),
-    );
-    const featureNameById = new Map(
-      data.features.map((item) => [item.featureId, item.name]),
     );
     const taskById = new Map(data.tasks.map((task) => [task.taskId, task]));
     const userById = new Map(data.authors.map((item) => [item.userId, item]));
@@ -156,14 +140,6 @@ export class LeftoverItemsQueryService {
         throw inconsistentError("遗留项缺少模块 " + String(row.moduleId));
       }
       const author = userById.get(row.authorId);
-      let featureName: string | null = null;
-      if (row.featureId !== null) {
-        const name = featureNameById.get(row.featureId);
-        if (name === undefined) {
-          throw inconsistentError("遗留项缺少功能 " + String(row.featureId));
-        }
-        featureName = name;
-      }
       return {
         leftoverItemId: row.leftoverItemId,
         recordId: row.recordId,
@@ -173,8 +149,6 @@ export class LeftoverItemsQueryService {
         projectName,
         moduleId: row.moduleId,
         moduleName,
-        featureId: row.featureId,
-        featureName,
         author: {
           userId: row.authorId,
           name: row.authorName ?? author?.name ?? "删除用户",
@@ -219,7 +193,6 @@ export class LeftoverItemsQueryService {
       code: task.code,
       projectId: task.projectId,
       moduleId: task.moduleId,
-      featureId: task.featureId,
     };
   }
 

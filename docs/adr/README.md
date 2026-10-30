@@ -122,6 +122,7 @@
 | [ADR-106](ADR-106.md) | Accepted | 项目群通知收敛为 Webhook-only（部分取代 ADR-105）：删除项目群绑定码签发与项目群解绑两条路由（135 → 133），GET 状态只由 ACTIVE Webhook 决定，通知开关保存与重放要求至少一个 ACTIVE Webhook；迁移 0064 将历史 BOT 目标置 REVOKED、作废绑定码、终止 PENDING BOT 投递并禁止新的 ACTIVE BOT；更换机器人只撤销个人绑定且 revoked_project_groups 固定为 0；桥接只消费 WEBHOOK，不再使用 chat_type 2 或项目群绑定码 |
 | [ADR-107](ADR-107.md) | Accepted | Casdoor 导入权限只收窄候选账号（修订 ADR-101）：Permission / Role 的 users 或 groups 仍决定哪些账号进入预览；账号命中后不再按 Permission scope 裁剪其组引用，候选账号关联的全部启用 Physical 组均解析并写入组织。实体组没有应用权限不阻止其作为组织元数据导入，也不把 Casdoor 权限映射为 InPulse 权限；无实体组仍归入“未分类”；无新路由、迁移、配置项或依赖 |
 | [ADR-108](ADR-108.md) | Accepted | SSO 组织同步审计去噪（修订 ADR-097）：每次成功登录仍全量对账 Casdoor 实体组，但仅在组织层级或用户直接成员关系实际变化时写 auth.sso_organizations_synced 并清理 / 重写关系；无变化登录只写 auth.sso_login，groups 缺失不写同步审计；无新路由、迁移、配置项或依赖 |
+| [ADR-109](ADR-109.md) | Accepted | 移除功能层级，任务直接归属模块：固定为“项目 → 模块 → 任务 → 迭代记录”，删除功能 API、页面、搜索实体、外部链接目标、影响关系与导入段；历史功能级任务和记录一次性上提原模块，功能表与专用关联退役；模块删除继续级联任务与记录，权限列改为 moduleEdit / moduleDelete；新增迁移 0065 与模板版本 2，路由总数 133 → 119 |
 
 ## 关联基线
 

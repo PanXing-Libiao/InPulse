@@ -2,7 +2,6 @@ import { Injectable } from "@nestjs/common";
 
 import { RECORD_SUMMARY_ITEM_MAX } from "@inpulse/api-contract";
 import type { TransactionContext } from "../../database/transaction-context.js";
-import type { TaskScopeType } from "../tasks/index.js";
 
 /** 列表条数上限：契约层已按 A 裁决 Q-06 收口到 1..10，端口再兜一层。 */
 export const CHANGE_RECORD_READ_LIMIT_MAX = 100;
@@ -28,23 +27,16 @@ export interface RecordCountInput {
   readonly projectId: number;
   /** 省略 = 项目内全部模块。 */
   readonly moduleId?: number;
-  /** 省略 = 项目内全部功能。 */
-  readonly featureId?: number;
-  /** 省略 = 功能级与模块级记录都计入。 */
-  readonly scopeType?: TaskScopeType;
 }
 
 export interface RecentRecordItem {
   readonly recordId: number;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
   readonly code: string;
   readonly title: string;
   readonly currentVersion: number;
   readonly publishedAt: Date;
-  /** 所属功能名；模块级记录为 null。 */
-  readonly featureName: string | null;
 }
 
 export interface LeftoverItemSummary {
@@ -94,7 +86,6 @@ export interface LeftoverListRow {
   readonly recordTitle: string;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
   readonly authorId: number;
   readonly authorName?: string;
   readonly publishedAt: Date;
@@ -119,7 +110,7 @@ interface LeftoverListRowRaw extends Omit<LeftoverListRow, "publishedAt"> {
 
 /**
  * 任务 → PUBLISHED 正式记录数映射条目（功能设计 §29.4：按 change_records 计数，
- * 不按版本计数、不按影响功能去重；裁决修订 D-1）。计数为 0 的任务不出现，
+ * 不按版本计数；裁决修订 D-1）。计数为 0 的任务不出现，
  * 消费端按 `?? 0` 补齐，恒有 `hasPublishedRecord === count > 0`。
  */
 export interface TaskPublishedRecordCountItem {
@@ -141,7 +132,6 @@ export interface TaskGroupRecordRow {
   readonly title: string;
   readonly status: "PUBLISHED" | "VOID";
   readonly taskId: number;
-  readonly featureId: number | null;
   readonly publishedAt: Date;
 }
 
@@ -181,8 +171,6 @@ export interface RecordSummaryRecordRow {
   readonly recordCode: string;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly scopeType: TaskScopeType;
   readonly title: string;
   readonly changeSolution: string;
   readonly resultVerification: string;
@@ -259,7 +247,7 @@ interface RecordSummaryLeftoverRowRaw extends Omit<
  * 约定：
  * 1. 只读、不取锁；不校验项目授权，调用方必须先取得 AuthorizedProjectScope。
  * 2. 统计口径按功能设计 §29.4：计数基于 change_records（不按版本计数），
- *    也不 join change_record_feature_impacts（模块级记录被多个功能引用时仍计 1 条）。
+ *    每条任务记录都按 change_records 行计数。
  * 3. 记录可见性按 A 裁决 Q-13：只有 PUBLISHED 与 VOID 可见，DRAFT 不可见。
  */
 export abstract class ChangeRecordReadPort {
@@ -297,7 +285,7 @@ export abstract class ChangeRecordReadPort {
   ): Promise<LeftoverListPage>;
   /**
    * F-29 待处理遗留问题总数（R-2 裁决 §10.2）：与 listActiveLeftovers 同一过滤，
-   * 不受 activeLeftoverLimit 影响；不 join 影响功能、不按版本重复计数。
+   * 不受 activeLeftoverLimit 影响；不按版本重复计数。
    */
   abstract countActiveLeftovers(
     tx: TransactionContext,
@@ -432,16 +420,12 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
     input: RecordCountInput,
   ): Promise<number> {
     const moduleId = input.moduleId ?? null;
-    const featureId = input.featureId ?? null;
-    const scopeType = input.scopeType ?? null;
     const [row] = await tx.sql<{ total: number }[]>`
       SELECT COUNT(*)::integer AS total
         FROM app.change_records cr
        WHERE cr.project_id = ${input.projectId}
          AND cr.status = 'PUBLISHED'
          AND (${moduleId}::integer IS NULL OR cr.module_id = ${moduleId})
-         AND (${featureId}::integer IS NULL OR cr.feature_id = ${featureId})
-         AND (${scopeType}::text IS NULL OR cr.scope_type = ${scopeType})
     `;
     return row?.total ?? 0;
   }
@@ -452,29 +436,18 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
   ): Promise<readonly RecentRecordItem[]> {
     assertLimit(input.limit);
     const moduleId = input.moduleId ?? null;
-    const featureId = input.featureId ?? null;
-    const scopeType = input.scopeType ?? null;
     const rows = await tx.sql<RecentRecordRowRaw[]>`
       SELECT cr.id AS "recordId",
              cr.project_id AS "projectId",
              cr.module_id AS "moduleId",
-             cr.feature_id AS "featureId",
              cr.code AS code,
              cr.title AS title,
              cr.current_version AS "currentVersion",
-             cr.published_at AS "publishedAt",
-             f.name AS "featureName"
+             cr.published_at AS "publishedAt"
         FROM app.change_records cr
-        LEFT JOIN app.features f
-          ON f.id = cr.feature_id
-         AND f.module_id = cr.module_id
-         AND f.project_id = cr.project_id
-         AND f.deleted_at IS NULL
        WHERE cr.project_id = ${input.projectId}
          AND cr.status = 'PUBLISHED'
          AND (${moduleId}::integer IS NULL OR cr.module_id = ${moduleId})
-         AND (${featureId}::integer IS NULL OR cr.feature_id = ${featureId})
-         AND (${scopeType}::text IS NULL OR cr.scope_type = ${scopeType})
        ORDER BY cr.published_at DESC, cr.id DESC
        LIMIT ${input.limit}
     `;
@@ -490,8 +463,6 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
   ): Promise<readonly LeftoverItemSummary[]> {
     assertLimit(input.limit);
     const moduleId = input.moduleId ?? null;
-    const featureId = input.featureId ?? null;
-    const scopeType = input.scopeType ?? null;
     const rows = await tx.sql<LeftoverItemRowRaw[]>`
       SELECT li.id AS "leftoverItemId",
              li.record_id AS "recordId",
@@ -517,8 +488,6 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
        WHERE li.project_id = ${input.projectId}
          AND li.status = 'ACTIVE'
          AND (${moduleId}::integer IS NULL OR cr.module_id = ${moduleId})
-         AND (${featureId}::integer IS NULL OR cr.feature_id = ${featureId})
-         AND (${scopeType}::text IS NULL OR cr.scope_type = ${scopeType})
        ORDER BY li.created_at DESC, li.id DESC
        LIMIT ${input.limit}
     `;
@@ -551,7 +520,6 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              cr.title AS "recordTitle",
              li.project_id AS "projectId",
              cr.module_id AS "moduleId",
-             cr.feature_id AS "featureId",
              cr.author_id AS "authorId",
              cr.author_snapshot->>'name' AS "authorName",
              cr.published_at AS "publishedAt",
@@ -601,8 +569,6 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
     input: RecordCountInput,
   ): Promise<number> {
     const moduleId = input.moduleId ?? null;
-    const featureId = input.featureId ?? null;
-    const scopeType = input.scopeType ?? null;
     const [row] = await tx.sql<{ total: number }[]>`
       SELECT COUNT(*)::integer AS total
         FROM app.change_record_leftover_items li
@@ -613,8 +579,6 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
        WHERE li.project_id = ${input.projectId}
          AND li.status = 'ACTIVE'
          AND (${moduleId}::integer IS NULL OR cr.module_id = ${moduleId})
-         AND (${featureId}::integer IS NULL OR cr.feature_id = ${featureId})
-         AND (${scopeType}::text IS NULL OR cr.scope_type = ${scopeType})
     `;
     return row?.total ?? 0;
   }
@@ -681,7 +645,6 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              cr.title AS title,
              cr.status AS status,
              cr.task_id AS "taskId",
-             cr.feature_id AS "featureId",
              cr.published_at AS "publishedAt"
         FROM app.change_records cr
        WHERE cr.project_id = ${input.projectId}
@@ -721,8 +684,6 @@ export class PostgresChangeRecordReadPort extends ChangeRecordReadPort {
              cr.code AS "recordCode",
              cr.project_id AS "projectId",
              cr.module_id AS "moduleId",
-             cr.feature_id AS "featureId",
-             cr.scope_type AS "scopeType",
              cr.title AS title,
              COALESCE(cr.current_payload->>'changeSolution', '') AS "changeSolution",
              COALESCE(cr.current_payload->>'resultVerification', '') AS "resultVerification",

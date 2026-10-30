@@ -1,6 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
-  taskReplayContextSchema,
   moduleTaskReplayContextSchema,
   type TaskEditRequest,
   type TaskStatusRequest,
@@ -20,7 +19,6 @@ import {
   ProjectsWritePort,
 } from "../projects/index.js";
 import { ModuleQueryPort, ModuleReadPort } from "../modules/index.js";
-import { FeatureQueryPort, FeatureReadPort } from "../features/index.js";
 import { ActivityWritePort } from "../activity/index.js";
 import { SearchProjectionWritePort } from "../search/index.js";
 import { PROJECT_NOTIFICATION_TYPES } from "../notifications/index.js";
@@ -34,8 +32,7 @@ import {
  * 任务写命令：只有创建与编辑；任务的生命周期状态不被任何命令写入
  * （ADR-054：任务归档与恢复已下线，ARCHIVED 不可达）。
  */
-export type TaskOperation =
-  "createTask" | "updateTask" | "createModuleTask" | "updateModuleTask";
+export type TaskOperation = "createModuleTask" | "updateModuleTask";
 
 export class TaskManagementError extends Error {
   constructor(
@@ -50,7 +47,7 @@ const missing = () =>
   new TaskManagementError(
     404,
     "TASK_NOT_FOUND",
-    "任务或所属功能不存在或无法访问",
+    "任务或所属模块不存在或无法访问",
   );
 
 @Injectable()
@@ -59,8 +56,6 @@ export class TasksManagementService {
     @Inject(PROJECT_ACCESS_QUERY_PORT)
     private readonly access: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort) private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort) private readonly features: FeatureQueryPort,
-    @Inject(FeatureReadPort) private readonly featureRead: FeatureReadPort,
     @Inject(ProjectCodePort) private readonly codes: ProjectCodePort,
     @Inject(ProjectMembersQueryPort)
     private readonly members: ProjectMembersQueryPort,
@@ -88,16 +83,7 @@ export class TasksManagementService {
     const authorized = await this.access.getAuthorizedSearchScope(actorId);
     if (!authorized.projectIds.includes(scope.projectId)) throw missing();
     return this.uow.run(async (tx) => {
-      if (
-        !(scope.featureId === null
-          ? await this.moduleRead.find(tx, scope.projectId, scope.moduleId)
-          : await this.featureRead.find(
-              tx,
-              scope.projectId,
-              scope.moduleId,
-              scope.featureId,
-            ))
-      )
+      if (!(await this.moduleRead.find(tx, scope.projectId, scope.moduleId)))
         throw missing();
       if (assignees) {
         const items = await this.members.listActiveMembers(tx, {
@@ -119,7 +105,7 @@ export class TasksManagementService {
       return { items: await this.repository.list(tx, scope) };
     });
   }
-  /** ADR-045：功能与模块都不再有归档只读态，写前检查只剩归属与父级取锁。 */
+  /** ADR-109：任务写前检查只剩项目、模块归属与父级取锁。 */
   async authorize(
     tx: TransactionContext,
     actorId: number,
@@ -137,17 +123,7 @@ export class TasksManagementService {
       projectId: scope.projectId,
       capabilities: [capability],
     });
-    // Resolve full identity before reporting any archived state.
-    if (
-      !(scope.featureId === null
-        ? await this.moduleRead.find(tx, scope.projectId, scope.moduleId)
-        : await this.featureRead.find(
-            tx,
-            scope.projectId,
-            scope.moduleId,
-            scope.featureId,
-          ))
-    )
+    if (!(await this.moduleRead.find(tx, scope.projectId, scope.moduleId)))
       throw missing();
     if (
       taskId !== undefined &&
@@ -155,15 +131,7 @@ export class TasksManagementService {
     )
       throw missing();
     const module = await this.modules.checkModuleForWrite(tx, scope);
-    const feature =
-      scope.featureId === null
-        ? module
-        : await this.features.checkFeatureForWrite(tx, {
-            ...scope,
-            featureId: scope.featureId,
-          });
-    if (module.kind === "not-found" || feature.kind === "not-found")
-      throw missing();
+    if (module.kind === "not-found") throw missing();
   }
   async replay(
     tx: TransactionContext,
@@ -171,72 +139,22 @@ export class TasksManagementService {
     context: unknown,
     capability: "taskEdit" | "taskLifecycle" = "taskEdit",
   ): Promise<void> {
-    const parsed = moduleTaskReplayContextSchema.safeParse(context);
-    const resource = parsed.success
-      ? { ...parsed.data, featureId: null }
-      : taskReplayContextSchema.parse(context);
+    const resource = moduleTaskReplayContextSchema.parse(context);
     await this.authorize(tx, actorId, resource, resource.taskId, capability);
-    if (parsed.success)
-      for (const featureId of parsed.data.impactFeatureIds)
-        if (
-          !(await this.featureRead.find(
-            tx,
-            resource.projectId,
-            resource.moduleId,
-            featureId,
-          ))
-        )
-          throw missing();
   }
   private async lockModuleTask(
     tx: TransactionContext,
-    input: TaskScope & { taskId?: number; version?: number },
-    target: number[],
+    input: TaskScope & { taskId: number; version?: number },
   ) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await tx.sql`SAVEPOINT task_impact_locks`;
-      const previous =
-        input.taskId === undefined
-          ? []
-          : await this.repository.impacts(tx, input, input.taskId);
-      const ids = [
-        ...new Set([...target, ...previous.map((r) => r.featureId)]),
-      ].sort((a, b) => a - b);
-      for (const featureId of ids) {
-        const check = await this.features.checkFeatureForWrite(tx, {
-          projectId: input.projectId,
-          moduleId: input.moduleId,
-          featureId,
-        });
-        if (check.kind === "not-found") throw missing();
-      }
-      const before =
-        input.taskId === undefined
-          ? undefined
-          : await this.repository.find(tx, input, input.taskId, true);
-      if (input.taskId !== undefined && !before) throw missing();
-      if (before && before.rowVersion !== input.version)
-        throw new TaskManagementError(
-          409,
-          "TASK_VERSION_CONFLICT",
-          "任务版本已变化，请重新加载后编辑",
-        );
-      const current =
-        input.taskId === undefined
-          ? []
-          : await this.repository.impacts(tx, input, input.taskId);
-      if (JSON.stringify(previous) === JSON.stringify(current)) {
-        await tx.sql`RELEASE SAVEPOINT task_impact_locks`;
-        return { before, previous };
-      }
-      await tx.sql`ROLLBACK TO SAVEPOINT task_impact_locks`;
-      await tx.sql`RELEASE SAVEPOINT task_impact_locks`;
-    }
-    throw new TaskManagementError(
-      409,
-      "TASK_IMPACT_CONFLICT",
-      "影响功能已变化，请重新加载后编辑",
-    );
+    const before = await this.repository.find(tx, input, input.taskId, true);
+    if (!before) throw missing();
+    if (input.version !== undefined && before.rowVersion !== input.version)
+      throw new TaskManagementError(
+        409,
+        "TASK_VERSION_CONFLICT",
+        "任务版本已变化，请重新加载后编辑",
+      );
+    return { before };
   }
   async execute(
     tx: TransactionContext,
@@ -247,40 +165,25 @@ export class TasksManagementService {
       version?: number;
       edit: TaskEditRequest;
       requestId: string;
-      impactFeatureIds?: number[];
       assignmentNotificationType?: "leftover.convert";
     },
   ): Promise<TaskRecord> {
     await this.authorize(tx, input.actorId, input, input.taskId);
-    let before: TaskRecord | undefined;
-    const target = input.impactFeatureIds ?? [];
-    let previousImpacts: Awaited<
-      ReturnType<TaskManagementRepository["impacts"]>
-    > = [];
-    if (input.featureId === null) {
-      const locked = await this.lockModuleTask(tx, input, target);
-      before = locked.before;
-      previousImpacts = locked.previous;
-    }
-    if (
-      input.operation === "updateTask" ||
+    const before =
       input.operation === "updateModuleTask"
-    ) {
-      before ??= await this.repository.find(tx, input, input.taskId!, true);
-      if (!before) throw missing();
-      if (before.rowVersion !== input.version)
-        throw new TaskManagementError(
-          409,
-          "TASK_VERSION_CONFLICT",
-          "任务版本已变化，请重新加载后编辑",
-        );
-      if (before.lifecycleStatus !== "ACTIVE")
-        throw new TaskManagementError(
-          409,
-          "TASK_STATE_CONFLICT",
-          "任务当前只读",
-        );
-    }
+        ? (
+            await this.lockModuleTask(tx, {
+              projectId: input.projectId,
+              moduleId: input.moduleId,
+              taskId: input.taskId!,
+              ...(input.version === undefined
+                ? {}
+                : { version: input.version }),
+            })
+          ).before
+        : undefined;
+    if (before && before.lifecycleStatus !== "ACTIVE")
+      throw new TaskManagementError(409, "TASK_STATE_CONFLICT", "任务当前只读");
     const assigneeIds = input.edit.assigneeIds;
     const previousAssigneeIds = before?.assigneeIds ?? [];
     const assigned =
@@ -301,7 +204,7 @@ export class TasksManagementService {
             "TASK_ASSIGNEE_INVALID",
             "负责人必须是当前项目的活跃成员",
           );
-    let result = before
+    const result = before
       ? await this.repository.update(tx, before, input.edit)
       : await this.repository.create(
           tx,
@@ -316,14 +219,6 @@ export class TasksManagementService {
         "TASK_VERSION_CONFLICT",
         "任务版本已变化，请重新加载后编辑",
       );
-    if (input.featureId === null) {
-      await this.repository.replaceImpacts(tx, result, target);
-      result = (await this.repository.find(tx, input, result.id))!;
-    }
-    const afterImpacts =
-      input.featureId === null
-        ? await this.repository.impacts(tx, input, result.id)
-        : [];
     const action = before ? "update" : "create";
     const event = await this.audit.append(tx, {
       projectId: result.projectId,
@@ -332,22 +227,7 @@ export class TasksManagementService {
       action: `task.${action}`,
       targetType: "TASK",
       targetId: String(result.id),
-      eventPayload: {
-        before: before ?? null,
-        after: result,
-        ...(input.featureId === null
-          ? {
-              impactsBefore: previousImpacts,
-              impactsAfter: afterImpacts,
-              added: target.filter(
-                (id) => !previousImpacts.some((r) => r.featureId === id),
-              ),
-              removed: previousImpacts
-                .filter((r) => !target.includes(r.featureId))
-                .map((r) => r.featureId),
-            }
-          : {}),
-      },
+      eventPayload: { before: before ?? null, after: result },
       requestId: input.requestId,
     });
     await this.activity.append(tx, {
@@ -366,7 +246,6 @@ export class TasksManagementService {
       metadata: {
         taskId: result.id,
         moduleId: result.moduleId,
-        featureId: result.featureId,
         assignmentChanged: assigned,
         assigneeIds: [...result.assigneeIds],
         previousAssigneeIds: [...previousAssigneeIds],
@@ -381,7 +260,6 @@ export class TasksManagementService {
       entityType: "TASK",
       entityId: result.id,
       moduleId: result.moduleId,
-      featureId: result.featureId,
       recordId: null,
       title: result.title,
       summary: result.description.slice(0, 5000),
@@ -404,10 +282,7 @@ export class TasksManagementService {
             PROJECT_NOTIFICATION_TYPES.taskAssigned,
           title: `任务指派：${result.title}`.slice(0, 500),
           body: result.code,
-          targetPath:
-            result.featureId === null
-              ? `/projects/${result.projectId}/modules/${result.moduleId}/tasks?taskId=${result.id}`
-              : `/projects/${result.projectId}/modules/${result.moduleId}/features/${result.featureId}?taskId=${result.id}`,
+          targetPath: `/projects/${result.projectId}/modules/${result.moduleId}/tasks?taskId=${result.id}`,
           createdAt: new Date(result.updatedAt),
         },
         assigneeIds.filter((userId) => !previousAssignees.has(userId)),
@@ -481,7 +356,6 @@ export class TasksManagementService {
       entityType: "PROJECT",
       entityId: reopened.projectId,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: reopened.name,
       summary: reopened.description.slice(0, 5000),
@@ -510,18 +384,12 @@ export class TasksManagementService {
       input.taskId,
       "taskLifecycle",
     );
-    // Current impact features are locked and rechecked, but never become MODULE parents.
-    const before =
-      input.featureId === null
-        ? (await this.lockModuleTask(tx, input, [])).before
-        : await this.repository.find(tx, input, input.taskId, true);
-    if (!before) throw missing();
-    if (before.rowVersion !== input.version)
-      throw new TaskManagementError(
-        409,
-        "TASK_VERSION_CONFLICT",
-        "任务版本已变化，请重新加载",
-      );
+    const { before } = await this.lockModuleTask(tx, {
+      projectId: input.projectId,
+      moduleId: input.moduleId,
+      taskId: input.taskId,
+      version: input.version,
+    });
     const transitions = {
       COMPLETE: ["TODO", "DONE"],
       REOPEN: ["DONE", "TODO"],
@@ -537,7 +405,7 @@ export class TasksManagementService {
       );
     const note =
       command.action === "COMPLETE"
-        ? `${command.completionReason}，不涉及功能变化${command.note ? `：${command.note}` : ""}`
+        ? `${command.completionReason}，不关联迭代记录${command.note ? `：${command.note}` : ""}`
         : null;
     const reason =
       command.action === "COMPLETE" ? command.completionReason : command.reason;
@@ -584,7 +452,6 @@ export class TasksManagementService {
       metadata: {
         taskId: result.id,
         moduleId: result.moduleId,
-        featureId: result.featureId,
       },
       visibilityScope: "MEMBER",
       sourceStatus: result.workStatus,
@@ -596,7 +463,6 @@ export class TasksManagementService {
       entityType: "TASK",
       entityId: result.id,
       moduleId: result.moduleId,
-      featureId: result.featureId,
       recordId: null,
       title: result.title,
       summary: result.description.slice(0, 5000),
@@ -618,10 +484,7 @@ export class TasksManagementService {
               : PROJECT_NOTIFICATION_TYPES.taskReopen,
           title: `任务${labels[command.action]}：${result.title}`.slice(0, 500),
           body: result.code,
-          targetPath:
-            result.featureId === null
-              ? `/projects/${result.projectId}/modules/${result.moduleId}/tasks?taskId=${result.id}`
-              : `/projects/${result.projectId}/modules/${result.moduleId}/features/${result.featureId}?taskId=${result.id}`,
+          targetPath: `/projects/${result.projectId}/modules/${result.moduleId}/tasks?taskId=${result.id}`,
           createdAt: new Date(result.updatedAt),
         },
         [result.creatorId, ...result.assigneeIds],

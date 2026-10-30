@@ -35,7 +35,6 @@ const snapshot = {
     publishedRecordCount: 18,
     activeMemberCount: 6,
     activeModuleCount: 3,
-    activeFeatureCount: 12,
     openTaskCount: 0,
     durationDays: 96,
     completionPercent: 100,
@@ -57,6 +56,7 @@ test("normalizes a version 1 snapshot and formats dates in Asia/Shanghai", () =>
   assert.equal(value.version, 1);
   assert.equal(value.project.name, "商城系统");
   assert.equal(value.stats.completedTaskCount, 42);
+  assert.equal(value.stats.activeFeatureCount, undefined);
   assert.equal(value.participants.length, 2);
   assert.equal(value.timeline.foundedAt, "2026.07.15");
   assert.equal(value.timeline.sealedAt, "2026.10.20");

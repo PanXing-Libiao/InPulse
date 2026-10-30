@@ -7,7 +7,6 @@ import { TaskCompletionModule } from "./workflows/task-completion.module.js";
 import { TaskGroupsModule } from "./modules/task-groups/task-groups.module.js";
 import { RecordDraftsModule } from "./modules/change-records/record-drafts.module.js";
 import { PublishedRecordsModule } from "./modules/change-records/published-records.module.js";
-import { FeaturesManagementModule } from "./modules/features/features-management.module.js";
 import { TasksManagementModule } from "./modules/tasks/tasks-management.module.js";
 import {
   Module,
@@ -57,7 +56,6 @@ const authModules = process.env["SESSION_HASH_KEYRING_FILE"]?.trim()
       ProjectMemberPermissionModule,
       ProjectManagementModule,
       ModulesManagementModule,
-      FeaturesManagementModule,
       AdminUsersModule,
       OrganizationsModule,
       WecomBindingModule,

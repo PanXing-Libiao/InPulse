@@ -24,12 +24,9 @@ const item = {
   createdAt: "2026-09-10T00:00:00.000Z",
   updatedAt: "2026-09-10T00:00:00.000Z",
   rowVersion: 2,
-  impactFeatureIds: [4, 6],
   id: 7,
   projectId: 1,
   moduleId: 2,
-  featureId: null,
-  scopeType: "MODULE",
   title: "记录",
   leftovers: [
     {
@@ -49,20 +46,17 @@ const preview = {
   leftoverRowVersion: 1,
   status: "ACTIVE",
   content: "待跟进原文",
-  inheritedImpacts: [{ id: 4, name: "支付" }],
   linkedTask: null,
 };
 const result = {
   projectId: 1,
   moduleId: 2,
-  featureId: null,
   taskId: 10,
   recordId: 7,
   leftoverItemId: 8,
   recordVersion: 1,
   recordRowVersion: 3,
   leftoverRowVersion: 2,
-  impactFeatureIds: [4],
 };
 function mount(extra: object) {
   const api = {
@@ -103,9 +97,8 @@ async function open() {
   await screen.findByText("待跟进原文");
   await pickSelectOption("负责人", "成员");
 }
-// 2026-09-30 版 1 对照稿：没有继承影响时只留「记录 · 版本 · 编号 · 原文」，
-// 不再多出一句「影响功能：无」。
-it("hides the impact segment when nothing is inherited", async () => {
+// 功能层下线后，遗留转换只展示记录、版本、编号与原文。
+it("does not expose removed impact-feature metadata", async () => {
   mount({
     previewLeftoverTask: vi
       .fn()
@@ -116,17 +109,13 @@ it("hides the impact segment when nothing is inherited", async () => {
   expect(screen.queryByText(/影响功能/)).toBeNull();
 });
 
-it("shows inherited history, retains input and reuses the key after uncertain failure", async () => {
+it("opens from the current preview, retains input and reuses the key after uncertain failure", async () => {
   const convert = vi
     .fn()
     .mockRejectedValueOnce(Error("network"))
     .mockResolvedValue(result);
   const converted = mount({ convertLeftoverToTask: convert });
   await open();
-  // ADR-045：功能不再有归档态，记录上的影响全部继承，弹层不再展示「历史归档影响」块。
-  // 弹层内容在 rc-motion 的过渡帧里会短暂处于不可见态：整套件并发跑时曾抓到 `expect(element).toBeVisible()`
-  // 对同一个 <p> 偶发失败（元素已能匹配、只是还没可见），这里改成等待可见，断言目标不变。
-  await waitFor(() => expect(screen.getByText(/影响功能：支付/)).toBeVisible());
   fireEvent.change(screen.getByLabelText("标题"), {
     target: { value: "我的跟进标题" },
   });
@@ -150,7 +139,6 @@ it("shows inherited history, retains input and reuses the key after uncertain fa
     recordVersion: 1,
     expectedRowVersion: 2,
     leftoverExpectedRowVersion: 1,
-    expectedImpactFeatureIds: [4],
     title: "我的跟进标题",
     assigneeIds: [3],
     dueAt: new Date(2026, 9, 10, 18, 30).toISOString(),
@@ -169,7 +157,7 @@ it("requires explicit confirmation after 409 impact/content change, retaining ta
         requestId: "test",
       }),
     )
-    .mockResolvedValue({ ...result, impactFeatureIds: [] });
+    .mockResolvedValue(result);
   mount({
     convertLeftoverToTask: convert,
     previewLeftoverTask: vi
@@ -181,7 +169,6 @@ it("requires explicit confirmation after 409 impact/content change, retaining ta
         rowVersion: 3,
         recordVersion: 2,
         content: "最新遗留全文",
-        inheritedImpacts: [],
       }),
   });
   await open();
@@ -215,7 +202,6 @@ it("requires explicit confirmation after 409 impact/content change, retaining ta
     title: "保留标题",
     recordVersion: 2,
     expectedRowVersion: 3,
-    expectedImpactFeatureIds: [],
     dueAt: new Date(2026, 9, 11, 9, 15).toISOString(),
   });
   expect(convert.mock.calls[0]![3].headers["Idempotency-Key"]).not.toBe(

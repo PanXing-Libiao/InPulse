@@ -10,8 +10,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
 import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
@@ -46,8 +44,6 @@ beforeAll(() => {
   management = new TasksManagementService(
     access,
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
-    new PostgresFeatureReadPort(),
     new PostgresProjectCodePort(),
     new PostgresProjectMembersQueryPort(),
     uow,
@@ -71,7 +67,6 @@ afterAll(async () => {
 });
 
 interface Fixture {
-  readonly featureId: number;
   readonly moduleId: number;
   readonly projectId: number;
   readonly userId: number;
@@ -80,14 +75,7 @@ interface Fixture {
 async function fixture(): Promise<Fixture> {
   const userId = await createUser(db.sql);
   const project = await createProject(db.sql, userId);
-  const feature = (await db.sql`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (${project.projectId}, ${project.moduleId}, ${`${project.code}-F-1`}, '维护期功能', ${userId})
-    RETURNING id
-  `) as unknown as readonly { id: number }[];
-  if (feature[0] === undefined) throw new Error("feature fixture failed");
   return {
-    featureId: feature[0].id,
     moduleId: project.moduleId,
     projectId: project.projectId,
     userId,
@@ -159,17 +147,12 @@ const statusNotifications = (projectId: number) =>
      WHERE project_id = ${projectId} AND notification_type = 'project.status.change'
   `;
 
-function create(
-  f: Fixture,
-  options: { readonly featureLevel?: boolean; readonly title?: string } = {},
-) {
-  const featureLevel = options.featureLevel ?? true;
+function create(f: Fixture, options: { readonly title?: string } = {}) {
   return uow.run((tx) =>
     management.execute(tx, {
       projectId: f.projectId,
       moduleId: f.moduleId,
-      featureId: featureLevel ? f.featureId : null,
-      operation: featureLevel ? "createTask" : "createModuleTask",
+      operation: "createModuleTask",
       actorId: f.userId,
       edit: {
         title: options.title ?? "维护期新任务",
@@ -193,7 +176,6 @@ function transitionInput(
   return {
     projectId: f.projectId,
     moduleId: f.moduleId,
-    featureId: f.featureId,
     actorId: f.userId,
     taskId: task.id,
     version: task.rowVersion,
@@ -221,7 +203,7 @@ const completeWithoutRecord = (
   });
 
 describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到进行中", () => {
-  it("维护中项目新建功能级任务后回到进行中，并写审计、活动与搜索投影，但不发通知", async () => {
+  it("维护中项目新建模块级任务后回到进行中，并写审计、活动与搜索投影，但不发通知", async () => {
     const f = await fixture();
     await toMaintenance(f);
     const before = (await readProject(f.projectId))[0]!;
@@ -293,14 +275,13 @@ describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到�
     expect(await statusActivities(f.projectId)).toHaveLength(1);
   });
 
-  it("维护中项目新建模块级任务同样回到进行中", async () => {
+  it("维护中项目新建任务同样回到进行中", async () => {
     const f = await fixture();
     await toMaintenance(f);
     const before = (await readProject(f.projectId))[0]!;
 
-    const task = await create(f, { featureLevel: false });
+    const task = await create(f);
 
-    expect(task.featureId).toBeNull();
     const after = (await readProject(f.projectId))[0]!;
     expect(after.status).toBe("ACTIVE");
     expect(after.rowVersion).toBe(before.rowVersion);
@@ -346,8 +327,7 @@ describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到�
       management.execute(tx, {
         projectId: f.projectId,
         moduleId: f.moduleId,
-        featureId: f.featureId,
-        operation: "updateTask",
+        operation: "updateModuleTask",
         actorId: f.userId,
         taskId: task.id,
         version: task.rowVersion,
@@ -379,8 +359,7 @@ describe("ADR-056 / ADR-057 任务重新变为未收尾时维护中项目回到�
         await management.execute(tx, {
           projectId: f.projectId,
           moduleId: f.moduleId,
-          featureId: f.featureId,
-          operation: "createTask",
+          operation: "createModuleTask",
           actorId: f.userId,
           edit: {
             title: "会回滚的任务",

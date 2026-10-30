@@ -15,7 +15,6 @@ import {
   type UnitOfWork,
 } from "../../database/unit-of-work.js";
 import { ChangeRecordReadPort } from "../change-records/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { ModuleReadPort } from "../modules/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
@@ -43,9 +42,9 @@ import { AggregateReadError } from "./aggregate-read.errors.js";
  * 5. 非成员或项目不存在统一 404，与 R-2 同一约定。
  *
  * 数据来源全部是公开 QueryPort：任务行与统计走 B 域 TaskQueryPort 的看板读扩展，
- * 模块 / 功能 / 负责人 / 记录数 / 历史来源分支分别走 A、B、C 域既有端口。
- * 泳道的模块功能数按模块逐个计数（V1 项目模块数有限，命中
- * features_module_id_idx），不新增批量端口。
+ * 模块 / 负责人 / 记录数 / 历史来源分支分别走 A、B、C 域既有端口。
+ * 泳道统计按模块批量读取（V1 项目模块数有限），
+ * 不新增批量端口。
  */
 export interface TaskBoardQueryCommand {
   readonly actorUserId: number;
@@ -98,7 +97,6 @@ export class TaskBoardQueryService {
     @Inject(ProjectQueryPort) private readonly projects: ProjectQueryPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
     @Inject(ModuleReadPort) private readonly modules: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(ChangeRecordReadPort)
     private readonly records: ChangeRecordReadPort,
     @Inject(TaskGroupMembershipReadPort)
@@ -134,13 +132,6 @@ export class TaskBoardQueryService {
         excludedTaskIds,
       });
       const moduleIds = [...new Set(board.items.map((row) => row.moduleId))];
-      const featureIds = [
-        ...new Set(
-          board.items.flatMap((row) =>
-            row.featureId === null ? [] : [row.featureId],
-          ),
-        ),
-      ];
       const assigneeIds = [
         ...new Set(board.items.flatMap((row) => row.assigneeIds)),
       ];
@@ -150,53 +141,27 @@ export class TaskBoardQueryService {
         projectIds: [projectId],
         moduleIds,
       });
-      const featureNames = await this.features.listNames(tx, {
-        projectIds: [projectId],
-        featureIds,
-      });
       const assignees = await this.users.listByIds(tx, assigneeIds);
       const publishedRecordCounts = await this.records.countPublishedByTask(
         tx,
         [projectId],
         taskIds,
       );
-      const projectFeatureCount = await this.features.count(tx, {
-        projectId,
-      });
-      const moduleFeatureCounts: { moduleId: number; count: number }[] = [];
-      for (const moduleId of moduleIds) {
-        moduleFeatureCounts.push({
-          moduleId,
-          count: await this.features.count(tx, {
-            projectId,
-            moduleId,
-          }),
-        });
-      }
       return {
         board,
         stats,
         moduleNames,
-        featureNames,
         assignees,
         publishedRecordCounts,
-        projectFeatureCount,
-        moduleFeatureCounts,
       };
     });
 
     const moduleNameById = new Map(
       data.moduleNames.map((item) => [item.moduleId, item.name]),
     );
-    const featureNameById = new Map(
-      data.featureNames.map((item) => [item.featureId, item.name]),
-    );
     const userById = new Map(data.assignees.map((item) => [item.userId, item]));
     const publishedRecordCountByTask = new Map(
       data.publishedRecordCounts.map((item) => [item.taskId, item.count]),
-    );
-    const moduleFeatureCountById = new Map(
-      data.moduleFeatureCounts.map((item) => [item.moduleId, item.count]),
     );
     const moduleStatsById = new Map(
       data.stats.modules.map((item) => [item.moduleId, item]),
@@ -241,22 +206,11 @@ export class TaskBoardQueryService {
           if (cardAssignees.length === 0) {
             throw inconsistentError("任务缺少负责人 " + String(row.taskId));
           }
-          let featureName: string | null = null;
-          if (row.featureId !== null) {
-            const resolved = featureNameById.get(row.featureId);
-            if (resolved === undefined) {
-              throw inconsistentError("任务缺少功能 " + String(row.featureId));
-            }
-            featureName = resolved;
-          }
           return {
             taskId: row.taskId,
             code: row.code,
             title: row.title,
             moduleId: row.moduleId,
-            featureId: row.featureId,
-            featureName,
-            scopeType: row.scopeType,
             priority: row.priority,
             workStatus: row.workStatus,
             dueAt: row.dueAt === null ? null : row.dueAt.toISOString(),
@@ -282,7 +236,6 @@ export class TaskBoardQueryService {
         return {
           moduleId,
           name,
-          featureCount: moduleFeatureCountById.get(moduleId) ?? 0,
           stats: {
             total: statRow.total,
             done: statRow.done,
@@ -306,7 +259,6 @@ export class TaskBoardQueryService {
       dueToday: totals.dueToday,
       completedThisWeek: totals.completedThisWeek,
       completionRate: completionRate(totals.done, totals.open),
-      featureCount: data.projectFeatureCount,
       memberCount: project.memberCount,
     };
 

@@ -55,7 +55,7 @@ import {
  *
  * ADR-051 的还原（`restoreProject`）与彻底删除（`purgeProject`）两条命令、删除
  * 台账（`listProjectDeletions`）与 ADR-055 的保留期自动清理都已整体下线，本文件
- * 不再覆盖它们；任务（ADR-058）与模块/功能（ADR-059）的软删除不受影响。
+ * 不再覆盖它们；任务（ADR-058）与模块（ADR-059）的软删除不受影响；功能层已由 ADR-109 移除。
  */
 let client: DatabaseClient;
 let auditReader: DatabaseClient;
@@ -258,7 +258,7 @@ async function seedProjectAudit(
 }
 
 /**
- * 给项目造功能、任务、任务组关系与迭代记录草稿：物理删除的外键顺序与行数统计
+ * 给项目造任务、任务组关系与迭代记录草稿：物理删除的外键顺序与行数统计
  * 才有真实数据可删。夹具直接写表、不走命令，因此不产生通知与动态。
  *
  * 任务必须在**同一事务内**补状态历史：`tasks` 上有延迟约束触发器，提交时没有
@@ -269,19 +269,14 @@ async function seedPurgeableRecords(
   actorId: number,
 ): Promise<void> {
   await client.sql.begin(async (transaction) => {
-    const [feature] = await transaction<Array<{ id: number }>>`
-      INSERT INTO app.features (project_id, module_id, code, name, created_by)
-      VALUES (${project.projectId}, ${project.moduleId}, ${`${project.code}-F-1`}, ${"删除级联用功能"}, ${actorId})
-      RETURNING id
-    `;
     const [main] = await transaction<Array<{ id: number }>>`
-      INSERT INTO app.tasks (project_id, module_id, feature_id, scope_type, code, title, creator_id)
-      VALUES (${project.projectId}, ${project.moduleId}, ${feature!.id}, 'FEATURE', ${`${project.code}-T-1`}, ${"删除级联用主任务"}, ${actorId})
+      INSERT INTO app.tasks (project_id, module_id, code, title, creator_id)
+      VALUES (${project.projectId}, ${project.moduleId}, ${`${project.code}-T-1`}, ${"删除级联用主任务"}, ${actorId})
       RETURNING id
     `;
     const [source] = await transaction<Array<{ id: number }>>`
-      INSERT INTO app.tasks (project_id, module_id, feature_id, scope_type, code, title, creator_id)
-      VALUES (${project.projectId}, ${project.moduleId}, ${feature!.id}, 'FEATURE', ${`${project.code}-T-2`}, ${"删除级联用来源任务"}, ${actorId})
+      INSERT INTO app.tasks (project_id, module_id, code, title, creator_id)
+      VALUES (${project.projectId}, ${project.moduleId}, ${`${project.code}-T-2`}, ${"删除级联用来源任务"}, ${actorId})
       RETURNING id
     `;
     await transaction`
@@ -311,8 +306,8 @@ async function seedPurgeableRecords(
       VALUES (${group!.id}, ${source!.id}, ${project.projectId}, 'SOURCE', 'ACTIVE', 'TODO', ${actorId})
     `;
     await transaction`
-      INSERT INTO app.change_records (project_id, module_id, scope_type, title, handler_id, author_id)
-      VALUES (${project.projectId}, ${project.moduleId}, 'MODULE', ${"删除级联用迭代记录"}, ${actorId}, ${actorId})
+      INSERT INTO app.change_records (project_id, module_id, title, handler_id, author_id)
+      VALUES (${project.projectId}, ${project.moduleId}, ${"删除级联用迭代记录"}, ${actorId}, ${actorId})
     `;
   });
 }
@@ -370,22 +365,18 @@ async function insertProjectWithCode(
 /** `app.purge_project` 逐表删除的全部位置，用于验证「删除后全表无残留」。 */
 const PROJECT_SCOPED_TABLES = [
   "modules",
-  "features",
   "tasks",
   "task_groups",
   "task_group_members",
   "task_status_history",
   "task_assignees",
-  "task_feature_impacts",
   "task_external_links",
   "change_records",
   "change_record_versions",
   "change_record_leftover_items",
-  "change_record_feature_impacts",
   "change_record_external_links",
   "change_record_version_leftovers",
   "leftover_task_links",
-  "feature_external_links",
   "project_external_links",
   "external_links",
   "project_archive_requests",
@@ -568,7 +559,6 @@ describe("ADR-062 project delete API", () => {
     // 业务表确实有行，项目链也确实已有一条审计；删除后分别验证归零与保留。
     expect(before).toMatchObject({
       modules: 1,
-      features: 1,
       tasks: 2,
       task_status_history: 2,
       task_groups: 1,
@@ -648,7 +638,6 @@ describe("ADR-062 project delete API", () => {
         actorRole: "LEADER",
         records: {
           modules: before.modules,
-          features: before.features,
           tasks: before.tasks,
           changeRecords: before.change_records,
           retainedAuditLogs: beforeAudit.audit_logs,

@@ -85,7 +85,7 @@ export class ModulesManagementService {
     await this.permissions.assertCapabilities(tx, {
       actorUserId: actorId,
       projectId,
-      capabilities: ["moduleFeatureEdit"],
+      capabilities: ["moduleEdit"],
     });
     // 先验证真实归属，避免向错误项目参数请求泄露资源状态。
     if (
@@ -183,7 +183,6 @@ export class ModulesManagementService {
       entityType: "MODULE",
       entityId: result.id,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: result.name,
       summary: result.description.slice(0, 5000),

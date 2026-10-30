@@ -9,8 +9,6 @@ import { AiAssistRuntimeService } from "../modules/document-import/ai-assist-run
 import { AiAssistSettingsRepository } from "../modules/document-import/ai-assist-settings.repository.js";
 import { AiAssistSettingsService } from "../modules/document-import/ai-assist-settings.service.js";
 import { DocumentImportRunRepository } from "../modules/document-import/document-import-run.repository.js";
-import { FeaturesModule } from "../modules/features/index.js";
-import { FeaturesManagementModule } from "../modules/features/features-management.module.js";
 import { ModulesModule } from "../modules/modules/index.js";
 import { ModulesManagementModule } from "../modules/modules/modules-management.module.js";
 import { ProjectCreateModule } from "../modules/projects/project-create.module.js";
@@ -27,8 +25,8 @@ import { DocumentImportWorkflow } from "./document-import.workflow.js";
 import { ProjectImportController } from "./project-import.controller.js";
 
 /**
- * ADR-064 文档导入模块：聚合项目、模块、功能与任务四个域的公开 CommandPort
- * 与读端口，在单一事务内按固定模板创建/复用模块与功能并创建任务。
+ * ADR-064 / ADR-109 文档导入模块：聚合项目、模块与任务三个域的公开 CommandPort
+ * 与读端口，在单一事务内按固定模板创建/复用模块并创建任务。
  * ADR-067 / ADR-068：模块同时承载 AI 辅助转换（运行时配置解析）与管理员
  * 在线配置（加密保存、测试连接）。
  * ADR-076：迭代总结 AI 改写复用同一份运行时配置与出站适配器（配置只有一份，
@@ -44,8 +42,6 @@ import { ProjectImportController } from "./project-import.controller.js";
     ProjectCreateModule,
     ModulesModule,
     ModulesManagementModule,
-    FeaturesModule,
-    FeaturesManagementModule,
     TasksManagementModule,
   ],
   providers: [

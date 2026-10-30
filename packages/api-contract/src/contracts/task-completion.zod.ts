@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  taskItemSchema,
-  taskStatusRequestSchema,
-  moduleTaskItemSchema,
-} from "./tasks.zod.js";
+import { taskStatusRequestSchema, moduleTaskItemSchema } from "./tasks.zod.js";
 import {
   publishedRecordSchema,
   publishedRecordContentSchema,
@@ -36,7 +32,7 @@ export const taskCompletionRequestSchema = z
   .meta({ id: "TaskCompletionRequest" });
 export const taskCompletionResponseSchema = z
   .object({
-    task: z.union([taskItemSchema, moduleTaskItemSchema]),
+    task: moduleTaskItemSchema,
     record: publishedRecordSchema.nullable(),
   })
   .strict()
@@ -45,9 +41,7 @@ export const taskCompletionReplayContextSchema = z
   .object({
     projectId: id,
     moduleId: id,
-    featureId: id.nullable(),
     taskId: id,
-    impactFeatureIds: z.array(id),
     record: recordPublicationReplayContextSchema.nullable(),
   })
   .strict()

@@ -18,7 +18,6 @@ export interface SearchProjectionItem {
   readonly entityType: string;
   readonly entityId: number;
   readonly moduleId: number | null;
-  readonly featureId: number | null;
   readonly recordId: number | null;
   readonly title: string;
   readonly summary: string;
@@ -39,7 +38,6 @@ interface SearchProjectionRow {
   readonly entity_type: string;
   readonly entity_id: number;
   readonly module_id: number | null;
-  readonly feature_id: number | null;
   readonly record_id: number | null;
   readonly title: string;
   readonly summary: string;
@@ -65,7 +63,6 @@ export class PostgresSearchProjectionReader implements SearchProjectionReader {
          entity_type,
          entity_id,
          module_id,
-         feature_id,
          record_id,
          title,
          summary
@@ -97,7 +94,6 @@ export class PostgresSearchProjectionReader implements SearchProjectionReader {
         entityType: row.entity_type,
         entityId: row.entity_id,
         moduleId: row.module_id,
-        featureId: row.feature_id,
         recordId: row.record_id,
         title: row.title,
         summary: row.summary,

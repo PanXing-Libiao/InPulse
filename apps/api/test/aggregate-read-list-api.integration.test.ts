@@ -76,8 +76,6 @@ let otherCookie = "";
 let outsiderCookie = "";
 let foreignCookie = "";
 
-let featureA = 0;
-let featureB = 0;
 let tSourceA = 0;
 let tSourceB = 0;
 let tFollowup = 0;
@@ -127,7 +125,7 @@ const recordContent = {
   remainingIssues: [],
 };
 
-function nextSuffix(kind: "T" | "F" | "CR"): string {
+function nextSuffix(kind: "T" | "CR"): string {
   sequence += 1;
   return "-" + kind + "-" + String(sequence);
 }
@@ -142,23 +140,8 @@ async function newModule(scope: ProjectFixture, name: string): Promise<number> {
   return row.id;
 }
 
-async function newFeature(
-  scope: ProjectFixture,
-  moduleId: number,
-  name: string,
-): Promise<number> {
-  const [row] = await runtime!.sql<{ id: number }[]>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (${scope.projectId}, ${moduleId}, ${scope.code + nextSuffix("F")}, ${name}, ${scope.userId})
-    RETURNING id
-  `;
-  if (!row) throw new Error("feature fixture insert returned no row");
-  return row.id;
-}
-
 interface TaskOptions {
   readonly assigneeIds?: number[];
-  readonly featureId?: number | null;
   readonly workStatus?: "TODO" | "DONE" | "CANCELED";
   readonly lifecycleStatus?: "ACTIVE" | "INVALID";
   readonly title?: string;
@@ -170,13 +153,12 @@ async function newTask(
   scope: ProjectFixture,
   options: TaskOptions = {},
 ): Promise<number> {
-  const featureId = options.featureId ?? null;
   const workStatus = options.workStatus ?? "TODO";
   const code = scope.code + nextSuffix("T");
   return uow!.run(async (tx) => {
     const created = await taskWrites.create(
       tx,
-      { projectId: scope.projectId, moduleId: scope.moduleId, featureId },
+      { projectId: scope.projectId, moduleId: scope.moduleId },
       scope.userId,
       code,
       {
@@ -206,7 +188,6 @@ async function newTask(
 }
 
 interface RecordOptions {
-  readonly featureId?: number | null;
   readonly taskId?: number | null;
   readonly publishedAt?: string;
   readonly status?: "PUBLISHED" | "VOID";
@@ -217,7 +198,6 @@ async function newPublishedRecord(
   options: RecordOptions = {},
 ): Promise<number> {
   const code = scope.code + nextSuffix("CR");
-  const featureId = options.featureId ?? null;
   const taskId = options.taskId ?? null;
   const publishedAt = options.publishedAt ?? null;
   const draft = await uow!.run((tx) =>
@@ -226,8 +206,6 @@ async function newPublishedRecord(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId,
-        impactFeatureIds: [],
       },
       scope.userId,
       recordContent,
@@ -449,27 +427,13 @@ beforeAll(async () => {
   `;
 
   await newModule(projectFixture, "遗留模块");
-  featureA = await newFeature(
-    projectFixture,
-    projectFixture.moduleId,
-    "遗留功能A",
-  );
-  featureB = await newFeature(
-    projectFixture,
-    projectFixture.moduleId,
-    "遗留功能B",
-  );
-
   tSourceA = await newTask(projectFixture, {
-    featureId: featureA,
     title: "遗留来源任务A",
   });
   tSourceB = await newTask(projectFixture, {
-    featureId: featureB,
     title: "遗留来源任务B",
   });
   tFollowup = await newTask(projectFixture, {
-    featureId: featureB,
     title: "遗留跟进任务",
   });
 
@@ -494,22 +458,18 @@ beforeAll(async () => {
   tOtherSource = await newTask(otherFixture, { title: "其他项目来源任务" });
 
   rLinked = await newPublishedRecord(projectFixture, {
-    featureId: featureA,
     publishedAt: isoAt(1),
     taskId: tSourceA,
   });
   rOrphan = await newPublishedRecord(projectFixture, { publishedAt: isoAt(2) });
   rConverted = await newPublishedRecord(projectFixture, {
-    featureId: featureB,
     publishedAt: isoAt(3),
     taskId: tSourceB,
   });
   rResolved = await newPublishedRecord(projectFixture, {
-    featureId: featureA,
     publishedAt: isoAt(4),
   });
   rVoid = await newPublishedRecord(projectFixture, {
-    featureId: featureB,
     publishedAt: isoAt(5),
     status: "VOID",
     taskId: tSourceB,
@@ -812,8 +772,6 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
     const linked = page.items[4]!;
     expect(linked).toMatchObject({
       content: "最新快照内容：遗留-有关联来源任务",
-      featureId: featureA,
-      featureName: "遗留功能A",
       moduleId: project!.moduleId,
       moduleName: "未分类",
       projectId: project!.projectId,
@@ -828,15 +786,12 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
       code: await taskCode(tSourceA, project!),
       projectId: project!.projectId,
       moduleId: project!.moduleId,
-      featureId: featureA,
     });
     expect(linked.followupTask).toBeNull();
     expect(linked.publishedAt).toBe(isoAt(1));
 
     const orphan = page.items[3]!;
     expect(orphan).toMatchObject({
-      featureId: null,
-      featureName: null,
       recordId: rOrphan,
       status: "ACTIVE",
     });
@@ -853,14 +808,12 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
       code: await taskCode(tSourceB, project!),
       projectId: project!.projectId,
       moduleId: project!.moduleId,
-      featureId: featureB,
     });
     expect(converted.followupTask).toEqual({
       taskId: tFollowup,
       code: await taskCode(tFollowup, project!),
       projectId: project!.projectId,
       moduleId: project!.moduleId,
-      featureId: featureB,
     });
 
     const resolved = page.items[1]!;
@@ -875,7 +828,6 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
       code: await taskCode(tSourceB, project!),
       projectId: project!.projectId,
       moduleId: project!.moduleId,
-      featureId: featureB,
     });
     expect(voided.followupTask).toBeNull();
   });
@@ -1075,7 +1027,6 @@ describe("GET /api/v1/leftover-items（R-6 遗留问题列表）", () => {
         code: await taskCode(tFollowup, project!),
         projectId,
         moduleId: project!.moduleId,
-        featureId: featureB,
       });
     } finally {
       await setVoid(rVoid);
@@ -1157,7 +1108,6 @@ describe("GET /api/v1/task-groups（R-7 任务聚合组列表）", () => {
       code: await taskCode(tGroupMain, project!),
       projectId: project!.projectId,
       moduleId: project!.moduleId,
-      featureId: null,
     });
     expect(
       active.branches.map((branch) => [
@@ -1168,8 +1118,6 @@ describe("GET /api/v1/task-groups（R-7 任务聚合组列表）", () => {
         branch.priority,
         branch.moduleId,
         branch.moduleName,
-        branch.featureId,
-        branch.featureName,
         branch.dueAt,
         branch.publishedRecordCount,
       ]),
@@ -1182,8 +1130,6 @@ describe("GET /api/v1/task-groups（R-7 任务聚合组列表）", () => {
         "HIGH",
         project!.moduleId,
         "未分类",
-        null,
-        null,
         isoAt(9),
         0,
       ],
@@ -1195,8 +1141,6 @@ describe("GET /api/v1/task-groups（R-7 任务聚合组列表）", () => {
         "NORMAL",
         project!.moduleId,
         "未分类",
-        null,
-        null,
         isoAt(7),
         0,
       ],
@@ -1208,8 +1152,6 @@ describe("GET /api/v1/task-groups（R-7 任务聚合组列表）", () => {
         "NORMAL",
         project!.moduleId,
         "未分类",
-        null,
-        null,
         null,
         0,
       ],
@@ -1403,7 +1345,7 @@ describe("GET /api/v1/task-groups（R-7 任务聚合组列表）", () => {
       maintenanceGroup,
     );
 
-    // 只有列表被收窄：R-1 详情不按项目状态过滤，任务看板与功能档案入口不受影响。
+    // 只有列表被收窄：R-1 详情不按项目状态过滤，任务看板与模块任务入口不受影响。
     const detail = taskGroupDetailResponseSchema.parse(
       (
         await getJson(

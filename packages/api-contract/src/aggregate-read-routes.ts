@@ -22,7 +22,7 @@ export const aggregateReadRoutes: readonly RouteDefinition[] = [
     path: "/task-groups/{groupId}",
     operationId: "getTaskGroup",
     summary:
-      "F-25 任务聚合组视图：按 groupId 反查项目归属并按实时成员关系授权，返回组标识与全部成员（含已解除成员、任务原数据、任务优先级、所属功能名称与每任务 PUBLISHED 记录数）；记录列表由 listTaskGroupRecords 子资源分页提供。",
+      "F-25 任务聚合组视图：按 groupId 反查项目归属并按实时成员关系授权，返回组标识与全部成员（含已解除成员、任务原数据、任务优先级、所属模块名称与每任务 PUBLISHED 记录数）；记录列表由 listTaskGroupRecords 子资源分页提供。",
     request: {
       path: "TaskGroupPath",
       query: "none",
@@ -52,7 +52,7 @@ export const aggregateReadRoutes: readonly RouteDefinition[] = [
     path: "/task-groups/{groupId}/records",
     operationId: "listTaskGroupRecords",
     summary:
-      "F-25 聚合组记录列表：只返回 PUBLISHED 与 VOID 记录，可按成员任务过滤，按 recordId DESC 游标分页，并附记录所属功能名称与记录上的 GitHub 链接快照。",
+      "F-25 聚合组记录列表：只返回 PUBLISHED 与 VOID 记录，可按成员任务过滤，按 recordId DESC 游标分页，并附记录所属模块名称与记录上的 GitHub 链接快照。",
     request: {
       path: "TaskGroupPath",
       query: "TaskGroupRecordQueryRequest",
@@ -82,7 +82,7 @@ export const aggregateReadRoutes: readonly RouteDefinition[] = [
     path: "/projects/{projectId}/overview",
     operationId: "getProjectOverview",
     summary:
-      "F-29 项目概览：服务端聚合活跃模块数、活跃功能数、未完成任务、迭代记录数、最近迭代、待处理遗留问题总数与列表；统计口径按功能设计 §29，无权限项目统一 404；recentRecordLimit 默认 3、activeLeftoverLimit 默认 2，上限 10。",
+      "F-29 项目概览：服务端聚合活跃模块数、未完成任务、迭代记录数、最近迭代、待处理遗留问题总数与列表；统计口径按功能设计 §29，无权限项目统一 404；recentRecordLimit 默认 3、activeLeftoverLimit 默认 2，上限 10。",
     request: {
       path: "ProjectPath",
       query: "ProjectOverviewQueryRequest",
@@ -112,7 +112,7 @@ export const aggregateReadRoutes: readonly RouteDefinition[] = [
     path: "/projects/{projectId}/task-board",
     operationId: "getProjectTaskBoard",
     summary:
-      "R-8 项目任务看板：服务端按项目聚合任务看板数据，返回项目级统计（完成率、未完成、逾期、今日到期、本周完成、功能数与成员数）、按模块分组的泳道（模块统计、负责人头像组与任务卡）。看板集合为项目内 lifecycle_status = ACTIVE 的任务并排除任务组历史来源分支，已取消任务保留为历史标记但不计入完成率分母；卡片截止状态（逾期 / 今日 / 计划中）由服务端按 Asia/Shanghai 计算；任务超过 1000 条时截断并置 truncated，统计仍为全量口径；无权限项目统一 404。",
+      "R-8 项目任务看板：服务端按项目聚合任务看板数据，返回项目级统计（完成率、未完成、逾期、今日到期、本周完成、模块数与成员数）、按模块分组的泳道（模块统计、负责人头像组与任务卡）。看板集合为项目内 lifecycle_status = ACTIVE 的任务并排除任务组历史来源分支，已取消任务保留为历史标记但不计入完成率分母；卡片截止状态（逾期 / 今日 / 计划中）由服务端按 Asia/Shanghai 计算；任务超过 1000 条时截断并置 truncated，统计仍为全量口径；无权限项目统一 404。",
     request: {
       path: "ProjectPath",
       query: "none",
@@ -172,7 +172,7 @@ export const aggregateReadRoutes: readonly RouteDefinition[] = [
     path: "/me/tasks",
     operationId: "listMyTasks",
     summary:
-      "F-32 我的任务：跨项目列出当前用户负责或创建的任务，返回优先级、截止与完成时间、创建者、外部链接数、聚合组关系、PUBLISHED 记录数与遗留问题来源标记（hasLeftoverSource，裁决修订 D-2），并附统计卡片与遗留问题入口；服务端按 AuthorizedProjectScope 过滤并固定 id DESC 游标分页；维护中（MAINTENANCE）项目不产出任务卡片（2026-09-30 口径）：项目范围先剔除维护中项目，未完成与已完成两档、统计卡片与遗留问题入口共用同一集合，未开始 / 进行中项目不受影响；V1 支持 ownership / projectId / scopeType / workStatus / hasPublishedRecord / priority / includeCanceled 七项筛选，其中 ownership 只区分 ASSIGNEE（负责，缺省）与 CREATOR（创建）两个当前用户自指维度，不接受任何他人身份或授权范围参数。",
+      "F-32 我的任务：跨项目列出当前用户负责或创建的任务，返回优先级、截止与完成时间、创建者、外部链接数、聚合组关系、PUBLISHED 记录数与遗留问题来源标记（hasLeftoverSource，裁决修订 D-2），并附统计卡片与遗留问题入口；服务端按 AuthorizedProjectScope 过滤并固定 id DESC 游标分页；维护中（MAINTENANCE）项目不产出任务卡片（2026-09-30 口径）：项目范围先剔除维护中项目，未完成与已完成两档、统计卡片与遗留问题入口共用同一集合，未开始 / 进行中项目不受影响；V1 支持 ownership / projectId / workStatus / hasPublishedRecord / priority / includeCanceled 六项筛选，其中 ownership 只区分 ASSIGNEE（负责，缺省）与 CREATOR（创建）两个当前用户自指维度，不接受任何他人身份或授权范围参数。",
     request: {
       path: "none",
       query: "MyTasksQueryRequest",
@@ -232,7 +232,7 @@ export const aggregateReadRoutes: readonly RouteDefinition[] = [
     path: "/task-groups",
     operationId: "listTaskGroups",
     summary:
-      "R-7 任务聚合组列表（F-25）：跨项目按 AuthorizedProjectScope 汇总当前用户作为活跃分支任务负责人的聚合组（与自己无关的组不返回，组关闭后成员全部解除因此不再返回）；维护中（MAINTENANCE）项目不产出任务卡片（2026-09-30 口径）：项目范围先剔除维护中项目，与 R-3 任务卡片口径一致；分支主任务在前、来源任务按 joinedAt 升序，携带优先级、工作状态、模块/功能名称、截止时间与 PUBLISHED 迭代记录数；已解除成员不进入摘要；按 groupId DESC 游标分页，服务端返回原始状态枚举，组的派生展示值（组优先级、归属、截止、迭代合计）由客户端按事实计算。",
+      "R-7 任务聚合组列表（F-25）：跨项目按 AuthorizedProjectScope 汇总当前用户作为活跃分支任务负责人的聚合组（与自己无关的组不返回，组关闭后成员全部解除因此不再返回）；维护中（MAINTENANCE）项目不产出任务卡片（2026-09-30 口径）：项目范围先剔除维护中项目，与 R-3 任务卡片口径一致；分支主任务在前、来源任务按 joinedAt 升序，携带优先级、工作状态、模块名称、截止时间与 PUBLISHED 迭代记录数；已解除成员不进入摘要；按 groupId DESC 游标分页，服务端返回原始状态枚举，组的派生展示值（组优先级、归属、截止、迭代合计）由客户端按事实计算。",
     request: {
       path: "none",
       query: "TaskGroupListQueryRequest",

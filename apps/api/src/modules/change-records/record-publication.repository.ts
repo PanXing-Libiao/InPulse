@@ -5,12 +5,10 @@ export interface PublicationIdentity {
   id: number;
   projectId: number;
   moduleId: number;
-  featureId: number | null;
   taskId: number | null;
   status: string;
   rowVersion: number;
   currentVersion: number;
-  impactFeatureIds: number[];
 }
 @Injectable()
 export class RecordPublicationRepository {
@@ -22,7 +20,7 @@ export class RecordPublicationRepository {
   ) {
     const [row] = await tx.sql<
       PublicationIdentity[]
-    >`SELECT id,project_id AS "projectId",module_id AS "moduleId",feature_id AS "featureId",task_id AS "taskId",status,row_version AS "rowVersion",current_version AS "currentVersion",ARRAY(SELECT i.feature_id FROM app.change_record_feature_impacts i JOIN app.features x ON x.id = i.feature_id AND x.deleted_at IS NULL WHERE i.change_record_id=app.change_records.id ORDER BY i.feature_id) AS "impactFeatureIds" FROM app.change_records WHERE id=${recordId} AND project_id=${projectId} ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
+    >`SELECT id,project_id AS "projectId",module_id AS "moduleId",task_id AS "taskId",status,row_version AS "rowVersion",current_version AS "currentVersion" FROM app.change_records WHERE id=${recordId} AND project_id=${projectId} ${lock ? tx.sql`FOR UPDATE` : tx.sql``}`;
     return row;
   }
 

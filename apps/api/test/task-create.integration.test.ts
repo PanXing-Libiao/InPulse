@@ -26,12 +26,6 @@ import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-r
 import { ModuleManagementRepository } from "../src/modules/modules/module-management.repository.js";
 import { ModulesManagementService } from "../src/modules/modules/modules-management.service.js";
 import { ModuleCreateCommandPort } from "../src/modules/modules/create.command-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
-import { FeatureManagementRepository } from "../src/modules/features/feature-management.repository.js";
-import { FeaturesManagementService } from "../src/modules/features/features-management.service.js";
-import { FeatureCreateCommandPort } from "../src/modules/features/create.command-port.js";
-import { FeatureCandidatesQueryPort } from "../src/modules/search/index.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
 import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
@@ -66,7 +60,6 @@ beforeAll(() => {
     codes = new PostgresProjectCodePort();
   const moduleRead = new PostgresModuleReadPort(),
     moduleQuery = new PostgresModuleQueryPort();
-  const featureRead = new PostgresFeatureReadPort();
   const audit = new PostgresAuditWritePort({
     currentVersion: 1,
     keyFor: () => key,
@@ -82,24 +75,9 @@ beforeAll(() => {
     search,
     postgresProjectMemberPermissions(),
   );
-  const features = new FeaturesManagementService(
-    access,
-    new FeatureCandidatesQueryPort(),
-    moduleQuery,
-    moduleRead,
-    codes,
-    uow,
-    new FeatureManagementRepository(),
-    audit,
-    activity,
-    search,
-    postgresProjectMemberPermissions(),
-  );
   tasks = new TasksManagementService(
     access,
     moduleQuery,
-    new PostgresFeatureQueryPort(),
-    featureRead,
     codes,
     new PostgresProjectMembersQueryPort(),
     uow,
@@ -119,7 +97,6 @@ beforeAll(() => {
     new ProjectCreationLockPort(),
     access,
     new ModuleCreateCommandPort(modules),
-    new FeatureCreateCommandPort(features),
     new TaskCreateCommandPort(tasks),
     postgresProjectMemberPermissions(),
   );
@@ -130,10 +107,6 @@ afterAll(async () => {
 const input = (assigneeId: number, moduleName = "自建模块") =>
   taskCreateRequestSchema.parse({
     module: { kind: "new", input: { name: moduleName } },
-    feature: {
-      kind: "new",
-      input: { name: "新功能", acceptanceCriteria: "响应低于 400ms" },
-    },
     task: {
       title: "联合创建",
       description: "",
@@ -141,7 +114,6 @@ const input = (assigneeId: number, moduleName = "自建模块") =>
       dueAt: null,
       assigneeIds: [assigneeId],
     },
-    impactFeatureIds: [],
   });
 async function fixture() {
   const userId = await createUser(db.sql);
@@ -154,15 +126,13 @@ it("联合创建在一个事务中落库并分配项目业务编号", async () =
     workflow.execute(tx, f.userId, f.projectId, input(f.userId), randomUUID()),
   );
   const [row] =
-    await db.sql`SELECT m.code AS module_code,f.code AS feature_code,f.acceptance_criteria,t.code AS task_code FROM app.tasks t JOIN app.modules m ON m.id=t.module_id AND m.project_id=t.project_id JOIN app.features f ON f.id=t.feature_id AND f.project_id=t.project_id WHERE t.id=${result.taskId}`;
+    await db.sql`SELECT m.code AS module_code,t.code AS task_code FROM app.tasks t JOIN app.modules m ON m.id=t.module_id AND m.project_id=t.project_id WHERE t.id=${result.taskId}`;
   expect(row).toEqual({
     module_code: f.code + "-M-2",
-    feature_code: f.code + "-F-1",
-    acceptance_criteria: "响应低于 400ms",
     task_code: f.code + "-T-1",
   });
 });
-it("无效负责人让已创建模块、功能、编号、投影整笔回滚", async () => {
+it("无效负责人让已创建模块、编号、投影整笔回滚", async () => {
   const f = await fixture(),
     outsider = await createUser(db.sql);
   await expect(
@@ -179,12 +149,7 @@ it("无效负责人让已创建模块、功能、编号、投影整笔回滚", a
   expect(
     await db.sql`SELECT id FROM app.modules WHERE project_id=${f.projectId}`,
   ).toHaveLength(1);
-  for (const table of [
-    "features",
-    "tasks",
-    "activity_projection",
-    "search_projection",
-  ]) {
+  for (const table of ["tasks", "activity_projection", "search_projection"]) {
     expect(
       await db.sql`SELECT 1 FROM ${db.sql("app." + table)} WHERE project_id=${f.projectId}`,
     ).toHaveLength(0);
@@ -213,9 +178,7 @@ it("项目创建锁与已有任务创建并发时保留唯一编号且没有孤�
         actorId: f.userId,
         projectId: f.projectId,
         moduleId: f.moduleId,
-        featureId: null,
         edit: input(f.userId).task,
-        impactFeatureIds: [],
         requestId: randomUUID(),
       }),
     ),
@@ -343,7 +306,6 @@ it("真实 HTTP 联合创建契约返回 200，非法归属在写入前拒绝", 
     expect(await response.json()).toEqual({
       projectId: f.projectId,
       moduleId: expect.any(Number),
-      featureId: expect.any(Number),
       taskId: expect.any(Number),
     });
   } finally {
@@ -369,8 +331,6 @@ it("逾期在分页前过滤，新建未逾期任务不会挤掉较早的逾期�
           actorId: f.userId,
           projectId: f.projectId,
           moduleId: f.moduleId,
-          featureId: null,
-          impactFeatureIds: [],
           edit: {
             ...input(f.userId).task,
             title,

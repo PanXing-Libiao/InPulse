@@ -36,7 +36,6 @@ const projects: readonly ProjectItem[] = [
     memberCount: 3,
     stats: {
       activeModuleCount: 2,
-      activeFeatureCount: 5,
       openTaskCount: 4,
       completedTaskCount: 1,
     },
@@ -55,7 +54,6 @@ const projects: readonly ProjectItem[] = [
     memberCount: 2,
     stats: {
       activeModuleCount: 1,
-      activeFeatureCount: 3,
       openTaskCount: 2,
       completedTaskCount: 1,
     },
@@ -168,9 +166,6 @@ const doneTask: MyTaskListItem = {
   projectName: "注入项目名",
   moduleId: 11,
   moduleName: "未分类",
-  featureId: null,
-  featureName: null,
-  scopeType: "MODULE",
   workStatus: "DONE",
   lifecycleStatus: "ACTIVE",
   priority: "NORMAL",
@@ -469,7 +464,7 @@ describe("TaskCenterPageView", () => {
     const row = table.querySelector("tbody tr");
     expect(row).toHaveClass("tone-prio-done");
     const subtitle = row?.querySelector<HTMLElement>(".feature-list-open span");
-    expect(subtitle?.textContent).toBe("INP-901 · 独立任务 · 模块级");
+    expect(subtitle?.textContent).toBe("INP-901 · 独立任务");
     expect(subtitle?.closest("td")).toBe(row?.children[0]);
   });
 
@@ -535,7 +530,7 @@ describe("TaskCenterPageView", () => {
     expect(
       belonging.querySelector("strong.belonging-project")?.textContent,
     ).toBe("注入项目名");
-    expect(belonging.textContent).toBe("注入项目名 · 访问控制 · MFA 登录");
+    expect(belonging.textContent).toBe("注入项目名 · 访问控制");
   });
 
   it("falls back to the plain project name when the project is not in the port", async () => {
@@ -568,23 +563,22 @@ describe("TaskCenterPageView", () => {
     );
   });
 
-  it("opens no read-only detail dialog and reports the archive location for a feature task card", async () => {
+  it("opens no read-only detail dialog and reports the location for a module task card", async () => {
     const { onOpenTask } = renderView();
     const card = await screen.findByTestId("my-task-101");
     await userEvent.click(card);
 
-    // 任务中心不再弹出只读详情：写操作只在功能档案中，点击卡片即交由页面定位。
+    // 任务中心不再弹出只读详情：写操作只在模块任务页中，点击卡片即交由页面定位。
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("button", { name: "关闭" })).toBeNull();
     expect(onOpenTask).toHaveBeenCalledWith({
       projectId: 1,
       moduleId: 11,
-      featureId: 111,
       taskId: 101,
     });
   });
 
-  it("reports a module-level archive location for a task without a feature", async () => {
+  it("reports the module task location for a task row", async () => {
     const { onOpenTask } = renderView({
       adapter: serverLikeAdapterWith([doneTask]),
       filters: { status: "done" },
@@ -595,7 +589,6 @@ describe("TaskCenterPageView", () => {
     expect(onOpenTask).toHaveBeenCalledWith({
       projectId: 1,
       moduleId: 11,
-      featureId: null,
       taskId: 901,
     });
   });
@@ -832,11 +825,8 @@ describe("TaskCenterPageView", () => {
     expect(cells[0]).toHaveTextContent("任务合并后来源分支历史保留");
     expect(cells[0]).toHaveTextContent("TG-001 · 聚合组 · 4 条分支");
     expect(cells[1]).toHaveTextContent("注入项目名");
-    expect(cells[2]).toHaveTextContent("任务与聚合 / 任务合并");
-    expect(cells[2]).toHaveAttribute(
-      "title",
-      "归属跟随主任务：任务与聚合 / 任务合并",
-    );
+    expect(cells[2]).toHaveTextContent("任务与聚合");
+    expect(cells[2]).toHaveAttribute("title", "归属跟随主任务：任务与聚合");
     expect(cells[3]).toHaveTextContent("陈晓");
     expect(within(cells[4]!).getByText("紧急")).toBeInTheDocument();
     // T-101 已逾期两天、T-102 今天到期：取更早的 T-101，文字色落到逾期的红档。
@@ -1424,12 +1414,11 @@ describe("TaskCenterPageView", () => {
     expect(screen.queryByTestId("my-task-102")).toBeNull();
   });
 
-  it("marks module scope, merge role and priority on member cards opened by the merge filter", async () => {
+  it("marks merge role, priority and record count on member cards opened by the merge filter", async () => {
     // 合并关系筛选是查看已合并任务本身的唯一入口，这条路径下卡片保留且徽章完整。
     renderView({ filters: { relation: "MAIN" } });
 
     const merged = await screen.findByTestId("my-task-102");
-    expect(within(merged).getByText("模块级")).toBeInTheDocument();
     expect(within(merged).getByText("主任务")).toBeInTheDocument();
     expect(within(merged).getByText("高")).toBeInTheDocument();
     expect(within(merged).getByTitle("优先级：高")).toBeInTheDocument();
@@ -1696,7 +1685,6 @@ describe("TaskCenterPageView", () => {
     expect(onOpenTask).toHaveBeenCalledWith({
       projectId: 1,
       moduleId: 11,
-      featureId: null,
       taskId: 821,
     });
 

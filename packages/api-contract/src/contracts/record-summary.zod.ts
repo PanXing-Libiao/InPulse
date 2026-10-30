@@ -76,7 +76,6 @@ export const recordSummaryTotalsSchema = z
   .object({
     projectCount: z.number().int().nonnegative(),
     moduleCount: z.number().int().nonnegative(),
-    featureCount: z.number().int().nonnegative(),
     recordCount: z.number().int().nonnegative(),
     completedTaskCount: z.number().int().nonnegative(),
     missingRecordTaskCount: z.number().int().nonnegative(),
@@ -100,8 +99,6 @@ export const recordSummaryPointSchema = z
     projectName: z.string().min(1).max(200),
     moduleId: id,
     moduleName: z.string().min(1).max(200),
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
     title: z.string().min(1).max(500),
     detail: z.string().min(1).max(1000),
     author: userRefSchema,
@@ -140,7 +137,7 @@ export const recordSummaryIssueSchema = z
 export type RecordSummaryIssue = z.infer<typeof recordSummaryIssueSchema>;
 
 /**
- * 缺口：范围内已完成、但所在功能（无功能时为其模块）在本范围内没有任何
+ * 缺口：范围内已完成、但其所在模块在本范围内没有任何
  * PUBLISHED 记录的任务，年终总结里最容易漏掉。
  */
 export const recordSummaryGapSchema = z
@@ -151,8 +148,6 @@ export const recordSummaryGapSchema = z
     projectName: z.string().min(1).max(200),
     moduleId: id,
     moduleName: z.string().min(1).max(200),
-    featureId: id.nullable(),
-    featureName: z.string().min(1).max(500).nullable(),
     title: z.string().min(1).max(500),
     completedAt: z.iso.datetime(),
     assignee: userRefSchema,
@@ -165,7 +160,7 @@ export type RecordSummaryGap = z.infer<typeof recordSummaryGapSchema>;
 /**
  * 分节事实：groupBy=PROJECT 时是项目，groupBy=MEMBER 时是成员。
  * key 为 String(projectId) 或 String(userId)；recordCount / completedTaskCount
- * 是该分节去重后的计数（模块级记录多功能引用仍计 1 条，与 F-18 统计口径一致）。
+ * 是该分节去重后的计数（与 F-18 统计口径一致）。
  */
 export const recordSummarySectionSchema = z
   .object({
@@ -220,8 +215,7 @@ export const recordSummarySchemas = {
   },
   RecordSummaryTotals: {
     schema: recordSummaryTotalsSchema,
-    summary:
-      "范围内项目 / 模块 / 功能 / 记录 / 已完成任务 / 缺口 / 遗留问题计数",
+    summary: "范围内项目 / 模块 / 记录 / 已完成任务 / 缺口 / 遗留问题计数",
     sensitiveFieldPaths: [],
   },
   RecordSummaryPoint: {

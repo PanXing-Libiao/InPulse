@@ -364,12 +364,12 @@ it("marks aggregated project links with their sources and hides remove on foreig
     ).toBeVisible(),
   );
   expect(screen.getByText("本项目")).toBeVisible();
-  // 解除只在仍有项目级关联时出现；任务 / 功能 / 记录来源须回到各自入口。
+  // 解除只在仍有项目级关联时出现；任务 / 记录来源须回到各自入口。
   expect(screen.getAllByRole("button", { name: /^解除 / })).toHaveLength(1);
   expect(
     screen.queryByRole("button", { name: "解除 Commit 408ade2023db" }),
   ).toBeNull();
   expect(
-    screen.getByText("来自任务 / 功能 / 迭代记录的链接请在各自入口解除关联。"),
+    screen.getByText("来自任务 / 迭代记录的链接请在各自入口解除关联。"),
   ).toBeVisible();
 });

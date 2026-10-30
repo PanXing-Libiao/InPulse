@@ -52,7 +52,6 @@ import {
   DOCUMENT_IMPORT_MAX_TEXT_LENGTH,
   useApplyDocumentImport,
   useAssistDocumentImport,
-  useDocumentImportTargetFeatures,
   useDocumentImportTargetModules,
   usePreviewDocumentImport,
   type DocumentImportIssueView,
@@ -81,7 +80,7 @@ interface MissingItem {
   readonly label: string;
   readonly count: number;
   readonly severity: "ERROR" | "WARNING";
-  /** 缺在哪几条（模块 / 功能 / 任务的名字，最多 3 个）：只说「功能说明 ×1」用户还得自己翻。 */
+  /** 缺在哪几条（模块 / 任务的名字，最多 3 个）：只说「模块说明 ×1」用户还得自己翻。 */
   readonly where: readonly string[];
 }
 /** 「缺在哪几条」最多点几个名，多了缀「等」。 */
@@ -91,9 +90,7 @@ const ASSIGNEE_FIELD = "负责人";
 /** 各层级的标准字段（模板版本 1）：缺哪个就在草稿里补一个空行。 */
 const PROJECT_FIELDS = ["项目编码", "项目说明", "项目成员"] as const;
 const MODULE_FIELDS = ["说明"] as const;
-const FEATURE_FIELDS = ["当前说明", "验收标准", "标签"] as const;
 const TASK_FIELDS = ["负责人", "优先级", "截止", "描述"] as const;
-const MODULE_TASK_EXTRA_FIELDS = ["影响功能"] as const;
 /** 必填字段（不补服务端会拒绝）：与 computeMissingItems 里的 ERROR 项一一对应。 */
 const PROJECT_REQUIRED_FIELDS = ["项目编码", "项目成员"] as const;
 /** 字段名的历史别名：旧模板把成员字段写成「初始成员」，读草稿时要一并认。 */
@@ -152,7 +149,6 @@ function collectDraftTasks(
   const tasks: DocumentDraftTaskView[] = [];
   for (const module of view.modules) {
     tasks.push(...module.tasks);
-    for (const feature of module.features) tasks.push(...feature.tasks);
   }
   return tasks;
 }
@@ -203,10 +199,9 @@ function computeMissingItems(
 ): readonly MissingItem[] {
   const items: MissingItem[] = [];
   const tasks = collectDraftTasks(view);
-  const features = view.modules.flatMap((module) => module.features);
   const taskWhere = (fieldName: string): readonly string[] =>
     emptyWhere(tasks, fieldName, (task) => task.title);
-  // 每条都带上「缺在哪几条」，用户不必拿着「功能说明 ×1」自己去翻。
+  // 每条都带上「缺在哪几条」，用户不必拿着「模块说明 ×1」自己去翻。
   const assignee = countEmpty(tasks, ASSIGNEE_FIELD);
   if (assignee > 0) {
     items.push({
@@ -248,16 +243,6 @@ function computeMissingItems(
       where: emptyWhere(view.modules, "说明", (module) => module.name),
     });
   }
-  const featureDescription = countEmpty(features, "当前说明");
-  if (featureDescription > 0) {
-    items.push({
-      key: "featureDescription",
-      label: "功能说明",
-      count: featureDescription,
-      severity: "WARNING",
-      where: emptyWhere(features, "当前说明", (feature) => feature.name),
-    });
-  }
   const due = countEmpty(tasks, "截止");
   if (due > 0) {
     items.push({
@@ -286,15 +271,13 @@ function countLabel(counts: DocumentDraftView["counts"]): string {
     "已整理 " +
     String(counts.modules) +
     " 模块 · " +
-    String(counts.features) +
-    " 功能 · " +
     String(counts.tasks) +
     " 任务"
   );
 }
 
 /**
- * 助手挂在对话区顶部的那句话：头部已经显示「已整理 N 模块 · N 功能 · N 任务」，
+ * 助手挂在对话区顶部的那句话：头部已经显示「已整理 N 模块 · N 任务」，
  * 这里不再重复计数，改为主动说清还缺哪些信息、怎么补；都齐了就直接说齐了。
  * 必填项（不补会被服务端拒绝，ERROR）与建议项（只影响完整度，WARNING）都逐条点名：
  * 之前建议项只说「N 处，见下方标签」，而下方标签只是个不可点的计数，用户看完仍不知道
@@ -318,7 +301,7 @@ function gapSignature(items: readonly MissingItem[]): string {
 }
 
 /**
- * 缺口明细，例如「缺负责人 ×1（修复重复回调）、功能说明 ×2（退款、查询）」。
+ * 缺口明细，例如「缺负责人 ×1（修复重复回调）、任务描述 ×2（退款、查询）」。
  * 附上条目名，用户才知道要去哪一条补；超过 3 条缀「等」。
  */
 function gapDetail(items: readonly MissingItem[]): string {
@@ -340,7 +323,7 @@ function gapTotal(items: readonly MissingItem[]): number {
 
 /**
  * 导入落地后助手主动汇报的一句：还差多少处需要补充、多少名字待确认，或要素已完好。
- * 只报「需要补充」与「待确认」两个量，不重复头部的模块 / 功能 / 任务规模计数：
+ * 只报「需要补充」与「待确认」两个量，不重复头部的模块 / 任务规模计数：
  * 「缺口」由本地确定性检查算出，「待确认」是姓名对不上成员账号的那些名字。
  */
 function buildImportSummary(
@@ -451,7 +434,6 @@ interface DraftLineRewrite {
 }
 
 const DRAFT_FIELD_LABELS: Readonly<Record<string, string>> = {
-  当前说明: "功能说明",
   说明: "模块说明",
   描述: "任务描述",
   截止: "截止时间",
@@ -702,7 +684,7 @@ export interface DocumentImportModalProps {
   readonly projectId?: number | undefined;
   /**
    * 模块页等固定项目入口传入当前项目名：工具条先标出「在哪个项目下导入」，
-   * 项目本身不可切换，只能继续选所属模块与功能。
+   * 项目本身不可切换，只能继续选所属模块。
    */
   readonly projectName?: string | undefined;
   /** 项目列表入口允许在工作台内切换新建整项目 / 导入已有项目。 */
@@ -743,9 +725,8 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     projectId,
   );
   const [stage, setStage] = useState<Stage>("INPUT");
-  /** ADR-094：AI 整理目标。未选模块 = 项目根级；未选功能 = 整个模块。 */
+  /** ADR-094：AI 整理目标。未选模块 = 项目根级。 */
   const [targetModuleId, setTargetModuleId] = useState<number | null>(null);
-  const [targetFeatureId, setTargetFeatureId] = useState<number | null>(null);
   const [documentText, setDocumentText] = useState("");
   const [preview, setPreview] =
     useState<ProjectDocumentImportPreviewResponse | null>(null);
@@ -794,19 +775,9 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     client,
     enabled: open && activeMode === "PROJECT",
   });
-  const targetFeaturesQuery = useDocumentImportTargetFeatures({
-    projectId: activeProjectId,
-    moduleId: targetModuleId ?? undefined,
-    client,
-    enabled: open && activeMode === "PROJECT" && targetModuleId !== null,
-  });
   const targetModules = targetModulesQuery.data?.items ?? [];
-  const targetFeatures = targetFeaturesQuery.data?.items ?? [];
   const selectedTargetModule = targetModules.find(
     (module) => module.id === targetModuleId,
-  );
-  const selectedTargetFeature = targetFeatures.find(
-    (feature) => feature.id === targetFeatureId,
   );
   const draftLines = useMemo(
     () => parseDocumentDraft(documentText),
@@ -868,7 +839,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     ? null
     : draftStructured
       ? buildAssistGapReport(missingItems)
-      : "这份内容还没整理成模板结构（没有项目段或模块段）。点「交给 AI 整理」我会归纳出模块、功能与任务；也可以自己按层级补上项目段与模块段。";
+      : "这份内容还没整理成模板结构（没有项目段或模块段）。点「交给 AI 整理」我会归纳出模块与任务；也可以自己按层级补上项目段与模块段。";
 
   /**
    * 导入落地后助手主动汇报一次：还差多少处要补、多少名字待确认，或要素已完好。
@@ -934,7 +905,6 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
     announcedGapReplyRef.current = null;
     setStage("INPUT");
     setTargetModuleId(null);
-    setTargetFeatureId(null);
     setDocumentText("");
     setPreview(null);
     setLocalError(null);
@@ -969,20 +939,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
       return;
     }
     setTargetModuleId(null);
-    setTargetFeatureId(null);
   }, [targetModuleId, targetModulesQuery.data]);
-
-  useEffect(() => {
-    if (targetFeatureId === null || targetFeaturesQuery.data === undefined) {
-      return;
-    }
-    if (
-      targetFeaturesQuery.data.items.some((item) => item.id === targetFeatureId)
-    ) {
-      return;
-    }
-    setTargetFeatureId(null);
-  }, [targetFeatureId, targetFeaturesQuery.data]);
 
   /**
    * 空态点「直接粘贴文本」后光标直接落在文本区，用户接着 Ctrl+V 就行，不用再点一下输入框。
@@ -1086,7 +1043,6 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
           ? {
               projectId: activeProjectId,
               moduleId: targetModuleId,
-              featureId: targetFeatureId,
             }
           : undefined;
       const result = await assistMutation.mutateAsync(
@@ -1747,9 +1703,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
             {missingFields(
               task.title,
               task.fields,
-              task.scope === "MODULE"
-                ? [...TASK_FIELDS, ...MODULE_TASK_EXTRA_FIELDS]
-                : TASK_FIELDS,
+              TASK_FIELDS,
               TASK_REQUIRED_FIELDS,
               task.lineIndex,
             )}
@@ -1815,29 +1769,6 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
                 module.lineIndex,
               )}
             </div>
-            {module.features.map((feature) => (
-              <div className="import-draft-feature" key={feature.lineIndex}>
-                <div className="import-draft-funcname">
-                  {draftValue(
-                    feature.lineIndex,
-                    feature.name,
-                    "（未命名功能）",
-                    "功能名称：" + feature.name,
-                  )}
-                </div>
-                <div className="import-draft-desc">
-                  {feature.fields.map((field) => fieldRow(field, feature.name))}
-                  {missingFields(
-                    feature.name,
-                    feature.fields,
-                    FEATURE_FIELDS,
-                    [],
-                    feature.lineIndex,
-                  )}
-                </div>
-                {taskRows(feature.tasks)}
-              </div>
-            ))}
             {taskRows(module.tasks)}
           </div>
         ))}
@@ -1926,17 +1857,12 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
 
   const handleTargetModuleChange = (next: number | string): void => {
     setTargetModuleId(next === "root" ? null : Number(next));
-    setTargetFeatureId(null);
-  };
-  const handleTargetFeatureChange = (next: number | string): void => {
-    setTargetFeatureId(next === "module" ? null : Number(next));
   };
 
   const resetImportContext = (): void => {
     setStage("INPUT");
     setPreview(null);
     setTargetModuleId(null);
-    setTargetFeatureId(null);
     setLocalError(null);
     setAssistError(null);
     setAssistIssues([]);
@@ -1996,28 +1922,10 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
         description: module.kind === "UNCLASSIFIED" ? "未分类" : module.code,
       })),
     ];
-    const featureOptions = [
-      {
-        value: "module",
-        label: "整个模块",
-        description: "新增功能或模块级任务",
-      },
-      ...targetFeatures.map((feature) => ({
-        value: String(feature.id),
-        label: feature.name,
-        description: feature.code,
-      })),
-    ];
     const summary =
-      selectedTargetModule !== undefined && selectedTargetFeature !== undefined
-        ? "AI 将在模块「" +
-          selectedTargetModule.name +
-          " / " +
-          selectedTargetFeature.name +
-          "」下整理任务"
-        : selectedTargetModule !== undefined
-          ? "AI 将在模块「" + selectedTargetModule.name + "」下整理功能与任务"
-          : "AI 将在项目根级整理模块与任务";
+      selectedTargetModule !== undefined
+        ? "AI 将在模块「" + selectedTargetModule.name + "」下整理任务"
+        : "AI 将在项目根级整理模块与任务";
 
     const targetNotes: string[] = [];
     if (showTarget) {
@@ -2026,16 +1934,6 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
       }
       if (targetModulesQuery.isSuccess && targetModules.length === 0) {
         targetNotes.push("项目还没有模块，本次只能在项目根级创建。");
-      }
-      if (targetModuleId !== null && targetFeaturesQuery.isError) {
-        targetNotes.push("功能目录加载失败，暂时只能整理到整个模块。");
-      }
-      if (
-        targetModuleId !== null &&
-        targetFeaturesQuery.isSuccess &&
-        targetFeatures.length === 0
-      ) {
-        targetNotes.push("该模块还没有功能，可以新建功能或模块级任务。");
       }
     }
 
@@ -2129,28 +2027,6 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
                 onChange={handleTargetModuleChange}
                 options={moduleOptions}
               />
-              {targetModuleId === null ? null : (
-                <>
-                  <span className="import-target-crumb" aria-hidden="true">
-                    /
-                  </span>
-                  <CalmSelect
-                    className="import-target-select"
-                    ariaLabel="所属功能"
-                    value={
-                      targetFeatureId === null
-                        ? "module"
-                        : String(targetFeatureId)
-                    }
-                    appearance="notion"
-                    width={150}
-                    loading={targetFeaturesQuery.isPending}
-                    disabled={busy || assistBusy}
-                    onChange={handleTargetFeatureChange}
-                    options={featureOptions}
-                  />
-                </>
-              )}
               <span
                 className="import-target-summary"
                 data-testid="document-import-target-summary"
@@ -2376,11 +2252,9 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
           className="import-summary-line"
           data-testid="document-import-summary"
         >
-          计划创建模块 {preview.summary.moduleCreateCount} 个、功能{" "}
-          {preview.summary.featureCreateCount} 个、任务{" "}
+          计划创建模块 {preview.summary.moduleCreateCount} 个、任务{" "}
           {preview.summary.taskCreateCount} 个；复用模块{" "}
-          {preview.summary.moduleReuseCount} 个、功能{" "}
-          {preview.summary.featureReuseCount} 个。
+          {preview.summary.moduleReuseCount} 个。
         </p>
         {preview.project !== null ? (
           <div className="import-preview-proj">
@@ -2413,12 +2287,8 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
         ) : null}
         <div className="import-plan-cards">
           {preview.modules.map((module) => {
-            const features = preview.features.filter(
-              (feature) => feature.moduleName === module.name,
-            );
             const moduleTasks = preview.tasks.filter(
-              (task) =>
-                task.moduleName === module.name && task.scope === "MODULE",
+              (task) => task.moduleName === module.name,
             );
             return (
               <div className="import-plan-card" key={"module-" + module.line}>
@@ -2434,54 +2304,9 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
                     {module.action === "REUSE" ? "复用模块" : "新建模块"}
                   </em>
                 </div>
-                {features.map((feature) => {
-                  const tasks = preview.tasks.filter(
-                    (task) =>
-                      task.scope === "FEATURE" &&
-                      task.moduleName === feature.moduleName &&
-                      task.featureName === feature.name,
-                  );
-                  return (
-                    <div
-                      className="import-plan-block"
-                      key={"feature-" + feature.line}
-                    >
-                      <div className="import-plan-func">
-                        {feature.name}
-                        <em
-                          className={
-                            feature.action === "REUSE"
-                              ? "import-tag is-reuse"
-                              : "import-tag is-feature"
-                          }
-                        >
-                          {feature.action === "REUSE" ? "复用功能" : "新建功能"}
-                        </em>
-                      </div>
-                      {tasks.map((task) => (
-                        <div
-                          className="import-plan-task"
-                          key={"task-" + task.line}
-                        >
-                          <span className="import-plan-taskname">
-                            {task.title}
-                          </span>
-                          <span className="import-plan-taskmeta">
-                            {task.assignees.map((item) => item.name).join("、")}
-                            {" · "}
-                            {PRIORITY_LABELS[task.priority] ?? task.priority}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
                 {moduleTasks.map((task) => (
                   <div className="import-plan-task" key={"task-" + task.line}>
-                    <span className="import-plan-taskname">
-                      {task.title}
-                      <em className="import-tag is-module-task">模块级任务</em>
-                    </span>
+                    <span className="import-plan-taskname">{task.title}</span>
                     <span className="import-plan-taskmeta">
                       {task.assignees.map((item) => item.name).join("、")}
                       {" · "}
@@ -2565,7 +2390,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
             ? "从文档导入"
             : activeMode === "NEW_PROJECT"
               ? "从文档导入整项目"
-              : "从文档导入模块与功能"
+              : "从文档导入模块与任务"
         }
         destroyOnHidden
         mask={{ closable: false }}
@@ -2728,7 +2553,7 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
             >
               <summary>必填要素</summary>
               <p>
-                项目名称、项目编码（大写字母开头）、参加人员（填写姓名，须包含创建者本人与全部任务负责人），以及模块名称、功能名称与各项任务的标题、负责人。功能隶属于模块，任务可隶属于模块或功能。
+                项目名称、项目编码（大写字母开头）、参加人员（填写姓名，须包含创建者本人与全部任务负责人），以及模块名称与各项任务的标题、负责人。任务直接隶属于模块。
               </p>
               <p>
                 参加人员、说明、截止时间与描述等建议一并提供，以便 AI

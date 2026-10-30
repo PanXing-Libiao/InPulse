@@ -81,8 +81,7 @@ export function UnmergeTaskGroupButton({
           "Idempotency-Key": retry.current.key,
         },
       });
-      // modules / features / project-overview：解除合并会把来源分支放回有效任务
-      // 口径，功能与模块卡的档位和概览统计必须同批失效（2026-09-24 修）。
+      // 解除合并会把来源分支放回有效任务，需同时失效任务、模块和概览查询。
       await Promise.all([
         cache.invalidateQueries({ queryKey: ["task-group"] }),
         cache.invalidateQueries({ queryKey: ["task-group-records"] }),
@@ -90,7 +89,6 @@ export function UnmergeTaskGroupButton({
         cache.invalidateQueries({ queryKey: ["task-board"] }),
         cache.invalidateQueries({ queryKey: ["my-tasks"] }),
         cache.invalidateQueries({ queryKey: ["modules"] }),
-        cache.invalidateQueries({ queryKey: ["features"] }),
         cache.invalidateQueries({ queryKey: ["project-overview"] }),
       ]);
       setOpen(false);

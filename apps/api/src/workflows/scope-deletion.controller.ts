@@ -15,7 +15,7 @@ interface Response {
 }
 
 /**
- * ADR-059：模块与功能删除的 HTTP 入口。只绑定 operationId 并转交工作流，
+ * ADR-096 / ADR-109：模块删除的 HTTP 入口。只绑定 operationId 并转交工作流，
  * 与其它写命令共用同源、CSRF、幂等与错误体口径。
  */
 @Controller("projects")
@@ -36,33 +36,6 @@ export class ScopeDeletionController {
     @ContractHeaders("deleteModule") _headers: unknown,
   ) {
     const result = await this.service.handle("deleteModule", {
-      ...request,
-      headers: request.headers,
-      params,
-      query,
-      body,
-    });
-    response.status(result.status);
-    response.setHeader("Cache-Control", "no-store");
-    if (result.status >= 400)
-      response.setHeader(
-        "X-Request-Id",
-        (result.body as { requestId: string }).requestId,
-      );
-    return result.body;
-  }
-
-  @Post(":projectId/modules/:moduleId/features/:featureId/delete")
-  @Operation("deleteFeature")
-  async deleteFeature(
-    @Req() request: CompletionHttpRequest,
-    @Res({ passthrough: true }) response: Response,
-    @ContractPath("deleteFeature") params: unknown,
-    @ContractQuery("deleteFeature") query: unknown,
-    @ContractBody("deleteFeature") body: unknown,
-    @ContractHeaders("deleteFeature") _headers: unknown,
-  ) {
-    const result = await this.service.handle("deleteFeature", {
       ...request,
       headers: request.headers,
       params,

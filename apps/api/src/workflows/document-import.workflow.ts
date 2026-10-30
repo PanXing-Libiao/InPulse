@@ -27,9 +27,7 @@ import {
   type ActiveUserTokenResolution,
 } from "../modules/projects/projects-write.port.js";
 import { ModuleReadPort } from "../modules/modules/index.js";
-import { FeatureReadPort } from "../modules/features/index.js";
 import { ModuleCreateCommandPort } from "../modules/modules/create.command-port.js";
-import { FeatureCreateCommandPort } from "../modules/features/create.command-port.js";
 import { TaskCreateCommandPort } from "../modules/tasks/create.command-port.js";
 import { TaskQueryPort } from "../modules/tasks/index.js";
 import {
@@ -40,7 +38,6 @@ import {
   normalizeDocumentName,
   parseDocumentTemplate,
   type ParsedDocument,
-  type ParsedTask,
   type ParsedTaskPriority,
 } from "../modules/document-import/document-template.parser.js";
 import { ProjectBootstrapWorkflow } from "../modules/projects/project-bootstrap.workflow.js";
@@ -78,35 +75,15 @@ interface PlannedModule {
   readonly code: string | null;
 }
 
-interface PlannedFeature {
-  readonly line: number;
-  readonly moduleIndex: number;
-  readonly featureIndex: number;
-  readonly name: string;
-  readonly currentBehavior: string;
-  readonly acceptanceCriteria: string | null;
-  readonly tags: readonly string[];
-  readonly action: "CREATE" | "REUSE";
-  readonly featureId: number | null;
-  readonly code: string | null;
-}
-
-export type PlannedImpactRef =
-  | { readonly kind: "local"; readonly featureIndex: number }
-  | { readonly kind: "existing"; readonly featureId: number };
-
 interface PlannedTask {
   readonly line: number;
-  readonly scope: "FEATURE" | "MODULE";
   readonly moduleIndex: number;
-  readonly featureIndex: number | null;
   readonly title: string;
   readonly assigneeIds: readonly number[];
   readonly assignees: readonly DocumentImportMemberRef[];
   readonly priority: ParsedTaskPriority;
   readonly dueAt: string | null;
   readonly description: string;
-  readonly impactRefs: readonly PlannedImpactRef[];
 }
 
 interface PlannedProject {
@@ -123,7 +100,6 @@ interface DocumentImportPlan {
   readonly digest: string;
   readonly issues: DocumentImportIssue[];
   readonly modules: readonly PlannedModule[];
-  readonly features: readonly PlannedFeature[];
   readonly tasks: readonly PlannedTask[];
   readonly project: PlannedProject | null;
   readonly duplicate: DocumentImportDuplicateRecord | null;
@@ -141,15 +117,6 @@ function pushIssue(
     return;
   }
   issues.push(issue);
-}
-
-function sameStringSets(a: readonly string[], b: readonly string[]): boolean {
-  if (a.length !== b.length) {
-    return false;
-  }
-  const left = [...a].sort();
-  const right = [...b].sort();
-  return left.every((value, index) => value === right[index]);
 }
 
 /**
@@ -173,12 +140,9 @@ export class DocumentImportWorkflow {
     private readonly members: ProjectMembersQueryPort,
     @Inject(ProjectCodePort) private readonly codes: ProjectCodePort,
     @Inject(ModuleReadPort) private readonly moduleRead: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly featureRead: FeatureReadPort,
     @Inject(TaskQueryPort) private readonly taskQuery: TaskQueryPort,
     @Inject(ModuleCreateCommandPort)
     private readonly moduleCreate: ModuleCreateCommandPort,
-    @Inject(FeatureCreateCommandPort)
-    private readonly featureCreate: FeatureCreateCommandPort,
     @Inject(TaskCreateCommandPort)
     private readonly taskCreate: TaskCreateCommandPort,
     @Inject(DocumentImportRunRepository)
@@ -191,7 +155,7 @@ export class DocumentImportWorkflow {
   ) {}
 
   /**
-   * ADR-094：解析 AI 辅助转换目标。项目写权限与模块 / 功能的真实归属都在
+   * ADR-094：解析 AI 辅助转换目标。项目写权限与模块的真实归属都在
    * 同一个只读短事务内校验；不存在与无权访问统一按 404，避免泄露资源存在性。
    * 调用方必须在事务外发起上游请求。
    */
@@ -223,30 +187,11 @@ export class DocumentImportWorkflow {
     if (module === undefined) {
       throw this.targetNotFound();
     }
-    if (target.featureId === null) {
-      return {
-        kind: "MODULE",
-        projectId: target.projectId,
-        moduleId: module.moduleId,
-        moduleName: module.name,
-      };
-    }
-    const feature = await this.featureRead.find(
-      tx,
-      target.projectId,
-      target.moduleId,
-      target.featureId,
-    );
-    if (feature === undefined) {
-      throw this.targetNotFound();
-    }
     return {
-      kind: "FEATURE",
+      kind: "MODULE",
       projectId: target.projectId,
       moduleId: module.moduleId,
       moduleName: module.name,
-      featureId: feature.featureId,
-      featureName: feature.name,
     };
   }
 
@@ -330,13 +275,6 @@ export class DocumentImportWorkflow {
       tokens.push(token);
     }
     for (const module of input.parsed.modules) {
-      for (const feature of module.features) {
-        for (const task of feature.tasks) {
-          for (const token of task.assigneeTokens) {
-            tokens.push(token);
-          }
-        }
-      }
       for (const task of module.tasks) {
         for (const token of task.assigneeTokens) {
           tokens.push(token);
@@ -346,14 +284,7 @@ export class DocumentImportWorkflow {
     const byToken = await this.resolveTokens(tx, tokens);
 
     const modules = await this.planModules(tx, input, error, warning);
-    const features = await this.planFeatures(
-      tx,
-      input,
-      modules,
-      error,
-      warning,
-    );
-    const tasks = await this.planTasks(tx, input, modules, byToken, error);
+    const tasks = await this.planTasks(input, byToken, error);
 
     if (input.mode === "PROJECT" && input.projectId !== null) {
       const activeMemberIds = new Set(
@@ -491,15 +422,10 @@ export class DocumentImportWorkflow {
 
     const summary: DocumentImportSummary = {
       moduleCount: modules.length,
-      featureCount: features.length,
       taskCount: tasks.length,
       moduleCreateCount: modules.filter((item) => item.action === "CREATE")
         .length,
       moduleReuseCount: modules.filter((item) => item.action === "REUSE")
-        .length,
-      featureCreateCount: features.filter((item) => item.action === "CREATE")
-        .length,
-      featureReuseCount: features.filter((item) => item.action === "REUSE")
         .length,
       taskCreateCount: tasks.length,
       memberAddCount: plannedProject?.memberIds.length ?? 0,
@@ -510,7 +436,6 @@ export class DocumentImportWorkflow {
       digest: input.parsed.digest,
       issues,
       modules,
-      features,
       tasks,
       project: plannedProject,
       duplicate,
@@ -604,127 +529,25 @@ export class DocumentImportWorkflow {
     return planned;
   }
 
-  private async planFeatures(
-    tx: TransactionContext,
-    input: {
-      readonly mode: DocumentImportMode;
-      readonly projectId: number | null;
-      readonly parsed: ParsedDocument;
-    },
-    modules: readonly PlannedModule[],
-    error: (line: number, code: string, message: string) => void,
-    warning: (line: number, code: string, message: string) => void,
-  ): Promise<PlannedFeature[]> {
-    const planned: PlannedFeature[] = [];
-    for (const [moduleIndex, module] of input.parsed.modules.entries()) {
-      const modulePlan = modules[moduleIndex]!;
-      for (const [featureIndex, feature] of module.features.entries()) {
-        const fallback: PlannedFeature = {
-          line: feature.line,
-          moduleIndex,
-          featureIndex,
-          name: feature.name,
-          currentBehavior: feature.currentBehavior,
-          acceptanceCriteria: feature.acceptanceCriteria,
-          tags: feature.tags,
-          action: "CREATE",
-          featureId: null,
-          code: null,
-        };
-        const reuseScope =
-          input.mode === "PROJECT" &&
-          input.projectId !== null &&
-          modulePlan.action === "REUSE" &&
-          modulePlan.moduleId !== null;
-        if (!reuseScope) {
-          planned.push(fallback);
-          continue;
-        }
-        const matches = await this.featureRead.matchByName(
-          tx,
-          input.projectId!,
-          modulePlan.moduleId!,
-          normalizeDocumentName(feature.name),
-        );
-        const active = matches.filter((item) => !item.deleted);
-        if (active.length > 1) {
-          error(
-            feature.line,
-            "FEATURE_NAME_AMBIGUOUS",
-            "模块内存在多个同名功能「" + feature.name + "」，无法确定复用对象",
-          );
-          planned.push(fallback);
-          continue;
-        }
-        if (active.length === 0) {
-          planned.push(fallback);
-          continue;
-        }
-        const existing = active[0]!;
-        const behaviorDiffers =
-          feature.currentBehavior !== "" &&
-          feature.currentBehavior !== existing.currentBehavior;
-        const acceptanceDiffers =
-          feature.acceptanceCriteria !== null &&
-          feature.acceptanceCriteria !== existing.acceptanceCriteria;
-        const tagsDiffer =
-          feature.tags.length > 0 &&
-          !sameStringSets(feature.tags, existing.tags);
-        if (behaviorDiffers || acceptanceDiffers || tagsDiffer) {
-          warning(
-            feature.line,
-            "FEATURE_REUSE_DIFFERS",
-            "功能「" +
-              feature.name +
-              "」已存在且当前说明/验收标准/标签与文档不一致；复用不会覆盖现有内容",
-          );
-        }
-        planned.push({
-          ...fallback,
-          action: "REUSE",
-          featureId: existing.featureId,
-          code: existing.code,
-        });
-      }
-    }
-    return planned;
-  }
-
   private async planTasks(
-    tx: TransactionContext,
     input: {
       readonly mode: DocumentImportMode;
       readonly projectId: number | null;
       readonly parsed: ParsedDocument;
     },
-    modules: readonly PlannedModule[],
     byToken: ReadonlyMap<string, ActiveUserTokenResolution>,
     error: (line: number, code: string, message: string) => void,
   ): Promise<PlannedTask[]> {
     const planned: PlannedTask[] = [];
     for (const [moduleIndex, module] of input.parsed.modules.entries()) {
-      const modulePlan = modules[moduleIndex]!;
-      const entries: {
-        readonly task: ParsedTask;
-        readonly featureIndex: number | null;
-      }[] = [];
-      for (const [featureIndex, feature] of module.features.entries()) {
-        for (const task of feature.tasks) {
-          entries.push({ task, featureIndex });
-        }
-      }
       for (const task of module.tasks) {
-        entries.push({ task, featureIndex: null });
-      }
-      entries.sort((a, b) => a.task.line - b.task.line);
-      for (const entry of entries) {
         const assignees: DocumentImportMemberRef[] = [];
         const assigneeIds = new Set<number>();
-        for (const token of entry.task.assigneeTokens) {
+        for (const token of task.assigneeTokens) {
           const resolution = byToken.get(normalizeDocumentName(token));
           if (resolution === undefined || resolution.kind === "not-found") {
             error(
-              entry.task.line,
+              task.line,
               "ASSIGNEE_UNRESOLVED",
               "负责人「" + token + "」未找到匹配的启用用户；请使用登录名或姓名",
             );
@@ -732,7 +555,7 @@ export class DocumentImportWorkflow {
           }
           if (resolution.kind === "ambiguous") {
             error(
-              entry.task.line,
+              task.line,
               "ASSIGNEE_AMBIGUOUS",
               "负责人「" + token + "」匹配到多个用户，请改用登录名",
             );
@@ -748,93 +571,19 @@ export class DocumentImportWorkflow {
             name: resolution.name,
           });
         }
-        let impactRefs: PlannedImpactRef[] = [];
-        if (entry.task.scope === "MODULE") {
-          impactRefs = await this.resolveImpactRefs(
-            tx,
-            input,
-            module,
-            modulePlan,
-            entry.task,
-            error,
-          );
-        }
         planned.push({
-          line: entry.task.line,
-          scope: entry.task.scope,
+          line: task.line,
           moduleIndex,
-          featureIndex: entry.featureIndex,
-          title: entry.task.title,
+          title: task.title,
           assigneeIds: [...assigneeIds].sort((a, b) => a - b),
           assignees,
-          priority: entry.task.priority,
-          dueAt: entry.task.dueAt,
-          description: entry.task.description,
-          impactRefs,
+          priority: task.priority,
+          dueAt: task.dueAt,
+          description: task.description,
         });
       }
     }
     return planned;
-  }
-
-  private async resolveImpactRefs(
-    tx: TransactionContext,
-    input: {
-      readonly mode: DocumentImportMode;
-      readonly projectId: number | null;
-    },
-    module: ParsedDocument["modules"][number],
-    modulePlan: PlannedModule,
-    task: ParsedTask,
-    error: (line: number, code: string, message: string) => void,
-  ): Promise<PlannedImpactRef[]> {
-    const refs: PlannedImpactRef[] = [];
-    for (const name of task.impactFeatureNames) {
-      const normalized = normalizeDocumentName(name);
-      const localIndex = module.features.findIndex(
-        (feature) => normalizeDocumentName(feature.name) === normalized,
-      );
-      if (localIndex >= 0) {
-        refs.push({ kind: "local", featureIndex: localIndex });
-        continue;
-      }
-      const canLookupExisting =
-        input.mode === "PROJECT" &&
-        input.projectId !== null &&
-        modulePlan.action === "REUSE" &&
-        modulePlan.moduleId !== null;
-      if (canLookupExisting) {
-        const matches = await this.featureRead.matchByName(
-          tx,
-          input.projectId!,
-          modulePlan.moduleId!,
-          normalized,
-        );
-        const active = matches.filter((item) => !item.deleted);
-        if (active.length === 1) {
-          refs.push({ kind: "existing", featureId: active[0]!.featureId });
-          continue;
-        }
-        if (active.length > 1) {
-          error(
-            task.line,
-            "IMPACT_FEATURE_AMBIGUOUS",
-            "影响功能「" + name + "」匹配到多个功能，无法确定引用对象",
-          );
-          continue;
-        }
-      }
-      error(
-        task.line,
-        "IMPACT_FEATURE_UNRESOLVED",
-        "影响功能「" +
-          name +
-          "」在模块「" +
-          module.name +
-          "」内不存在；请先在本模块定义该功能",
-      );
-    }
-    return refs;
   }
 
   /** 项目内导入预览：只读不写库，返回计划、行级问题与重复导入提示。 */
@@ -924,11 +673,8 @@ export class DocumentImportWorkflow {
       throw this.duplicateDocument(plan.duplicate);
     }
     const required: ProjectMemberPermissionCapability[] = [];
-    if (
-      plan.summary.moduleCreateCount > 0 ||
-      plan.summary.featureCreateCount > 0
-    ) {
-      required.push("moduleFeatureEdit");
+    if (plan.summary.moduleCreateCount > 0) {
+      required.push("moduleEdit");
     }
     if (plan.summary.taskCreateCount > 0) required.push("taskEdit");
     if (required.length > 0) {
@@ -954,7 +700,7 @@ export class DocumentImportWorkflow {
 
   /**
    * 整项目导入执行：编码唯一约束兜底并发；先创建项目与全部成员（含任务负责人
-   * 自动加入），再按文档创建模块、功能与任务，批次行与审计同一事务。
+   * 自动加入），再按文档创建模块与任务，批次行与审计同一事务。
    */
   async executeNewProject(
     tx: TransactionContext,
@@ -1020,8 +766,8 @@ export class DocumentImportWorkflow {
     const replayCapabilities: ProjectMemberPermissionCapability[] = [
       "projectDocumentImport",
     ];
-    if (context.moduleIds.length > 0 || context.featureIds.length > 0) {
-      replayCapabilities.push("moduleFeatureEdit");
+    if (context.moduleIds.length > 0) {
+      replayCapabilities.push("moduleEdit");
     }
     if (context.taskIds.length > 0) replayCapabilities.push("taskEdit");
     await this.permissions.assertCapabilities(tx, {
@@ -1041,15 +787,6 @@ export class DocumentImportWorkflow {
         moduleIds: context.moduleIds,
       });
       if (found.length !== new Set(context.moduleIds).size) {
-        throw missing();
-      }
-    }
-    if (context.featureIds.length > 0) {
-      const found = await this.featureRead.listNames(tx, {
-        projectIds: [context.projectId],
-        featureIds: context.featureIds,
-      });
-      if (found.length !== new Set(context.featureIds).size) {
         throw missing();
       }
     }
@@ -1141,10 +878,8 @@ export class DocumentImportWorkflow {
         templateVersion: DOCUMENT_IMPORT_TEMPLATE_VERSION,
         actorId: input.actorId,
         moduleCount: input.plan.summary.moduleCreateCount,
-        featureCount: input.plan.summary.featureCreateCount,
         taskCount: input.plan.summary.taskCreateCount,
         reusedModuleCount: input.plan.summary.moduleReuseCount,
-        reusedFeatureCount: input.plan.summary.featureReuseCount,
         addedMemberCount: input.addedMemberCount,
       });
       await this.audit.append(tx, {
@@ -1158,12 +893,9 @@ export class DocumentImportWorkflow {
           digest: input.plan.digest,
           templateVersion: DOCUMENT_IMPORT_TEMPLATE_VERSION,
           moduleCount: input.plan.summary.moduleCount,
-          featureCount: input.plan.summary.featureCount,
           taskCount: input.plan.summary.taskCount,
           createdModuleCount: input.plan.summary.moduleCreateCount,
-          createdFeatureCount: input.plan.summary.featureCreateCount,
           reusedModuleCount: input.plan.summary.moduleReuseCount,
-          reusedFeatureCount: input.plan.summary.featureReuseCount,
           addedMemberCount: input.addedMemberCount,
         },
         requestId: input.requestId,
@@ -1221,85 +953,16 @@ export class DocumentImportWorkflow {
       modules.push({ id: created.id, code: created.code });
     }
 
-    const plannedFeatureIndex = new Map<string, number>();
-    for (const [index, feature] of plan.features.entries()) {
-      plannedFeatureIndex.set(
-        String(feature.moduleIndex) + ":" + String(feature.featureIndex),
-        index,
-      );
-    }
-
-    const featureIds: number[] = [];
-    const features: { id: number; code: string; moduleId: number }[] = [];
-    for (const [index, feature] of plan.features.entries()) {
-      const moduleId = moduleIds[feature.moduleIndex];
-      if (moduleId === undefined) {
-        throw new Error("document import plan has an unknown module index");
-      }
-      if (feature.action === "REUSE" && feature.featureId !== null) {
-        featureIds[index] = feature.featureId;
-        features.push({
-          id: feature.featureId,
-          code: feature.code ?? "",
-          moduleId,
-        });
-        continue;
-      }
-      const created = await this.featureCreate.create(
-        tx,
-        actorId,
-        projectId,
-        moduleId,
-        {
-          name: feature.name,
-          currentBehavior: feature.currentBehavior,
-          ...(feature.acceptanceCriteria === null
-            ? {}
-            : { acceptanceCriteria: feature.acceptanceCriteria }),
-          tags: [...feature.tags],
-        },
-        requestId,
-      );
-      featureIds[index] = created.id;
-      features.push({ id: created.id, code: created.code, moduleId });
-    }
-
     const tasks: CreatedTaskResult[] = [];
     for (const task of plan.tasks) {
       const moduleId = moduleIds[task.moduleIndex];
       if (moduleId === undefined) {
         throw new Error("document import plan has an unknown module index");
       }
-      let featureId: number | null = null;
-      if (task.scope === "FEATURE" && task.featureIndex !== null) {
-        const key = String(task.moduleIndex) + ":" + String(task.featureIndex);
-        const plannedIndex = plannedFeatureIndex.get(key);
-        if (plannedIndex === undefined) {
-          throw new Error("document import plan has an unknown feature index");
-        }
-        featureId = featureIds[plannedIndex] ?? null;
-      }
-      let impactFeatureIds: number[] = [];
-      if (task.scope === "MODULE" && task.impactRefs.length > 0) {
-        impactFeatureIds = task.impactRefs
-          .map((ref): number | null => {
-            if (ref.kind === "existing") {
-              return ref.featureId;
-            }
-            const key =
-              String(task.moduleIndex) + ":" + String(ref.featureIndex);
-            const plannedIndex = plannedFeatureIndex.get(key);
-            if (plannedIndex === undefined) {
-              return null;
-            }
-            return featureIds[plannedIndex] ?? null;
-          })
-          .filter((id): id is number => id !== null);
-      }
       const created = await this.taskCreate.create(
         tx,
         actorId,
-        { projectId, moduleId, featureId, impactFeatureIds },
+        { projectId, moduleId },
         {
           title: task.title,
           description: task.description,
@@ -1309,15 +972,9 @@ export class DocumentImportWorkflow {
         },
         requestId,
       );
-      tasks.push({
-        id: created.id,
-        code: created.code,
-        moduleId,
-        featureId: task.scope === "FEATURE" ? featureId : null,
-        scopeType: task.scope,
-      });
+      tasks.push({ id: created.id, code: created.code, moduleId });
     }
-    return { modules, features, tasks };
+    return { modules, tasks };
   }
 
   private buildPreviewResponse(
@@ -1344,22 +1001,9 @@ export class DocumentImportWorkflow {
         action: module.action,
         moduleId: module.moduleId,
       })),
-      features: plan.features.map((feature) => ({
-        line: feature.line,
-        moduleName: parsed.modules[feature.moduleIndex]!.name,
-        name: feature.name,
-        action: feature.action,
-        featureId: feature.featureId,
-      })),
       tasks: plan.tasks.map((task) => ({
         line: task.line,
-        scope: task.scope,
         moduleName: parsed.modules[task.moduleIndex]!.name,
-        featureName:
-          task.featureIndex === null
-            ? null
-            : parsed.modules[task.moduleIndex]!.features[task.featureIndex]!
-                .name,
         title: task.title,
         assignees: task.assignees.map((ref) => ({ ...ref })),
         priority: task.priority,
@@ -1392,14 +1036,11 @@ export class DocumentImportWorkflow {
       digest: input.plan.digest,
       counts: {
         modules: input.plan.summary.moduleCreateCount,
-        features: input.plan.summary.featureCreateCount,
         tasks: input.plan.summary.taskCreateCount,
         reusedModules: input.plan.summary.moduleReuseCount,
-        reusedFeatures: input.plan.summary.featureReuseCount,
         addedMembers: input.plan.summary.memberAddCount,
       },
       modules: input.created.modules,
-      features: input.created.features,
       tasks: input.created.tasks,
     };
   }
@@ -1407,7 +1048,6 @@ export class DocumentImportWorkflow {
 
 interface CreatedEntities {
   modules: { id: number; code: string }[];
-  features: { id: number; code: string; moduleId: number }[];
   tasks: CreatedTaskResult[];
 }
 
@@ -1415,8 +1055,6 @@ interface CreatedTaskResult {
   readonly id: number;
   readonly code: string;
   readonly moduleId: number;
-  readonly featureId: number | null;
-  readonly scopeType: "FEATURE" | "MODULE";
 }
 
 function uniqueViolation(error: unknown, constraint: string): boolean {

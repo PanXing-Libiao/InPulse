@@ -3,10 +3,6 @@ import { describe, expect, test, vi } from "vitest";
 import type { AuthenticatedSessionActor } from "../src/auth/session-auth.service.js";
 import type { TransactionContext } from "../src/database/transaction-context.js";
 import type {
-  FeatureForWriteResource,
-  FeatureWriteCheckResult,
-} from "../src/modules/features/index.js";
-import type {
   ModuleForWriteResource,
   ModuleWriteCheckResult,
 } from "../src/modules/modules/index.js";
@@ -38,19 +34,11 @@ const moduleResource: ModuleForWriteResource = {
   rowVersion: 1,
 };
 
-const featureResource: FeatureForWriteResource = {
-  projectId: 1,
-  moduleId: 2,
-  featureId: 3,
-  rowVersion: 1,
-};
-
 function setup(
   overrides: {
     actor?: AuthenticatedSessionActor | undefined;
     project?: ProjectWriteCheckResult;
     module?: ModuleWriteCheckResult;
-    feature?: FeatureWriteCheckResult;
   } = {},
 ) {
   const calls: string[] = [];
@@ -72,21 +60,12 @@ function setup(
       return overrides.module ?? { kind: "allowed", resource: moduleResource };
     }),
   };
-  const features = {
-    checkFeatureForWrite: vi.fn(async () => {
-      calls.push("feature");
-      return (
-        overrides.feature ?? { kind: "allowed", resource: featureResource }
-      );
-    }),
-  };
   const workflow = new ProjectWriteAccessWorkflow(
     sessionAuth as never,
     projectAccess as never,
     modules as never,
-    features as never,
   );
-  return { calls, sessionAuth, projectAccess, modules, features, workflow };
+  return { calls, sessionAuth, projectAccess, modules, workflow };
 }
 
 describe("ProjectWriteAccessWorkflow", () => {
@@ -121,99 +100,58 @@ describe("ProjectWriteAccessWorkflow", () => {
     });
   });
 
-  test("actor 未认证时不查询项目、模块或功能", async () => {
-    const { calls, projectAccess, modules, features, workflow } = setup({
+  test("actor 未认证时不查询项目或模块", async () => {
+    const { calls, projectAccess, modules, workflow } = setup({
       actor: undefined,
     });
 
     await expect(
-      workflow.checkFeatureForWrite(tx(), {
+      workflow.checkModuleForWrite(tx(), {
         cookieHeader: undefined,
         projectId: 1,
         moduleId: 2,
-        featureId: 3,
       }),
     ).resolves.toEqual({ kind: "unauthenticated" });
 
     expect(calls).toEqual(["session"]);
     expect(projectAccess.checkProjectForWrite).not.toHaveBeenCalled();
     expect(modules.checkModuleForWrite).not.toHaveBeenCalled();
-    expect(features.checkFeatureForWrite).not.toHaveBeenCalled();
   });
 
-  test("项目 not-found 会阻断模块和功能检查", async () => {
+  test("项目 not-found 会阻断模块检查", async () => {
     const cases: ProjectWriteCheckResult[] = [{ kind: "not-found" }];
 
     for (const projectResult of cases) {
-      const { calls, modules, features, workflow } = setup({
+      const { calls, modules, workflow } = setup({
         project: projectResult,
       });
 
       await expect(
-        workflow.checkFeatureForWrite(tx(), {
+        workflow.checkModuleForWrite(tx(), {
           cookieHeader: "__Host-session=token",
           projectId: 1,
           moduleId: 2,
-          featureId: 3,
         }),
       ).resolves.toEqual({ kind: "project-not-found" });
 
       expect(calls).toEqual(["session", "project"]);
       expect(modules.checkModuleForWrite).not.toHaveBeenCalled();
-      expect(features.checkFeatureForWrite).not.toHaveBeenCalled();
     }
   });
 
-  test("模块 not-found 会阻断功能检查（ADR-044：模块已无只读态）", async () => {
-    const { calls, features, workflow } = setup({
+  test("模块 not-found 返回 module-not-found（ADR-044：模块已无只读态）", async () => {
+    const { calls, workflow } = setup({
       module: { kind: "not-found" },
     });
 
     await expect(
-      workflow.checkFeatureForWrite(tx(), {
+      workflow.checkModuleForWrite(tx(), {
         cookieHeader: "__Host-session=token",
         projectId: 1,
         moduleId: 2,
-        featureId: 3,
       }),
     ).resolves.toEqual({ kind: "module-not-found" });
 
     expect(calls).toEqual(["session", "project", "module"]);
-    expect(features.checkFeatureForWrite).not.toHaveBeenCalled();
-  });
-
-  test("feature allowed 在模块检查后继续检查功能并返回完整摘要", async () => {
-    const { calls, workflow } = setup();
-    const context = tx();
-
-    const result = await workflow.checkFeatureForWrite(context, {
-      cookieHeader: "__Host-session=token",
-      projectId: 1,
-      moduleId: 2,
-      featureId: 3,
-    });
-
-    expect(result).toEqual({
-      kind: "allowed",
-      actor,
-      project,
-      module: moduleResource,
-      feature: featureResource,
-    });
-    expect(calls).toEqual(["session", "project", "module", "feature"]);
-  });
-
-  // ADR-045：功能不再有归档只读态，父级失败只剩 not-found 一种。
-  test("feature not-found 保留父级语义并返回 feature 失败", async () => {
-    const { workflow } = setup({ feature: { kind: "not-found" } });
-
-    await expect(
-      workflow.checkFeatureForWrite(tx(), {
-        cookieHeader: "__Host-session=token",
-        projectId: 1,
-        moduleId: 2,
-        featureId: 3,
-      }),
-    ).resolves.toEqual({ kind: "feature-not-found" });
   });
 });

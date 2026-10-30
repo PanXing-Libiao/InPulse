@@ -26,10 +26,9 @@ const permissionFields = {
   projectDocumentImport: projectMemberPermissionLevelSchema.describe(
     "在既有项目内导入文档与使用项目内 AI 辅助",
   ),
-  moduleFeatureEdit:
-    projectMemberPermissionLevelSchema.describe("创建或编辑模块、功能与说明"),
-  moduleFeatureDelete:
-    projectMemberPermissionLevelSchema.describe("删除模块或功能"),
+  moduleEdit:
+    projectMemberPermissionLevelSchema.describe("创建或编辑模块与说明"),
+  moduleDelete: projectMemberPermissionLevelSchema.describe("删除模块"),
   taskEdit: projectMemberPermissionLevelSchema.describe("创建、编辑或指派任务"),
   taskLifecycle:
     projectMemberPermissionLevelSchema.describe("任务状态、合并、解除与删除"),
@@ -79,8 +78,8 @@ export const projectMemberPermissionCapabilities = [
   "projectLeaderTransfer",
   "projectDelete",
   "projectDocumentImport",
-  "moduleFeatureEdit",
-  "moduleFeatureDelete",
+  "moduleEdit",
+  "moduleDelete",
   "taskEdit",
   "taskLifecycle",
   "recordWrite",
@@ -97,8 +96,8 @@ export const defaultProjectMemberPermissionLevels = {
   projectLeaderTransfer: "LEADERS_ONLY",
   projectDelete: "LEADERS_ONLY",
   projectDocumentImport: "ALL_MEMBERS",
-  moduleFeatureEdit: "ALL_MEMBERS",
-  moduleFeatureDelete: "LEADERS_ONLY",
+  moduleEdit: "ALL_MEMBERS",
+  moduleDelete: "LEADERS_ONLY",
   taskEdit: "ALL_MEMBERS",
   taskLifecycle: "ALL_MEMBERS",
   recordWrite: "ALL_MEMBERS",

@@ -8,10 +8,6 @@ import {
 } from "@inpulse/database/client";
 import type { TransactionContext } from "../src/database/transaction-context.js";
 import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
-import {
-  FeatureReadPort,
-  FeaturesModule,
-} from "../src/modules/features/index.js";
 import { ModuleReadPort, ModulesModule } from "../src/modules/modules/index.js";
 import {
   PostgresTaskQueryPort,
@@ -44,9 +40,7 @@ let client: DatabaseClient;
 let bootstrap: Sql;
 let uow: PostgresUnitOfWork;
 let moduleContext: INestApplicationContext;
-let featureContext: INestApplicationContext;
 let modules: ModuleReadPort;
-let features: FeatureReadPort;
 const taskQuery = new PostgresTaskQueryPort();
 const myTasks = new PostgresMyTaskQueryPort();
 const records = new PostgresChangeRecordReadPort();
@@ -87,21 +81,16 @@ beforeAll(async () => {
   moduleContext = await NestFactory.createApplicationContext(ModulesModule, {
     logger: false,
   });
-  featureContext = await NestFactory.createApplicationContext(FeaturesModule, {
-    logger: false,
-  });
   modules = moduleContext.get(ModuleReadPort);
-  features = featureContext.get(FeatureReadPort);
 });
 
 afterAll(async () => {
-  await featureContext?.close();
   await moduleContext?.close();
   await client?.close();
   await bootstrap?.end({ timeout: 5 });
 });
 
-function nextSuffix(kind: "T" | "F" | "CR"): string {
+function nextSuffix(kind: "T" | "CR"): string {
   sequence += 1;
   return "-" + kind + "-" + sequence;
 }
@@ -122,20 +111,6 @@ async function newModule(scope: ProjectScope, name: string): Promise<number> {
   return row.id;
 }
 
-async function newFeature(
-  scope: ProjectScope,
-  moduleId: number,
-  name: string,
-): Promise<number> {
-  const [row] = await client.sql<{ id: number }[]>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (${scope.projectId}, ${moduleId}, ${scope.code + nextSuffix("F")}, ${name}, ${scope.userId})
-    RETURNING id
-  `;
-  if (!row) throw new Error("feature fixture insert returned no row");
-  return row.id;
-}
-
 async function addMember(projectId: number, userId: number): Promise<void> {
   await client.sql`
     INSERT INTO app.project_members (project_id, user_id)
@@ -145,7 +120,6 @@ async function addMember(projectId: number, userId: number): Promise<void> {
 
 interface TaskOptions {
   readonly assigneeIds?: number[];
-  readonly featureId?: number | null;
   readonly workStatus?: "TODO" | "DONE" | "CANCELED";
   readonly lifecycleStatus?: "ACTIVE" | "INVALID";
   readonly title?: string;
@@ -161,14 +135,13 @@ async function newTask(
   scope: ProjectScope,
   options: TaskOptions = {},
 ): Promise<number> {
-  const featureId = options.featureId ?? null;
   const workStatus = options.workStatus ?? "TODO";
   const code = scope.code + nextSuffix("T");
   const actorUserId = options.actorUserId ?? scope.userId;
   return uow.run(async (tx) => {
     const created = await taskWrites.create(
       tx,
-      { projectId: scope.projectId, moduleId: scope.moduleId, featureId },
+      { projectId: scope.projectId, moduleId: scope.moduleId },
       actorUserId,
       code,
       {
@@ -198,7 +171,7 @@ async function newTask(
 }
 
 interface RecordOptions {
-  readonly featureId?: number | null;
+  readonly moduleId?: number;
   readonly taskId?: number | null;
   readonly status?: "PUBLISHED" | "VOID";
 }
@@ -208,15 +181,14 @@ async function newPublishedRecord(
   options: RecordOptions = {},
 ): Promise<number> {
   const code = scope.code + nextSuffix("CR");
+  const moduleId = options.moduleId ?? scope.moduleId;
   const taskId = options.taskId ?? null;
   const draft = await uow.run((tx) =>
     draftWrites.create(
       tx,
       {
         projectId: scope.projectId,
-        moduleId: scope.moduleId,
-        featureId: options.featureId ?? null,
-        impactFeatureIds: [],
+        moduleId,
       },
       scope.userId,
       recordContent,
@@ -236,11 +208,9 @@ async function newPublishedRecord(
 async function newDraftRecord(
   scope: ProjectScope,
   options: {
-    readonly featureId?: number | null;
     readonly taskId?: number | null;
   } = {},
 ): Promise<number> {
-  const featureId = options.featureId ?? null;
   const taskId = options.taskId ?? null;
   const draft = await uow.run((tx) =>
     draftWrites.create(
@@ -248,8 +218,6 @@ async function newDraftRecord(
       {
         projectId: scope.projectId,
         moduleId: scope.moduleId,
-        featureId,
-        impactFeatureIds: [],
       },
       scope.userId,
       recordContent,
@@ -317,8 +285,8 @@ async function newTaskBatch(
 ): Promise<void> {
   await client.sql.begin(async (tx) => {
     const rows = await tx<{ id: number }[]>`
-      INSERT INTO app.tasks (project_id, module_id, feature_id, scope_type, code, title, description, creator_id, priority, work_status, lifecycle_status)
-      SELECT ${scope.projectId}, ${scope.moduleId}, NULL, 'MODULE', ${scope.code + "-T-"} || (${startCode} + n), '批量夹具任务 ' || n, '', ${scope.userId}, 'NORMAL', 'TODO', 'ACTIVE'
+      INSERT INTO app.tasks (project_id, module_id, code, title, description, creator_id, priority, work_status, lifecycle_status)
+      SELECT ${scope.projectId}, ${scope.moduleId}, ${scope.code + "-T-"} || (${startCode} + n), '批量夹具任务 ' || n, '', ${scope.userId}, 'NORMAL', 'TODO', 'ACTIVE'
         FROM generate_series(1, ${count}) AS n
       RETURNING id
     `;
@@ -430,7 +398,7 @@ async function explain(call: SqlCall): Promise<string> {
   });
 }
 
-describe("ModuleReadPort.count and FeatureReadPort.count", () => {
+describe("ModuleReadPort.count", () => {
   test("module count covers every module of one project and never crosses projects", async () => {
     const scope = await newProject();
     const other = await newProject();
@@ -447,46 +415,6 @@ describe("ModuleReadPort.count and FeatureReadPort.count", () => {
       await uow.run((tx) => modules.count(tx, { projectId: other.projectId })),
     ).toBe(1);
     expect(await uow.run((tx) => modules.count(tx, { projectId: -1 }))).toBe(0);
-  });
-
-  // ADR-045：功能不再有归档态，count 只按 project_id + 可选 module_id 统计。
-  test("feature count narrows by module without leaking projects", async () => {
-    const scope = await newProject();
-    const other = await newProject();
-    const secondModule = await newModule(scope, "第二模块");
-    await newFeature(scope, scope.moduleId, "功能甲");
-    await newFeature(scope, scope.moduleId, "功能乙");
-    await newFeature(scope, secondModule, "功能丙");
-    expect(
-      await uow.run((tx) => features.count(tx, { projectId: scope.projectId })),
-    ).toBe(3);
-    expect(
-      await uow.run((tx) =>
-        features.count(tx, {
-          projectId: scope.projectId,
-          moduleId: scope.moduleId,
-        }),
-      ),
-    ).toBe(2);
-    expect(
-      await uow.run((tx) =>
-        features.count(tx, {
-          projectId: scope.projectId,
-          moduleId: secondModule,
-        }),
-      ),
-    ).toBe(1);
-    expect(
-      await uow.run((tx) => features.count(tx, { projectId: other.projectId })),
-    ).toBe(0);
-    expect(
-      await uow.run((tx) =>
-        features.count(tx, {
-          projectId: scope.projectId,
-          moduleId: other.moduleId,
-        }),
-      ),
-    ).toBe(0);
   });
 });
 
@@ -514,8 +442,6 @@ describe("TaskQueryPort list and count", () => {
     expect(page.items[0]).toMatchObject({
       projectId: scope.projectId,
       moduleId: scope.moduleId,
-      featureId: null,
-      scopeType: "MODULE",
       workStatus: "TODO",
       lifecycleStatus: "ACTIVE",
     });
@@ -584,11 +510,10 @@ describe("TaskQueryPort list and count", () => {
 
   test("effectiveOnly drops invalid and canceled tasks", async () => {
     const scope = await newProject();
-    const featureId = await newFeature(scope, scope.moduleId, "影响功能");
     const active = await newTask(scope);
     const canceled = await newTask(scope, { workStatus: "CANCELED" });
     const invalid = await newTask(scope, { lifecycleStatus: "INVALID" });
-    const featureScoped = await newTask(scope, { featureId });
+    const secondActive = await newTask(scope);
     const all = await uow.run((tx) =>
       taskQuery.list(tx, { projectIds: [scope.projectId], limit: 100 }),
     );
@@ -602,7 +527,7 @@ describe("TaskQueryPort list and count", () => {
     );
     const effectiveIds = effective.items.map((item) => item.taskId);
     expect(effectiveIds.sort((left, right) => left - right)).toEqual(
-      [active, featureScoped].sort((left, right) => left - right),
+      [active, secondActive].sort((left, right) => left - right),
     );
     expect(effectiveIds).not.toContain(canceled);
     expect(effectiveIds).not.toContain(invalid);
@@ -614,23 +539,6 @@ describe("TaskQueryPort list and count", () => {
         }),
       ),
     ).toBe(effective.items.length);
-    const byScope = await uow.run((tx) =>
-      taskQuery.list(tx, {
-        projectIds: [scope.projectId],
-        scopeTypes: ["FEATURE"],
-        limit: 100,
-      }),
-    );
-    expect(byScope.items.map((item) => item.taskId)).toEqual([featureScoped]);
-    expect(byScope.items[0]).toMatchObject({ featureId, scopeType: "FEATURE" });
-    expect(
-      await uow.run((tx) =>
-        taskQuery.count(tx, {
-          projectIds: [scope.projectId],
-          scopeTypes: ["MODULE"],
-        }),
-      ),
-    ).toBe(3);
   });
 
   test("task pagination walks every row exactly once", async () => {
@@ -951,8 +859,10 @@ describe("ChangeRecordReadPort", () => {
   test("published counts and recent list hide drafts and voids", async () => {
     const scope = await newProject();
     const other = await newProject();
-    const featureId = await newFeature(scope, scope.moduleId, "支付功能");
-    const featureRecord = await newPublishedRecord(scope, { featureId });
+    const secondModule = await newModule(scope, "第二模块");
+    const secondModuleRecord = await newPublishedRecord(scope, {
+      moduleId: secondModule,
+    });
     const moduleRecord = await newPublishedRecord(scope, {});
     await newDraftRecord(scope);
     const voided = await newPublishedRecord(scope, { status: "VOID" });
@@ -964,14 +874,17 @@ describe("ChangeRecordReadPort", () => {
     ).toBe(2);
     expect(
       await uow.run((tx) =>
-        records.countPublished(tx, { projectId: scope.projectId, featureId }),
+        records.countPublished(tx, {
+          projectId: scope.projectId,
+          moduleId: scope.moduleId,
+        }),
       ),
     ).toBe(1);
     expect(
       await uow.run((tx) =>
         records.countPublished(tx, {
           projectId: scope.projectId,
-          scopeType: "MODULE",
+          moduleId: secondModule,
         }),
       ),
     ).toBe(1);
@@ -996,17 +909,18 @@ describe("ChangeRecordReadPort", () => {
     );
     expect(recent.map((item) => item.recordId)).toEqual([
       moduleRecord,
-      featureRecord,
+      secondModuleRecord,
     ]);
     expect(recent.map((item) => item.recordId)).not.toContain(voided);
     expect(recent[0]).toMatchObject({
       projectId: scope.projectId,
-      featureId: null,
-      featureName: null,
       currentVersion: 1,
     });
     expect(recent[0]?.publishedAt).toBeInstanceOf(Date);
-    expect(recent[1]).toMatchObject({ featureId, featureName: "支付功能" });
+    expect(recent[1]).toMatchObject({
+      moduleId: secondModule,
+      projectId: scope.projectId,
+    });
     expect(recent[1]?.code).toContain("-CR-");
     expect(recent.length).toBe(
       await uow.run((tx) =>
@@ -1037,8 +951,7 @@ describe("ChangeRecordReadPort", () => {
 
   test("active leftovers use the newest snapshot of published records only", async () => {
     const scope = await newProject();
-    const featureId = await newFeature(scope, scope.moduleId, "遗留功能");
-    const record = await newPublishedRecord(scope, { featureId });
+    const record = await newPublishedRecord(scope, {});
     await newRecordVersion(scope, record, 2);
     const activeLeftover = await newLeftover(scope, record, {
       contents: ["第一版遗留内容", "第二版遗留内容"],
@@ -1083,24 +996,25 @@ describe("ChangeRecordReadPort", () => {
       content: "第二版遗留内容",
     });
     expect(active?.recordCode).toContain("-CR-");
-    const featureScoped = await uow.run((tx) =>
-      records.listActiveLeftovers(tx, {
-        projectId: scope.projectId,
-        featureId,
-        limit: 10,
-      }),
-    );
-    expect(featureScoped.map((item) => item.leftoverItemId)).toEqual([
-      activeLeftover,
-    ]);
     const moduleScoped = await uow.run((tx) =>
       records.listActiveLeftovers(tx, {
         projectId: scope.projectId,
-        scopeType: "MODULE",
+        moduleId: scope.moduleId,
         limit: 10,
       }),
     );
-    expect(moduleScoped).toEqual([]);
+    expect(moduleScoped.map((item) => item.leftoverItemId)).toEqual([
+      activeLeftover,
+    ]);
+    const emptyModule = await newModule(scope, "无遗留模块");
+    const otherModuleScoped = await uow.run((tx) =>
+      records.listActiveLeftovers(tx, {
+        projectId: scope.projectId,
+        moduleId: emptyModule,
+        limit: 10,
+      }),
+    );
+    expect(otherModuleScoped).toEqual([]);
     const capped = await uow.run((tx) =>
       records.listActiveLeftovers(tx, {
         projectId: scope.projectId,

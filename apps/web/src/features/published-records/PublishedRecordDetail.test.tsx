@@ -38,8 +38,6 @@ const item = {
   ...second,
   id: 7,
   moduleId: 2,
-  featureId: null,
-  scopeType: "MODULE",
   taskId: null,
   handlerId: 3,
   authorId: 3,
@@ -50,7 +48,6 @@ const item = {
   createdAt: first.createdAt,
   updatedAt: first.createdAt,
   rowVersion: 3,
-  impactFeatureIds: [],
   leftovers: [],
 };
 function mountDetail(
@@ -79,7 +76,7 @@ function mountDetail(
   );
 }
 /**
- * 记录接口只回传 ID；没有列表语境时详情会补查项目、模块、功能名与用户目录。
+ * 记录接口只回传 ID；没有列表语境时详情会补查项目、模块与用户目录。
  * 这里给出最小可解析响应，让断言专注记录正文本身。
  */
 function withNameSources(api: Record<string, unknown>) {
@@ -91,9 +88,6 @@ function withNameSources(api: Record<string, unknown>) {
     listModules: vi
       .fn()
       .mockResolvedValue({ items: [{ id: 2, name: "支付模块" }] }),
-    listFeatures: vi
-      .fn()
-      .mockResolvedValue({ items: [{ id: 2, name: "支付功能" }] }),
     getUserDirectory: vi
       .fn()
       .mockResolvedValue({ items: [{ id: 3, name: "邵晨宇" }] }),
@@ -146,9 +140,7 @@ it("loads real version data and permits selecting historical snapshots", async (
 });
 it("renders the source task link and the four content sections", async () => {
   const api = withNameSources({
-    getChangeRecord: vi
-      .fn()
-      .mockResolvedValue({ ...item, taskId: 8, featureId: 2 }),
+    getChangeRecord: vi.fn().mockResolvedValue({ ...item, taskId: 8 }),
     listChangeRecordVersions: vi.fn().mockResolvedValue({ items: [second] }),
   });
   mountDetail(api);
@@ -158,7 +150,7 @@ it("renders the source task link and the four content sections", async () => {
   });
   expect(source).toHaveAttribute(
     "href",
-    "/projects/1/modules/2/features/2?taskId=8",
+    "/projects/1/modules/2/tasks?taskId=8",
   );
   expect(within(region).getByText("改动原因")).toBeVisible();
   expect(within(region).getByText("具体改动")).toBeVisible();
@@ -170,7 +162,6 @@ it("renders leftovers of a void record as 已作废 and keeps the follow-up task
     getChangeRecord: vi.fn().mockResolvedValue({
       ...item,
       status: "VOID",
-      featureId: 2,
       voidedAt: first.createdAt,
       voidReason: "记录作废",
       leftovers: [
@@ -193,13 +184,11 @@ it("renders leftovers of a void record as 已作废 and keeps the follow-up task
   expect(within(region).getByText("随记录作废的遗留问题")).toBeVisible();
   expect(
     within(region).getByRole("link", { name: "查看跟进任务" }),
-  ).toHaveAttribute("href", "/projects/1/modules/2/features/2?taskId=8");
+  ).toHaveAttribute("href", "/projects/1/modules/2/tasks?taskId=8");
 });
 it("opens the source task in place when the host passes onOpenTask", async () => {
   const api = withNameSources({
-    getChangeRecord: vi
-      .fn()
-      .mockResolvedValue({ ...item, taskId: 8, featureId: 2 }),
+    getChangeRecord: vi.fn().mockResolvedValue({ ...item, taskId: 8 }),
     listChangeRecordVersions: vi.fn().mockResolvedValue({ items: [second] }),
   });
   const onOpenTask = vi.fn();
@@ -216,7 +205,6 @@ it("opens the source task in place when the host passes onOpenTask", async () =>
   expect(onOpenTask).toHaveBeenCalledWith({
     projectId: 1,
     moduleId: 2,
-    featureId: 2,
     taskId: 8,
   });
 });
@@ -237,14 +225,12 @@ it("explains a missing or unauthorized record without leaking existence", async 
 });
 it("resolves the ownership and author names when there is no list context", async () => {
   const api = withNameSources({
-    getChangeRecord: vi.fn().mockResolvedValue({ ...item, featureId: 2 }),
+    getChangeRecord: vi.fn().mockResolvedValue(item),
     listChangeRecordVersions: vi.fn().mockResolvedValue({ items: [second] }),
   });
   mountDetail(api);
   const region = await screen.findByRole("region", { name: "正式记录详情" });
-  expect(
-    await within(region).findByText("支付项目 / 支付模块 / 支付功能"),
-  ).toBeVisible();
+  expect(await within(region).findByText("支付项目 / 支付模块")).toBeVisible();
   expect(within(region).getByText(/邵晨宇 · 创建/)).toBeVisible();
   expect(within(region).queryByText(/用户 #3/)).toBeNull();
 });

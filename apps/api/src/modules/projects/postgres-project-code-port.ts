@@ -30,20 +30,6 @@ export class PostgresProjectCodePort extends ProjectCodePort {
     if (!sequence) throw new Error("Code allocation failed");
     return `${project.code}-T-${sequence.number}`;
   }
-  async allocateFeatureCode(
-    tx: TransactionContext,
-    projectId: number,
-  ): Promise<string> {
-    const [project] = await tx.sql<
-      { code: string }[]
-    >`SELECT code FROM app.projects WHERE id = ${projectId}`;
-    if (!project) throw new Error("Authorized project missing");
-    const [sequence] = await tx.sql<
-      { number: string }[]
-    >`INSERT INTO app.code_sequences (project_id, entity_type, last_number) VALUES (${projectId}, 'FEATURE', 1) ON CONFLICT (project_id, entity_type) DO UPDATE SET last_number = app.code_sequences.last_number + 1 RETURNING last_number::text AS number`;
-    if (!sequence) throw new Error("Code allocation failed");
-    return `${project.code}-F-${sequence.number}`;
-  }
   async findProjectCode(
     tx: TransactionContext,
     projectId: number,

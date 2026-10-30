@@ -53,7 +53,6 @@ export interface CommandPaletteProps {
 const PALETTE_GROUP_ORDER = [
   "项目",
   "模块",
-  "功能",
   "任务",
   "迭代记录",
   "遗留问题",
@@ -76,7 +75,6 @@ const entityMeta: Readonly<
 > = {
   PROJECT: { label: "项目", icon: "folder" },
   MODULE: { label: "模块", icon: "boxes" },
-  FEATURE: { label: "功能", icon: "code" },
   TASK: { label: "任务", icon: "clipboard" },
   CHANGE_RECORD: { label: "迭代记录", icon: "gitBranch" },
   EXTERNAL_LINK: { label: "外部链接", icon: "code" },
@@ -114,7 +112,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             key: "quick-projects",
             group: "操作",
             icon: "folder",
-            title: "打开项目与功能",
+            title: "打开项目与模块",
             hint: "新建项目或查看刚创建的项目动态",
             path: "/projects",
             run: () => onNavigate("/projects"),
@@ -356,7 +354,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             autoFocus
             value={query}
             maxLength={SEARCH_MAX_LENGTH}
-            placeholder="搜索项目、模块、功能、任务、迭代记录…"
+            placeholder="搜索项目、模块、任务、迭代记录…"
             aria-label="全局搜索关键词"
             onChange={(event) => setQuery(event.currentTarget.value)}
             onKeyDown={handleKeyDown}

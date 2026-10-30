@@ -6,9 +6,13 @@ import {
   calmSelectTrigger,
   pickCalmSelectOption,
 } from "../helpers/calm-select.js";
+import {
+  createTaskInOpenModule,
+  openFirstModuleTasks,
+} from "../helpers/module-tasks.js";
 
 /**
- * F-29 项目主页（概览已并入模块与功能）/ F-32 任务中心的专属关键路径 E2E。
+ * F-29 项目主页（概览已并入模块与任务）/ F-32 任务中心的专属关键路径 E2E。
  * 两个页面默认注入服务端适配器（R-2 / R-3）：这里验证真实服务端数据进入
  * 视图（工具栏工作状态筛选、优先级筛选、遗留问题总数与优先级徽章）、仍无契约
  * 来源的条件按显式降级处理（关键词搜索只对已加载页生效并标注，「我创建的」经
@@ -35,30 +39,10 @@ test("F-32 任务中心：真实任务进入列表，工作状态与优先级接
   });
   try {
     const suffix = Date.now().toString(16).toUpperCase();
-    const featureName = "任务中心-" + suffix;
     const taskTitle = "聚合读任务-" + suffix;
 
-    await page.goto("/projects/" + runtime.projectId + "/modules");
-    const moduleCard = page
-      .locator(".calm-feature-card")
-      .filter({ hasText: "未分类" })
-      .first();
-    await moduleCard.click();
-    await page.getByRole("button", { name: "新增功能" }).click();
-    const featureDialog = page.getByRole("dialog", { name: "新增功能" });
-    await featureDialog.getByLabel("功能名称").fill(featureName);
-    await featureDialog.getByRole("button", { name: /保\s*存/ }).click();
-    await expect(featureDialog).toBeHidden();
-    await page
-      .locator(".calm-feature-card")
-      .filter({ hasText: featureName })
-      .click();
-    await page.getByRole("button", { name: "新建任务", exact: true }).click();
-    const taskDialog = page.getByRole("dialog", { name: "新建任务" });
-    await taskDialog.getByLabel("任务标题").fill(taskTitle);
-    await pickCalmSelectOption(taskDialog, "负责人", runtime.user.name);
-    await taskDialog.getByRole("button", { name: /创建任务/ }).click();
-    await expect(taskDialog).toBeHidden();
+    await openFirstModuleTasks(page, runtime.projectId);
+    await createTaskInOpenModule(page, runtime.user.name, taskTitle);
 
     await page.goto("/tasks");
     const center = page.getByTestId("task-center");
@@ -256,7 +240,7 @@ test("F-32 任务中心：真实任务进入列表，工作状态与优先级接
     ).toBeEnabled();
 
     // 任务中心不再跳转：重新进入 /tasks（卡片视图）后点击卡片，在当前页面就地
-    // 弹出功能档案同款的任务详情弹窗，写操作（编辑 / 完成任务 / 合并 / 关联链接）
+    // 弹出模块任务同款的任务详情弹窗，写操作（编辑 / 完成任务 / 合并 / 关联链接）
     // 仍只有这一个入口；地址栏与筛选参数保持不变，关闭后仍停留在任务中心。
     // 重新进任务中心：缺省即「全部未完成」，本用例的任务（没有截止时间）直接可见，
     // 不再需要 today=0 这类旧参数。
@@ -326,7 +310,7 @@ test("F-29 项目主页：服务端真实指标（含遗留问题总数）与入
     await expect(notice).toHaveCount(0);
 
     // 指标卡按用户确认的口径只展示任务/记录/成员/遗留四项：
-    // 「活跃模块」「活跃功能」已从展示层取消（服务端仍返回该统计）。
+    // 「活跃模块」「活跃功能」已从展示层取消，功能统计已从服务端契约移除。
     await expect(page.getByTestId("overview-metric-modules")).toHaveCount(0);
     await expect(page.getByTestId("overview-metric-features")).toHaveCount(0);
 
@@ -373,7 +357,7 @@ test("F-29 项目主页：服务端真实指标（含遗留问题总数）与入
     await recordsModal.getByRole("button", { name: "关闭迭代记录" }).click();
     await expect(recordsModal).toBeHidden();
 
-    // 项目概览已与「模块与功能」合并：旧地址整体重定向到项目主页，
+    // 项目概览已与「模块与任务」合并：旧地址整体重定向到项目主页，
     // 重定向后仍是同一套项目头部 + 指标 + 面板。
     await page.goto("/projects/" + runtime.projectId + "/overview");
     await expect

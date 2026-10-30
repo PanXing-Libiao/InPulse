@@ -254,7 +254,6 @@ export class ProjectMemberManagementHttpService {
     reassignments: {
       taskId: number;
       moduleId: number;
-      featureId: number | null;
       rowVersion: number;
       assigneeIds: number[];
     }[];

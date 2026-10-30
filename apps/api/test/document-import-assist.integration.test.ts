@@ -18,7 +18,6 @@ import {
   createProject,
   createUser,
   testUrls,
-  type ProjectFixture,
   type TestUrls,
 } from "./database.helpers.js";
 
@@ -194,28 +193,6 @@ async function countImportRunRows(sql: Sql): Promise<number> {
   return rows[0]?.count ?? -1;
 }
 
-async function createFeatureFixture(
-  sql: Sql,
-  project: ProjectFixture,
-  userId: number,
-  name: string,
-): Promise<number> {
-  const [row] = await sql<Array<{ id: number }>>`
-    INSERT INTO app.features (project_id, module_id, code, name, created_by)
-    VALUES (
-      ${project.projectId},
-      ${project.moduleId},
-      ${project.code + "-F-1"},
-      ${name},
-      ${userId}
-    )
-    RETURNING id
-  `;
-  if (row === undefined) {
-    throw new Error("Feature fixture insert returned no row");
-  }
-  return row.id;
-}
 beforeAll(async () => {
   urls = testUrls();
   runtime = connect(urls.runtime, 30);
@@ -427,7 +404,6 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
         target: {
           projectId: project.projectId,
           moduleId: project.moduleId,
-          featureId: null,
         },
       },
       actor,
@@ -454,21 +430,21 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
     expect(await countImportRunRows(sql)).toBe(runsBefore);
   });
 
-  test("ADR-094 指定功能：提示词注入模块与功能名，草稿只含目标功能", async () => {
+  test("ADR-094 指定模块：提示词注入模块名，草稿只能包含该模块任务", async () => {
     const sql = runtime!;
     const ownerId = await createUser(sql);
     const project = await createProject(sql, ownerId);
-    const featureId = await createFeatureFixture(
-      sql,
-      project,
-      ownerId,
-      "退款回调",
-    );
+    const [targetModule] = await sql<Array<{ id: number }>>`
+      INSERT INTO app.modules (project_id, name, created_by)
+      VALUES (${project.projectId}, '退款回调', ${ownerId})
+      RETURNING id
+    `;
+    if (targetModule === undefined) throw new Error("module fixture failed");
     const actor = await sessionActor(sql, ownerId);
     stubResponder = () => ({
       status: 200,
       payload: completionPayload(
-        "## 模块：未分类\n### 功能：退款回调\n#### 任务：补超时重试\n- 负责人：张三\n- 优先级：高",
+        "## 模块：退款回调\n- 说明：补充退款任务\n### 任务：补超时重试\n- 负责人：张三\n- 优先级：高",
       ),
     });
     const response = await postAssist(
@@ -477,8 +453,7 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
         text: "退款回调补一条超时重试任务",
         target: {
           projectId: project.projectId,
-          moduleId: project.moduleId,
-          featureId,
+          moduleId: targetModule.id,
         },
       },
       actor,
@@ -494,10 +469,13 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
       messages: readonly { role: string; content: string }[];
     };
     expect(upstreamBody.messages[0]!.content).toContain(
-      "下的已有功能「退款回调」",
+      "本次导入目标由系统选定为已有模块：「退款回调」",
     );
     expect(upstreamBody.messages[0]!.content).toContain(
-      "只能在目标功能下输出要新增的任务",
+      "只能在该模块下输出要新增的任务",
+    );
+    expect(upstreamBody.messages[0]!.content).not.toContain(
+      "已有功能「退款回调」",
     );
   });
 
@@ -515,7 +493,6 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
         target: {
           projectId: project.projectId,
           moduleId: project.moduleId,
-          featureId: null,
         },
       },
       actor,
@@ -540,7 +517,6 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
         target: {
           projectId: first.projectId,
           moduleId: second.moduleId,
-          featureId: null,
         },
       },
       actor,
@@ -559,7 +535,7 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
       {
         mode: "WHOLE_PROJECT",
         text: "整项目需求",
-        target: { projectId: 1, moduleId: null, featureId: null },
+        target: { projectId: 1, moduleId: null },
       },
       actor,
     );

@@ -1,29 +1,27 @@
 import type { ISql } from "postgres";
 
 /**
- * 卡片统计列：项目卡、模块卡、功能卡与 R-2 项目概览共用同一份口径，
+ * 卡片统计列：项目卡、模块卡与 R-2 项目概览共用同一份口径，
  * 避免各读取端口分别拼 SQL 造成同一指标在不同页面数字不一致。
  *
  * - `openTaskCount`：`work_status = 'TODO'` 且 `lifecycle_status <> 'INVALID'`，
  *   并排除仍挂在活跃聚合组下的历史来源分支（合并后不再计入待办，
  *   与任务查询的 effectiveOnly 一致）。
  * - `completedTaskCount`：同一「有效任务」口径下 `work_status = 'DONE'` 的任务数；
- *   模块卡与功能卡（ADR-045 起）用它判定「未开始」标签（作用域内没有已完成任务即未开始），
+ *   模块卡用它判定「未开始」标签（作用域内没有已完成任务即未开始），
  *   项目标签自 ADR-035 起改读存储状态，不再由该计数推导。
- * - `activeModuleCount` / `activeFeatureCount`：行自身 `status = 'ACTIVE'`。
- * - `recordCount`：只计 `status = 'PUBLISHED'`，不 join 影响功能
- *   （与 ChangeRecordReadPort 的计数口径一致）。
+ * - `activeModuleCount`：项目内 `status = 'ACTIVE'` 的未删除模块数。
  *
  * 外层行别名由 postgres.js 标识符转义注入，不接受任意字符串；参数取 `ISql`，
  * 使读取端的 `Sql` 与事务内的 `TransactionSql` 都可复用。
  */
-export type CardRowAlias = "p" | "u" | "m" | "f";
+export type CardRowAlias = "p" | "u" | "m";
 
-/** 统计「哪一层的待办任务」：项目卡按项目、模块卡按模块、功能卡按功能。 */
-export type TaskScope = "project" | "module" | "feature";
+/** 统计「哪一层的待办任务」：项目卡按项目、模块卡按模块。 */
+export type TaskScope = "project" | "module";
 
 /**
- * 推导式生命周期排序键适用的作用域：模块与功能仍是「作用域内有没有已完成任务」
+ * 推导式生命周期排序键适用的作用域：模块仍是「作用域内有没有已完成任务」
  * 推导出来的未开始 / 进行中；项目自 ADR-035 起改为读存储状态，走下面的
  * `projectTierRankExpression`。
  */
@@ -32,26 +30,12 @@ export type DerivedLifecycleScope = Exclude<TaskScope, "project">;
 /** 外层行主键：走 postgres.js 的标识符转义，不能改写为参数占位符。 */
 const rowId = (sql: ISql, table: CardRowAlias) => sql(`${table}.id`);
 
-/**
- * 待办任务的归属条件。功能口径与 `task-management.repository.ts` 的功能任务
- * 列表一致：除本功能的任务外，模块级任务通过影响关系也计入该功能。
- */
+/** 待办任务的归属条件：项目卡按项目、模块卡按模块。 */
 const taskScopeWhere = (sql: ISql, scope: TaskScope, table: CardRowAlias) => {
   const id = rowId(sql, table);
-  if (scope === "project") return sql`t.project_id = ${id}`;
-  if (scope === "module") return sql`t.module_id = ${id}`;
-  return sql`(
-             (t.feature_id = ${id} AND t.scope_type = 'FEATURE')
-             OR (
-               t.scope_type = 'MODULE'
-               AND EXISTS (
-                 SELECT 1
-                   FROM app.task_feature_impacts i
-                  WHERE i.task_id = t.id
-                    AND i.feature_id = ${id}
-               )
-             )
-           )`;
+  return scope === "project"
+    ? sql`t.project_id = ${id}`
+    : sql`t.module_id = ${id}`;
 };
 
 /**
@@ -142,18 +126,18 @@ export function projectLastChangeExpression(sql: ISql, table: "p" | "u") {
 }
 
 /**
- * 模块与功能的推导式生命周期排序键：0 = 进行中（作用域内已有完成任务）、
+ * 模块的推导式生命周期排序键：0 = 进行中（作用域内已有完成任务）、
  * 1 = 未开始（作用域内尚无完成任务）。前端
  * `apps/web/src/features/common/resource-lifecycle.ts` 按同一规则渲染标签，
  * 两处必须一起修改。
  *
- * ADR-044 起模块只有 `ACTIVE` 一种状态；ADR-045 起功能同样只有 `ACTIVE` 一种状态，
- * 因此派生档位只剩 0 = 进行中、1 = 未开始两档，不再有 2 = 已归档。
+ * ADR-044 起模块只有 `ACTIVE` 一种状态，因此派生档位只剩
+ * 0 = 进行中、1 = 未开始两档，不再有 2 = 已归档。
  *
  * 档位相同的卡片再按「创建时间从近到远」排，同创建时间时按 ID 降序兜底；模块侧自
  * 2026-09-24 起不再使用 `sort_order` 作为排序键（该列应用内从不写入、恒为默认值 0，
  * 只有演示种子数据填了 1~8），追加键同样写在两个调用方的 `ORDER BY` 里：
- * `module-management.repository.ts` 与 `feature-management.repository.ts`。
+ * `module-management.repository.ts`。
  */
 export function lifecycleRankExpression(
   sql: ISql,
@@ -171,7 +155,7 @@ export function lifecycleRankExpression(
   return sql`CASE ${derived} END`;
 }
 
-/** 项目卡统计列：活跃模块数、活跃功能数、待办任务数、已完成任务数。 */
+/** 项目卡统计列：活跃模块数、待办任务数、已完成任务数。 */
 export function projectStatColumns(sql: ISql, table: "p" | "u") {
   const projectId = rowId(sql, table);
   return sql`
@@ -182,42 +166,13 @@ export function projectStatColumns(sql: ISql, table: "p" | "u") {
               AND mm.status = 'ACTIVE'
               AND mm.deleted_at IS NULL
          ) AS "activeModuleCount",
-         (
-           SELECT COUNT(*)::integer
-             FROM app.features ff
-            WHERE ff.project_id = ${projectId}
-              AND ff.status = 'ACTIVE'
-              AND ff.deleted_at IS NULL
-         ) AS "activeFeatureCount",
          ${openTaskCountColumn(sql, "project", table)},
          ${completedTaskCountColumn(sql, "project", table)}`;
 }
 
-/** 模块卡统计列：模块内活跃功能数、模块内待办任务数与已完成任务数（含功能级任务）。 */
+/** 模块卡统计列：模块内待办任务数与已完成任务数。 */
 export function moduleStatColumns(sql: ISql, table: "m") {
-  const moduleId = rowId(sql, table);
   return sql`
-         (
-           SELECT COUNT(*)::integer
-             FROM app.features ff
-            WHERE ff.module_id = ${moduleId}
-              AND ff.status = 'ACTIVE'
-              AND ff.deleted_at IS NULL
-         ) AS "activeFeatureCount",
          ${openTaskCountColumn(sql, "module", table)},
          ${completedTaskCountColumn(sql, "module", table)}`;
-}
-
-/** 功能卡统计列：功能待办任务数、已完成任务数、已发布迭代数。 */
-export function featureStatColumns(sql: ISql, table: "f") {
-  const featureId = rowId(sql, table);
-  return sql`
-         ${openTaskCountColumn(sql, "feature", table)},
-         ${completedTaskCountColumn(sql, "feature", table)},
-         (
-           SELECT COUNT(*)::integer
-             FROM app.change_records cr
-            WHERE cr.feature_id = ${featureId}
-              AND cr.status = 'PUBLISHED'
-         ) AS "recordCount"`;
 }

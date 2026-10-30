@@ -9,7 +9,7 @@ import { preloadRoutePath } from "@shared/routing/route-preload";
 
 /**
  * 任务详情弹窗按需加载：与任务中心 / 项目主页共用同一就地宿主，
- * 点击来源或跟进任务不再整页跳转到功能档案。
+ * 点击来源或跟进任务不再整页跳转到模块任务页。
  */
 const TaskDetailOverlay = lazy(
   () => import("@features/tasks/TaskDetailOverlay"),

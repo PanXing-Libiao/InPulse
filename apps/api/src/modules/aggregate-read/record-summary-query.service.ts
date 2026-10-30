@@ -20,7 +20,6 @@ import {
   type RecordSummaryLeftoverRow,
   type RecordSummaryRecordRow,
 } from "../change-records/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { ModuleReadPort } from "../modules/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
@@ -44,8 +43,8 @@ const DETAIL_MAX = 1000;
  * 口径：
  * 1. 记录只取 status = PUBLISHED，作废与草稿都不进总结。
  * 2. 已完成任务取 work_status = DONE、completed_at 落在范围内且未失效的任务。
- * 3. 缺口 = 范围内已完成、但所在功能（模块级任务则为其模块）在范围内没有任何
- *    PUBLISHED 记录的任务；记录对功能/模块的覆盖判定在应用层完成。记录集被截断时
+ * 3. 缺口 = 范围内已完成、但所在模块在范围内没有任何 PUBLISHED 记录的任务；
+ *    记录对模块的覆盖判定在应用层完成。记录集被截断时
  *    不做缺口判定（宁可少报，不用不完整的覆盖集得出错误结论）。
  * 4. 正文措辞、分节标题与顺序由客户端按本响应的事实渲染，服务端不改写原文。
  */
@@ -88,17 +87,6 @@ function resolveDetail(
     : collapsed.slice(0, DETAIL_MAX - 1) + "…";
 }
 
-/** 功能/模块覆盖键：功能级任务按功能，模块级任务按模块。 */
-function coverageKeyForTask(task: {
-  readonly projectId: number;
-  readonly moduleId: number;
-  readonly featureId: number | null;
-}): string {
-  return task.featureId === null
-    ? `M:${String(task.projectId)}:${String(task.moduleId)}`
-    : `F:${String(task.projectId)}:${String(task.featureId)}`;
-}
-
 function addCount(map: Map<number, number>, key: number): void {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
@@ -110,7 +98,6 @@ export class RecordSummaryQueryService {
     private readonly projectAccess: ProjectAccessQueryPort,
     @Inject(ProjectQueryPort) private readonly projects: ProjectQueryPort,
     @Inject(ModuleReadPort) private readonly modules: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(ChangeRecordReadPort)
     private readonly records: ChangeRecordReadPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
@@ -178,16 +165,6 @@ export class RecordSummaryQueryService {
           ...taskPage.items.map((row) => row.moduleId),
         ]),
       ];
-      const featureIds = [
-        ...new Set([
-          ...recordPage.items
-            .map((row) => row.featureId)
-            .filter((value): value is number => value !== null),
-          ...taskPage.items
-            .map((row) => row.featureId)
-            .filter((value): value is number => value !== null),
-        ]),
-      ];
       const userIds = [
         ...new Set([
           ...recordPage.items.map((row) => row.authorId),
@@ -212,10 +189,6 @@ export class RecordSummaryQueryService {
         projectIds: pageProjectIds,
         moduleIds,
       });
-      const features = await this.features.listNames(tx, {
-        projectIds: pageProjectIds,
-        featureIds,
-      });
       const users = await this.users.listByIds(tx, userIds);
       const linkedTasks = await this.tasks.listByIds(tx, projectIds, taskIds);
       return {
@@ -224,9 +197,7 @@ export class RecordSummaryQueryService {
         leftoverPage,
         pageProjectIds,
         moduleIds,
-        featureIds,
         modules,
-        features,
         users,
         linkedTasks,
       };
@@ -241,9 +212,6 @@ export class RecordSummaryQueryService {
     );
     const moduleNameById = new Map(
       data.modules.map((item) => [item.moduleId, item.name]),
-    );
-    const featureNameById = new Map(
-      data.features.map((item) => [item.featureId, item.name]),
     );
     const userById = new Map(data.users.map((item) => [item.userId, item]));
     const taskCodeById = new Map(
@@ -282,16 +250,6 @@ export class RecordSummaryQueryService {
       }
       return { userId, name, avatarUrl: user?.avatarUrl ?? null };
     };
-    const featureNameOf = (featureId: number | null): string | null => {
-      if (featureId === null) {
-        return null;
-      }
-      const name = featureNameById.get(featureId);
-      if (name === undefined) {
-        throw inconsistentError("总结缺少功能 " + String(featureId));
-      }
-      return name;
-    };
 
     const truncated =
       data.recordPage.hasMore ||
@@ -305,8 +263,6 @@ export class RecordSummaryQueryService {
       projectName: projectNameOf(row.projectId),
       moduleId: row.moduleId,
       moduleName: moduleNameOf(row.moduleId),
-      featureId: row.featureId,
-      featureName: featureNameOf(row.featureId),
       title: row.title,
       detail: resolveDetail(
         row.title,
@@ -345,7 +301,6 @@ export class RecordSummaryQueryService {
       : this.collectGaps(data.taskPage.items, points, {
           projectNameOf,
           moduleNameOf,
-          featureNameOf,
           userOf,
         });
 
@@ -357,14 +312,6 @@ export class RecordSummaryQueryService {
       moduleCount: new Set([
         ...data.recordPage.items.map((row) => row.moduleId),
         ...data.taskPage.items.map((row) => row.moduleId),
-      ]).size,
-      featureCount: new Set([
-        ...data.recordPage.items
-          .map((row) => row.featureId)
-          .filter((value): value is number => value !== null),
-        ...data.taskPage.items
-          .map((row) => row.featureId)
-          .filter((value): value is number => value !== null),
       ]).size,
       recordCount: data.recordPage.total,
       completedTaskCount: data.taskPage.total,
@@ -400,36 +347,26 @@ export class RecordSummaryQueryService {
     };
   }
 
-  /** 记录覆盖不到的功能 / 模块上的已完成任务；保持 completedAt DESC 的输入顺序。 */
+  /** 记录覆盖不到的模块上的已完成任务；保持 completedAt DESC 的输入顺序。 */
   private collectGaps(
     tasks: readonly SummaryTaskRow[],
     points: readonly RecordSummaryPoint[],
     resolve: {
       readonly projectNameOf: (projectId: number) => string;
       readonly moduleNameOf: (moduleId: number) => string;
-      readonly featureNameOf: (featureId: number | null) => string | null;
       readonly userOf: (userId: number) => UserRefItem;
     },
   ): RecordSummaryGap[] {
-    const covered = new Set<string>();
-    for (const point of points) {
-      if (point.featureId === null) {
-        // 模块级记录覆盖该模块下全部功能。
-        covered.add(`M:${String(point.projectId)}:${String(point.moduleId)}`);
-      } else {
-        covered.add(`F:${String(point.projectId)}:${String(point.featureId)}`);
-      }
-    }
+    const covered = new Set(
+      points.map(
+        (point) => `M:${String(point.projectId)}:${String(point.moduleId)}`,
+      ),
+    );
     return tasks
-      .filter((task) => {
-        if (covered.has(coverageKeyForTask(task))) {
-          return false;
-        }
-        // 功能级任务还要看所属模块是否被模块级记录整体覆盖。
-        return !covered.has(
-          `M:${String(task.projectId)}:${String(task.moduleId)}`,
-        );
-      })
+      .filter(
+        (task) =>
+          !covered.has(`M:${String(task.projectId)}:${String(task.moduleId)}`),
+      )
       .map((task) => ({
         taskId: task.taskId,
         taskCode: task.code,
@@ -437,8 +374,6 @@ export class RecordSummaryQueryService {
         projectName: resolve.projectNameOf(task.projectId),
         moduleId: task.moduleId,
         moduleName: resolve.moduleNameOf(task.moduleId),
-        featureId: task.featureId,
-        featureName: resolve.featureNameOf(task.featureId),
         title: task.title,
         completedAt: task.completedAt.toISOString(),
         assignee:
@@ -514,7 +449,6 @@ export class RecordSummaryQueryService {
       totals: {
         projectCount: 0,
         moduleCount: 0,
-        featureCount: 0,
         recordCount: 0,
         completedTaskCount: 0,
         missingRecordTaskCount: 0,

@@ -41,7 +41,6 @@ import {
 import type { AiAssistTarget } from "../modules/document-import/ai-assist-target.js";
 import { validateAiAssistTarget } from "../modules/document-import/ai-assist-target.js";
 import { parseDocumentTemplate } from "../modules/document-import/document-template.parser.js";
-import { FeatureManagementError } from "../modules/features/features-management.service.js";
 import { ModuleManagementError } from "../modules/modules/modules-management.service.js";
 import {
   ProjectBootstrapConflictError,
@@ -226,7 +225,7 @@ export class DocumentImportHttpService {
     });
   }
 
-  /** 整项目导入执行：单事务创建项目、成员、模块、功能与任务，整笔幂等。 */
+  /** 整项目导入执行：单事务创建项目、成员、模块与任务，整笔幂等。 */
   executeNewProject(
     headers: HttpHeaderBag,
     input: ProjectDocumentImportRequest,
@@ -349,7 +348,6 @@ function replayContextOf(
   return {
     projectId: result.projectId,
     moduleIds: result.modules.map((item) => item.id),
-    featureIds: result.features.map((item) => item.id),
     taskIds: result.tasks.map((item) => item.id),
   };
 }
@@ -373,7 +371,6 @@ function mapDocumentImportError(error: unknown): unknown {
     error instanceof ProjectBootstrapValidationError ||
     error instanceof ProjectBootstrapConflictError ||
     error instanceof ModuleManagementError ||
-    error instanceof FeatureManagementError ||
     error instanceof TaskManagementError ||
     error instanceof ProjectCapabilityAccessError ||
     error instanceof SearchProjectionCapacityError

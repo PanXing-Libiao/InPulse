@@ -47,13 +47,9 @@ export class TasksHttpService {
 
   async handle(
     operation:
-      | "listTasks"
-      | "getTask"
-      | "listTaskAssignees"
       | "listModuleTasks"
       | "getModuleTask"
       | "listModuleTaskAssignees"
-      | "getTaskStatusHistory"
       | "getModuleTaskStatusHistory"
       | TaskOperation,
     request: TasksHttpRequest,
@@ -64,9 +60,7 @@ export class TasksHttpService {
         (entry) => entry.operationId === operation,
       )!;
       const write = route.method !== "GET";
-      const moduleScope = operation.includes("ModuleTask");
-      const create =
-        operation === "createTask" || operation === "createModuleTask";
+      const create = operation === "createModuleTask";
       if (
         write &&
         mutationSameOriginValidationError(request.headers) !== undefined
@@ -105,17 +99,14 @@ export class TasksHttpService {
       const path = parse(route.request.path, request.params) as {
         projectId: number;
         moduleId: number;
-        featureId: number | null;
         taskId?: number;
       };
-      if (moduleScope) path.featureId = null;
       if (!write) {
         const body = await this.tasks.read(
           actor!.userId,
           path,
           path.taskId,
-          operation === "listTaskAssignees" ||
-            operation === "listModuleTaskAssignees",
+          operation === "listModuleTaskAssignees",
           operation.endsWith("StatusHistory"),
         );
         return { status: 200, body };
@@ -145,9 +136,7 @@ export class TasksHttpService {
       const input = parse(
         route.request.body.contentTypes[0]!.schemaRef,
         request.body,
-      ) as TaskEditRequest & {
-        impactFeatureIds?: number[];
-      };
+      ) as TaskEditRequest;
       const resolve = async (tx: TransactionContext): Promise<number> => {
         const current = await this.mutation.verify(tx, request.headers);
         if (!current)
@@ -181,7 +170,6 @@ export class TasksHttpService {
             actorId,
             projectId: path.projectId,
             moduleId: path.moduleId,
-            featureId: path.featureId,
             ...(path.taskId === undefined
               ? {}
               : {
@@ -191,23 +179,17 @@ export class TasksHttpService {
                   ),
                 }),
             edit: input,
-            ...(input.impactFeatureIds === undefined
-              ? {}
-              : { impactFeatureIds: input.impactFeatureIds }),
             requestId,
           });
           return {
             responseStatus: 200,
-            responseSchemaRef: moduleScope ? "ModuleTaskItem" : "TaskItem",
+            responseSchemaRef: "ModuleTaskItem",
             responseHasBody: true,
             responseBody: body,
             replayAuthContext: {
               projectId: body.projectId,
               moduleId: body.moduleId,
               taskId: body.id,
-              ...(body.scopeType === "MODULE"
-                ? { impactFeatureIds: body.impactFeatureIds }
-                : { featureId: body.featureId }),
             },
           };
         },
@@ -218,10 +200,7 @@ export class TasksHttpService {
       });
       return {
         status: result.responseStatus,
-        body: (moduleScope
-          ? schemaRegistry.ModuleTaskItem
-          : schemaRegistry.TaskItem
-        ).schema.parse(result.responseBody),
+        body: schemaRegistry.ModuleTaskItem.schema.parse(result.responseBody),
       };
     } catch (error) {
       let status = 500;

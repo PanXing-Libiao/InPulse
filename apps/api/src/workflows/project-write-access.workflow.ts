@@ -14,21 +14,16 @@ import {
   ModuleQueryPort,
   type ModuleForWriteResource,
 } from "../modules/modules/index.js";
-import {
-  FeatureQueryPort,
-  type FeatureForWriteResource,
-} from "../modules/features/index.js";
 
 /**
  * Workflow 层复用的父级写前检查编排。
  *
  * 只负责在调用方已经持有的事务中解析 Session actor，并按
- * 项目 -> 模块 -> 功能 的顺序取得对应行的 FOR SHARE；业务写入与归档操作
+ * 项目 -> 模块 的顺序取得对应行的 FOR SHARE；业务写入与归档操作
  * 不在此处实现。任意一层返回 `not-found` 时，后续 Port 不得被调用，
  * 调用方也不应继续业务写入。ADR-043：项目层为三态；ADR-044：模块层下线归档；
- * ADR-045：功能层下线归档。三层都不再有归档只读态，因此这里只可能返回
- * `unauthenticated` / `project-not-found` / `module-not-found` /
- * `feature-not-found`。
+ * ADR-109：功能层已移除。两层都不再有归档只读态，因此这里只可能返回
+ * `unauthenticated` / `project-not-found` / `module-not-found`。
  */
 
 export type ProjectWriteAccessStep =
@@ -54,27 +49,10 @@ export type ModuleWriteAccessResult =
       readonly module: ModuleForWriteResource;
     };
 
-export type FeatureWriteAccessFailure =
-  ModuleWriteAccessFailure | { readonly kind: "feature-not-found" };
-
-export type FeatureWriteAccessResult =
-  | FeatureWriteAccessFailure
-  | {
-      readonly kind: "allowed";
-      readonly actor: AuthenticatedSessionActor;
-      readonly project: ProjectForWriteResource;
-      readonly module: ModuleForWriteResource;
-      readonly feature: FeatureForWriteResource;
-    };
-
 export interface CheckModuleForWriteInput {
   readonly cookieHeader: string | undefined;
   readonly projectId: number;
   readonly moduleId: number;
-}
-
-export interface CheckFeatureForWriteInput extends CheckModuleForWriteInput {
-  readonly featureId: number;
 }
 
 @Injectable()
@@ -86,8 +64,6 @@ export class ProjectWriteAccessWorkflow {
     private readonly projectAccess: ProjectAccessQueryPort,
     @Inject(ModuleQueryPort)
     private readonly modules: ModuleQueryPort,
-    @Inject(FeatureQueryPort)
-    private readonly features: FeatureQueryPort,
   ) {}
 
   async checkModuleForWrite(
@@ -116,33 +92,6 @@ export class ProjectWriteAccessWorkflow {
       actor: project.actor,
       project: project.project,
       module: module.resource,
-    };
-  }
-
-  async checkFeatureForWrite(
-    tx: TransactionContext,
-    input: CheckFeatureForWriteInput,
-  ): Promise<FeatureWriteAccessResult> {
-    const module = await this.checkModuleForWrite(tx, input);
-    if (module.kind !== "allowed") {
-      return module;
-    }
-
-    const feature = await this.features.checkFeatureForWrite(tx, {
-      projectId: input.projectId,
-      moduleId: input.moduleId,
-      featureId: input.featureId,
-    });
-    if (feature.kind === "not-found") {
-      return { kind: "feature-not-found" };
-    }
-
-    return {
-      kind: "allowed",
-      actor: module.actor,
-      project: module.project,
-      module: module.module,
-      feature: feature.resource,
     };
   }
 

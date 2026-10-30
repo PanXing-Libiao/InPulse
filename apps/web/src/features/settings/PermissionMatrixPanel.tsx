@@ -38,8 +38,8 @@ function editableLevels(
     projectLeaderTransfer: settings.projectLeaderTransfer,
     projectDelete: settings.projectDelete,
     projectDocumentImport: settings.projectDocumentImport,
-    moduleFeatureEdit: settings.moduleFeatureEdit,
-    moduleFeatureDelete: settings.moduleFeatureDelete,
+    moduleEdit: settings.moduleEdit,
+    moduleDelete: settings.moduleDelete,
     taskEdit: settings.taskEdit,
     taskLifecycle: settings.taskLifecycle,
     recordWrite: settings.recordWrite,
@@ -175,7 +175,7 @@ export const PermissionMatrixPanel: React.FC<PermissionMatrixPanelProps> = ({
               <caption className="sr-only">全平台项目成员权限矩阵</caption>
               <thead>
                 <tr>
-                  <th scope="col">功能</th>
+                  <th scope="col">权限能力</th>
                   <th scope="col">权限范围</th>
                   <th scope="col">规则说明</th>
                 </tr>
@@ -189,14 +189,14 @@ export const PermissionMatrixPanel: React.FC<PermissionMatrixPanelProps> = ({
                   return (
                     <tr key={row.key}>
                       <td>
-                        <strong>{row.feature}</strong>
+                        <strong>{row.capabilityLabel}</strong>
                       </td>
                       <td className="permission-cell permission-level-cell">
                         {row.fixedAccess !== undefined ? (
                           fixedBadge(row)
                         ) : isAdmin && row.capability !== undefined ? (
                           <CalmSelect
-                            ariaLabel={row.feature + "权限范围"}
+                            ariaLabel={row.capabilityLabel + "权限范围"}
                             appearance="menu"
                             width={176}
                             value={level}

@@ -1,7 +1,6 @@
 import type {
   MyTaskDisplay,
   MyTaskFilters,
-  MyTaskLevel,
   MyTaskPriority,
   MyTaskRecordFilter,
   MyTaskRelation,
@@ -13,7 +12,7 @@ import type {
  * 任务中心 URL 状态（F-30：筛选状态由 URL 承载，页面不保留内部副本）。
  *
  * 参数约定：scope=mine|created|project|all、project=<项目 id>、
- * status=open|done|all、priority、level、relation、record=yes|no、
+ * status=open|done|all、priority、relation、record=yes|no、
  * github=yes|no、canceled=1、q=<关键词>、view=cards|list、more=1、today=1、overdue=1。
  * 与默认值相同的项不写入 URL；非法值一律回退默认值。
  */
@@ -28,7 +27,6 @@ export const DEFAULT_MY_TASK_FILTERS: MyTaskFilters = {
   // 是「全部未完成任务」，只有显式 ?today=1 才收窄到今日待办。
   todayTodo: false,
   priority: null,
-  level: null,
   relation: null,
   hasRecord: null,
   hasGithub: null,
@@ -45,7 +43,6 @@ const scopeValues: readonly MyTaskScope[] = [
 ];
 const statusValues: readonly MyTaskStatusFilter[] = ["open", "done", "all"];
 const priorityValues: readonly MyTaskPriority[] = ["NORMAL", "HIGH", "URGENT"];
-const levelValues: readonly MyTaskLevel[] = ["FEATURE", "MODULE"];
 const relationValues: readonly MyTaskRelation[] = [
   "STANDALONE",
   "MAIN",
@@ -98,7 +95,6 @@ export function readMyTaskFilters(
     todayTodo: readTodayTodo(params),
     status,
     priority: pick(priorityValues, params.get("priority")),
-    level: pick(levelValues, params.get("level")),
     relation: pick(relationValues, params.get("relation")),
     hasRecord: pick(yesNoValues, params.get("record")),
     hasGithub: pick(yesNoValues, params.get("github")),
@@ -128,7 +124,6 @@ export function writeMyTaskFilters(
   if (filters.status !== DEFAULT_MY_TASK_FILTERS.status)
     params.set("status", filters.status);
   if (filters.priority !== null) params.set("priority", filters.priority);
-  if (filters.level !== null) params.set("level", filters.level);
   if (filters.relation !== null) params.set("relation", filters.relation);
   if (filters.hasRecord !== null) params.set("record", filters.hasRecord);
   if (filters.hasGithub !== null) params.set("github", filters.hasGithub);
@@ -156,7 +151,6 @@ export function countActiveMyTaskFilters(filters: MyTaskFilters): number {
     filters.query.trim().length > 0,
     filters.status !== DEFAULT_MY_TASK_FILTERS.status,
     filters.priority !== null,
-    filters.level !== null,
     filters.relation !== null,
     filters.hasRecord !== null,
     filters.hasGithub !== null,

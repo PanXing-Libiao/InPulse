@@ -28,8 +28,6 @@ import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgre
 import { PostgresProjectsWritePort } from "../src/modules/projects/postgres-projects-write-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
 import { TasksManagementService } from "../src/modules/tasks/tasks-management.service.js";
 import { SqlTaskDeletionCommandPort } from "../src/modules/tasks/task-deletion.command-port.js";
@@ -76,8 +74,6 @@ beforeAll(async () => {
     management = new TasksManagementService(
       access,
       new PostgresModuleQueryPort(),
-      new PostgresFeatureQueryPort(),
-      new PostgresFeatureReadPort(),
       new PostgresProjectCodePort(),
       new PostgresProjectMembersQueryPort(),
       uow,
@@ -170,7 +166,7 @@ interface TaskFixture {
 }
 
 let sequences = 0;
-/** 夹具任务一律走模块级范围（feature_id 为空），与 deleteModuleTask 路由对齐。 */
+/** 夹具任务一律走模块级范围（功能层已移除），与 deleteModuleTask 路由对齐。 */
 async function createTask(
   project: ProjectFixture,
   creatorId: number,
@@ -182,7 +178,7 @@ async function createTask(
   return client.sql.begin(async (tx) => {
     const [row] = await tx<
       { id: number; rowVersion: number }[]
-    >`INSERT INTO app.tasks(project_id,module_id,feature_id,scope_type,code,title,creator_id,work_status,lifecycle_status,completed_at) VALUES (${project.projectId},${project.moduleId},NULL,'MODULE',${`${project.code}-T-${sequences}`},${title},${creatorId},${workStatus},'ACTIVE',${completedAt}) RETURNING id, row_version AS "rowVersion"`;
+    >`INSERT INTO app.tasks(project_id,module_id,code,title,creator_id,work_status,lifecycle_status,completed_at) VALUES (${project.projectId},${project.moduleId},${`${project.code}-T-${sequences}`},${title},${creatorId},${workStatus},'ACTIVE',${completedAt}) RETURNING id, row_version AS "rowVersion"`;
     if (!row) throw new Error("task fixture returned no row");
     await tx`INSERT INTO app.task_assignees (task_id, user_id, project_id) VALUES (${row.id}, ${creatorId}, ${project.projectId})`;
     await tx`INSERT INTO app.task_status_history (task_id, project_id, from_work_status, to_work_status, completed_at_snapshot, changed_by) VALUES (${row.id}, ${project.projectId}, NULL, ${workStatus}, ${completedAt}, ${creatorId})`;
@@ -212,7 +208,7 @@ async function publishRecord(
   return client.sql.begin(async (tx) => {
     const [row] = await tx<
       { id: number }[]
-    >`INSERT INTO app.change_records(project_id,module_id,feature_id,scope_type,code,title,handler_id,author_id,status,current_version,current_payload,published_at,task_id) VALUES (${project.projectId},${project.moduleId},NULL,'MODULE',${`${project.code}-CR-${recordSequences}`},${title},${authorId},${authorId},'PUBLISHED',1,${JSON.stringify(payload)}::jsonb,now(),${taskId}) RETURNING id`;
+    >`INSERT INTO app.change_records(project_id,module_id,code,title,handler_id,author_id,status,current_version,current_payload,published_at,task_id) VALUES (${project.projectId},${project.moduleId},${`${project.code}-CR-${recordSequences}`},${title},${authorId},${authorId},'PUBLISHED',1,${JSON.stringify(payload)}::jsonb,now(),${taskId}) RETURNING id`;
     if (!row) throw new Error("record fixture returned no row");
     await tx`INSERT INTO app.change_record_versions(record_id,project_id,version_no,title_snapshot,payload,created_by) VALUES (${row.id},${project.projectId},1,${title},${JSON.stringify(payload)}::jsonb,${authorId})`;
     return row.id;
@@ -362,7 +358,6 @@ describe("ADR-096 物理删除任务", () => {
       id: task.id,
       projectId: project.projectId,
       moduleId: project.moduleId,
-      featureId: null,
       workStatus: "TODO",
       deletedRecordCount: 1,
       removedLinkCount: 1,
@@ -438,7 +433,6 @@ describe("ADR-096 物理删除任务", () => {
         {
           projectId: project.projectId,
           moduleId: project.moduleId,
-          featureId: null,
         },
         task.id,
       ),

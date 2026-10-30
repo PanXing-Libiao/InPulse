@@ -69,9 +69,6 @@ export class MyTasksController {
         ...(query.ownership === undefined
           ? {}
           : { ownership: query.ownership }),
-        ...(query.scopeType === undefined
-          ? {}
-          : { scopeType: query.scopeType }),
         ...(query.workStatus === undefined
           ? {}
           : { workStatus: query.workStatus }),

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input } from "antd";
 import { AppModal as Modal } from "@features/common/components/AppModal";
-import { CatalogItemDeletionConfirm } from "@features/common/components/CatalogItemDeletionConfirm";
+import { ModuleDeletionConfirm } from "@features/common/components/ModuleDeletionConfirm";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { useAuth } from "@features/auth/auth-context";
 import {
@@ -46,7 +46,7 @@ export type ModuleEditorRequest = {
  * 避免两处实现出现漂移；动作选择由宿主页面通过 `request` 驱动。
  * ADR-044：模块层面已下线归档，弹层不再有归档/恢复动作与操作原因。
  * ADR-096：编辑态弹层页脚最左侧有「删除模块」（仅系统管理员与本项目组长、且
- * 非未分类模块），二次确认后由服务端物理级联删除下级功能、任务与记录。
+ * 非未分类模块），二次确认后由服务端物理级联删除下级任务与记录。
  */
 export function ModuleEditorModal({
   projectId,
@@ -249,19 +249,16 @@ export function ModuleEditorModal({
    * 计数宽（已取消任务也随模块永久删除），所以文案里点明「全部任务」。
    */
   const deletionImpact = (item: ModuleItem): string => {
-    const features = item.stats.activeFeatureCount;
     const open = item.stats.openTaskCount;
     const done = item.stats.completedTaskCount;
-    if (features === 0 && open === 0 && done === 0)
-      return "该模块下没有功能，也没有未完成或已完成的任务：确认删除只影响模块自身。";
+    if (open === 0 && done === 0)
+      return "该模块下没有未完成或已完成的任务：确认删除只影响模块自身。";
     return (
       "该模块下有 " +
-      features +
-      " 个功能、" +
       open +
       " 项未完成任务与 " +
       done +
-      " 项已完成任务：确认删除会永久删除该模块、其下这些功能与它们名下的全部任务（无论未完成、已完成还是已取消），以及这些实体的全部迭代记录、版本、遗留项与 GitHub 链接关联。仅保留审计日志与项目动态。"
+      " 项已完成任务：确认删除会永久删除该模块与它名下的全部任务（无论未完成、已完成还是已取消），以及这些实体的全部迭代记录、版本、遗留项与 GitHub 链接关联。仅保留审计日志与项目动态。"
     );
   };
   const openDeletion = () => {
@@ -271,7 +268,7 @@ export function ModuleEditorModal({
     setDeleteOpen(true);
   };
   /**
-   * ADR-096：删除模块。服务端在同一事务内物理级联删除下级功能、任务与记录；成功后同时关闭
+   * ADR-096：删除模块。服务端在同一事务内物理级联删除任务与记录；成功后同时关闭
    * 编辑弹窗与确认弹窗，并由宿主决定离开页面（模块详情页已经不存在了）。
    */
   const confirmDeletion = () => {
@@ -417,7 +414,7 @@ export function ModuleEditorModal({
           <div className="calm-action-footer">
             {deleteTarget ? (
               // ADR-096：与「删除任务」同一形态，页脚最左侧的危险动作，
-              // 确认弹层在编辑弹窗之外单独渲染（见下方 CatalogItemDeletionConfirm）。
+              // 确认弹层在编辑弹窗之外单独渲染（见下方 ModuleDeletionConfirm）。
               <div className="footer-leading">
                 <Button
                   className="tint-danger-button"
@@ -454,15 +451,13 @@ export function ModuleEditorModal({
       </Modal>
       {/* 删除确认必须在编辑弹窗**之外**：rc-dialog 会 memo 化编辑弹窗的 children，
           挂在子树内的确认弹层拿不到 open / pending 更新，删除成功后会一直转圈并卡住。 */}
-      <CatalogItemDeletionConfirm
-        noun="模块"
+      <ModuleDeletionConfirm
         open={deleteOpen}
         name={deleteTarget?.name}
         code={deleteTarget?.code}
         impact={deleteTarget ? deletionImpact(deleteTarget) : ""}
         pending={deletion.isPending}
         error={deletion.error}
-        testId="confirm-delete-module"
         onCancel={() => {
           if (!deletion.isPending) setDeleteOpen(false);
         }}

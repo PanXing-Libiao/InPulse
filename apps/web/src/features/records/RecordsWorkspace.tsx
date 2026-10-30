@@ -30,7 +30,6 @@ import {
 } from "@features/published-records/PublishedRecordDetail";
 import { PublishedRecordCard } from "./PublishedRecordCard";
 import { RecordSummaryModal } from "./RecordSummaryModal";
-import { useProjectFeatureNames } from "./feature-name-map";
 import {
   groupRecordsByDate,
   RECORD_SEARCH_PLACEHOLDER,
@@ -42,7 +41,7 @@ import {
 import "./records-timeline.css";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 
-/** 关键词下发前的防抖窗口（毫秒）：与相似功能提示保持同一节奏。 */
+/** 关键词下发前的防抖窗口（毫秒），与既有搜索交互保持同一节奏。 */
 const SEARCH_DEBOUNCE_MS = 350;
 
 /**
@@ -99,7 +98,6 @@ export function RecordsWorkspace({
       else next.add(key);
       return next;
     });
-  const featureNames = useProjectFeatureNames(projectId, client);
   useEffect(() => {
     const timer = window.setTimeout(
       () => setTerm(query.trim()),
@@ -431,7 +429,7 @@ export function RecordsWorkspace({
           }
           description={
             filtered
-              ? "调整筛选条件，或直接在功能档案中记录一次已经发生的变化。"
+              ? "调整筛选条件，或从模块任务中记录一次已经发生的变化。"
               : "草稿发布后会出现在这里。"
           }
         />
@@ -484,7 +482,6 @@ export function RecordsWorkspace({
                             toggleRecord(item.record.id, open)
                           }
                           onListChanged={() => void list.refetch()}
-                          featureNames={featureNames}
                           githubOpen={githubOpenRecordId === item.record.id}
                           onGithubOpenChange={(open) =>
                             setGithubOpenRecordId(open ? item.record.id : 0)

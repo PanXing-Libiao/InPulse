@@ -11,7 +11,6 @@ import {
   type UnitOfWork,
 } from "../../database/unit-of-work.js";
 import { ChangeRecordReadPort } from "../change-records/index.js";
-import { FeatureReadPort } from "../features/index.js";
 import { ModuleReadPort } from "../modules/index.js";
 import {
   PROJECT_ACCESS_QUERY_PORT,
@@ -26,9 +25,9 @@ import { AggregateReadError } from "./aggregate-read.errors.js";
  * R-2 项目概览聚合读（F-29）。
  *
  * 统计口径按功能设计 §29 与 A 裁决 Q-04 / Q-05：
- * 活跃模块 / 活跃功能按行自身 status = ACTIVE 计数；未完成任务 = 有效任务中
+ * 活跃模块按行自身 status = ACTIVE 计数；未完成任务 = 有效任务中
  * work_status = TODO（有效 = 非 INVALID、非 CANCELED，且排除历史来源分支）；
- * 迭代记录数只计 PUBLISHED，不按版本、不按影响功能重复计数。
+ * 迭代记录数只计 PUBLISHED，不按版本重复计数。
  * 非成员或项目不存在统一 404；列表条数由契约收口（默认 3 / 2，上限 10），
  * activeLeftoverTotal 与列表同一过滤、不受 limit 影响（R-2 裁决 §10.2）。
  */
@@ -54,7 +53,6 @@ export class ProjectOverviewQueryService {
     private readonly projectAccess: ProjectAccessQueryPort,
     @Inject(ProjectQueryPort) private readonly projects: ProjectQueryPort,
     @Inject(ModuleReadPort) private readonly modules: ModuleReadPort,
-    @Inject(FeatureReadPort) private readonly features: FeatureReadPort,
     @Inject(TaskQueryPort) private readonly tasks: TaskQueryPort,
     @Inject(ChangeRecordReadPort)
     private readonly records: ChangeRecordReadPort,
@@ -89,7 +87,6 @@ export class ProjectOverviewQueryService {
       );
       // ADR-044：模块层面已下线归档，模块计数不再需要状态过滤（模块只有 ACTIVE）。
       const activeModuleCount = await this.modules.count(tx, { projectId });
-      const activeFeatureCount = await this.features.count(tx, { projectId });
       const openTaskCount = await this.tasks.count(tx, {
         projectIds: [projectId],
         workStatuses: ["TODO"],
@@ -120,7 +117,6 @@ export class ProjectOverviewQueryService {
         memberCount: project.memberCount,
         stats: {
           activeModuleCount,
-          activeFeatureCount,
           openTaskCount,
           publishedRecordCount,
         },
@@ -129,8 +125,6 @@ export class ProjectOverviewQueryService {
           code: item.code,
           title: item.title,
           moduleId: item.moduleId,
-          featureId: item.featureId,
-          featureName: item.featureName,
           publishedAt: item.publishedAt.toISOString(),
         })),
         activeLeftoverTotal,

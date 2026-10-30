@@ -200,7 +200,7 @@ export const TaskBoardToolbar: React.FC<TaskBoardToolbarProps> = ({
           className="tb-search"
           type="search"
           aria-label="搜索任务"
-          placeholder="搜索编号 / 标题 / 功能 / 负责人"
+          placeholder="搜索编号 / 标题 / 负责人"
           value={filters.query}
           onChange={(event) =>
             onChange({ ...filters, query: event.target.value })

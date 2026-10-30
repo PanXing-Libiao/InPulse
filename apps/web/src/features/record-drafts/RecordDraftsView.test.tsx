@@ -21,10 +21,7 @@ const item: RecordDraftItem = {
   id: 7,
   projectId: 1,
   moduleId: 2,
-  featureId: null,
-  scopeType: "MODULE",
   taskId: null,
-  impactFeatureIds: [],
   authorId: 3,
   handlerId: 3,
   status: "DRAFT",
@@ -48,7 +45,6 @@ function client(overrides: object = {}) {
     listModules: vi.fn().mockResolvedValue({
       items: [{ id: 2, name: "支付模块", status: "ACTIVE" }],
     }),
-    listFeatures: vi.fn().mockResolvedValue({ items: [] }),
     listRecordDrafts: vi.fn().mockResolvedValue({
       items: [item],
       nextCursor: null,
@@ -181,25 +177,13 @@ describe("F-17 draft UI", () => {
       changeSolution: item.changeSolution,
       resultVerification: item.resultVerification,
       remainingIssues: [],
-      scopeType: "MODULE",
-      impactFeatureIds: [],
     });
     await waitFor(() =>
       expect(screen.getByText("暂无已知遗留问题")).toBeVisible(),
     );
   });
-  it("selects several impact features through the multi-select and sends them all", async () => {
-    const create = vi.fn().mockResolvedValue(item);
-    const api = client({
-      createIndependentRecordDraft: create,
-      listFeatures: vi.fn().mockResolvedValue({
-        items: [
-          { id: 11, name: "用户登录与会话管理", status: "ACTIVE" },
-          { id: 12, name: "用户管理", status: "ACTIVE" },
-          { id: 13, name: "已归档功能", status: "ARCHIVED" },
-        ],
-      }),
-    });
+  it("does not expose the removed impact-feature selector in independent drafts", async () => {
+    const api = client();
     const canCreate = vi.fn();
     const { rerender } = render(
       mountView(api, "/records?projectId=1", undefined, 0, canCreate),
@@ -210,33 +194,9 @@ describe("F-17 draft UI", () => {
       await screen.findByRole("dialog", { name: "新建迭代记录" }),
     );
     await pickInModal(modal, "所属模块", "支付模块");
-    // 影响功能是多选下拉：打开一次连点两项，触发器把已选项渲染成 chips。
-    const trigger = modal.getByLabelText("影响功能").closest(".ant-select");
-    if (!trigger) {
-      throw new Error("影响功能下拉未找到");
-    }
-    fireEvent.mouseDown(trigger);
-    fireEvent.click(await screen.findByTitle("用户登录与会话管理"));
-    fireEvent.click(await screen.findByTitle("用户管理"));
-    await waitFor(() =>
-      expect(
-        trigger.querySelectorAll(".ant-select-selection-item").length,
-      ).toBe(2),
-    );
-    for (const [label, value] of [
-      ["迭代标题", item.title],
-      ["改动原因", item.contextProblem],
-      ["具体改动", item.changeSolution],
-      ["改动效果", item.resultVerification],
-    ])
-      fireEvent.change(modal.getByLabelText(label!), { target: { value } });
-    fireEvent.click(modal.getByRole("button", { name: "保存草稿" }));
-    await waitFor(() => expect(create).toHaveBeenCalledOnce());
-    expect(create.mock.calls[0]![2]).toMatchObject({
-      scopeType: "MODULE",
-      impactFeatureIds: [11, 12],
-    });
+    expect(modal.queryByLabelText("影响功能")).toBeNull();
   });
+
   it("shows the draft title in the modal header instead of repeating it in the body", async () => {
     mount(client(), "/records?projectId=1&recordId=7");
     const dialog = await screen.findByRole("dialog", { name: "草稿详情" });
@@ -323,14 +283,11 @@ const source = {
   taskId: 8,
   projectId: 1,
   moduleId: 2,
-  featureId: null,
-  scopeType: "MODULE",
   title: "来源标题",
   assigneeId: 9,
   workStatus: "TODO",
   lifecycleStatus: "ACTIVE",
   rowVersion: 4,
-  impactFeatureIds: [],
 };
 it("lists all source drafts without implicit selection and explicitly creates another with task version", async () => {
   const create = vi.fn().mockResolvedValue({ ...item, id: 10, taskId: 8 });
@@ -369,11 +326,11 @@ it("lists all source drafts without implicit selection and explicitly creates an
   );
   expect(modal.getByLabelText("迭代标题")).toHaveValue("来源标题");
   expect(modal.queryByLabelText("所属模块")).not.toBeInTheDocument();
-  // 归属与影响功能按来源快照只读展示（与迭代记录页同一套行），不是可编辑的选择器。
+  // 归属按来源快照只读展示（与迭代记录页同一套行），不是可编辑的选择器。
   const scopeFacts = modal.getByText("支付模块").closest(".record-scope-facts");
   expect(scopeFacts).not.toBeNull();
   expect(scopeFacts!.textContent).toContain("所属项目支付项目");
-  expect(scopeFacts!.textContent).toContain("记录范围模块");
+  expect(scopeFacts!.textContent).toContain("所属模块支付模块");
   // ADR-047：来源草稿也能就地发布；「保存草稿」退成淡蓝次级，主按钮是「发布迭代记录」。
   expect(modal.getByRole("button", { name: "发布迭代记录" })).toBeEnabled();
   expect(modal.getByRole("button", { name: "保存草稿" }).className).toContain(
@@ -516,9 +473,7 @@ it("deletes the draft from the editor modal only after the destructive confirmat
     projectId: 1,
     recordId: 7,
     moduleId: 2,
-    featureId: null,
     taskId: null,
-    impactFeatureIds: [],
   });
   mount(client({ deleteRecordDraft }));
   fireEvent.click(await screen.findByRole("button", { name: /继续编辑/ }));
@@ -578,7 +533,6 @@ it("lists my drafts across projects, labels the owning project and opens it", as
         draft: { ...item, id: 21, projectId: 5 },
         projectName: "风控项目",
         moduleName: "风控模块",
-        featureName: null,
       },
     ],
     nextCursor: null,
@@ -1097,7 +1051,6 @@ it("筛选项目时草稿箱跟着筛选：切到没有草稿的项目整块消�
         draft: item,
         projectName: "支付项目",
         moduleName: "支付模块",
-        featureName: null,
       },
     ],
     nextCursor: null,

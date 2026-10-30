@@ -23,7 +23,6 @@ import type {
   TaskGroupRecordPage,
 } from "../src/modules/change-records/index.js";
 import type { ExternalLinksQueryPort } from "../src/modules/external-links/index.js";
-import type { FeatureReadPort } from "../src/modules/features/index.js";
 import type { ModuleReadPort } from "../src/modules/modules/index.js";
 import type {
   ProjectAccessQueryPort,
@@ -134,8 +133,6 @@ function taskFixture(
     taskId,
     projectId: 7,
     moduleId: 3,
-    featureId: 4,
-    scopeType: "FEATURE",
     code: "SHOP-T-" + String(taskId),
     title: "任务 " + String(taskId),
     creatorId: 5,
@@ -145,7 +142,6 @@ function taskFixture(
     lifecycleStatus: "ACTIVE",
     dueAt: null,
     rowVersion: 1,
-    impactFeatureIds: [],
     ...overrides,
   };
 }
@@ -158,8 +154,6 @@ function taskRowFixture(
     taskId,
     projectId: 7,
     moduleId: 3,
-    featureId: 4,
-    scopeType: "FEATURE",
     code: "SHOP-T-" + String(taskId),
     title: "任务 " + String(taskId),
     assigneeId: 5,
@@ -196,7 +190,6 @@ function projectFixture(
     memberCount: 2,
     stats: {
       activeModuleCount: 2,
-      activeFeatureCount: 1,
       openTaskCount: 3,
       completedTaskCount: 1,
     },
@@ -215,12 +208,6 @@ function taskGroupSetup(
     }[];
     readonly page?: TaskGroupRecordPage;
     readonly projects?: readonly ProjectItem[];
-    readonly featureNames?: readonly {
-      readonly featureId: number;
-      readonly projectId: number;
-      readonly moduleId: number;
-      readonly name: string;
-    }[];
     readonly decode?: () => number | null;
   } = {},
 ) {
@@ -232,13 +219,6 @@ function taskGroupSetup(
   const findGroupById = vi.fn().mockResolvedValue(options.group);
   const listMembers = vi.fn().mockResolvedValue(options.members ?? []);
   const listByIds = vi.fn().mockResolvedValue(options.tasks ?? []);
-  const listFeatureNames = vi
-    .fn()
-    .mockResolvedValue(
-      options.featureNames ?? [
-        { featureId: 4, projectId: 7, moduleId: 3, name: "登录页" },
-      ],
-    );
   const countPublishedByTask = vi.fn().mockResolvedValue(options.counts ?? []);
   const listVisibleRecordsByTaskIds = vi
     .fn()
@@ -278,7 +258,6 @@ function taskGroupSetup(
     } as unknown as ChangeRecordReadPort,
     { listByIds: listUsers } as unknown as UserReadPort,
     { listChangeRecordLinks } as unknown as ExternalLinksQueryPort,
-    { listNames: listFeatureNames } as unknown as FeatureReadPort,
     {
       listNames: vi
         .fn()
@@ -293,7 +272,6 @@ function taskGroupSetup(
     findGroupById,
     listMembers,
     listByIds,
-    listFeatureNames,
     countPublishedByTask,
     listVisibleRecordsByTaskIds,
     listChangeRecordLinks,
@@ -313,12 +291,6 @@ function taskGroupListSetup(
     readonly moduleNames?: readonly {
       readonly moduleId: number;
       readonly projectId: number;
-      readonly name: string;
-    }[];
-    readonly featureNames?: readonly {
-      readonly featureId: number;
-      readonly projectId: number;
-      readonly moduleId: number;
       readonly name: string;
     }[];
     readonly publishedRecordCounts?: readonly {
@@ -367,13 +339,6 @@ function taskGroupListSetup(
     .mockResolvedValue(
       options.moduleNames ?? [{ moduleId: 3, projectId: 7, name: "模块" }],
     );
-  const listFeatureNames = vi
-    .fn()
-    .mockResolvedValue(
-      options.featureNames ?? [
-        { featureId: 4, projectId: 7, moduleId: 3, name: "功能" },
-      ],
-    );
   const countPublishedByTask = vi
     .fn()
     .mockResolvedValue(options.publishedRecordCounts ?? []);
@@ -391,7 +356,6 @@ function taskGroupListSetup(
     { countPublishedByTask } as unknown as ChangeRecordReadPort,
     { listByIds: listUsers } as unknown as UserReadPort,
     {} as unknown as ExternalLinksQueryPort,
-    { listNames: listFeatureNames } as unknown as FeatureReadPort,
     { listNames: listModuleNames } as unknown as ModuleReadPort,
     unitOfWork,
     cursor as unknown as AggregateReadCursorService,
@@ -402,7 +366,6 @@ function taskGroupListSetup(
     listActiveMembersForGroups,
     listByIds,
     listModuleNames,
-    listFeatureNames,
     countPublishedByTask,
     listProjects,
     listStatuses,
@@ -460,7 +423,7 @@ describe("TaskGroupQueryService.getTaskGroup", () => {
       ],
       tasks: [
         taskFixture(21),
-        taskFixture(22, { scopeType: "MODULE", featureId: null }),
+        taskFixture(22),
         taskFixture(23),
         taskFixture(24),
       ],
@@ -489,21 +452,12 @@ describe("TaskGroupQueryService.getTaskGroup", () => {
       sourceKind: null,
       memberStatus: "ACTIVE",
       publishedRecordCount: 2,
-      featureId: 4,
-      featureName: "登录页",
       priority: "NORMAL",
       assignee: { userId: 5, name: "成员", avatarUrl: null },
       joinedAt: baseTime.toISOString(),
       detachedAt: null,
     });
-    // 功能名称按成员任务的 featureId 批量解析：只查去重后的已归属功能 ID。
-    expect(setup.listFeatureNames).toHaveBeenCalledWith(expect.anything(), {
-      projectIds: [7],
-      featureIds: [4],
-    });
     expect(result.members[1]!.role).toBe("SOURCE");
-    expect(result.members[1]!.featureId).toBeNull();
-    expect(result.members[1]!.featureName).toBeNull();
     expect(result.members[1]!.publishedRecordCount).toBe(0);
     expect(result.members[3]).toMatchObject({
       taskId: 24,
@@ -528,24 +482,6 @@ describe("TaskGroupQueryService.getTaskGroup", () => {
       code: "AGGREGATE_READ_INCONSISTENT",
     });
   });
-
-  it("已归属功能解析不到名称时以 500 失败而不是回退编号", async () => {
-    const setup = taskGroupSetup({
-      group: groupFixture(),
-      members: [memberFixture({ taskId: 21 })],
-      tasks: [taskFixture(21)],
-      featureNames: [],
-    });
-    await expect(
-      setup.service.getTaskGroup({ actorUserId: 5, groupId: 11 }),
-    ).rejects.toMatchObject({
-      status: 500,
-      code: "AGGREGATE_READ_INCONSISTENT",
-    });
-    await expect(
-      setup.service.getTaskGroup({ actorUserId: 5, groupId: 11 }),
-    ).rejects.toThrowError("任务缺少功能 4");
-  });
 });
 describe("TaskGroupQueryService.listTaskGroupRecords", () => {
   it("记录列表按成员任务过滤，游标绑定组与成员筛选", async () => {
@@ -560,10 +496,7 @@ describe("TaskGroupQueryService.listTaskGroupRecords", () => {
           sourceKind: "ACTIVE",
         }),
       ],
-      tasks: [
-        taskFixture(21),
-        taskFixture(22, { scopeType: "MODULE", featureId: null }),
-      ],
+      tasks: [taskFixture(21), taskFixture(22)],
       page: {
         items: [
           {
@@ -572,7 +505,6 @@ describe("TaskGroupQueryService.listTaskGroupRecords", () => {
             title: "记录一",
             status: "PUBLISHED",
             taskId: 21,
-            featureId: null,
             publishedAt: baseTime,
           },
           {
@@ -581,7 +513,6 @@ describe("TaskGroupQueryService.listTaskGroupRecords", () => {
             title: "记录二",
             status: "VOID",
             taskId: 22,
-            featureId: 4,
             publishedAt: baseTime,
           },
         ],
@@ -604,15 +535,10 @@ describe("TaskGroupQueryService.listTaskGroupRecords", () => {
       recordId: 501,
       recordStatus: "PUBLISHED",
       taskId: 21,
-      featureId: null,
-      featureName: null,
       externalLinks: [],
       publishedAt: baseTime.toISOString(),
     });
     expect(result.items[1]!.recordStatus).toBe("VOID");
-    // 记录所属功能同样按名称返回（featureId 4 → 登录页）。
-    expect(result.items[1]!.featureId).toBe(4);
-    expect(result.items[1]!.featureName).toBe("登录页");
     expect(result.hasMore).toBe(true);
     expect(result.nextCursor).toBe("cursor-next");
     expect(setup.listVisibleRecordsByTaskIds).toHaveBeenCalledWith(
@@ -756,11 +682,9 @@ describe("TaskGroupQueryService.listTaskGroups", () => {
           workStatus: "CANCELED",
           assigneeId: 6,
           priority: "NORMAL",
-          featureId: null,
         }),
       ],
       moduleNames: [{ moduleId: 3, projectId: 7, name: "订单" }],
-      featureNames: [{ featureId: 4, projectId: 7, moduleId: 3, name: "结算" }],
       publishedRecordCounts: [
         { taskId: 22, count: 3 },
         { taskId: 23, count: 2 },
@@ -802,7 +726,6 @@ describe("TaskGroupQueryService.listTaskGroups", () => {
         code: "SHOP-T-22",
         projectId: 7,
         moduleId: 3,
-        featureId: 4,
       },
     });
     expect(
@@ -814,8 +737,6 @@ describe("TaskGroupQueryService.listTaskGroups", () => {
         branch.priority,
         branch.moduleId,
         branch.moduleName,
-        branch.featureId,
-        branch.featureName,
         branch.dueAt,
         branch.publishedRecordCount,
       ]),
@@ -828,8 +749,6 @@ describe("TaskGroupQueryService.listTaskGroups", () => {
         "HIGH",
         3,
         "订单",
-        4,
-        "结算",
         "2026-09-20T02:00:00.000Z",
         3,
       ],
@@ -841,34 +760,16 @@ describe("TaskGroupQueryService.listTaskGroups", () => {
         "URGENT",
         3,
         "订单",
-        4,
-        "结算",
         "2026-09-11T02:00:00.000Z",
         2,
       ],
-      [
-        24,
-        "SOURCE",
-        "ACTIVE",
-        "CANCELED",
-        "NORMAL",
-        3,
-        "订单",
-        null,
-        null,
-        null,
-        0,
-      ],
+      [24, "SOURCE", "ACTIVE", "CANCELED", "NORMAL", 3, "订单", null, 0],
     ]);
-    // 列表行的「归属 / 截止 / 迭代」三列只靠本页事实字段：模块/功能名按本页 ID 批量取、
+    // 列表行的「归属 / 截止 / 迭代」三列只靠本页事实字段：模块名按本页 ID 批量取、
     // 记录数按本页 taskIds 批量取，不拉全组或全项目的数据。
     expect(setup.listModuleNames).toHaveBeenCalledWith(expect.anything(), {
       projectIds: [7],
       moduleIds: [3],
-    });
-    expect(setup.listFeatureNames).toHaveBeenCalledWith(expect.anything(), {
-      projectIds: [7],
-      featureIds: [4],
     });
     expect(setup.countPublishedByTask).toHaveBeenCalledWith(
       expect.anything(),
@@ -1010,7 +911,6 @@ function overviewSetup(
     .fn()
     .mockResolvedValue(options.project ?? projectFixture(7, "商城系统"));
   const modulesCount = vi.fn().mockResolvedValue(2);
-  const featuresCount = vi.fn().mockResolvedValue(1);
   const tasksCount = vi.fn().mockResolvedValue(3);
   const countPublished = vi.fn().mockResolvedValue(4);
   const listRecentPublished = vi
@@ -1027,7 +927,6 @@ function overviewSetup(
     { getAuthorizedSearchScope } as unknown as ProjectAccessQueryPort,
     { find } as unknown as ProjectQueryPort,
     { count: modulesCount } as unknown as ModuleReadPort,
-    { count: featuresCount } as unknown as FeatureReadPort,
     { count: tasksCount } as unknown as TaskQueryPort,
     {
       countPublished,
@@ -1042,7 +941,6 @@ function overviewSetup(
     service,
     find,
     modulesCount,
-    featuresCount,
     tasksCount,
     countPublished,
     listRecentPublished,
@@ -1079,12 +977,10 @@ describe("ProjectOverviewQueryService.getOverview", () => {
           recordId: 41,
           projectId: 7,
           moduleId: 3,
-          featureId: null,
           code: "SHOP-CR-41",
           title: "迭代",
           currentVersion: 2,
           publishedAt,
-          featureName: null,
         },
       ],
       leftovers: [
@@ -1113,7 +1009,6 @@ describe("ProjectOverviewQueryService.getOverview", () => {
     expect(result.memberCount).toBe(2);
     expect(result.stats).toEqual({
       activeModuleCount: 2,
-      activeFeatureCount: 1,
       openTaskCount: 3,
       publishedRecordCount: 4,
     });
@@ -1123,8 +1018,6 @@ describe("ProjectOverviewQueryService.getOverview", () => {
         code: "SHOP-CR-41",
         title: "迭代",
         moduleId: 3,
-        featureId: null,
-        featureName: null,
         publishedAt: publishedAt.toISOString(),
       },
     ]);
@@ -1141,10 +1034,6 @@ describe("ProjectOverviewQueryService.getOverview", () => {
     ]);
     // ADR-044：模块已无归档态，投影计数只按 projectId。
     expect(setup.modulesCount).toHaveBeenCalledWith(expect.anything(), {
-      projectId: 7,
-    });
-    // ADR-045：功能同样已无归档态，投影计数也只按 projectId / moduleId。
-    expect(setup.featuresCount).toHaveBeenCalledWith(expect.anything(), {
       projectId: 7,
     });
     expect(setup.tasksCount).toHaveBeenCalledWith(expect.anything(), {
@@ -1205,12 +1094,6 @@ function myTasksSetup(
       readonly projectId: number;
       readonly name: string;
     }[];
-    readonly featureNames?: readonly {
-      readonly featureId: number;
-      readonly projectId: number;
-      readonly moduleId: number;
-      readonly name: string;
-    }[];
     readonly publishedRecordCounts?: readonly {
       readonly taskId: number;
       readonly count: number;
@@ -1254,13 +1137,6 @@ function myTasksSetup(
     .fn()
     .mockResolvedValue(
       options.moduleNames ?? [{ moduleId: 3, projectId: 7, name: "模块" }],
-    );
-  const listFeatureNames = vi
-    .fn()
-    .mockResolvedValue(
-      options.featureNames ?? [
-        { featureId: 4, projectId: 7, moduleId: 3, name: "功能" },
-      ],
     );
   const countPublishedByTask = vi
     .fn()
@@ -1312,7 +1188,6 @@ function myTasksSetup(
     { list: listProjects, listStatuses } as unknown as ProjectQueryPort,
     { list: listPage, stats, leftoverEntry } as unknown as MyTaskQueryPort,
     { listNames: listModuleNames } as unknown as ModuleReadPort,
-    { listNames: listFeatureNames } as unknown as FeatureReadPort,
     {
       countPublishedByTask,
       listLeftoverSourceTaskIds,
@@ -1460,12 +1335,11 @@ describe("MyTasksQueryService.list", () => {
     });
   });
 
-  it("七项筛选进入端口与游标 filterKey，includeCanceled 并入 CANCELED", async () => {
+  it("筛选进入端口与游标 filterKey，includeCanceled 并入 CANCELED", async () => {
     const setup = myTasksSetup({ scopeProjectIds: [7, 9] });
     await setup.service.list({
       actorUserId: 5,
       projectId: 9,
-      scopeType: "MODULE",
       workStatus: "TODO",
       hasPublishedRecord: false,
       priority: "HIGH",
@@ -1476,15 +1350,7 @@ describe("MyTasksQueryService.list", () => {
     expect(setup.cursor.decodeKey).toHaveBeenCalledWith(undefined, {
       actorUserId: 5,
       namespace: "MY_TASKS",
-      filterKey: JSON.stringify([
-        "ASSIGNEE",
-        9,
-        "MODULE",
-        "TODO",
-        false,
-        "HIGH",
-        true,
-      ]),
+      filterKey: JSON.stringify(["ASSIGNEE", 9, "TODO", false, "HIGH", true]),
       requireSortKey: true,
     });
     expect(setup.listPage).toHaveBeenCalledWith(
@@ -1495,7 +1361,6 @@ describe("MyTasksQueryService.list", () => {
         limit: 5,
         excludedTaskIds: [90],
         workStatuses: ["TODO", "CANCELED"],
-        scopeTypes: ["MODULE"],
         hasPublishedRecord: false,
         priority: "HIGH",
       }),
@@ -1514,7 +1379,6 @@ describe("MyTasksQueryService.list", () => {
         false,
         true,
         "ASSIGNEE",
-        null,
         null,
         null,
         null,
@@ -1539,7 +1403,7 @@ describe("MyTasksQueryService.list", () => {
     expect(setup.cursor.decodeKey).toHaveBeenCalledWith(undefined, {
       actorUserId: 5,
       namespace: "MY_TASKS",
-      filterKey: JSON.stringify(["CREATOR", 9, null, null, null, null, null]),
+      filterKey: JSON.stringify(["CREATOR", 9, null, null, null, null]),
       requireSortKey: true,
     });
     const pageInput = setup.listPage.mock.calls[0]?.[1];
@@ -1564,7 +1428,7 @@ describe("MyTasksQueryService.list", () => {
   it("条目映射 groupRole 与 hasPublishedRecord 并签发下一页游标", async () => {
     const setup = myTasksSetup({
       page: {
-        items: [taskRowFixture(502, { featureId: null }), taskRowFixture(501)],
+        items: [taskRowFixture(502), taskRowFixture(501)],
         next: {
           statusGroup: 0,
           completedAt: null,
@@ -1585,8 +1449,6 @@ describe("MyTasksQueryService.list", () => {
 
     expect(result.items[0]).toMatchObject({
       taskId: 502,
-      featureId: null,
-      featureName: null,
       projectName: "商城系统",
       moduleName: "模块",
       priority: "NORMAL",
@@ -1602,7 +1464,6 @@ describe("MyTasksQueryService.list", () => {
     });
     expect(result.items[1]).toMatchObject({
       taskId: 501,
-      featureName: "功能",
       hasPublishedRecord: true,
       githubLinkCount: 3,
       groupRole: "MAIN",
@@ -1641,15 +1502,7 @@ describe("MyTasksQueryService.list", () => {
     expect(setup.cursor.encode).toHaveBeenCalledWith({
       actorUserId: 5,
       namespace: "MY_TASKS",
-      filterKey: JSON.stringify([
-        "ASSIGNEE",
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-      ]),
+      filterKey: JSON.stringify(["ASSIGNEE", null, null, null, null, null]),
       afterId: 501,
       sortKey: "7|0||3|2|1||501",
     });

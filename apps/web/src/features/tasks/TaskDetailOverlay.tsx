@@ -5,11 +5,11 @@ import type { TaskScope } from "./task-query";
 import { TasksPanel } from "./TasksPanel";
 
 /**
- * 任务详情的就地宿主：任务中心等跨项目页点击任务后，在当前页面直接打开与功能
- * 档案一致的任务详情弹窗（状态推进、编辑、迭代记录、合并与外部链接等写入口
- * 全部由 TasksPanel 承担），不改变地址栏、不跳转到项目 / 模块 / 功能页。
+ * 任务详情的就地宿主：任务中心等跨项目页点击任务后，在当前页面直接打开与模块任务页
+ * 一致的任务详情弹窗（状态推进、编辑、迭代记录、合并与外部链接等写入口
+ * 全部由 TasksPanel 承担），不改变地址栏、不跳转到项目 / 模块页。
  *
- * 可写性沿用功能档案的口径：ADR-044（模块）与 ADR-045（功能）先后下线归档后，
+ * 可写性沿用模块任务页的口径：模块已下线归档后，
  * 归属链上已没有归档只读态，因此直接按可写渲染，不再回查父级状态；服务端仍按
  * 实时权限与任务自身状态独立校验。
  */
@@ -33,7 +33,6 @@ export const TaskDetailOverlay: React.FC<TaskDetailOverlayProps> = ({
   const scope: TaskScope = {
     projectId: target.projectId,
     moduleId: target.moduleId,
-    featureId: target.featureId,
   };
   return (
     <TasksPanel

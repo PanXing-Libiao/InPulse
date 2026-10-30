@@ -189,7 +189,6 @@ export class ProjectBootstrapWorkflow {
       entityType: "PROJECT",
       entityId: project.projectId,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: project.name,
       summary: project.description,

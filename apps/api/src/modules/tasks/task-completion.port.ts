@@ -1,7 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 import type {
   TaskCompletionRequest,
-  TaskItem,
   ModuleTaskItem,
 } from "@inpulse/api-contract";
 import type { TransactionContext } from "../../database/transaction-context.js";
@@ -29,7 +28,7 @@ export abstract class TaskCompletionCommandPort {
     input: TaskCompletionRequest,
     recordAuthors: readonly number[],
     requestId: string,
-  ): Promise<TaskItem | ModuleTaskItem>;
+  ): Promise<ModuleTaskItem>;
 }
 @Injectable()
 export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort {
@@ -77,7 +76,7 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
       );
     const note =
       input.mode === "WITHOUT_RECORD"
-        ? `${input.completionReason}，不涉及功能变化${input.note ? `：${input.note}` : ""}`
+        ? `${input.completionReason}，不关联迭代记录${input.note ? `：${input.note}` : ""}`
         : null;
     const result = await this.repository.transition(
       tx,
@@ -120,7 +119,6 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
       metadata: {
         taskId: result.id,
         moduleId: result.moduleId,
-        featureId: result.featureId,
       },
       visibilityScope: "MEMBER",
       sourceStatus: "DONE",
@@ -132,7 +130,6 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
       entityType: "TASK",
       entityId: source.taskId,
       moduleId: result.moduleId,
-      featureId: result.featureId,
       recordId: null,
       title: result.title,
       summary: result.description.slice(0, 5000),
@@ -150,7 +147,7 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
         notificationType: PROJECT_NOTIFICATION_TYPES.taskComplete,
         title: `任务完成：${result.title}`.slice(0, 500),
         body: result.code,
-        targetPath: `/projects/${source.projectId}/modules/${source.moduleId}${source.featureId === null ? "/tasks" : `/features/${source.featureId}`}?taskId=${source.taskId}`,
+        targetPath: `/projects/${source.projectId}/modules/${source.moduleId}/tasks?taskId=${source.taskId}`,
         createdAt: new Date(result.updatedAt),
       },
       [result.creatorId, ...recordAuthors, ...result.assigneeIds],
@@ -169,7 +166,7 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
     tx: TransactionContext,
     actorId: number,
     source: TaskReadModel,
-    result: TaskItem | ModuleTaskItem,
+    result: ModuleTaskItem,
     requestId: string,
   ): Promise<void> {
     const completion = await this.projects.recordFirstTaskCompletion(tx, {
@@ -225,7 +222,6 @@ export class PostgresTaskCompletionCommandPort extends TaskCompletionCommandPort
       entityType: "PROJECT",
       entityId: completion.projectId,
       moduleId: null,
-      featureId: null,
       recordId: null,
       title: completion.name,
       summary: completion.description.slice(0, 5000),

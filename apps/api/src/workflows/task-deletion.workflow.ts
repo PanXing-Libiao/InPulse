@@ -11,7 +11,7 @@ const missing = () =>
   new TaskManagementError(
     404,
     "TASK_NOT_FOUND",
-    "任务或所属功能不存在或无法访问",
+    "任务或所属模块不存在或无法访问",
   );
 const conflict = () =>
   new TaskManagementError(
@@ -25,7 +25,6 @@ export interface TaskDeletionResult {
   readonly id: number;
   readonly projectId: number;
   readonly moduleId: number;
-  readonly featureId: number | null;
   readonly code: string;
   readonly title: string;
   readonly workStatus: "TODO" | "DONE" | "CANCELED";
@@ -74,7 +73,7 @@ export class TaskDeletionWorkflow {
   ): Promise<TaskDeletionResult> {
     const deletionReason = reason?.trim() ? reason.trim() : DEFAULT_REASON;
     return this.uow.run(async (tx) => {
-      // 父级与归属门禁：与其它任务写命令同一口径（项目可写、模块/功能存在）。
+      // 父级与归属门禁：与其它任务写命令同一口径（项目可写、模块存在）。
       await this.commands.authorize(tx, actorId, scope, taskId);
       const current = await this.commands.find(tx, scope, taskId);
       if (!current) throw missing();
@@ -119,7 +118,6 @@ export class TaskDeletionWorkflow {
         code: deleted.code,
         title: deleted.title,
         moduleId: deleted.moduleId,
-        featureId: deleted.featureId,
         workStatus: deleted.workStatus,
         reason,
         deletedRecordCount: deleted.deletedRecordCount,
@@ -149,7 +147,6 @@ export class TaskDeletionWorkflow {
         taskId,
         code: deleted.code,
         moduleId: deleted.moduleId,
-        featureId: deleted.featureId,
         workStatus: deleted.workStatus,
         deletedRecordCount: deleted.deletedRecordCount,
         removedLinkCount: deleted.removedLinkCount,
@@ -162,7 +159,6 @@ export class TaskDeletionWorkflow {
       id: deleted.id,
       projectId: deleted.projectId,
       moduleId: deleted.moduleId,
-      featureId: deleted.featureId,
       code: deleted.code,
       title: deleted.title,
       workStatus: deleted.workStatus,

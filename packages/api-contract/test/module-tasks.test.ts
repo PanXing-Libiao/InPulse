@@ -1,38 +1,40 @@
 import { describe, expect, it } from "vitest";
-import {
-  moduleTaskEditRequestSchema,
-  moduleTaskItemSchema,
-} from "../src/contracts/tasks.zod.js";
+import { moduleTaskEditRequestSchema } from "../src/contracts/tasks.zod.js";
+import { moduleTaskRoutes } from "../src/task-routes.js";
 
-describe("F-15 module task contract", () => {
-  it("normalizes the influence set and permits an empty scope", () => {
+describe("ADR-109 module task contract", () => {
+  it("only registers direct module task routes", () => {
+    expect(moduleTaskRoutes.map((route) => route.operationId)).toEqual([
+      "listModuleTasks",
+      "listModuleTaskAssignees",
+      "getModuleTask",
+      "createModuleTask",
+      "updateModuleTask",
+      "transitionModuleTask",
+      "getModuleTaskStatusHistory",
+      "deleteModuleTask",
+    ]);
+  });
+
+  it("accepts editable task fields and rejects removed feature fields", () => {
     const input = {
       title: "公共支付",
       description: "",
       priority: "NORMAL",
       assigneeIds: [1],
       dueAt: null,
-      impactFeatureIds: [3, 2, 3],
     };
-    expect(moduleTaskEditRequestSchema.parse(input).impactFeatureIds).toEqual([
-      2, 3,
-    ]);
-    expect(
-      moduleTaskEditRequestSchema.parse({ ...input, impactFeatureIds: [] })
-        .impactFeatureIds,
-    ).toEqual([]);
-    expect(
-      moduleTaskEditRequestSchema.safeParse({ ...input, featureId: 2 }).success,
-    ).toBe(false);
-    expect(
-      moduleTaskEditRequestSchema.safeParse({ ...input, impactFeatureIds: [0] })
-        .success,
-    ).toBe(false);
-  });
-  it("cannot describe a MODULE task with a direct feature owner", () => {
-    expect(
-      moduleTaskItemSchema.safeParse({ scopeType: "MODULE", featureId: 1 })
-        .success,
-    ).toBe(false);
+    expect(moduleTaskEditRequestSchema.parse(input)).toEqual(input);
+    for (const field of [
+      "featureId",
+      "scopeType",
+      "impactFeatureIds",
+      "projectId",
+      "workStatus",
+    ]) {
+      expect(
+        moduleTaskEditRequestSchema.safeParse({ ...input, [field]: 1 }).success,
+      ).toBe(false);
+    }
   });
 });

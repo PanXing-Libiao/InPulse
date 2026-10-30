@@ -33,7 +33,6 @@ import { PostgresUnitOfWork } from "../src/database/unit-of-work.js";
 import { PostgresProjectAccessQueryPort } from "../src/modules/projects/postgres-project-access-query-port.js";
 import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
 import { PostgresTaskQueryPort } from "../src/modules/tasks/task-query.port.js";
 import { PostgresAuditWritePort } from "../src/audit/postgres-audit-write-port.js";
 import { PostgresActivityWritePort } from "../src/modules/activity/postgres-activity-write-port.js";
@@ -83,7 +82,6 @@ beforeAll(async () => {
     access,
     new PostgresProjectCodePort(),
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
     new PostgresTaskQueryPort(),
     new TaskGroupRepository(),
     new PostgresAuditWritePort({ currentVersion: 1, keyFor: () => key }),
@@ -211,37 +209,22 @@ async function createTask(
   assigneeId: number,
   title: string,
   options: {
-    readonly featureId?: number | null;
     readonly lifecycleStatus?: "ACTIVE" | "INVALID";
     readonly workStatus?: "TODO" | "DONE" | "CANCELED";
   } = {},
 ): Promise<number> {
   sequences += 1;
-  const featureId = options.featureId ?? null;
   const workStatus = options.workStatus ?? "TODO";
   const completedAt = workStatus === "DONE" ? new Date().toISOString() : null;
   return client.sql.begin(async (tx) => {
     const [row] = await tx<
       { id: number }[]
-    >`INSERT INTO app.tasks(project_id,module_id,feature_id,scope_type,code,title,creator_id,work_status,lifecycle_status,completed_at) VALUES (${project.projectId},${project.moduleId},${featureId},${featureId === null ? "MODULE" : "FEATURE"},${`${project.code}-T-${sequences}`},${title},${creatorId},${workStatus},${options.lifecycleStatus ?? "ACTIVE"},${completedAt}) RETURNING id`;
+    >`INSERT INTO app.tasks(project_id,module_id,code,title,creator_id,work_status,lifecycle_status,completed_at) VALUES (${project.projectId},${project.moduleId},${`${project.code}-T-${sequences}`},${title},${creatorId},${workStatus},${options.lifecycleStatus ?? "ACTIVE"},${completedAt}) RETURNING id`;
     if (!row) throw new Error("task fixture returned no row");
     await tx`INSERT INTO app.task_assignees (task_id, user_id, project_id) VALUES (${row.id}, ${assigneeId}, ${project.projectId})`;
     await tx`INSERT INTO app.task_status_history (task_id, project_id, from_work_status, to_work_status, completed_at_snapshot, changed_by) VALUES (${row.id}, ${project.projectId}, NULL, ${workStatus}, ${completedAt}, ${creatorId})`;
     return row.id;
   });
-}
-
-async function createFeature(
-  project: ProjectFixture,
-  creatorId: number,
-  name: string,
-): Promise<number> {
-  sequences += 1;
-  const [row] = await client.sql<
-    { id: number }[]
-  >`INSERT INTO app.features(project_id,module_id,code,name,created_by) VALUES (${project.projectId},${project.moduleId},${`${project.code}-F-${sequences}`},${name},${creatorId}) RETURNING id`;
-  if (!row) throw new Error("feature fixture returned no row");
-  return row.id;
 }
 
 async function addMember(projectId: number, userId: number): Promise<void> {
@@ -459,7 +442,6 @@ describe("F-23 task group merge", () => {
     const created = schemaRegistry.TaskGroupItem.schema.parse(
       await first.json(),
     );
-    const featureId = await createFeature(f.project, f.userId, "退款回调");
     const thirdAssigneeId = await createUser(client.sql);
     await addMember(f.project.projectId, thirdAssigneeId);
     const thirdTaskId = await createTask(
@@ -467,7 +449,6 @@ describe("F-23 task group merge", () => {
       f.userId,
       thirdAssigneeId,
       "回收入口",
-      { featureId },
     );
     const second = await merge(
       f.actor,

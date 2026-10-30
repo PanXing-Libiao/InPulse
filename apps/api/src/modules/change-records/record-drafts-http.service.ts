@@ -177,13 +177,9 @@ export class RecordDraftsHttpService {
             "登录或CSRF状态已失效",
           );
         if (create) {
-          const body = input as IndependentRecordDraftRequest;
           await this.drafts.authorize(tx, actor.userId, {
             projectId: path.projectId,
             moduleId: path.moduleId!,
-            featureId: body.scopeType === "FEATURE" ? body.featureId : null,
-            impactFeatureIds:
-              body.scopeType === "MODULE" ? body.impactFeatureIds : [],
           });
         } else if (!remove)
           // 删除不做草稿预读：草稿已删的重放要能命中缓存结果，而不是 404。
@@ -253,15 +249,13 @@ export class RecordDraftsHttpService {
               projectId: body.projectId,
               recordId: body.id,
               moduleId: body.moduleId,
-              featureId: body.featureId,
               taskId: body.taskId,
-              impactFeatureIds: body.impactFeatureIds,
             },
           };
         },
         replayAuthorizer: async (record, tx) => {
           const actorId = await resolve(tx);
-          // 删除后草稿行已不存在，重放只复验当前可写范围（项目、模块、功能）。
+          // 删除后草稿行已不存在，重放只复验当前可写范围（项目、模块）。
           if (remove) {
             const saved = recordDraftDeleteResultSchema.parse(
               record.replayAuthContext,
@@ -269,8 +263,6 @@ export class RecordDraftsHttpService {
             await this.drafts.authorize(tx, actorId, {
               projectId: saved.projectId,
               moduleId: saved.moduleId,
-              featureId: saved.featureId,
-              impactFeatureIds: saved.impactFeatureIds,
             });
             return;
           }

@@ -61,8 +61,6 @@ describe("project-overview-v1", () => {
           code: "CR-201",
           title: "增加商户订单号幂等校验",
           moduleId: 3,
-          featureId: 9,
-          featureName: "微信支付退款回调",
           publishedAt: "2026-09-10T09:00:00.000Z",
         },
       ]),
@@ -71,7 +69,6 @@ describe("project-overview-v1", () => {
         recordId: 12,
         code: "CR-201",
         title: "增加商户订单号幂等校验",
-        featureName: "微信支付退款回调",
         publishedAt: "2026-09-10T09:00:00.000Z",
       },
     ]);
@@ -85,7 +82,6 @@ describe("project-overview-v1", () => {
         memberCount: 4,
         stats: {
           activeModuleCount: 2,
-          activeFeatureCount: 5,
           openTaskCount: 6,
           publishedRecordCount: 9,
         },
@@ -95,8 +91,6 @@ describe("project-overview-v1", () => {
             code: "CR-201",
             title: "增加商户订单号幂等校验",
             moduleId: 3,
-            featureId: null,
-            featureName: null,
             publishedAt: "2026-09-10T09:00:00.000Z",
           },
         ],
@@ -115,7 +109,6 @@ describe("project-overview-v1", () => {
     ).toEqual({
       stats: {
         activeModules: 2,
-        activeFeatures: 5,
         openTasks: 6,
         publishedRecords: 9,
         openLeftovers: 1,
@@ -125,7 +118,6 @@ describe("project-overview-v1", () => {
           recordId: 12,
           code: "CR-201",
           title: "增加商户订单号幂等校验",
-          featureName: null,
           publishedAt: "2026-09-10T09:00:00.000Z",
         },
       ],

@@ -1,7 +1,6 @@
 import type { MyTaskItem } from "@generated/api";
 import type {
   MyTaskFilters,
-  MyTaskLevel,
   MyTaskListItem,
   MyTaskPriority,
   MyTasksFilterGap,
@@ -14,7 +13,7 @@ import type {
  *
  * 冻结事实见 docs/a-contract-review-f25-f29-f32.md §2、§3、§10、§11：
  * 路径 GET /api/v1/me/tasks，参数支持 cursor / limit / ownership /
- * projectId / scopeType / workStatus / hasPublishedRecord / priority /
+ * projectId / workStatus / hasPublishedRecord / priority /
  * includeCanceled，归属主体固定为当前用户（ownership 只区分负责与创建两个自指
  * 维度），排序固定 id DESC，limit 默认 20、上限 100。
  *
@@ -34,7 +33,6 @@ export interface MyTasksV1Query {
   /** 归属维度：ASSIGNEE（负责，缺省/「我负责的」）或 CREATOR（创建，「我创建的」）。 */
   readonly ownership?: "ASSIGNEE" | "CREATOR";
   readonly projectId?: number;
-  readonly scopeType?: MyTaskLevel;
   readonly workStatus?: MyTaskWorkStatus;
   readonly hasPublishedRecord?: boolean;
   /** 单值优先级筛选；与 workStatus 正交（A 裁决 §10.3）。 */
@@ -148,7 +146,6 @@ export function toMyTasksV1Query(
     limit: number;
     ownership?: "ASSIGNEE" | "CREATOR";
     projectId?: number;
-    scopeType?: MyTaskLevel;
     workStatus?: MyTaskWorkStatus;
     hasPublishedRecord?: boolean;
     priority?: MyTaskPriority;
@@ -165,7 +162,6 @@ export function toMyTasksV1Query(
   // 项目筛选是工具栏的常驻条件：选定项目后，与 scope / ownership 一起收窄，
   // 「我负责的 / 我创建的 + 所选项目」都要下发 projectId。
   if (filters.projectId !== null) query.projectId = filters.projectId;
-  if (filters.level !== null) query.scopeType = filters.level;
   const workStatus = toMyTasksV1WorkStatus(filters);
   if (workStatus !== null) query.workStatus = workStatus;
   if (filters.hasRecord !== null) {
@@ -193,9 +189,6 @@ export function fromV1MyTaskItem(item: MyTaskItem): MyTaskListItem {
     projectName: item.projectName,
     moduleId: item.moduleId,
     moduleName: item.moduleName,
-    featureId: item.featureId,
-    featureName: item.featureName,
-    scopeType: item.scopeType,
     workStatus: item.workStatus,
     lifecycleStatus: item.lifecycleStatus,
     updatedAt: item.updatedAt,
@@ -262,7 +255,6 @@ export function matchesMyTasksLocalFilters(
       item.title,
       item.projectName,
       item.moduleName,
-      item.featureName ?? "",
       ...item.assignees.map((assignee) => assignee.name),
     ]
       .join(" ")

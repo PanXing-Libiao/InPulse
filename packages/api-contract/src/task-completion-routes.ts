@@ -12,8 +12,6 @@ const taskFields = [
   "id",
   "projectId",
   "moduleId",
-  "featureId",
-  "scopeType",
   "code",
   "title",
   "description",
@@ -29,7 +27,6 @@ const taskFields = [
   "rowVersion",
   "createdAt",
   "updatedAt",
-  "impactFeatureIds[]",
 ];
 export const taskCompletionRoutes: readonly RouteDefinition[] = [
   {
@@ -65,7 +62,7 @@ export const taskCompletionRoutes: readonly RouteDefinition[] = [
     },
     // ADR-040：响应内嵌 TaskItem 新增 assigneeIds，属破坏性契约变更，主版本递增。
     // ADR-082：TaskItem 新增墓碑账号展示名，重放字段变化再次递增主版本。
-    idempotencyContractVersion: "3.0.0",
+    idempotencyContractVersion: "4.0.0",
     behaviorHeaders: ["If-Match"],
     idempotencyReplayPolicy: {
       version: "1.0.0",
@@ -97,7 +94,6 @@ export const taskCompletionRoutes: readonly RouteDefinition[] = [
       lockOrder: [
         "project",
         "module",
-        "feature",
         "task",
         "taskGroup",
         "changeRecord",

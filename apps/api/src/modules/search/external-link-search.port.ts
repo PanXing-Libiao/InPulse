@@ -20,7 +20,7 @@ export class ExternalLinkSearchPort {
   ) {
     const [row] = await tx.sql<
       SearchProjectionWriteInput[]
-    >`SELECT project_id AS "projectId",entity_type AS "entityType",entity_id AS "entityId",module_id AS "moduleId",feature_id AS "featureId",record_id AS "recordId",title,summary,raw_text AS "rawText",visibility_scope AS "visibilityScope",source_status AS "sourceStatus",source_row_version AS "sourceRowVersion" FROM app.search_projection WHERE project_id=${projectId} AND entity_type=${entityType} AND entity_id=${entityId}`;
+    >`SELECT project_id AS "projectId",entity_type AS "entityType",entity_id AS "entityId",module_id AS "moduleId",record_id AS "recordId",title,summary,raw_text AS "rawText",visibility_scope AS "visibilityScope",source_status AS "sourceStatus",source_row_version AS "sourceRowVersion" FROM app.search_projection WHERE project_id=${projectId} AND entity_type=${entityType} AND entity_id=${entityId}`;
     // Drafts intentionally have no search projection until publication.
     if (row)
       await this.writer.upsert(tx, { ...row, sourceRowVersion: version });

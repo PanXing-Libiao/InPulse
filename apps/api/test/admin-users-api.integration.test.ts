@@ -40,8 +40,6 @@ import { PostgresProjectCodePort } from "../src/modules/projects/postgres-projec
 import { PostgresProjectsWritePort } from "../src/modules/projects/postgres-projects-write-port.js";
 import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
 import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
-import { PostgresFeatureQueryPort } from "../src/modules/features/postgres-feature-query-port.js";
-import { PostgresFeatureReadPort } from "../src/modules/features/postgres-feature-read-port.js";
 import { ProjectNotificationDispatcher } from "../src/modules/projects/project-notification.dispatcher.js";
 import { PostgresNotificationWritePort } from "../src/modules/notifications/postgres-notification-write-port.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
@@ -255,8 +253,6 @@ async function createOpenTaskForAssignees(
       INSERT INTO app.tasks (
         project_id,
         module_id,
-        feature_id,
-        scope_type,
         code,
         title,
         creator_id,
@@ -267,8 +263,6 @@ async function createOpenTaskForAssignees(
       VALUES (
         ${project.projectId},
         ${project.moduleId},
-        NULL,
-        ${"MODULE"},
         ${project.code + "-T-" + taskSequence},
         ${title},
         ${creatorId},
@@ -330,8 +324,6 @@ async function createTask(
       INSERT INTO app.tasks (
         project_id,
         module_id,
-        feature_id,
-        scope_type,
         code,
         title,
         creator_id,
@@ -342,8 +334,6 @@ async function createTask(
       VALUES (
         ${project.projectId},
         ${project.moduleId},
-        NULL,
-        'MODULE',
         ${`${project.code}-T-${taskSequence}`},
         '删除历史姓名测试',
         ${creatorId},
@@ -419,8 +409,6 @@ beforeAll(async () => {
   taskManagement = new TasksManagementService(
     access,
     new PostgresModuleQueryPort(),
-    new PostgresFeatureQueryPort(),
-    new PostgresFeatureReadPort(),
     new PostgresProjectCodePort(),
     new PostgresProjectMembersQueryPort(),
     uow,
@@ -895,7 +883,6 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
             {
               projectId: transferProject.projectId,
               moduleId: transferProject.moduleId,
-              featureId: null,
               taskId: transferTask.taskId,
               rowVersion: transferTask.rowVersion,
               assigneeIds: transferAssignees,
@@ -946,7 +933,6 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
             {
               projectId: deleteProject.projectId,
               moduleId: deleteProject.moduleId,
-              featureId: null,
               taskId: deleteTask.taskId,
               rowVersion: deleteTask.rowVersion,
               assigneeIds: [],
@@ -1277,7 +1263,6 @@ describe("F-03 用户管理真实 PostgreSQL + HTTP", () => {
       new TaskManagementRepository().list(tx, {
         projectId: project.projectId,
         moduleId: project.moduleId,
-        featureId: null,
       }),
     );
     expect(taskItems.find((item) => item.id === taskId)).toMatchObject({

@@ -6,10 +6,11 @@ import {
   calmSelectTrigger,
   pickCalmSelectOption,
 } from "../helpers/calm-select.js";
+import { openFirstModuleTasks } from "../helpers/module-tasks.js";
 
 /**
  * F-23 合并到主任务 / F-24 解除合并 / F-25 聚合组详情与任务中心聚合组卡片的关键
- * 路径 E2E。从功能页任务详情发起合并（搜索主任务 → 选择 → 确认），合并在当前页面
+ * 路径 E2E。从模块任务详情发起合并（搜索主任务 → 选择 → 确认），合并在当前页面
  * 就地打开聚合组弹窗（`/task-groups/{id}` 独立页已改为弹层，地址不变），在弹窗里
  * 验证主任务与来源分支的展示与记录筛选；任务中心验证聚合组卡片（任务卡片同款混排、
  * 已合并任务不再单独出卡片），随后解除合并，验证组关闭、关系标记已解除但历史保留。
@@ -24,25 +25,10 @@ test("F-23/F-24/F-25 合并到主任务、聚合组详情与解除合并", async
   const { context, page } = await createAuthenticatedContext(browser, runtime);
   try {
     const suffix = Date.now().toString(16).toUpperCase();
-    const featureName = "聚合组-" + suffix;
     const mainTaskTitle = "合并主任务-" + suffix;
     const sourceTaskTitle = "合并来源任务-" + suffix;
 
-    await page.goto("/projects/" + runtime.projectId + "/modules");
-    await page
-      .locator(".module-card")
-      .filter({ hasText: "未分类" })
-      .first()
-      .click();
-    await page.getByRole("button", { name: "新增功能" }).click();
-    const featureDialog = page.getByRole("dialog", { name: "新增功能" });
-    await featureDialog.getByLabel("功能名称").fill(featureName);
-    await featureDialog.getByRole("button", { name: /保\s*存/ }).click();
-    await expect(featureDialog).toBeHidden();
-    await page
-      .locator(".calm-feature-card")
-      .filter({ hasText: featureName })
-      .click();
+    await openFirstModuleTasks(page, runtime.projectId);
 
     const detail = page.getByRole("dialog", { name: "任务详情" });
     for (const title of [mainTaskTitle, sourceTaskTitle]) {
@@ -137,26 +123,10 @@ test("F-25 任务中心聚合组卡片代表已合并任务，弹窗展示主分
   const { context, page } = await createAuthenticatedContext(browser, runtime);
   try {
     const suffix = Date.now().toString(16).toUpperCase();
-    const featureName = "聚合组面板-" + suffix;
     const mainTaskTitle = "面板主任务-" + suffix;
     const sourceTaskTitle = "面板来源任务-" + suffix;
 
-    await page.goto("/projects/" + runtime.projectId + "/modules");
-    await page
-      .locator(".module-card")
-      .filter({ hasText: "未分类" })
-      .first()
-      .click();
-    await page.getByRole("button", { name: "新增功能" }).click();
-    const featureDialog = page.getByRole("dialog", { name: "新增功能" });
-    await featureDialog.getByLabel("功能名称").fill(featureName);
-    await featureDialog.getByRole("button", { name: /保\s*存/ }).click();
-    await expect(featureDialog).toBeHidden();
-    await page
-      .locator(".calm-feature-card")
-      .filter({ hasText: featureName })
-      .click();
-    const featurePath = new URL(page.url()).pathname;
+    const moduleTasksPath = await openFirstModuleTasks(page, runtime.projectId);
 
     const detail = page.getByRole("dialog", { name: "任务详情" });
     for (const title of [mainTaskTitle, sourceTaskTitle]) {
@@ -193,9 +163,9 @@ test("F-25 任务中心聚合组卡片代表已合并任务，弹窗展示主分
     await expect(page.locator(".task-group-detail-modal")).toBeVisible();
     expect(new URL(page.url()).pathname).not.toContain("/task-groups/");
 
-    // C-1：功能页任务卡片按 R-5 页面级批量显示关系徽章，来源任务详情
+    // C-1：模块任务页卡片按 R-5 页面级批量显示关系徽章，来源任务详情
     // 的「查看主任务」直达当前聚合组。
-    await page.goto(featurePath);
+    await page.goto(moduleTasksPath);
     const sourceCard = page
       .locator(".calm-task-card")
       .filter({ hasText: sourceTaskTitle });
@@ -211,9 +181,9 @@ test("F-25 任务中心聚合组卡片代表已合并任务，弹窗展示主分
     await sourceCard.click();
     await expect(detail.getByText("分支任务", { exact: true })).toBeVisible();
     await detail.getByRole("button", { name: "查看主任务" }).click();
-    // 聚合组入口就地打开弹窗，不再离开当前功能页。
+    // 聚合组入口就地打开弹窗，不再离开当前模块任务页。
     await expect(page.locator(".task-group-detail-modal")).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe(featurePath);
+    expect(new URL(page.url()).pathname).toBe(moduleTasksPath);
 
     // 任务中心：聚合组以任务卡片同款外观与任务卡片同网格混排（2026-09-21 定案），
     // 不再有独立「任务聚合组」区块；分支明细与主任务入口都在组卡打开的弹窗里。
