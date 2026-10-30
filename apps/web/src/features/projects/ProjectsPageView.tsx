@@ -42,8 +42,6 @@ const hierarchyNotes = [
   { label: "项目", text: "顶层业务容器，承载范围与成员。" },
   { label: "模块", text: "项目内的一级业务分类，不支持子模块。" },
   { label: "任务", text: "一次具体执行工作，归属一个模块。" },
-  { label: "迭代记录", text: "已经发生的变化，人员与时间自动生成。" },
-  { label: "分支任务", text: "合并后保留的历史，不删除不覆盖。" },
 ];
 
 /**
@@ -509,10 +507,7 @@ export const ProjectsPageView: React.FC<ProjectsPageViewProps> = ({
               })}
             </div>
           )}
-          <CalmSectionTitle
-            title="层级说明"
-            hint="项目 / 模块 / 任务 / 迭代记录"
-          />
+          <CalmSectionTitle title="层级说明" hint="项目 / 模块 / 任务" />
           <ul className="rule-list rule-list-grid">
             {hierarchyNotes.map((note) => (
               <li key={note.label}>

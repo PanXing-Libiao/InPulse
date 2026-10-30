@@ -3158,12 +3158,11 @@ a:focus-visible {
     gap: 16px;
   }
 }
-/* 功能档案页左侧还占 195px 功能档案栏，网格可用宽度本就封顶（1920 窗口下也只有约 1080px），
-   排四列会把卡片压到 258px、底部标签被挤成两行；因此这里固定三列，卡片约 337px，与任务中心
-   的 319px 同一尺寸档。规则只在 1101px 以上生效，窄屏继续沿用 .calm-task-grid 自己的
-   两列 / 单列降列规则。 */
+/* 阅读型详情页左侧带 195px 档案栏时，网格可用宽度会收窄；固定三列可避免任务卡
+   被压窄。窄屏继续沿用 .calm-task-grid 自己的两列 / 单列降列规则。 */
 @media (min-width: 1101px) {
-  .feature-document .tasks-panel .calm-task-grid {
+  .feature-document .tasks-panel .calm-task-grid,
+  .module-document .tasks-panel .calm-task-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 20px;
   }
@@ -4063,6 +4062,122 @@ a:focus-visible {
 .module-work-bar .module-work-tabs {
   margin: 0;
   border-bottom: 0;
+}
+/* 模块详情页沿用旧功能档案的阅读型版式：标题、状态与动作在白色文档卡内，
+   任务是主阅读区，模块档案与统计固定在右侧。视觉复用版式，不恢复功能业务层。 */
+.module-document {
+  background: white;
+  border: 1px solid #e3eaf2;
+  border-radius: 12px;
+  min-width: 0;
+  min-height: 620px;
+}
+.module-document-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 24px;
+  align-items: start;
+  padding: 12px 26px 8px;
+}
+.module-document-heading {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.module-title-row {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  margin-left: -9px;
+}
+.module-title-row h1 {
+  min-width: 0;
+  margin: 8px 0;
+  font-size: var(--text-5xl);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.module-document-description {
+  margin: 0;
+  color: #728499;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.module-document-header > .catalog-actions {
+  align-self: center;
+}
+.module-document-content {
+  min-width: 0;
+  padding: 10px 26px 26px;
+}
+.module-document-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 195px;
+  gap: 24px;
+  align-items: start;
+}
+.module-document-main,
+.module-task-section {
+  min-width: 0;
+}
+.module-facts {
+  align-self: start;
+  padding: 20px;
+  border-radius: 12px;
+  background: #f5f8fc;
+}
+.module-facts h2 {
+  margin: 0;
+  color: #344b63;
+  font-size: var(--text-lg);
+}
+.module-facts dl {
+  margin: 20px 0 0;
+  font-size: var(--text-md);
+}
+.module-facts dt {
+  margin-top: 16px;
+  color: #8091a4;
+}
+.module-facts dd {
+  margin: 6px 0 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.module-task-search {
+  width: 240px;
+}
+@media (max-width: 1000px) {
+  .module-document-grid {
+    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 18px;
+  }
+}
+@media (max-width: 800px) {
+  .module-document-grid {
+    grid-template-columns: 1fr;
+  }
+  .module-facts {
+    order: -1;
+  }
+}
+@media (max-width: 700px) {
+  .module-document-header {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 20px;
+  }
+  .module-document-content {
+    padding: 8px 20px 20px;
+  }
+  .module-title-row h1 {
+    font-size: var(--text-4xl);
+  }
+  .module-task-search {
+    width: 100%;
+  }
 }
 .writing-context {
   background: #f5f8fc;

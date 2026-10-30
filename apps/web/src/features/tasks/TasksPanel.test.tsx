@@ -120,7 +120,11 @@ function pickSelectOption(label: string, optionTitle: string) {
   fireEvent.click(screen.getByTitle(optionTitle));
 }
 
-function mount(api: InpulseApiClient, writable = true) {
+function mount(
+  api: InpulseApiClient,
+  writable = true,
+  search?: { value: string; onChange: (value: string) => void },
+) {
   render(
     <ConfigProvider theme={{ token: { motion: false } }}>
       <QueryClientProvider
@@ -136,6 +140,8 @@ function mount(api: InpulseApiClient, writable = true) {
               moduleId={3}
               writable={writable}
               client={api}
+              search={search?.value}
+              onSearchChange={search?.onChange}
             />
           </AuthStateProvider>
         </MemoryRouter>
@@ -144,6 +150,15 @@ function mount(api: InpulseApiClient, writable = true) {
   );
 }
 describe("F-14 模块任务固定归属", () => {
+  it("在任务面板标题行保留模块任务搜索框", async () => {
+    const onChange = vi.fn();
+    mount(client(), true, { value: "", onChange });
+
+    const input = await screen.findByLabelText("搜索当前模块的任务");
+    fireEvent.change(input, { target: { value: "退款" } });
+    expect(onChange).toHaveBeenCalledWith("退款");
+  });
+
   it("编辑保存成功用浮层气泡提示，不再插入整行成功横幅", async () => {
     const updateModuleTask = vi
       .fn()
