@@ -81,6 +81,7 @@ function modelJson(overrides: Readonly<Record<string, unknown>> = {}): string {
     priority: "HIGH",
     dueDate: "2026-11-06",
     assigneeNames: ["张三"],
+    projectName: null,
     moduleName: "账号与登录",
     confidence: "HIGH",
     notes: [],
@@ -198,6 +199,8 @@ interface Seed {
   readonly outsiderId: number;
   readonly project: ProjectFixture;
   readonly moduleId: number;
+  readonly ambiguousProjectIds: readonly number[];
+  readonly hiddenProjectName: string;
 }
 
 async function seedProject(sql: Sql): Promise<Seed> {
@@ -208,18 +211,46 @@ async function seedProject(sql: Sql): Promise<Seed> {
      WHERE id = ${leaderId}
   `;
   const project = await createProject(sql, leaderId);
+  await sql`
+    UPDATE app.projects
+       SET name = '移动端现场作业 App', row_version = row_version + 1
+     WHERE id = ${project.projectId}
+  `;
   const [module] = await sql<{ id: number }[]>`
     INSERT INTO app.modules (project_id, name, created_by)
     VALUES (${project.projectId}, '账号与登录', ${leaderId})
     RETURNING id
   `;
   if (module === undefined) throw new Error("module fixture insert failed");
+
+  const clothingOne = await createProject(sql, leaderId);
+  await sql`
+    UPDATE app.projects
+       SET name = '服装生产管理系统', row_version = row_version + 1
+     WHERE id = ${clothingOne.projectId}
+  `;
+  const clothingTwo = await createProject(sql, leaderId);
+  await sql`
+    UPDATE app.projects
+       SET name = '服装供应链平台', row_version = row_version + 1
+     WHERE id = ${clothingTwo.projectId}
+  `;
+
   const outsiderId = await createUser(sql);
+  const hiddenProject = await createProject(sql, outsiderId);
+  const hiddenProjectName = "隐藏项目";
+  await sql`
+    UPDATE app.projects
+       SET name = ${hiddenProjectName}, row_version = row_version + 1
+     WHERE id = ${hiddenProject.projectId}
+  `;
   return {
     leaderId,
     outsiderId,
     project,
     moduleId: module.id,
+    ambiguousProjectIds: [clothingOne.projectId, clothingTwo.projectId],
+    hiddenProjectName,
   };
 }
 
@@ -355,7 +386,7 @@ afterAll(async () => {
 });
 
 describe("POST /projects/{projectId}/task-draft-assist", () => {
-  test("未选项目：先识别描述，归属与负责人留空并提示补充", async () => {
+  test("未选项目：先识别描述，归属与负责人留空并给出授权项目清单", async () => {
     stubResponder = () => ({
       status: 200,
       payload: completionPayload(modelJson()),
@@ -371,6 +402,10 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
     const body = (await response.json()) as {
       notes: readonly string[];
       draft: Readonly<Record<string, unknown>>;
+      suggestions: {
+        projects: readonly unknown[];
+        modules: readonly unknown[];
+      };
     };
     expect(body.draft).toMatchObject({
       title: "修复登录偶发超时",
@@ -381,6 +416,7 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
       moduleId: null,
       moduleName: null,
     });
+    expect(body.suggestions.projects).toEqual([]);
     expect(body.notes.join("\n")).toContain("未选择项目");
 
     const upstream = lastUpstreamRequest?.body as
@@ -389,8 +425,133 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
       .map((message) => message.content ?? "")
       .join("\n");
     expect(prompt).toContain("尚未选择项目");
-    expect(prompt).toContain("李工说登录验证码一直转圈");
+    expect(prompt).toContain("移动端现场作业 App");
+    expect(prompt).toContain("服装生产管理系统");
+    expect(prompt).not.toContain("隐藏项目");
     expect(prompt).not.toContain("项目里没有活跃成员");
+  });
+
+  test("模糊项目名只返回授权候选，项目与模块都不直接写进草稿", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: "移动端项目", moduleName: "账号与登录" }),
+      ),
+    });
+    const response = await postStandaloneAssist(
+      {
+        message: "就是之前说的那个移动端项目，登录验证码一直转圈",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      draft: Readonly<Record<string, unknown>>;
+      suggestions: {
+        projects: readonly {
+          id: number;
+          code: string;
+          name: string;
+        }[];
+        modules: readonly { id: number; name: string }[];
+      };
+    };
+    expect(body.suggestions.projects).toEqual([
+      {
+        id: seed.project.projectId,
+        code: seed.project.code,
+        name: "移动端现场作业 App",
+      },
+    ]);
+    expect(body.suggestions.modules).toEqual([
+      { id: seed.moduleId, name: "账号与登录" },
+    ]);
+    expect(body.draft).toMatchObject({
+      moduleId: null,
+      moduleName: null,
+    });
+  });
+
+  test("项目简称对应多个项目时全部返回，交给用户点选", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(modelJson({ projectName: "服装项目" })),
+    });
+    const response = await postStandaloneAssist(
+      {
+        message: "服装项目那边登录有点问题",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      suggestions: {
+        projects: readonly { id: number; name: string }[];
+      };
+    };
+    expect(body.suggestions.projects.map((item) => item.name)).toEqual([
+      "服装生产管理系统",
+      "服装供应链平台",
+    ]);
+    expect(body.suggestions.projects.map((item) => item.id)).toEqual(
+      seed.ambiguousProjectIds,
+    );
+  });
+
+  test("用户说法命中多个项目时，模型猜的单个名字不会收窄候选", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: "服装生产管理系统" }),
+      ),
+    });
+    const response = await postStandaloneAssist(
+      {
+        message: "服装项目那边登录有点问题",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      suggestions: {
+        projects: readonly { id: number; name: string }[];
+      };
+    };
+    expect(body.suggestions.projects.map((item) => item.name)).toEqual([
+      "服装生产管理系统",
+      "服装供应链平台",
+    ]);
+  });
+
+  test("无权访问的项目不会进入模型候选，也不会变成建议", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: seed.hiddenProjectName }),
+      ),
+    });
+    const response = await postStandaloneAssist(
+      {
+        message: "那个登录问题再看一下",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      suggestions: { projects: readonly unknown[] };
+    };
+    expect(body.suggestions.projects).toEqual([]);
+
+    const upstream = lastUpstreamRequest?.body as
+      { messages?: readonly { content?: string }[] } | undefined;
+    const prompt = (upstream?.messages ?? [])
+      .map((message) => message.content ?? "")
+      .join("\n");
+    expect(prompt).not.toContain(seed.hiddenProjectName);
   });
 
   test("未选项目的识别未登录：401，且不调用上游", async () => {
@@ -454,6 +615,10 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
       confidence: string;
       notes: readonly string[];
       draft: Readonly<Record<string, unknown>>;
+      suggestions: {
+        projects: readonly unknown[];
+        modules: readonly { id: number; name: string }[];
+      };
     };
     expect(body.confidence).toBe("HIGH");
     expect(body.draft).toMatchObject({
@@ -464,6 +629,10 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
       assigneeNames: ["张三"],
       moduleId: seed.moduleId,
       moduleName: "账号与登录",
+    });
+    expect(body.suggestions).toEqual({
+      projects: [],
+      modules: [{ id: seed.moduleId, name: "账号与登录" }],
     });
 
     const upstream = lastUpstreamRequest?.body as

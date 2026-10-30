@@ -25,6 +25,8 @@ import { TaskDraftAssistStandaloneController } from "./task-draft-assist-standal
 import { TaskDraftAssistHttpService } from "./task-draft-assist-http.service.js";
 import { TaskDraftAssistCatalogPort } from "./task-draft-assist.catalog.port.js";
 import { PostgresTaskDraftAssistCatalog } from "./postgres-task-draft-assist-catalog.js";
+import { TaskDraftAssistProjectCatalogPort } from "./task-draft-assist-project-catalog.port.js";
+import { PostgresTaskDraftAssistProjectCatalog } from "./postgres-task-draft-assist-project-catalog.js";
 import { RecordSummaryAssistHttpService } from "./record-summary-assist-http.service.js";
 import { DocumentImportWorkflow } from "./document-import.workflow.js";
 import { ProjectImportController } from "./project-import.controller.js";
@@ -58,6 +60,10 @@ import { ProjectImportController } from "./project-import.controller.js";
     {
       provide: TaskDraftAssistCatalogPort,
       useClass: PostgresTaskDraftAssistCatalog,
+    },
+    {
+      provide: TaskDraftAssistProjectCatalogPort,
+      useClass: PostgresTaskDraftAssistProjectCatalog,
     },
     DocumentImportRunRepository,
     // ADR-068：配置每次调用实时解析（数据库优先，环境变量急停与遗留回退）。

@@ -128,6 +128,10 @@ function harness(
         moduleId: 11,
         moduleName: "访问控制",
       },
+      suggestions: {
+        projects: [],
+        modules: [{ id: 11, name: "访问控制" }],
+      },
       confidence: "HIGH",
       notes: [],
     }),
@@ -146,6 +150,7 @@ function harness(
         moduleId: null,
         moduleName: null,
       },
+      suggestions: { projects: [], modules: [] },
       confidence: "MEDIUM",
       notes: ["还没选项目，模块与负责人先留空"],
     }),
@@ -508,7 +513,10 @@ it("AI 助手把识别结果填入左侧空字段", async () => {
   expect(call?.[1].message).toBe("周五前让陈晓修 MFA 登录超时");
   expect(call?.[1].history).toEqual([]);
 
-  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  expect(
+    await screen.findByText("像是「访问控制」这个模块，对吗？"),
+  ).toBeInTheDocument();
+  await user.click(await screen.findByRole("button", { name: "填入其余字段" }));
   expect(screen.getByLabelText("任务标题")).toHaveValue("修复 MFA 登录超时");
   expect(screen.getByLabelText("任务说明")).toHaveValue(
     "定位 MFA 登录偶发超时的原因并修复。",
@@ -516,8 +524,14 @@ it("AI 助手把识别结果填入左侧空字段", async () => {
   expect(screen.getByLabelText("截止时间")).toHaveValue("2026-11-06T18:00");
   expect(
     screen.getByLabelText("所属模块").closest(".ant-select"),
+  ).toHaveTextContent("请选择模块");
+  expect(screen.getByText(/已填入 5 项/)).toBeInTheDocument();
+
+  await user.click(await screen.findByRole("button", { name: "是，用这个" }));
+  expect(
+    screen.getByLabelText("所属模块").closest(".ant-select"),
   ).toHaveTextContent("访问控制");
-  expect(screen.getByText(/已填入 6 项/)).toBeInTheDocument();
+  expect(screen.getByText("已确认模块：访问控制")).toBeInTheDocument();
 });
 
 it("AI 不覆盖用户已经手填的标题", async () => {
@@ -531,9 +545,103 @@ it("AI 不覆盖用户已经手填的标题", async () => {
   await user.type(screen.getByLabelText("描述任务"), "修一下登录");
   await user.click(screen.getByTestId("task-draft-assist-send"));
 
-  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  await user.click(await screen.findByRole("button", { name: "填入其余字段" }));
   expect(screen.getByLabelText("任务标题")).toHaveValue("我自己写的标题");
   expect(screen.getByText(/未覆盖已有内容：标题/)).toBeInTheDocument();
+});
+
+it("项目简称只弹确认卡，确认后才切换左侧项目", async () => {
+  const test = harness();
+  test.assistTaskDraftStandalone.mockResolvedValueOnce({
+    reply: "像是移动端那个项目；项目归属请你确认。",
+    draft: {
+      title: "修复登录验证码弱网转圈",
+      description: "定位登录页验证码在弱网下持续转圈的问题。",
+      priority: "HIGH",
+      dueAt: null,
+      assigneeIds: [],
+      assigneeNames: [],
+      moduleId: null,
+      moduleName: null,
+    },
+    suggestions: {
+      projects: [{ id: 2, code: "ORD", name: "订单中台" }],
+      modules: [],
+    },
+    confidence: "MEDIUM",
+    notes: ["未选择项目：项目归属请用确认卡或左侧下拉手动确定"],
+  });
+  mount(test);
+  const user = userEvent.setup();
+
+  await user.type(
+    screen.getByLabelText("描述任务"),
+    "就是之前说的那个订单项目，登录验证码一直转圈",
+  );
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  expect(
+    await screen.findByText("像是「订单中台」这个项目，是这个吗？"),
+  ).toBeInTheDocument();
+  const projectTrigger = screen
+    .getByLabelText("所属项目")
+    .closest(".ant-select");
+  expect(projectTrigger).toHaveTextContent("请选择项目");
+  expect(screen.getByLabelText("所属模块")).toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "是，用这个" }));
+
+  await waitFor(() => expect(projectTrigger).toHaveTextContent("订单中台"));
+  expect(screen.getByText("已确认项目：订单中台")).toBeInTheDocument();
+  expect(screen.getByLabelText("所属模块")).toBeEnabled();
+});
+
+it("多个疑似项目时全部列出，点更改不替用户选择", async () => {
+  const test = harness();
+  test.assistTaskDraftStandalone.mockResolvedValueOnce({
+    reply: "这个项目名有点模糊，可能是下面两个。",
+    draft: {
+      title: "检查登录验证码",
+      description: "确认登录验证码转圈问题。",
+      priority: "NORMAL",
+      dueAt: null,
+      assigneeIds: [],
+      assigneeNames: [],
+      moduleId: null,
+      moduleName: null,
+    },
+    suggestions: {
+      projects: [
+        { id: 1, code: "INP", name: "InPulse 平台" },
+        { id: 2, code: "ORD", name: "订单中台" },
+      ],
+      modules: [],
+    },
+    confidence: "LOW",
+    notes: ["可能是这几个项目，请选一个"],
+  });
+  mount(test);
+  const user = userEvent.setup();
+
+  await user.type(screen.getByLabelText("描述任务"), "那个项目登录有问题");
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  expect(
+    await screen.findByText("可能是这几个项目，选一个："),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "用「InPulse 平台」" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "用「订单中台」" }),
+  ).toBeInTheDocument();
+
+  await user.click(screen.getByTestId("task-assist-change-project"));
+  const projectTrigger = screen
+    .getByLabelText("所属项目")
+    .closest(".ant-select");
+  expect(projectTrigger).toHaveTextContent("请选择项目");
+  expect(screen.getByText("项目归属请在左侧下拉选择")).toBeInTheDocument();
 });
 
 it("AI 助手支持只发聊天截图并把图片带给模型", async () => {

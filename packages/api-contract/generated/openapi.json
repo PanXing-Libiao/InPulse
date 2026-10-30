@@ -25362,6 +25362,52 @@
         ],
         "additionalProperties": false
       },
+      "TaskDraftAssistModuleCandidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "TaskDraftAssistProjectCandidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 24
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "name"
+        ],
+        "additionalProperties": false
+      },
       "TaskDraftAssistRequest": {
         "type": "object",
         "properties": {
@@ -25419,6 +25465,9 @@
           "draft": {
             "$ref": "#/components/schemas/TaskDraftAssistDraft"
           },
+          "suggestions": {
+            "$ref": "#/components/schemas/TaskDraftAssistSuggestions"
+          },
           "confidence": {
             "type": "string",
             "enum": [
@@ -25441,8 +25490,33 @@
         "required": [
           "reply",
           "draft",
+          "suggestions",
           "confidence",
           "notes"
+        ],
+        "additionalProperties": false
+      },
+      "TaskDraftAssistSuggestions": {
+        "type": "object",
+        "properties": {
+          "projects": {
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskDraftAssistProjectCandidate"
+            }
+          },
+          "modules": {
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskDraftAssistModuleCandidate"
+            }
+          }
+        },
+        "required": [
+          "projects",
+          "modules"
         ],
         "additionalProperties": false
       },

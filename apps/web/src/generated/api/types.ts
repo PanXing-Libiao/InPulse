@@ -1816,6 +1816,17 @@ export type TaskDraftAssistHistoryItem = {
   readonly text: string;
 };
 
+export type TaskDraftAssistModuleCandidate = {
+  readonly id: number;
+  readonly name: string;
+};
+
+export type TaskDraftAssistProjectCandidate = {
+  readonly id: number;
+  readonly code: string;
+  readonly name: string;
+};
+
 export type TaskDraftAssistRequest = {
   readonly message: string;
   readonly images?: readonly AiAssistImage[];
@@ -1826,8 +1837,14 @@ export type TaskDraftAssistRequest = {
 export type TaskDraftAssistResponse = {
   readonly reply: string;
   readonly draft: TaskDraftAssistDraft;
+  readonly suggestions: TaskDraftAssistSuggestions;
   readonly confidence: ("HIGH" | "MEDIUM" | "LOW");
   readonly notes: readonly string[];
+};
+
+export type TaskDraftAssistSuggestions = {
+  readonly projects: readonly TaskDraftAssistProjectCandidate[];
+  readonly modules: readonly TaskDraftAssistModuleCandidate[];
 };
 
 export type TaskEditRequest = {

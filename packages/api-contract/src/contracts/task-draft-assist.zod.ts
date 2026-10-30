@@ -12,6 +12,9 @@ export const TASK_DRAFT_ASSIST_MAX_HISTORY_ITEMS = 10;
 export const TASK_DRAFT_ASSIST_MAX_TITLE_LENGTH = 500;
 export const TASK_DRAFT_ASSIST_MAX_DESCRIPTION_LENGTH = 20_000;
 export const TASK_DRAFT_ASSIST_MAX_NOTES = 8;
+/** 归属候选只展示少量最可能的项，避免模型一次返回整份项目清单。 */
+export const TASK_DRAFT_ASSIST_MAX_PROJECT_CANDIDATES = 5;
+export const TASK_DRAFT_ASSIST_MAX_MODULE_CANDIDATES = 5;
 const MAX_ID = 2_147_483_647;
 
 /**
@@ -96,6 +99,44 @@ export const taskDraftAssistDraftSchema = z
   .strict()
   .meta({ id: "TaskDraftAssistDraft" });
 
+/**
+ * 项目候选只暴露当前用户有权访问的项目 ID / 编号 / 名称。服务端不会把
+ * 模型返回的项目名直接当作 ID；前端也必须由用户点选确认后才写回表单。
+ */
+export const taskDraftAssistProjectCandidateSchema = z
+  .object({
+    id: z.number().int().positive().max(MAX_ID),
+    code: z.string().min(1).max(24),
+    name: z.string().min(1).max(200),
+  })
+  .strict()
+  .meta({ id: "TaskDraftAssistProjectCandidate" });
+
+/** 模块候选同样只来自服务端授权的真实模块清单。 */
+export const taskDraftAssistModuleCandidateSchema = z
+  .object({
+    id: z.number().int().positive().max(MAX_ID),
+    name: z.string().min(1).max(200),
+  })
+  .strict()
+  .meta({ id: "TaskDraftAssistModuleCandidate" });
+
+/**
+ * 归属确认建议与草稿分开：草稿只用于填标题、说明等字段，项目和模块必须
+ * 由用户显式确认。多候选表示用户描述有歧义，前端应让用户点选而不是猜。
+ */
+export const taskDraftAssistSuggestionsSchema = z
+  .object({
+    projects: z
+      .array(taskDraftAssistProjectCandidateSchema)
+      .max(TASK_DRAFT_ASSIST_MAX_PROJECT_CANDIDATES),
+    modules: z
+      .array(taskDraftAssistModuleCandidateSchema)
+      .max(TASK_DRAFT_ASSIST_MAX_MODULE_CANDIDATES),
+  })
+  .strict()
+  .meta({ id: "TaskDraftAssistSuggestions" });
+
 export const taskDraftAssistResponseSchema = z
   .object({
     reply: z
@@ -104,6 +145,7 @@ export const taskDraftAssistResponseSchema = z
       .max(600)
       .describe("给用户的 1-3 句中文回复，说明识别结果与需要确认的点"),
     draft: taskDraftAssistDraftSchema,
+    suggestions: taskDraftAssistSuggestionsSchema,
     confidence: taskDraftConfidenceSchema.describe(
       "整体置信度；LOW 时服务端已清空归属与负责人，避免猜错",
     ),
@@ -122,6 +164,15 @@ export type TaskDraftAssistRequest = z.infer<
   typeof taskDraftAssistRequestSchema
 >;
 export type TaskDraftAssistDraft = z.infer<typeof taskDraftAssistDraftSchema>;
+export type TaskDraftAssistProjectCandidate = z.infer<
+  typeof taskDraftAssistProjectCandidateSchema
+>;
+export type TaskDraftAssistModuleCandidate = z.infer<
+  typeof taskDraftAssistModuleCandidateSchema
+>;
+export type TaskDraftAssistSuggestions = z.infer<
+  typeof taskDraftAssistSuggestionsSchema
+>;
 export type TaskDraftAssistResponse = z.infer<
   typeof taskDraftAssistResponseSchema
 >;
@@ -142,9 +193,24 @@ export const taskDraftAssistSchemas = {
     summary: "新建任务 AI 识别出的草稿字段，全部可空且只用于预填",
     sensitiveFieldPaths: [],
   },
+  TaskDraftAssistProjectCandidate: {
+    schema: taskDraftAssistProjectCandidateSchema,
+    summary: "当前用户有权访问的项目候选；用户确认前不写回表单",
+    sensitiveFieldPaths: [],
+  },
+  TaskDraftAssistModuleCandidate: {
+    schema: taskDraftAssistModuleCandidateSchema,
+    summary: "服务端按授权项目匹配出的模块候选；用户确认前不写回表单",
+    sensitiveFieldPaths: [],
+  },
+  TaskDraftAssistSuggestions: {
+    schema: taskDraftAssistSuggestionsSchema,
+    summary: "任务归属的确认建议：疑似项目与模块，多候选表示存在歧义",
+    sensitiveFieldPaths: [],
+  },
   TaskDraftAssistResponse: {
     schema: taskDraftAssistResponseSchema,
-    summary: "新建任务 AI 识别响应：对话回复、草稿、置信度与确认提示",
+    summary: "新建任务 AI 识别响应：对话回复、草稿、归属确认建议、置信度与提示",
     sensitiveFieldPaths: [],
   },
 } as const;

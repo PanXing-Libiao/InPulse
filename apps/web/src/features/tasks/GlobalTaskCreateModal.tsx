@@ -24,6 +24,7 @@ import { isFirstLoad, taskError } from "./task-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import {
   TaskDraftAssistPane,
+  type TaskDraftAssistApplyOptions,
   type TaskDraftAssistApplyResult,
 } from "./TaskDraftAssistPane";
 
@@ -266,6 +267,7 @@ export function GlobalTaskCreateModal({
    */
   function applyAssistDraft(
     draft: TaskDraftAssistDraft,
+    options: TaskDraftAssistApplyOptions,
   ): TaskDraftAssistApplyResult {
     const conflicts: string[] = [];
     let applied = 0;
@@ -313,7 +315,7 @@ export function GlobalTaskCreateModal({
       }
     }
 
-    if (draft.moduleId !== null) {
+    if (options.applyModule && draft.moduleId !== null) {
       if (lockedModule || (moduleId !== 0 && moduleId !== draft.moduleId)) {
         conflicts.push("所属模块");
       } else if (moduleId === 0) {
@@ -337,6 +339,39 @@ export function GlobalTaskCreateModal({
     }
 
     return { applied, conflicts };
+  }
+
+  /** 用户点确认卡后才写项目；切换项目时清空模块和负责人，避免跨项目串数据。 */
+  function confirmAssistProject(nextProjectId: number): void {
+    if (presetProjectId > 0 || nextProjectId === projectId) return;
+    setProjectId(nextProjectId);
+    setModuleId(0);
+    setNewModule("");
+    setAssigneeIds([]);
+    setInvalid(null);
+  }
+
+  /** 用户点确认卡后才写模块；仍走与左侧下拉相同的清空负责人逻辑。 */
+  function confirmAssistModule(nextModuleId: number): void {
+    if (lockedModule || nextModuleId === moduleId) return;
+    setModuleId(nextModuleId);
+    setNewModule("");
+    setAssigneeIds([]);
+    setInvalid(null);
+  }
+
+  /** 「更改」只把焦点送回左侧，不替用户做任何选择。 */
+  function focusAssistPicker(id: string): void {
+    const input = document.getElementById(id);
+    if (input === null) return;
+    if (typeof input.scrollIntoView === "function") {
+      input.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    input.focus({ preventScroll: true });
+    const trigger = input.closest(".ant-select");
+    if (trigger instanceof HTMLElement) {
+      trigger.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    }
   }
 
   function submit(event: FormEvent): void {
@@ -593,7 +628,7 @@ export function GlobalTaskCreateModal({
                 <label htmlFor="global-task-description">任务说明</label>
                 <textarea
                   id="global-task-description"
-                  rows={4}
+                  rows={3}
                   maxLength={50000}
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
@@ -605,11 +640,10 @@ export function GlobalTaskCreateModal({
                 <textarea
                   id="global-task-links"
                   rows={2}
-                  placeholder="每行一个链接，可选"
+                  placeholder="只接受 github.com 的 HTTPS 链接；受限域名会被拒绝。"
                   value={linkText}
                   onChange={(event) => setLinkText(event.target.value)}
                 />
-                <p>只接受 github.com 的 HTTPS 链接；受限域名会被拒绝。</p>
               </div>
             </fieldset>
           </div>
@@ -619,7 +653,13 @@ export function GlobalTaskCreateModal({
             projectId={projectId}
             moduleId={moduleId}
             disabled={busy || createdLocation !== null}
+            projectLocked={presetProjectId > 0}
+            moduleLocked={lockedModule}
             onApply={applyAssistDraft}
+            onConfirmProject={confirmAssistProject}
+            onConfirmModule={confirmAssistModule}
+            onChangeProject={() => focusAssistPicker("global-task-project")}
+            onChangeModule={() => focusAssistPicker("global-task-module")}
           />
         </div>
         <div className="calm-action-footer">

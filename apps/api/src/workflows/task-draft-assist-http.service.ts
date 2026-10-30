@@ -1,8 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import {
   taskDraftAssistResponseSchema,
+  type TaskDraftAssistModuleCandidate,
+  type TaskDraftAssistProjectCandidate,
   type TaskDraftAssistRequest,
   type TaskDraftAssistResponse,
+  type TaskDraftAssistSuggestions,
 } from "@inpulse/api-contract";
 
 import { getHeader, type HttpHeaderBag } from "../auth/csrf.http.js";
@@ -18,16 +21,23 @@ import { ProjectMembersQueryPort } from "../modules/projects/project-members-que
 import {
   TaskDraftAssistCatalogPort,
   type TaskDraftAssistCatalog,
+  type TaskDraftAssistModuleItem,
 } from "./task-draft-assist.catalog.port.js";
+import {
+  TaskDraftAssistProjectCatalogPort,
+  type TaskDraftAssistProjectItem,
+} from "./task-draft-assist-project-catalog.port.js";
 
 const TASK_DRAFT_ASSIST_SESSION_REQUIRED = "TASK_DRAFT_ASSIST_SESSION_REQUIRED";
 const MAX_TITLE = 500;
 const MAX_DESCRIPTION = 20_000;
 const MAX_NOTES = 8;
+const MAX_PROJECT_CANDIDATES = 5;
+const MAX_MODULE_CANDIDATES = 5;
 
 /**
  * 模型输出只用名称，不产出 ID：这里只接受已知字段，跨项目、凭空人名与
- * 不存在的模块由服务端按真实清单匹配时丢弃。
+ * 不存在的项目/模块由服务端按真实清单匹配时丢弃。
  */
 interface ModelOutput {
   readonly reply: string;
@@ -36,28 +46,34 @@ interface ModelOutput {
   readonly priority: "NORMAL" | "HIGH" | "URGENT" | null;
   readonly dueDate: string | null;
   readonly assigneeNames: readonly string[];
+  readonly projectName: string | null;
   readonly moduleName: string | null;
   readonly confidence: "HIGH" | "MEDIUM" | "LOW";
   readonly notes: readonly string[];
 }
 
 interface ProjectSnapshot {
+  readonly actorUserId: number;
   readonly members: readonly { readonly id: number; readonly name: string }[];
   readonly catalog: TaskDraftAssistCatalog;
+  /** 未选项目时的授权项目候选；项目内识别固定为空。 */
+  readonly projects: readonly TaskDraftAssistProjectItem[];
 }
 
 const EMPTY_SNAPSHOT: ProjectSnapshot = {
+  actorUserId: 0,
   members: [],
   catalog: { modules: [] },
+  projects: [],
 };
 
 /**
  * 新建任务 AI 识别 HTTP 编排。
  *
- * 读权限与候选清单位于同一个只读短事务：先按实时成员关系确认当前用户能读
+ * 读权限与候选清单位于只读短事务：先按实时成员关系确认当前用户能读
  * 这个项目，再取活跃成员与模块名称。事务结束后才解析 AI 配置并调用
  * 上游（网络请求绝不在数据库事务内）。本接口不创建任务、不写任何表；所有
- * 返回值只是预填建议，最终创建仍走既有 createTask 的完整校验。
+ * 返回值只是预填建议，项目与模块还必须由用户在前端确认。
  */
 @Injectable()
 export class TaskDraftAssistHttpService {
@@ -74,6 +90,8 @@ export class TaskDraftAssistHttpService {
     private readonly members: ProjectMembersQueryPort,
     @Inject(TaskDraftAssistCatalogPort)
     private readonly catalog: TaskDraftAssistCatalogPort,
+    @Inject(TaskDraftAssistProjectCatalogPort)
+    private readonly projectCatalog: TaskDraftAssistProjectCatalogPort,
   ) {}
 
   async assist(
@@ -86,19 +104,24 @@ export class TaskDraftAssistHttpService {
   }
 
   /**
-   * 未选择项目：只验证登录，不读取任何项目成员与归属清单。
-   * 用户可以先把聊天截图交给 AI 看，再决定建在哪个项目。
+   * 未选择项目：验证登录并读取当前用户有权访问的项目清单。
+   * 用户可以先把聊天截图交给 AI 看，AI 只给疑似项目；用户确认前不写归属。
    */
   async assistStandalone(
     headers: HttpHeaderBag,
     input: TaskDraftAssistRequest,
   ): Promise<TaskDraftAssistResponse> {
-    await this.assertSession(headers);
-    return this.runAssist(input, EMPTY_SNAPSHOT, false);
+    const actorUserId = await this.requireActor(headers);
+    const projects = await this.projectCatalog.load(actorUserId);
+    return this.runAssist(
+      input,
+      { ...EMPTY_SNAPSHOT, actorUserId, projects },
+      false,
+    );
   }
 
-  private async assertSession(headers: HttpHeaderBag): Promise<void> {
-    await this.uow.run(async (tx) => {
+  private async requireActor(headers: HttpHeaderBag): Promise<number> {
+    return this.uow.run(async (tx) => {
       const actor = await this.sessions.resolveActorInTransaction(
         tx,
         getHeader(headers, "cookie"),
@@ -110,6 +133,7 @@ export class TaskDraftAssistHttpService {
           "登录状态已失效，请重新登录",
         );
       }
+      return actor.userId;
     });
   }
 
@@ -142,6 +166,7 @@ export class TaskDraftAssistHttpService {
         weekday: today.weekday,
         members: snapshot.members,
         modules: snapshot.catalog.modules,
+        projects: snapshot.projects,
         currentModuleName: currentModule?.name ?? null,
         hasProjectContext,
         images: input.images,
@@ -160,9 +185,68 @@ export class TaskDraftAssistHttpService {
     }
 
     const parsed = parseModelOutput(raw);
-    return taskDraftAssistResponseSchema.parse(
-      this.toResponse(parsed, snapshot, today.date, hasProjectContext),
+    const suggestions = await this.resolveSuggestions(
+      parsed,
+      input,
+      snapshot,
+      hasProjectContext,
     );
+    return taskDraftAssistResponseSchema.parse(
+      this.toResponse(
+        parsed,
+        snapshot,
+        input,
+        today.date,
+        hasProjectContext,
+        suggestions,
+      ),
+    );
+  }
+
+  private async resolveSuggestions(
+    output: ModelOutput,
+    input: TaskDraftAssistRequest,
+    snapshot: ProjectSnapshot,
+    hasProjectContext: boolean,
+  ): Promise<TaskDraftAssistSuggestions> {
+    if (hasProjectContext) {
+      return {
+        projects: [],
+        modules: resolveModuleCandidates(
+          snapshot.catalog.modules,
+          output.moduleName,
+          input.message,
+        ),
+      };
+    }
+
+    const projects = resolveProjectCandidates(
+      snapshot.projects,
+      output.projectName,
+      input.message,
+    );
+    if (
+      projects.length !== 1 ||
+      (!output.moduleName?.trim() &&
+        extractModuleHints(input.message).length === 0)
+    ) {
+      return { projects, modules: [] };
+    }
+
+    const project = projects[0];
+    if (project === undefined) return { projects, modules: [] };
+    const modules = await this.projectCatalog.loadModules(
+      snapshot.actorUserId,
+      project.id,
+    );
+    return {
+      projects,
+      modules: resolveModuleCandidates(
+        modules,
+        output.moduleName,
+        input.message,
+      ),
+    };
   }
 
   private async loadProjectSnapshot(
@@ -194,15 +278,22 @@ export class TaskDraftAssistHttpService {
         );
       }
       const catalog = await this.catalog.load(tx, projectId);
-      return { members, catalog };
+      return {
+        actorUserId: actor.userId,
+        members,
+        catalog,
+        projects: [],
+      };
     });
   }
 
   private toResponse(
     output: ModelOutput,
     snapshot: ProjectSnapshot,
+    input: TaskDraftAssistRequest,
     today: string,
-    hasProjectContext = true,
+    hasProjectContext: boolean,
+    suggestions: TaskDraftAssistSuggestions,
   ): TaskDraftAssistResponse {
     const notes: string[] = [];
     for (const note of output.notes ?? []) {
@@ -221,11 +312,30 @@ export class TaskDraftAssistHttpService {
       if (dueAt !== null && dueAt.slice(0, 10) < today) {
         pushNote(notes, "截止日期早于今天，请确认");
       }
-      if (
-        (output.assigneeNames?.length ?? 0) > 0 ||
-        output.moduleName?.trim()
+      pushNote(notes, "未选择项目：项目归属请用确认卡或左侧下拉手动确定");
+      if (suggestions.projects.length > 1) {
+        pushNote(
+          notes,
+          "可能是这几个项目：" +
+            suggestions.projects.map((item) => item.name).join("、") +
+            "，请选一个",
+        );
+      } else if (
+        suggestions.projects.length === 0 &&
+        output.projectName?.trim()
       ) {
-        pushNote(notes, "未选择项目，模块与负责人先留空；选好项目后再确认归属");
+        pushNote(
+          notes,
+          "项目「" +
+            output.projectName.trim() +
+            "」不在可访问项目里，请手动选择",
+        );
+      }
+      if (output.assigneeNames.length > 0) {
+        pushNote(notes, "负责人需要选好项目后再确认");
+      }
+      if (suggestions.modules.length === 0 && output.moduleName?.trim()) {
+        pushNote(notes, "模块「" + output.moduleName.trim() + "」暂未匹配");
       }
       return {
         reply: output.reply,
@@ -239,16 +349,16 @@ export class TaskDraftAssistHttpService {
           moduleId: null,
           moduleName: null,
         },
+        suggestions,
         confidence: output.confidence ?? "MEDIUM",
         notes: notes.slice(0, MAX_NOTES),
       };
     }
 
-    const moduleMatch = matchByName(
-      snapshot.catalog.modules,
-      output.moduleName,
-    );
-    if (output.moduleName?.trim() && moduleMatch === null) {
+    const moduleCandidates = suggestions.modules;
+    const moduleMatch =
+      moduleCandidates.length === 1 ? moduleCandidates[0] : null;
+    if (output.moduleName?.trim() && moduleCandidates.length === 0) {
       pushNote(
         notes,
         "模块「" + output.moduleName.trim() + "」不在当前项目里，已留空",
@@ -289,8 +399,8 @@ export class TaskDraftAssistHttpService {
     const priority = output.priority ?? null;
     if (confidence === "LOW") {
       // 低置信度不猜：归属与负责人必须由用户手动确认，文本字段仍可参考。
-      if (resolvedModuleId !== null) {
-        pushNote(notes, "归属没有把握，已留空，请手动选择");
+      if (moduleCandidates.length > 0 || output.moduleName?.trim()) {
+        pushNote(notes, "归属没有把握，请在确认卡或左侧下拉中选择");
       }
       if (assigneeIds.length > 0) {
         pushNote(notes, "负责人没有把握，已留空，请手动选择");
@@ -307,6 +417,7 @@ export class TaskDraftAssistHttpService {
           moduleId: null,
           moduleName: null,
         },
+        suggestions,
         confidence,
         notes: notes.slice(0, MAX_NOTES),
       };
@@ -324,6 +435,7 @@ export class TaskDraftAssistHttpService {
         moduleId: resolvedModuleId,
         moduleName: resolvedModuleName,
       },
+      suggestions,
       confidence,
       notes: notes.slice(0, MAX_NOTES),
     };
@@ -357,6 +469,7 @@ function parseModelOutput(content: string): ModelOutput {
     priority: enumField(record["priority"], ["NORMAL", "HIGH", "URGENT"]),
     dueDate: stringField(record["dueDate"]),
     assigneeNames: stringArrayField(record["assigneeNames"]).slice(0, 3),
+    projectName: stringField(record["projectName"]),
     moduleName: stringField(record["moduleName"]),
     confidence:
       enumField(record["confidence"], ["HIGH", "MEDIUM", "LOW"]) ?? "MEDIUM",
@@ -401,13 +514,236 @@ function normalizeName(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function matchByName<T extends { readonly name: string }>(
-  items: readonly T[],
-  name: string | null | undefined,
-): T | null {
-  const target = normalizeName(name);
-  if (target.length === 0) return null;
-  return items.find((item) => normalizeName(item.name) === target) ?? null;
+function normalizeMatchText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\u3000]+/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function trimHintPrefix(value: string): string {
+  let next = value;
+  const prefixes = [
+    "之前说的",
+    "上次说的",
+    "我们的",
+    "咱们的",
+    "那个",
+    "这个",
+    "就是",
+    "关于",
+    "最近",
+    "现在",
+    "目前",
+  ];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const prefix of prefixes) {
+      if (next.startsWith(prefix) && next.length > prefix.length) {
+        next = next.slice(prefix.length);
+        changed = true;
+      }
+    }
+  }
+  return next;
+}
+
+function hintVariants(hint: string): string[] {
+  const normalized = normalizeMatchText(trimHintPrefix(hint));
+  if (normalized.length === 0) return [];
+  const variants = new Set([normalized]);
+  for (const suffix of ["项目", "模块", "平台", "系统"]) {
+    if (normalized.endsWith(suffix) && normalized.length > suffix.length + 1) {
+      variants.add(normalized.slice(0, -suffix.length));
+    }
+  }
+  return [...variants].filter((item) => item.length >= 2);
+}
+
+function extractProjectHints(message: string): string[] {
+  const hints: string[] = [];
+  const pattern =
+    /([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _-]{1,30})项目/gu;
+  for (const match of message.matchAll(pattern)) {
+    hints.push(...hintVariants(match[1] ?? ""));
+  }
+  return [...new Set(hints)];
+}
+
+function extractModuleHints(message: string): string[] {
+  const hints: string[] = [];
+  const pattern =
+    /([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _-]{1,30})模块/gu;
+  for (const match of message.matchAll(pattern)) {
+    hints.push(...hintVariants(match[1] ?? ""));
+  }
+  return [...new Set(hints)];
+}
+
+function commonPrefixLength(left: string, right: string): number {
+  const length = Math.min(left.length, right.length);
+  let index = 0;
+  while (index < length && left[index] === right[index]) index += 1;
+  return index;
+}
+
+function scoreProjectMatch(
+  project: TaskDraftAssistProjectItem,
+  hints: readonly string[],
+  normalizedMessage: string,
+): number {
+  const name = normalizeMatchText(project.name);
+  const code = normalizeMatchText(project.code);
+  let score = 0;
+  if (name.length >= 2 && normalizedMessage.includes(name)) score = 90;
+  if (code.length >= 2 && normalizedMessage.includes(code)) {
+    score = Math.max(score, 88);
+  }
+  for (const hint of hints) {
+    if (hint === name || hint === code) {
+      score = Math.max(score, 100);
+    } else if (
+      name.includes(hint) ||
+      hint.includes(name) ||
+      (code.length >= 2 && (code.includes(hint) || hint.includes(code)))
+    ) {
+      score = Math.max(score, 84);
+    } else {
+      const prefix = commonPrefixLength(hint, name);
+      if (prefix >= 2) score = Math.max(score, 62 + prefix);
+    }
+  }
+  return score;
+}
+
+function scoreModuleMatch(
+  module: TaskDraftAssistModuleItem,
+  hints: readonly string[],
+  normalizedMessage: string,
+): number {
+  const name = normalizeMatchText(module.name);
+  let score = 0;
+  if (name.length >= 2 && normalizedMessage.includes(name)) score = 88;
+  for (const hint of hints) {
+    if (hint === name) {
+      score = Math.max(score, 100);
+    } else if (name.includes(hint) || hint.includes(name)) {
+      score = Math.max(score, 84);
+    } else {
+      const prefix = commonPrefixLength(hint, name);
+      if (prefix >= 2) score = Math.max(score, 60 + prefix);
+    }
+  }
+  return score;
+}
+
+function resolveProjectCandidates(
+  projects: readonly TaskDraftAssistProjectItem[],
+  projectName: string | null,
+  message: string,
+): TaskDraftAssistProjectCandidate[] {
+  const modelHints = projectName === null ? [] : hintVariants(projectName);
+  const messageHints = extractProjectHints(message);
+  const hints = [...new Set([...modelHints, ...messageHints])];
+  const normalizedMessage = normalizeMatchText(message);
+  if (hints.length === 0 && normalizedMessage.length === 0) return [];
+
+  // 用户自己的说法同时命中多个项目时，模型挑的单个名字不能把候选收窄：
+  // 确认卡必须把可疑项目都列出来，由用户点选。
+  const messageMatches = projects
+    .map((project) => ({
+      project,
+      score: scoreProjectMatch(project, messageHints, normalizedMessage),
+    }))
+    .filter((item) => item.score >= 84)
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.project.id - right.project.id,
+    );
+  if (messageMatches.length > 1) {
+    return messageMatches.slice(0, MAX_PROJECT_CANDIDATES).map((item) => ({
+      id: item.project.id,
+      code: item.project.code,
+      name: item.project.name,
+    }));
+  }
+
+  const scored = projects
+    .map((project) => ({
+      project,
+      score: scoreProjectMatch(project, hints, normalizedMessage),
+    }))
+    .filter((item) => item.score >= 70)
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.project.id - right.project.id,
+    );
+
+  const top = scored[0];
+  if (top === undefined) return [];
+  const exact = scored.filter((item) => item.score >= 98);
+  const floor = exact.length > 0 ? 98 : Math.max(70, top.score - 8);
+  return scored
+    .filter((item) => item.score >= floor)
+    .slice(0, MAX_PROJECT_CANDIDATES)
+    .map((item) => ({
+      id: item.project.id,
+      code: item.project.code,
+      name: item.project.name,
+    }));
+}
+
+function resolveModuleCandidates(
+  modules: readonly TaskDraftAssistModuleItem[],
+  moduleName: string | null,
+  message: string,
+): TaskDraftAssistModuleCandidate[] {
+  const modelHints = moduleName === null ? [] : hintVariants(moduleName);
+  const messageHints = extractModuleHints(message);
+  const hints = [...new Set([...modelHints, ...messageHints])];
+  const normalizedMessage = normalizeMatchText(message);
+  if (hints.length === 0 && normalizedMessage.length === 0) return [];
+
+  // 模块同一规则：用户说法本身就模糊时，不采纳模型的单次猜测。
+  const messageMatches = modules
+    .map((module) => ({
+      module,
+      score: scoreModuleMatch(module, messageHints, normalizedMessage),
+    }))
+    .filter((item) => item.score >= 84)
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.module.id - right.module.id,
+    );
+  if (messageMatches.length > 1) {
+    return messageMatches.slice(0, MAX_MODULE_CANDIDATES).map((item) => ({
+      id: item.module.id,
+      name: item.module.name,
+    }));
+  }
+
+  const scored = modules
+    .map((module) => ({
+      module,
+      score: scoreModuleMatch(module, hints, normalizedMessage),
+    }))
+    .filter((item) => item.score >= 60)
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.module.id - right.module.id,
+    );
+
+  const top = scored[0];
+  if (top === undefined) return [];
+  const exact = scored.filter((item) => item.score >= 100);
+  const floor = exact.length > 0 ? 100 : Math.max(60, top.score - 8);
+  return scored
+    .filter((item) => item.score >= floor)
+    .slice(0, MAX_MODULE_CANDIDATES)
+    .map((item) => ({ id: item.module.id, name: item.module.name }));
 }
 
 function trimmedOrNull(

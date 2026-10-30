@@ -5,6 +5,7 @@ import {
   ApiError,
   type InpulseApiClient,
   type TaskDraftAssistDraft,
+  type TaskDraftAssistSuggestions,
 } from "@generated/api";
 import {
   assistImagePayload,
@@ -19,18 +20,31 @@ const PRIORITY_LABELS: Readonly<Record<string, string>> = {
   URGENT: "紧急",
 };
 
+export interface TaskDraftAssistApplyOptions {
+  readonly applyModule: boolean;
+}
+
 export interface TaskDraftAssistApplyResult {
   readonly applied: number;
   readonly conflicts: readonly string[];
+}
+
+interface AssignmentDecision {
+  readonly projectId?: number | undefined;
+  readonly moduleId?: number | undefined;
+  readonly dismissedProject?: boolean | undefined;
+  readonly dismissedModule?: boolean | undefined;
 }
 
 interface AssistantMessage {
   readonly role: "USER" | "ASSISTANT";
   readonly text: string;
   readonly draft?: TaskDraftAssistDraft;
+  readonly suggestions?: TaskDraftAssistSuggestions;
   readonly notes?: readonly string[];
   readonly confidence?: "HIGH" | "MEDIUM" | "LOW";
   readonly applied?: TaskDraftAssistApplyResult;
+  readonly decision?: AssignmentDecision;
 }
 
 export interface TaskDraftAssistPaneProps {
@@ -38,23 +52,37 @@ export interface TaskDraftAssistPaneProps {
   readonly projectId: number;
   readonly moduleId: number;
   readonly disabled: boolean;
-  readonly onApply: (draft: TaskDraftAssistDraft) => TaskDraftAssistApplyResult;
+  readonly projectLocked?: boolean | undefined;
+  readonly moduleLocked?: boolean | undefined;
+  readonly onApply: (
+    draft: TaskDraftAssistDraft,
+    options: TaskDraftAssistApplyOptions,
+  ) => TaskDraftAssistApplyResult;
+  readonly onConfirmProject: (projectId: number) => void;
+  readonly onConfirmModule: (moduleId: number) => void;
+  readonly onChangeProject: () => void;
+  readonly onChangeModule: () => void;
 }
 
 /**
  * 新建任务弹窗右侧的 AI 助手。视觉与文档导入的 AI 助手共用同一套
  * `.import-assist*` 设计系统样式；行为只做预填，永不直接创建任务。
  *
- * 每次发送都把最近 10 条对话带回服务端，AI 因而能处理「截止改到下周五」
- * 这类追问；结构化草稿只用于当前消息回填与展示，服务端每次都会重新匹配
- * 真实的成员 / 模块 ID。
+ * 项目与模块不再自动写回：服务端只返回授权范围内的候选，前端用确认卡让
+ * 用户点「是」或去左侧更改。多候选时不替用户猜，全部列出供点选。
  */
 export function TaskDraftAssistPane({
   api,
   projectId,
   moduleId,
   disabled,
+  projectLocked = false,
+  moduleLocked = false,
   onApply,
+  onConfirmProject,
+  onConfirmModule,
+  onChangeProject,
+  onChangeModule,
 }: TaskDraftAssistPaneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [composer, setComposer] = useState("");
@@ -94,6 +122,7 @@ export function TaskDraftAssistPane({
           role: "ASSISTANT",
           text: response.reply,
           draft: response.draft,
+          suggestions: response.suggestions,
           notes: response.notes,
           confidence: response.confidence,
         },
@@ -135,12 +164,60 @@ export function TaskDraftAssistPane({
 
   function apply(message: AssistantMessage): void {
     if (!message.draft || message.applied) return;
-    const result = onApply(message.draft);
+    const hasModuleSuggestion = (message.suggestions?.modules.length ?? 0) > 0;
+    const result = onApply(message.draft, {
+      applyModule: !moduleLocked && !hasModuleSuggestion,
+    });
     setMessages((current) =>
       current.map((item) =>
         item === message ? { ...item, applied: result } : item,
       ),
     );
+  }
+
+  function updateDecision(
+    message: AssistantMessage,
+    next: AssignmentDecision,
+  ): void {
+    setMessages((current) =>
+      current.map((item) =>
+        item === message
+          ? { ...item, decision: { ...item.decision, ...next } }
+          : item,
+      ),
+    );
+  }
+
+  function confirmProject(
+    message: AssistantMessage,
+    nextProjectId: number,
+  ): void {
+    if (disabled || projectLocked) return;
+    updateDecision(message, {
+      projectId: nextProjectId,
+      moduleId: undefined,
+      dismissedProject: false,
+    });
+    onConfirmProject(nextProjectId);
+  }
+
+  function confirmModule(
+    message: AssistantMessage,
+    nextModuleId: number,
+  ): void {
+    if (disabled || moduleLocked) return;
+    updateDecision(message, { moduleId: nextModuleId, dismissedModule: false });
+    onConfirmModule(nextModuleId);
+  }
+
+  function changeProject(message: AssistantMessage): void {
+    updateDecision(message, { dismissedProject: true });
+    onChangeProject();
+  }
+
+  function changeModule(message: AssistantMessage): void {
+    updateDecision(message, { dismissedModule: true });
+    onChangeModule();
   }
 
   return (
@@ -182,8 +259,27 @@ export function TaskDraftAssistPane({
               <TaskDraftSummary
                 draft={message.draft}
                 applied={message.applied ?? null}
+                hasAssignmentSuggestion={
+                  (message.suggestions?.projects.length ?? 0) > 0 ||
+                  (message.suggestions?.modules.length ?? 0) > 0
+                }
                 onApply={() => apply(message)}
                 onRetry={() => inputRef.current?.focus()}
+              />
+            ) : null}
+            {message.suggestions ? (
+              <AssignmentSuggestion
+                suggestions={message.suggestions}
+                projectId={projectId}
+                moduleId={moduleId}
+                decision={message.decision}
+                disabled={disabled}
+                projectLocked={projectLocked}
+                moduleLocked={moduleLocked}
+                onConfirmProject={(id) => confirmProject(message, id)}
+                onConfirmModule={(id) => confirmModule(message, id)}
+                onChangeProject={() => changeProject(message)}
+                onChangeModule={() => changeModule(message)}
               />
             ) : null}
             {message.notes && message.notes.length > 0 ? (
@@ -276,21 +372,198 @@ export function TaskDraftAssistPane({
   );
 }
 
+function AssignmentSuggestion({
+  suggestions,
+  projectId,
+  moduleId,
+  decision,
+  disabled,
+  projectLocked,
+  moduleLocked,
+  onConfirmProject,
+  onConfirmModule,
+  onChangeProject,
+  onChangeModule,
+}: {
+  readonly suggestions: TaskDraftAssistSuggestions;
+  readonly projectId: number;
+  readonly moduleId: number;
+  readonly decision: AssignmentDecision | undefined;
+  readonly disabled: boolean;
+  readonly projectLocked: boolean;
+  readonly moduleLocked: boolean;
+  readonly onConfirmProject: (projectId: number) => void;
+  readonly onConfirmModule: (moduleId: number) => void;
+  readonly onChangeProject: () => void;
+  readonly onChangeModule: () => void;
+}) {
+  const projects = suggestions.projects;
+  const modules = suggestions.modules;
+  const confirmedProject = projects.find(
+    (item) => item.id === (decision?.projectId ?? projectId),
+  );
+  const selectedProjectIsSuggested =
+    projects.length === 0 || confirmedProject !== undefined;
+  const visibleModules =
+    projectId > 0 && selectedProjectIsSuggested && !moduleLocked ? modules : [];
+  const confirmedModule = visibleModules.find(
+    (item) => item.id === (decision?.moduleId ?? moduleId),
+  );
+  const manualProjectChoice = projectId > 0 && confirmedProject === undefined;
+  const manualModuleChoice = moduleId > 0 && confirmedModule === undefined;
+  const showProjectCard =
+    !projectLocked &&
+    projects.length > 0 &&
+    confirmedProject === undefined &&
+    !manualProjectChoice &&
+    decision?.dismissedProject !== true;
+  const showProjectDismissed =
+    !projectLocked &&
+    projects.length > 0 &&
+    confirmedProject === undefined &&
+    !manualProjectChoice &&
+    decision?.dismissedProject === true;
+  const showModuleCard =
+    visibleModules.length > 0 &&
+    confirmedModule === undefined &&
+    !manualModuleChoice &&
+    decision?.dismissedModule !== true;
+  const showModuleDismissed =
+    visibleModules.length > 0 &&
+    confirmedModule === undefined &&
+    !manualModuleChoice &&
+    decision?.dismissedModule === true;
+
+  if (
+    confirmedProject === undefined &&
+    confirmedModule === undefined &&
+    !showProjectCard &&
+    !showProjectDismissed &&
+    !showModuleCard &&
+    !showModuleDismissed
+  ) {
+    return null;
+  }
+
+  return (
+    <div
+      className="task-assist-suggestion"
+      data-testid="task-assist-suggestion"
+    >
+      {confirmedProject !== undefined ? (
+        <div className="task-assist-suggestion-confirmed">
+          已确认项目：{confirmedProject.name}
+        </div>
+      ) : null}
+      {showProjectDismissed ? (
+        <div className="task-assist-suggestion-muted">
+          项目归属请在左侧下拉选择
+        </div>
+      ) : showProjectCard ? (
+        <div className="task-assist-suggestion-block">
+          <div className="task-assist-suggestion-title">
+            {projects.length === 1
+              ? "像是「" + projects[0]?.name + "」这个项目，是这个吗？"
+              : "可能是这几个项目，选一个："}
+          </div>
+          <div className="task-assist-suggestion-actions">
+            {projects.map((project, index) => (
+              <Button
+                key={project.id}
+                size="small"
+                type={index === 0 ? "primary" : "default"}
+                data-testid={
+                  index === 0
+                    ? "task-assist-confirm-project"
+                    : "task-assist-confirm-project-" + String(project.id)
+                }
+                disabled={disabled}
+                onClick={() => onConfirmProject(project.id)}
+              >
+                {projects.length === 1
+                  ? "是，用这个"
+                  : "用「" + project.name + "」"}
+              </Button>
+            ))}
+            <Button
+              size="small"
+              data-testid="task-assist-change-project"
+              disabled={disabled}
+              onClick={onChangeProject}
+            >
+              更改
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {confirmedModule !== undefined ? (
+        <div className="task-assist-suggestion-confirmed">
+          已确认模块：{confirmedModule.name}
+        </div>
+      ) : null}
+      {showModuleDismissed ? (
+        <div className="task-assist-suggestion-muted">
+          模块归属请在左侧下拉选择
+        </div>
+      ) : showModuleCard ? (
+        <div className="task-assist-suggestion-block">
+          <div className="task-assist-suggestion-title">
+            {visibleModules.length === 1
+              ? "像是「" + visibleModules[0]?.name + "」这个模块，对吗？"
+              : "可能是这几个模块，选一个："}
+          </div>
+          <div className="task-assist-suggestion-actions">
+            {visibleModules.map((module, index) => (
+              <Button
+                key={module.id}
+                size="small"
+                type={index === 0 ? "primary" : "default"}
+                data-testid={
+                  index === 0
+                    ? "task-assist-confirm-module"
+                    : "task-assist-confirm-module-" + String(module.id)
+                }
+                disabled={disabled}
+                onClick={() => onConfirmModule(module.id)}
+              >
+                {visibleModules.length === 1
+                  ? "是，用这个"
+                  : "用「" + module.name + "」"}
+              </Button>
+            ))}
+            <Button
+              size="small"
+              data-testid="task-assist-change-module"
+              disabled={disabled}
+              onClick={onChangeModule}
+            >
+              更改
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function TaskDraftSummary({
   draft,
   applied,
+  hasAssignmentSuggestion,
   onApply,
   onRetry,
 }: {
   readonly draft: TaskDraftAssistDraft;
   readonly applied: TaskDraftAssistApplyResult | null;
+  readonly hasAssignmentSuggestion: boolean;
   readonly onApply: () => void;
   readonly onRetry: () => void;
 }) {
   const rows: { label: string; value: string }[] = [];
   if (draft.title) rows.push({ label: "标题", value: draft.title });
   if (draft.moduleName) {
-    rows.push({ label: "归属", value: draft.moduleName });
+    rows.push({ label: "建议模块", value: draft.moduleName });
   }
   if (draft.assigneeNames.length > 0) {
     rows.push({ label: "负责人", value: draft.assigneeNames.join("、") });
@@ -329,7 +602,7 @@ function TaskDraftSummary({
       {applied === null ? (
         <div className="task-assist-actions">
           <Button type="primary" size="small" onClick={onApply}>
-            填入左侧
+            {hasAssignmentSuggestion ? "填入其余字段" : "填入左侧"}
           </Button>
           <Button size="small" onClick={onRetry}>
             重新描述
@@ -356,6 +629,7 @@ function historyText(message: AssistantMessage): string {
     description: draft.description?.slice(0, 300) ?? null,
     priority: draft.priority,
     dueAt: draft.dueAt,
+    project: message.suggestions?.projects[0]?.name ?? null,
     module: draft.moduleName,
     assignees: draft.assigneeNames,
   });
