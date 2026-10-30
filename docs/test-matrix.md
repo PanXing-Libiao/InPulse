@@ -7156,6 +7156,8 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 
 已知边界：未连接真实 Casdoor 生产实例，未验证实际 IdP 的 `JWT-Custom` 配置结果；全量 Playwright 89/89 已在本地通过（2026-10-26），但不替代真实 Casdoor 联调；不声称 CI、生产镜像或 Trivy 已通过。Casdoor Group 没有不可变数字 ID，路径改名或移动会表现为旧成员关系消失、新组织出现；本轮不自动删除已消失群组的本地组织行。
 
+> 2026-10-30 后续（[ADR-108](adr/ADR-108.md)）：本节“成功同步写审计”的验证口径已收敛为仅在实际组织或成员关系变化时写 `auth.sso_organizations_synced`；每次登录对账本身不变。以上为 ADR-097 落地时点的历史记录。
+
 ## 2026-10-27 SSO 实体群组收敛与未分类（ADR-098）
 
 用户补充：Casdoor 实体群组只有一个，但 claim 可能同时返回父级和实体路径；InPulse 只应识别、展示实体群组，没有任何实体群组的账号归入“未分类”。本批修订 ADR-097 的直接成员口径，不改数据模型与权限。
@@ -7331,3 +7333,15 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | CREATE-PROJECT-WEBHOOK-GATE-001 | 静态门禁与回归 | 前端范围门禁 | `pnpm --filter @inpulse/web typecheck`；定向测试 2 文件 18 例；完整 Web 单测 123 文件 1083 例；`pnpm lint`；变更文件 Prettier；`check:frontend:boundaries`（394 模块 / 2064 依赖）；`git diff --check` | 本地通过（2026-10-30） |
 
 **未执行 / 已知边界**：未运行 Playwright E2E、真实企业微信 Webhook 发送、完整 `pnpm check`、GitHub Actions 或测试 VM 同步。项目创建与 Webhook 创建是两次 HTTP 请求，不存在跨请求事务；若第二步返回 403 / 422，项目保持已创建，需要在项目「消息通知」中重试。本批未提交。
+
+## 2026-10-30 SSO 组织同步审计去噪（ADR-108）
+
+用户指出每次登录同时出现 `auth.sso_login` 与 `auth.sso_organizations_synced` 过于频繁。本批保留每次登录对账，仅在实际组织变化时记录同步审计。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| ADR108-API-001 | API 集成（真实 PostgreSQL + 桩 IdP） | 稳定重复登录 | 首次包含实体组登录建立组织并写一条同步审计；同一账号、同一实体组再次登录只写 `auth.sso_login`，成员关系保持 | 本地通过（2026-10-30） |
+| ADR108-API-002 | API 集成（真实 PostgreSQL + 桩 IdP） | 缺失、清空与替换 | `groups` 缺失不写同步审计且成员不变；空数组清空既有关系时写审计；再次提供新组时写审计；首次无组登录不写同步审计 | 本地通过（2026-10-30） |
+| ADR108-GATE-001 | 类型与格式 | 定向门禁 | `pnpm --filter @inpulse/api typecheck` 通过；5 个变更文件 Prettier 检查通过；`sso-login.integration.test.ts` 22/22 通过 | 本地通过（2026-10-30） |
+
+**未执行 / 已知边界**：未运行全量 API 单元、全量集成、Playwright、GitHub Actions 或测试 VM 部署；未用真实 Casdoor 重新登录 smoke。本批未提交。

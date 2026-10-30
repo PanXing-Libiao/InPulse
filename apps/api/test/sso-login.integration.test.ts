@@ -211,6 +211,17 @@ async function auditActions(userId: number): Promise<readonly string[]> {
   return rows.map((row) => row.action);
 }
 
+async function organizationSyncAuditCount(userId: number): Promise<number> {
+  const rows = (await reader!.sql`
+    SELECT count(*)::INTEGER AS "count"
+      FROM app.audit_logs
+     WHERE chain_id = 'SYSTEM'
+       AND actor_id = ${userId}
+       AND action = 'auth.sso_organizations_synced'
+  `) as unknown as readonly { readonly count: number }[];
+  return rows[0]?.count ?? 0;
+}
+
 async function lastFailureReason(): Promise<string | undefined> {
   const rows = (await reader!.sql`
     SELECT event_payload AS "payload"
@@ -427,7 +438,6 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
 
     expect(await auditActions(user.id)).toEqual([
       "auth.sso_account_provisioned",
-      "auth.sso_organizations_synced",
       "auth.sso_login",
     ]);
 
@@ -463,9 +473,11 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
     expect(credential?.passwordHash).toBeNull();
   });
 
-  test("重复登录按 sso_subject 命中并同步展示名与邮箱", async () => {
+  test("重复登录按 sso_subject 命中、同步资料且相同组织不重复记审计", async () => {
     const loginName = uniqueLoginName("sso_subject");
     const subject = uniqueSubject();
+    const owner = "casdoor_" + randomUUID().replaceAll("-", "").slice(0, 10);
+    const groups = [owner + "/测试部"];
     const first = await startLogin(undefined);
     idp.setClaims({
       nonce: deriveNonce(first.state),
@@ -473,6 +485,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
       loginName,
       displayName: "原名",
       email: uniqueEmail(),
+      groups,
     });
     const firstResult = await service.complete(
       completeInput(first.state, "203.0.113.12"),
@@ -488,6 +501,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
       loginName,
       displayName: "新名",
       email: renamed,
+      groups,
     });
     await service.complete(completeInput(second.state, "203.0.113.12"));
 
@@ -501,7 +515,6 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
       "auth.sso_account_provisioned",
       "auth.sso_organizations_synced",
       "auth.sso_login",
-      "auth.sso_organizations_synced",
       "auth.sso_login",
     ]);
   });
@@ -714,6 +727,7 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
     ).toEqual(new Set([firstGroup, secondGroup]));
 
     const callsBeforeMissing = idp.groupCalls().length;
+    const syncAuditsBeforeMissing = await organizationSyncAuditCount(user.id);
     const missing = await startLogin("/projects");
     idp.setClaims({
       nonce: deriveNonce(missing.state),
@@ -728,10 +742,9 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
         (await directCasdoorMemberships(user.id)).map((row) => row.groupPath),
       ),
     ).toEqual(new Set([firstGroup, secondGroup]));
-    expect(await latestOrganizationSyncPayload(user.id)).toMatchObject({
-      groupsClaimPresent: false,
-      groupCount: 0,
-    });
+    expect(await organizationSyncAuditCount(user.id)).toBe(
+      syncAuditsBeforeMissing,
+    );
     expect(idp.groupCalls()).toHaveLength(callsBeforeMissing);
 
     const callsBeforeEmpty = idp.groupCalls().length;
@@ -752,6 +765,9 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
       membershipCount: 0,
     });
     expect(idp.groupCalls()).toHaveLength(callsBeforeEmpty);
+    expect(await organizationSyncAuditCount(user.id)).toBe(
+      syncAuditsBeforeMissing + 1,
+    );
 
     const replacement = await startLogin("/projects");
     idp.setClaims({
@@ -771,6 +787,9 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
         (row) => row.groupPath === firstGroup,
       ),
     ).toBe(true);
+    expect(await organizationSyncAuditCount(user.id)).toBe(
+      syncAuditsBeforeMissing + 2,
+    );
   });
 
   test("非法 groups 路径拒绝登录且不创建账号、组织或会话", async () => {
@@ -849,7 +868,6 @@ describe("SSO 登录纵切片（真实 PostgreSQL + 桩 IdP）", () => {
     expect(users[0]?.ssoSubject).toBe(subject);
     expect(await auditActions(existingId)).toEqual([
       "auth.sso_account_linked",
-      "auth.sso_organizations_synced",
       "auth.sso_login",
     ]);
   });

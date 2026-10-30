@@ -33,6 +33,7 @@ export class PostgresOrganizationSyncService implements OrganizationSyncPort {
         groupCount: 0,
         createdOrganizationCount: 0,
         membershipCount: 0,
+        changed: false,
       };
     }
 
@@ -45,12 +46,20 @@ export class PostgresOrganizationSyncService implements OrganizationSyncPort {
     }
 
     if (groups.length === 0) {
-      await this.clearMemberships(input.tx, input.userId);
+      const membershipChanged = await this.membershipsDiffer(
+        input.tx,
+        input.userId,
+        [],
+      );
+      if (membershipChanged) {
+        await this.clearMemberships(input.tx, input.userId);
+      }
       return {
         groupsClaimPresent: true,
         groupCount: 0,
         createdOrganizationCount: 0,
         membershipCount: 0,
+        changed: membershipChanged,
       };
     }
 
@@ -106,16 +115,24 @@ export class PostgresOrganizationSyncService implements OrganizationSyncPort {
       organizationIds.set(group.path, organizationId);
     }
 
-    await this.clearMemberships(input.tx, input.userId);
-    for (const group of groups) {
-      const organizationId = organizationIds.get(group.path);
-      if (organizationId === undefined) {
-        throw new Error("Casdoor direct group organization is missing");
+    const desiredPaths = groups.map((group) => group.path);
+    const membershipChanged = await this.membershipsDiffer(
+      input.tx,
+      input.userId,
+      desiredPaths,
+    );
+    if (membershipChanged) {
+      await this.clearMemberships(input.tx, input.userId);
+      for (const group of groups) {
+        const organizationId = organizationIds.get(group.path);
+        if (organizationId === undefined) {
+          throw new Error("Casdoor direct group organization is missing");
+        }
+        await input.tx.sql`
+          INSERT INTO app.user_organizations (user_id, organization_id, source)
+          VALUES (${input.userId}, ${organizationId}, 'CASDOOR')
+        `;
       }
-      await input.tx.sql`
-        INSERT INTO app.user_organizations (user_id, organization_id, source)
-        VALUES (${input.userId}, ${organizationId}, 'CASDOOR')
-      `;
     }
 
     return {
@@ -123,26 +140,17 @@ export class PostgresOrganizationSyncService implements OrganizationSyncPort {
       groupCount: groups.length,
       createdOrganizationCount,
       membershipCount: groups.length,
+      changed: createdOrganizationCount > 0 || membershipChanged,
     };
   }
 
   async hasSsoMembershipChanges(
     input: SsoMembershipChangeInput,
   ): Promise<boolean> {
-    const desired = selectCasdoorEntityGroups(
+    const desiredPaths = selectCasdoorEntityGroups(
       normalizeCasdoorGroupPaths(input.groups),
     ).map((group) => group.path);
-    const rows = (await input.tx.sql`
-      SELECT o.sso_group_path AS "groupPath"
-        FROM app.user_organizations AS uo
-        JOIN app.organizations AS o ON o.id = uo.organization_id
-       WHERE uo.user_id = ${input.userId}
-    `) as unknown as readonly { readonly groupPath: string | null }[];
-    const current = new Set(rows.map((row) => row.groupPath));
-    return (
-      current.size !== desired.length ||
-      desired.some((groupPath) => !current.has(groupPath))
-    );
+    return this.membershipsDiffer(input.tx, input.userId, desiredPaths);
   }
 
   private async lockSsoUser(
@@ -157,6 +165,24 @@ export class PostgresOrganizationSyncService implements OrganizationSyncPort {
        FOR UPDATE
     `) as unknown as readonly LockedSsoUser[];
     return rows[0];
+  }
+
+  private async membershipsDiffer(
+    tx: TransactionContext,
+    userId: number,
+    desiredPaths: readonly string[],
+  ): Promise<boolean> {
+    const rows = (await tx.sql`
+      SELECT o.sso_group_path AS "groupPath"
+        FROM app.user_organizations AS uo
+        JOIN app.organizations AS o ON o.id = uo.organization_id
+       WHERE uo.user_id = ${userId}
+    `) as unknown as readonly { readonly groupPath: string | null }[];
+    const current = new Set(rows.map((row) => row.groupPath));
+    return (
+      rows.length !== desiredPaths.length ||
+      desiredPaths.some((groupPath) => !current.has(groupPath))
+    );
   }
 
   private async clearMemberships(

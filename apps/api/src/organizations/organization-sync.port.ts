@@ -14,6 +14,7 @@ export interface SsoOrganizationSyncResult {
   readonly groupCount: number;
   readonly createdOrganizationCount: number;
   readonly membershipCount: number;
+  readonly changed: boolean;
 }
 
 export interface SsoMembershipChangeInput {

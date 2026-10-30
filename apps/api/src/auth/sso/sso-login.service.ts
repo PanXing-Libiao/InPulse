@@ -317,7 +317,14 @@ export class SsoLoginService extends SsoGateway {
         groups: organizationGroups,
       });
       await this.appendAccountAudit(tx, user, mapping.outcome, input);
-      await this.appendOrganizationSyncAudit(tx, user, organizationSync, input);
+      if (organizationSync.changed) {
+        await this.appendOrganizationSyncAudit(
+          tx,
+          user,
+          organizationSync,
+          input,
+        );
+      }
       const snapshot = await this.credentials.lockForSessionIssue(
         tx,
         user.id,

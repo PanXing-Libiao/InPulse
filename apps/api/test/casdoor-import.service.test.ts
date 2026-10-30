@@ -141,6 +141,7 @@ describe("PostgresCasdoorImportService", () => {
           groupCount: 1,
           createdOrganizationCount: 1,
           membershipCount: 1,
+          changed: true,
         };
       }
       if (input.userId === 2) {
@@ -149,6 +150,7 @@ describe("PostgresCasdoorImportService", () => {
           groupCount: 0,
           createdOrganizationCount: 0,
           membershipCount: 0,
+          changed: true,
         };
       }
       return {
@@ -156,6 +158,7 @@ describe("PostgresCasdoorImportService", () => {
         groupCount: 0,
         createdOrganizationCount: 0,
         membershipCount: 0,
+        changed: true,
       };
     });
     const service = new PostgresCasdoorImportService(

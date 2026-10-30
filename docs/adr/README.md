@@ -121,6 +121,7 @@
 | [ADR-105](ADR-105.md) | Accepted | 企业微信 Webhook 项目群通知通道：扩展项目群目标为 BOT / WEBHOOK（133 → 135），一个项目可有多个 Webhook、同一 URL 全局仅一个 ACTIVE；URL 严格限制为企业微信官方群机器人地址并以独立 AAD 加密，API / 审计 / 日志只暴露标签与 Key 尾号；新增创建 / 删除两条路由，沿用 projectWecomGroup、CSRF、数据库级幂等与审计；桥接按目标通道发送，Webhook 不依赖长连接激活且每个目标 20 条/分钟；更换机器人只撤销 BOT，迁移 0063 |
 | [ADR-106](ADR-106.md) | Accepted | 项目群通知收敛为 Webhook-only（部分取代 ADR-105）：删除项目群绑定码签发与项目群解绑两条路由（135 → 133），GET 状态只由 ACTIVE Webhook 决定，通知开关保存与重放要求至少一个 ACTIVE Webhook；迁移 0064 将历史 BOT 目标置 REVOKED、作废绑定码、终止 PENDING BOT 投递并禁止新的 ACTIVE BOT；更换机器人只撤销个人绑定且 revoked_project_groups 固定为 0；桥接只消费 WEBHOOK，不再使用 chat_type 2 或项目群绑定码 |
 | [ADR-107](ADR-107.md) | Accepted | Casdoor 导入权限只收窄候选账号（修订 ADR-101）：Permission / Role 的 users 或 groups 仍决定哪些账号进入预览；账号命中后不再按 Permission scope 裁剪其组引用，候选账号关联的全部启用 Physical 组均解析并写入组织。实体组没有应用权限不阻止其作为组织元数据导入，也不把 Casdoor 权限映射为 InPulse 权限；无实体组仍归入“未分类”；无新路由、迁移、配置项或依赖 |
+| [ADR-108](ADR-108.md) | Accepted | SSO 组织同步审计去噪（修订 ADR-097）：每次成功登录仍全量对账 Casdoor 实体组，但仅在组织层级或用户直接成员关系实际变化时写 auth.sso_organizations_synced 并清理 / 重写关系；无变化登录只写 auth.sso_login，groups 缺失不写同步审计；无新路由、迁移、配置项或依赖 |
 
 ## 关联基线
 

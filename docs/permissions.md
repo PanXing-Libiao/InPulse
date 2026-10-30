@@ -471,3 +471,11 @@ GET /projects/{projectId}/wecom-group 只返回 ACTIVE Webhook 的脱敏列表�
 本节按 [ADR-107](adr/ADR-107.md)（Accepted）修订 ADR-101 的群组二次收窄口径，不新增或删除路由，路由总数保持 133。`CASDOOR_IMPORT_PERMISSION` 仍只决定哪些 Casdoor 账号进入导入预览；候选账号命中后，其关联的全部启用 Physical 实体组均进入组织解析和成员同步，不再要求实体组本身命中 Permission scope。未授权账号仍被排除，Virtual / 停用 / 陈旧组仍忽略，组元数据失败仍 503 fail closed。该变化只影响组织归类，不把 Casdoor Permission、Role、群组或应用授权映射为 InPulse 项目权限或管理员权限。
 
 **验证**：API 单元覆盖直接用户授权命中的账号保留非 scope 的 Physical 组，同时未授权账号仍不进入候选；后续真实 Casdoor 预览与导入 smoke 单独记录。
+
+## ADR-108 SSO 组织同步审计仅在实际变化时记录（2026-10-30）
+
+本节按 [ADR-108](adr/ADR-108.md)（Accepted）修订 ADR-097 §2.5 的组织同步审计频率，不新增或删除路由，路由总数保持 133，`securityFlow` 六条不变。
+
+**登录与审计**：每次成功 SSO 登录仍全量对账 Casdoor 实体组；仅在组织层级新建或用户直接成员关系实际变化时写入 `auth.sso_organizations_synced`。完全一致的重复登录只写 `auth.sso_login`；`groups` 缺失不修改组织，也不写组织同步审计。空数组或仅 Virtual / 停用组只有在确实清空既有关系时才产生同步审计。审计 payload、中文展示、只读边界与 CASDOOR 组织权限均不变。
+
+**验证**：真实 PostgreSQL + 桩 IdP 的 `sso-login.integration.test.ts` 22 例通过，覆盖首次无组登录、同一实体组重复登录、缺失 / 空数组 / 替换与首次建组织；定向测试不替代全量 CI、Playwright 或测试 VM。
