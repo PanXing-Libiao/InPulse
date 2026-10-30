@@ -163,6 +163,7 @@ export const permissionMatrix = [
       "getTask",
       "listTaskAssignees",
       "listActiveProjectMembers",
+      "assistTaskDraft",
       "createTaskWithScope",
       "createTask",
       "updateTask",

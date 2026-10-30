@@ -97,6 +97,7 @@ interface Harness {
   readonly createTask: ReturnType<typeof vi.fn>;
   readonly createModuleTask: ReturnType<typeof vi.fn>;
   readonly addExternalLink: ReturnType<typeof vi.fn>;
+  readonly assistTaskDraft: ReturnType<typeof vi.fn>;
   readonly onClose: () => void;
   readonly onCreated: (taskId: number) => void;
 }
@@ -115,6 +116,25 @@ function harness(
   );
   const addExternalLink =
     overrides.addExternalLink ?? (() => Promise.resolve({ linkId: 1 }));
+  const assistTaskDraft = vi.fn(() =>
+    Promise.resolve({
+      reply: "识别到 3 项，截止和负责人请再确认。",
+      draft: {
+        title: "修复 MFA 登录超时",
+        description: "定位 MFA 登录偶发超时的原因并修复。",
+        priority: "HIGH",
+        dueAt: "2026-11-06T18:00:00+08:00",
+        assigneeIds: [1],
+        assigneeNames: ["陈晓"],
+        moduleId: 11,
+        moduleName: "访问控制",
+        featureId: 111,
+        featureName: "MFA 登录",
+      },
+      confidence: "HIGH",
+      notes: [],
+    }),
+  );
   const onClose = vi.fn<() => void>(() => undefined);
   const onCreated = vi.fn<(taskId: number) => void>(() => undefined);
 
@@ -136,6 +156,7 @@ function harness(
     createModuleTask,
     addExternalLink: vi.fn(addExternalLink),
     listExternalLinks: vi.fn().mockResolvedValue({ rowVersion: 1, items: [] }),
+    assistTaskDraft,
   } as unknown as InpulseApiClient;
 
   return {
@@ -146,6 +167,7 @@ function harness(
     addExternalLink: (
       client as unknown as { addExternalLink: ReturnType<typeof vi.fn> }
     ).addExternalLink,
+    assistTaskDraft,
     onClose,
     onCreated,
   };
@@ -506,4 +528,51 @@ it("在一次提交中创建自定义模块、功能和任务，并返回真实�
   expect(test.createTask).not.toHaveBeenCalled();
   expect(test.createModuleTask).not.toHaveBeenCalled();
   await waitFor(() => expect(test.onCreated).toHaveBeenCalledWith(903));
+});
+
+it("AI 助手把识别结果填入左侧空字段", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+  await pickOption(user, "所属项目", "InPulse 平台");
+  await pickOption(user, "所属模块", "访问控制");
+  await pickOption(user, "所属功能", "MFA 登录");
+
+  await user.type(
+    screen.getByLabelText("描述任务"),
+    "周五前让陈晓修 MFA 登录超时",
+  );
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  await waitFor(() => expect(test.assistTaskDraft).toHaveBeenCalledTimes(1));
+  const call = test.assistTaskDraft.mock.calls[0] as
+    [number, { message: string; history: readonly unknown[] }] | undefined;
+  expect(call?.[0]).toBe(1);
+  expect(call?.[1].message).toBe("周五前让陈晓修 MFA 登录超时");
+  expect(call?.[1].history).toEqual([]);
+
+  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue("修复 MFA 登录超时");
+  expect(screen.getByLabelText("任务说明")).toHaveValue(
+    "定位 MFA 登录偶发超时的原因并修复。",
+  );
+  expect(screen.getByLabelText("截止时间")).toHaveValue("2026-11-06T18:00");
+  expect(screen.getByText(/已填入 5 项/)).toBeInTheDocument();
+});
+
+it("AI 不覆盖用户已经手填的标题", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+  await pickOption(user, "所属项目", "InPulse 平台");
+  await pickOption(user, "所属模块", "访问控制");
+  await pickOption(user, "所属功能", "MFA 登录");
+
+  await user.type(screen.getByLabelText("任务标题"), "我自己写的标题");
+  await user.type(screen.getByLabelText("描述任务"), "修一下登录");
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue("我自己写的标题");
+  expect(screen.getByText(/未覆盖已有内容：标题/)).toBeInTheDocument();
 });

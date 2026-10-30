@@ -2020,6 +2020,38 @@ export type TaskDeletionResponse = {
   readonly detachedGroupRole: (("MAIN" | "SOURCE") | null);
 };
 
+export type TaskDraftAssistDraft = {
+  readonly title: (string | null);
+  readonly description: (string | null);
+  readonly priority: (("NORMAL" | "HIGH" | "URGENT") | null);
+  readonly dueAt: (string | null);
+  readonly assigneeIds: readonly number[];
+  readonly assigneeNames: readonly string[];
+  readonly moduleId: (number | null);
+  readonly moduleName: (string | null);
+  readonly featureId: (number | null);
+  readonly featureName: (string | null);
+};
+
+export type TaskDraftAssistHistoryItem = {
+  readonly role: ("USER" | "ASSISTANT");
+  readonly text: string;
+};
+
+export type TaskDraftAssistRequest = {
+  readonly message: string;
+  readonly history: readonly TaskDraftAssistHistoryItem[];
+  readonly moduleId?: (number | null);
+  readonly featureId?: (number | null);
+};
+
+export type TaskDraftAssistResponse = {
+  readonly reply: string;
+  readonly draft: TaskDraftAssistDraft;
+  readonly confidence: ("HIGH" | "MEDIUM" | "LOW");
+  readonly notes: readonly string[];
+};
+
 export type TaskEditRequest = {
   readonly title: string;
   readonly description: string;

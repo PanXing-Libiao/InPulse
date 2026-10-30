@@ -8650,3 +8650,140 @@ div.ant-popover.wecom-unbind-popconfirm
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * 新建任务 AI 助手（2026-10-30）
+ * 左侧沿用原表单字段顺序，右侧直接复用文档导入的 .import-assist 视觉：
+ * 浅蓝底卡片、AI 助手 + 配置、空态灰字、底部输入 + 发送。
+ * 弹窗固定外框高度，切换空态 / 对话 / 识别结果时不再忽大忽小。
+ * ------------------------------------------------------------------------- */
+.catalog-modal.task-create-ai {
+  width: min(980px, calc(100vw - 48px));
+  height: min(760px, calc(100dvh - 56px));
+}
+.catalog-modal.task-create-ai .dialog-form {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  align-content: stretch;
+  gap: 16px;
+  padding: 18px 22px 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.task-create-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 4px 18px 0;
+  scrollbar-width: thin;
+  scrollbar-color: #cfdbe8 transparent;
+}
+.task-create-main::-webkit-scrollbar {
+  width: 8px;
+}
+.task-create-main::-webkit-scrollbar-thumb {
+  background: #cfdbe8;
+  border-radius: 8px;
+}
+.task-create-main > .task-form-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.task-create-assist {
+  flex: 0 0 320px;
+  width: 320px;
+  min-height: 0;
+}
+.task-create-assist .import-msg {
+  max-width: 100%;
+}
+.task-create-assist .import-msg:not(.is-busy) {
+  flex-direction: column;
+  gap: 3px;
+}
+.task-assist-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+}
+.task-assist-row {
+  display: flex;
+  gap: 8px;
+  font-size: var(--text-md);
+  line-height: 1.55;
+}
+.task-assist-row > span {
+  flex: none;
+  min-width: 42px;
+  color: #8fa5bb;
+}
+.task-assist-row > b {
+  min-width: 0;
+  color: #24384c;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.task-assist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+}
+.task-assist-hint {
+  color: #8fa5bb;
+  font-size: var(--text-md);
+}
+.task-assist-applied {
+  margin-top: 6px;
+  color: #2f6fb0;
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+.task-assist-notes {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: #8a6512;
+  font-size: var(--text-md);
+  line-height: 1.6;
+}
+.task-assist-config {
+  flex: none;
+  color: var(--primary);
+  font-size: var(--text-md);
+  text-decoration: none;
+}
+.task-assist-config:hover {
+  text-decoration: underline;
+}
+.task-assist-error {
+  flex-shrink: 0;
+  margin: 0;
+  color: #b03a2e;
+  font-size: var(--text-md);
+}
+@media (max-width: 900px) {
+  .catalog-modal.task-create-ai {
+    height: auto;
+    max-height: calc(100dvh - 32px);
+  }
+  .catalog-modal.task-create-ai .dialog-form {
+    flex-direction: column;
+    padding-bottom: 0;
+    overflow-y: auto;
+  }
+  .task-create-main {
+    overflow: visible;
+    padding-right: 0;
+  }
+  .task-create-assist {
+    flex: none;
+    width: auto;
+    min-height: 330px;
+  }
+}

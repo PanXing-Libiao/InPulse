@@ -62,6 +62,7 @@ import { recordDraftSchemas } from "./contracts/record-drafts.zod.js";
 import { recordFeedSchemas } from "./contracts/record-feed.zod.js";
 import { recordSummarySchemas } from "./contracts/record-summary.zod.js";
 import { recordSummaryAssistSchemas } from "./contracts/record-summary-assist.zod.js";
+import { taskDraftAssistSchemas } from "./contracts/task-draft-assist.zod.js";
 import { publishedRecordSchemas } from "./contracts/published-records.zod.js";
 import { featureSchemas } from "./contracts/features.zod.js";
 import { taskSchemas } from "./contracts/tasks.zod.js";
@@ -209,6 +210,7 @@ export const schemaRegistry = {
   ...recordFeedSchemas,
   ...recordSummarySchemas,
   ...recordSummaryAssistSchemas,
+  ...taskDraftAssistSchemas,
 
   ...taskGroupSchemas,
   UserRef: {

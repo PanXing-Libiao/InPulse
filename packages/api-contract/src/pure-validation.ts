@@ -13,4 +13,6 @@ export const pureValidationOperationIds = [
   "testAiAssistSettings",
   // ADR-076：迭代总结 AI 改写只返回文本，不写任何持久化状态。
   "assistRecordSummary",
+  // 新建任务 AI 识别只返回预填建议，不写任何持久化状态。
+  "assistTaskDraft",
 ] as const;

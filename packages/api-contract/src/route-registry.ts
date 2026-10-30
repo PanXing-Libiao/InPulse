@@ -10,6 +10,7 @@ import { externalLinkRoutes } from "./external-link-routes.js";
 import { leftoverTaskRoutes } from "./leftover-task-routes.js";
 import { recordFeedRoutes } from "./record-feed-routes.js";
 import { recordSummaryRoutes } from "./record-summary-routes.js";
+import { taskDraftAssistRoutes } from "./task-draft-assist-routes.js";
 import {
   recordDraftDeleteRoutes,
   recordDraftRoutes,
@@ -65,6 +66,7 @@ export const routeRegistry = [
   ...aggregateReadRoutes,
   ...recordFeedRoutes,
   ...recordSummaryRoutes,
+  ...taskDraftAssistRoutes,
   ...taskCompletionRoutes,
   ...leftoverTaskRoutes,
   ...moduleTaskRoutes,
