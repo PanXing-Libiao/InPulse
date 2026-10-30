@@ -7894,12 +7894,13 @@ td.due-overdue {
 .import-composer {
   flex-shrink: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   border-top: 1px solid #e5ecf4;
   padding-top: 9px;
 }
-.import-composer input {
+.import-composer input,
+.import-composer textarea {
   flex: 1;
   min-width: 0;
   height: 36px;
@@ -7910,10 +7911,38 @@ td.due-overdue {
   color: #24384c;
   background: #fff;
 }
-.import-composer input::placeholder {
+.import-composer textarea {
+  min-height: 36px;
+  max-height: 116px;
+  padding: 7px 12px;
+  line-height: 20px;
+  font-family: inherit;
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #cfdbe8 transparent;
+}
+/* 任务 AI 助手输入框：压过 .calm-form/.catalog-modal 的弹窗表单规则，保持单行起步。 */
+.task-create-assist .import-composer textarea {
+  height: 36px;
+  min-height: 36px;
+  padding: 7px 12px;
+  line-height: 20px;
+  resize: none;
+}
+.import-composer textarea::-webkit-scrollbar {
+  width: 6px;
+}
+.import-composer textarea::-webkit-scrollbar-thumb {
+  background: #cfdbe8;
+  border-radius: 6px;
+}
+.import-composer input::placeholder,
+.import-composer textarea::placeholder {
   color: #9db1c5;
 }
-.import-composer input:disabled {
+.import-composer input:disabled,
+.import-composer textarea:disabled {
   background: #f7fafd;
   color: #c3cfdb;
 }
