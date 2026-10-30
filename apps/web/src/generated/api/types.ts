@@ -191,6 +191,11 @@ export type AggregateTaskRef = {
   readonly featureId: (number | null);
 };
 
+export type AiAssistImage = {
+  readonly mimeType: ("image/png" | "image/jpeg" | "image/webp");
+  readonly data: string;
+};
+
 export type AiAssistSettings = {
   readonly enabled: boolean;
   readonly source: ("DATABASE" | "ENVIRONMENT" | "NONE");
@@ -402,6 +407,7 @@ export type DeleteTaskRequest = {
 export type DocumentImportAssistRequest = {
   readonly mode: ("IN_PROJECT" | "WHOLE_PROJECT");
   readonly text: string;
+  readonly images?: readonly AiAssistImage[];
   readonly target?: DocumentImportAssistTarget;
 };
 
@@ -2040,6 +2046,7 @@ export type TaskDraftAssistHistoryItem = {
 
 export type TaskDraftAssistRequest = {
   readonly message: string;
+  readonly images?: readonly AiAssistImage[];
   readonly history: readonly TaskDraftAssistHistoryItem[];
   readonly moduleId?: (number | null);
   readonly featureId?: (number | null);

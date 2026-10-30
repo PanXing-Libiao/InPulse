@@ -35,6 +35,7 @@ export * from "./contracts/record-feed.zod.js";
 export * from "./contracts/record-summary.zod.js";
 export * from "./contracts/record-summary-assist.zod.js";
 export * from "./contracts/task-draft-assist.zod.js";
+export * from "./contracts/ai-assist-image.zod.js";
 
 export * from "./contracts/task-groups.zod.js";
 export * from "./contracts/task-completion.zod.js";

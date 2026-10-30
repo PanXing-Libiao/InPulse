@@ -145,6 +145,21 @@ async function postAssist(
   );
 }
 
+async function postStandaloneAssist(
+  body: unknown,
+  actor?: SessionActor,
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  if (actor !== undefined) headers["cookie"] = actor.cookie;
+  return fetch(baseUrl + "/api/v1/task-draft-assist", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
 async function sessionActor(sql: Sql, userId: number): Promise<SessionActor> {
   const users = (await sql`
     SELECT login_name AS "loginName", auth_version AS "authVersion"
@@ -355,6 +370,56 @@ afterAll(async () => {
 });
 
 describe("POST /projects/{projectId}/task-draft-assist", () => {
+  test("未选项目：先识别描述，归属与负责人留空并提示补充", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(modelJson()),
+    });
+    const response = await postStandaloneAssist(
+      {
+        message: "李工说登录验证码一直转圈，优先处理",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      notes: readonly string[];
+      draft: Readonly<Record<string, unknown>>;
+    };
+    expect(body.draft).toMatchObject({
+      title: "修复登录偶发超时",
+      priority: "HIGH",
+      dueAt: "2026-11-06T18:00:00+08:00",
+      assigneeIds: [],
+      assigneeNames: [],
+      moduleId: null,
+      moduleName: null,
+      featureId: null,
+      featureName: null,
+    });
+    expect(body.notes.join("\n")).toContain("未选择项目");
+
+    const upstream = lastUpstreamRequest?.body as
+      { messages?: readonly { content?: string }[] } | undefined;
+    const prompt = (upstream?.messages ?? [])
+      .map((message) => message.content ?? "")
+      .join("\n");
+    expect(prompt).toContain("尚未选择项目");
+    expect(prompt).toContain("李工说登录验证码一直转圈");
+    expect(prompt).not.toContain("项目里没有活跃成员");
+  });
+
+  test("未选项目的识别未登录：401，且不调用上游", async () => {
+    upstreamRequestCount = 0;
+    const response = await postStandaloneAssist({
+      message: "先看一眼截图",
+      history: [],
+    });
+    expect(response.status).toBe(401);
+    expect(upstreamRequestCount).toBe(0);
+  });
+
   test("未登录：401，且不调用上游", async () => {
     const before = upstreamRequestCount;
     const response = await postAssist(seed.project.projectId, {
@@ -431,6 +496,50 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
 
     expect(await countRows(auditSql, "app.audit_logs")).toBe(auditsBefore);
     expect(await countRows(runtimeSql, "app.tasks")).toBe(tasksBefore);
+  });
+
+  test("粘贴截图时把图片和文本一起发给多模态模型", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(modelJson({})),
+    });
+    const imageBase64 = Buffer.from("fake-chat-screenshot").toString("base64");
+    const response = await postAssist(
+      seed.project.projectId,
+      {
+        message: "",
+        history: [],
+        images: [{ mimeType: "image/png", data: imageBase64 }],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+
+    const upstream = lastUpstreamRequest?.body as
+      | {
+          messages?: readonly {
+            role?: string;
+            content?: unknown;
+          }[];
+        }
+      | undefined;
+    const userMessage = (upstream?.messages ?? []).find(
+      (message) => message.role === "user",
+    );
+    expect(Array.isArray(userMessage?.content)).toBe(true);
+    const parts = userMessage?.content as readonly {
+      type?: string;
+      text?: string;
+      image_url?: { url?: string };
+    }[];
+    expect(
+      parts.some(
+        (part) =>
+          part.type === "image_url" &&
+          (part.image_url?.url ?? "") ===
+            "data:image/png;base64," + imageBase64,
+      ),
+    ).toBe(true);
   });
 
   test("模型编造的名字一律丢弃，只保留真实清单里的 ID", async () => {

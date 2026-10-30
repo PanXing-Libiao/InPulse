@@ -47,6 +47,11 @@ interface ProjectSnapshot {
   readonly catalog: TaskDraftAssistCatalog;
 }
 
+const EMPTY_SNAPSHOT: ProjectSnapshot = {
+  members: [],
+  catalog: { modules: [], features: [] },
+};
+
 /**
  * 新建任务 AI 识别 HTTP 编排。
  *
@@ -78,6 +83,42 @@ export class TaskDraftAssistHttpService {
     input: TaskDraftAssistRequest,
   ): Promise<TaskDraftAssistResponse> {
     const snapshot = await this.loadProjectSnapshot(headers, projectId);
+    return this.runAssist(input, snapshot, true);
+  }
+
+  /**
+   * 未选择项目：只验证登录，不读取任何项目成员与归属清单。
+   * 用户可以先把聊天截图交给 AI 看，再决定建在哪个项目。
+   */
+  async assistStandalone(
+    headers: HttpHeaderBag,
+    input: TaskDraftAssistRequest,
+  ): Promise<TaskDraftAssistResponse> {
+    await this.assertSession(headers);
+    return this.runAssist(input, EMPTY_SNAPSHOT, false);
+  }
+
+  private async assertSession(headers: HttpHeaderBag): Promise<void> {
+    await this.uow.run(async (tx) => {
+      const actor = await this.sessions.resolveActorInTransaction(
+        tx,
+        getHeader(headers, "cookie"),
+      );
+      if (actor === undefined) {
+        throw new ApiHttpError(
+          401,
+          TASK_DRAFT_ASSIST_SESSION_REQUIRED,
+          "登录状态已失效，请重新登录",
+        );
+      }
+    });
+  }
+
+  private async runAssist(
+    input: TaskDraftAssistRequest,
+    snapshot: ProjectSnapshot,
+    hasProjectContext: boolean,
+  ): Promise<TaskDraftAssistResponse> {
     const resolution = await this.aiAssistRuntime.resolve();
     if (resolution.kind === "DISABLED") {
       throw new ApiHttpError(
@@ -108,6 +149,8 @@ export class TaskDraftAssistHttpService {
         features: snapshot.catalog.features,
         currentModuleName: currentModule?.name ?? null,
         currentFeatureName: currentFeature?.name ?? null,
+        hasProjectContext,
+        images: input.images,
       });
       raw = draft.content;
     } catch (error) {
@@ -124,7 +167,7 @@ export class TaskDraftAssistHttpService {
 
     const parsed = parseModelOutput(raw);
     return taskDraftAssistResponseSchema.parse(
-      this.toResponse(parsed, snapshot, today.date),
+      this.toResponse(parsed, snapshot, today.date, hasProjectContext),
     );
   }
 
@@ -165,11 +208,52 @@ export class TaskDraftAssistHttpService {
     output: ModelOutput,
     snapshot: ProjectSnapshot,
     today: string,
+    hasProjectContext = true,
   ): TaskDraftAssistResponse {
     const notes: string[] = [];
     for (const note of output.notes ?? []) {
       const trimmed = note.trim().slice(0, 200);
       if (trimmed.length > 0 && notes.length < MAX_NOTES) notes.push(trimmed);
+    }
+
+    if (!hasProjectContext) {
+      const dueAt = toDueAt(output.dueDate);
+      if (output.dueDate?.trim() && dueAt === null) {
+        pushNote(
+          notes,
+          "截止日期「" + output.dueDate.trim() + "」无法识别，已留空",
+        );
+      }
+      if (dueAt !== null && dueAt.slice(0, 10) < today) {
+        pushNote(notes, "截止日期早于今天，请确认");
+      }
+      if (
+        (output.assigneeNames?.length ?? 0) > 0 ||
+        output.moduleName?.trim() ||
+        output.featureName?.trim()
+      ) {
+        pushNote(
+          notes,
+          "未选择项目，模块、功能与负责人先留空；选好项目后再确认归属",
+        );
+      }
+      return {
+        reply: output.reply,
+        draft: {
+          title: trimmedOrNull(output.title, MAX_TITLE),
+          description: trimmedOrNull(output.description, MAX_DESCRIPTION),
+          priority: output.priority ?? null,
+          dueAt,
+          assigneeIds: [],
+          assigneeNames: [],
+          moduleId: null,
+          moduleName: null,
+          featureId: null,
+          featureName: null,
+        },
+        confidence: output.confidence ?? "MEDIUM",
+        notes: notes.slice(0, MAX_NOTES),
+      };
     }
 
     const moduleMatch = matchByName(

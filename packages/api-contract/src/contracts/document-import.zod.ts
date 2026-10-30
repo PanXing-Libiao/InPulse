@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  AI_ASSIST_IMAGE_TEXT_LIMIT,
+  AI_ASSIST_MAX_IMAGES,
+  aiAssistImageSchema,
+} from "./ai-assist-image.zod.js";
+
 const id = z.number().int().positive().max(2147483647);
 
 /**
@@ -263,9 +269,17 @@ export const documentImportAssistRequestSchema = z
       ),
     text: z
       .string()
-      .min(1)
       .max(DOCUMENT_IMPORT_MAX_TEXT_LENGTH)
-      .describe("用户原始文档抽取后的纯文本（UTF-8），不要求符合固定模板"),
+      .describe(
+        "用户原始文档抽取后的纯文本（UTF-8），不要求符合固定模板；只提供截图时可为空",
+      ),
+    images: z
+      .array(aiAssistImageSchema)
+      .max(AI_ASSIST_MAX_IMAGES)
+      .optional()
+      .describe(
+        "聊天记录等截图（base64，不含 data: 前缀）；只用于本次识别，不落库",
+      ),
     target: documentImportAssistTargetSchema
       .optional()
       .describe(
@@ -278,6 +292,22 @@ export const documentImportAssistRequestSchema = z
     {
       message: "整项目导入不能携带 target",
       path: ["target"],
+    },
+  )
+  .refine(
+    (value) => value.text.trim().length > 0 || (value.images?.length ?? 0) > 0,
+    {
+      message: "至少提供文本或一张图片",
+      path: ["text"],
+    },
+  )
+  .refine(
+    (value) =>
+      (value.images?.length ?? 0) === 0 ||
+      value.text.length <= AI_ASSIST_IMAGE_TEXT_LIMIT,
+    {
+      message: "带截图时文本不能超过 " + AI_ASSIST_IMAGE_TEXT_LIMIT + " 字符",
+      path: ["text"],
     },
   )
   .meta({ id: "DocumentImportAssistRequest" });
@@ -376,7 +406,7 @@ export const documentImportSchemas = {
   },
   DocumentImportAssistRequest: {
     schema: documentImportAssistRequestSchema,
-    summary: "AI 辅助文档转换请求：模式、用户文档原文与可选 UI 目标",
+    summary: "AI 辅助文档转换请求：模式、用户文档原文、截图与可选 UI 目标",
     sensitiveFieldPaths: [],
   },
   DocumentImportAssistResponse: {

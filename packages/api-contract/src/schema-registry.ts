@@ -13,6 +13,7 @@ import {
   casdoorImportRequestSchema,
   casdoorImportResultSchema,
 } from "./contracts/casdoor-import.zod.js";
+import { aiAssistImageSchemas } from "./contracts/ai-assist-image.zod.js";
 import { documentImportSchemas } from "./contracts/document-import.zod.js";
 import {
   auditLogItemSchema,
@@ -190,6 +191,7 @@ export const schemaRegistry = {
   ...moduleSchemas,
   ...moduleDeletionSchemas,
   ...taskCreateSchemas,
+  ...aiAssistImageSchemas,
   ...documentImportSchemas,
   ...wecomBindingSchemas,
   ...adminAiAssistSchemas,

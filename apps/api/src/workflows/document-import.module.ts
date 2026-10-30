@@ -23,6 +23,7 @@ import { AiAssistSettingsHttpService } from "./ai-assist-settings-http.service.j
 import { DocumentImportHttpService } from "./document-import-http.service.js";
 import { RecordSummaryAssistController } from "./record-summary-assist.controller.js";
 import { TaskDraftAssistController } from "./task-draft-assist.controller.js";
+import { TaskDraftAssistStandaloneController } from "./task-draft-assist-standalone.controller.js";
 import { TaskDraftAssistHttpService } from "./task-draft-assist-http.service.js";
 import { TaskDraftAssistCatalogPort } from "./task-draft-assist.catalog.port.js";
 import { PostgresTaskDraftAssistCatalog } from "./postgres-task-draft-assist-catalog.js";
@@ -76,6 +77,7 @@ import { ProjectImportController } from "./project-import.controller.js";
     DocumentImportAssistController,
     RecordSummaryAssistController,
     TaskDraftAssistController,
+    TaskDraftAssistStandaloneController,
     AiAssistSettingsController,
   ],
 })

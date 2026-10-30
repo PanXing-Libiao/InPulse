@@ -15,4 +15,5 @@ export const pureValidationOperationIds = [
   "assistRecordSummary",
   // 新建任务 AI 识别只返回预填建议，不写任何持久化状态。
   "assistTaskDraft",
+  "assistTaskDraftStandalone",
 ] as const;

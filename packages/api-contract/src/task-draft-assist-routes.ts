@@ -57,4 +57,41 @@ export const taskDraftAssistRoutes: readonly RouteDefinition[] = [
     concurrencyPolicy: "none",
     auditAction: "none",
   },
+  {
+    method: "POST",
+    path: "/task-draft-assist",
+    operationId: "assistTaskDraftStandalone",
+    summary:
+      "未选择项目时先读取用户描述或聊天截图，整理成可预填的任务草稿；只返回文本字段，模块、功能与负责人留空，等用户补充项目后再确认归属。",
+    request: {
+      path: "none",
+      query: "none",
+      headers: "none",
+      body: {
+        contentTypes: [
+          {
+            contentType: "application/json",
+            schemaRef: "TaskDraftAssistRequest",
+          },
+        ],
+      },
+    },
+    responses: {
+      "200": json("TaskDraftAssistResponse"),
+      ...errors([400, 401, 422, 500, 503]),
+    },
+    authPolicy: "session",
+    csrfPolicy: "none",
+    idempotencyPolicy: "none",
+    idempotencyExceptionAdr: "none",
+    idempotencyContractVersion: "none",
+    idempotencyFingerprintVersion: "none",
+    behaviorHeaders: "none",
+    idempotencyReplayPolicy: "none",
+    replayAuthorizationPolicy: "none",
+    securityFlowPolicy: "none",
+    versionPolicy: "none",
+    concurrencyPolicy: "none",
+    auditAction: "none",
+  },
 ];

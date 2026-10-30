@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  AI_ASSIST_MAX_IMAGES,
+  aiAssistImageSchema,
+} from "./ai-assist-image.zod.js";
+
 /** 单条对话消息上限：任务描述通常一两句话，留足粘贴需求正文的空间。 */
 export const TASK_DRAFT_ASSIST_MAX_MESSAGE_LENGTH = 2_000;
 /** 只带最近 10 轮，避免上下文无限增长，也避免把无关对话喂给模型。 */
@@ -27,9 +32,15 @@ export const taskDraftAssistRequestSchema = z
     message: z
       .string()
       .trim()
-      .min(1)
       .max(TASK_DRAFT_ASSIST_MAX_MESSAGE_LENGTH)
-      .describe("用户这一次说的一句话，可以是模糊描述"),
+      .describe("用户这一次说的一句话，可以是模糊描述；只粘贴截图时可为空"),
+    images: z
+      .array(aiAssistImageSchema)
+      .max(AI_ASSIST_MAX_IMAGES)
+      .optional()
+      .describe(
+        "聊天记录等截图（base64，不含 data: 前缀）；只用于本次识别，不落库",
+      ),
     history: z
       .array(taskDraftAssistHistoryItemSchema)
       .max(TASK_DRAFT_ASSIST_MAX_HISTORY_ITEMS)
@@ -53,6 +64,13 @@ export const taskDraftAssistRequestSchema = z
       .describe("左侧当前已选功能，仅作为上下文，不保证沿用"),
   })
   .strict()
+  .refine(
+    (value) => value.message.length > 0 || (value.images?.length ?? 0) > 0,
+    {
+      message: "至少提供一句话或一张图片",
+      path: ["message"],
+    },
+  )
   .meta({ id: "TaskDraftAssistRequest" });
 
 const taskPrioritySchema = z.enum(["NORMAL", "HIGH", "URGENT"]);

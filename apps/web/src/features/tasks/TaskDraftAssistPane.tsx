@@ -6,6 +6,12 @@ import {
   type InpulseApiClient,
   type TaskDraftAssistDraft,
 } from "@generated/api";
+import {
+  assistImagePayload,
+  imageFilesFromClipboard,
+  useAssistAttachments,
+  type AssistImageAttachment,
+} from "@features/common/assist-image";
 
 const PRIORITY_LABELS: Readonly<Record<string, string>> = {
   NORMAL: "普通",
@@ -56,12 +62,15 @@ export function TaskDraftAssistPane({
   const [composer, setComposer] = useState("");
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { attachments, imageError, addFromClipboard, remove, clear } =
+    useAssistAttachments();
 
   const mutation = useMutation({
     retry: false,
     mutationFn: async (input: {
       readonly text: string;
       readonly history: readonly AssistantMessage[];
+      readonly images: readonly AssistImageAttachment[];
     }) => {
       const history = input.history.slice(-10).map((message) => ({
         role:
@@ -73,8 +82,13 @@ export function TaskDraftAssistPane({
         history,
         ...(moduleId > 0 ? { moduleId } : {}),
         ...(featureId > 0 ? { featureId } : {}),
+        ...(input.images.length > 0
+          ? { images: assistImagePayload(input.images) }
+          : {}),
       };
-      return api.assistTaskDraft(projectId, body);
+      return projectId > 0
+        ? api.assistTaskDraft(projectId, body)
+        : api.assistTaskDraftStandalone(body);
     },
     onSuccess: (response) => {
       setMessages((current) => [
@@ -98,22 +112,28 @@ export function TaskDraftAssistPane({
   });
 
   const busy = mutation.isPending;
-  const targetMissing = projectId <= 0;
   const canSend =
-    !disabled && !busy && !targetMissing && composer.trim().length > 0;
+    !disabled &&
+    !busy &&
+    (composer.trim().length > 0 || attachments.length > 0);
 
   function send(): void {
     const text = composer.trim();
-    if (text.length === 0 || disabled || busy) return;
-    if (targetMissing) {
-      setError("先选择所属项目，我才能匹配成员、模块和功能。");
-      return;
-    }
+    const images = attachments;
+    if ((text.length === 0 && images.length === 0) || disabled || busy) return;
     const history = messages;
-    setMessages((current) => [...current, { role: "USER", text }]);
+    const shownText =
+      images.length === 0
+        ? text
+        : (text.length === 0 ? "（截图）" : text) +
+          " · " +
+          images.length +
+          " 张截图";
+    setMessages((current) => [...current, { role: "USER", text: shownText }]);
     setComposer("");
+    clear();
     setError(null);
-    mutation.mutate({ text, history });
+    mutation.mutate({ text, history, images });
   }
 
   function apply(message: AssistantMessage): void {
@@ -152,7 +172,7 @@ export function TaskDraftAssistPane({
         {messages.length === 0 && !busy ? (
           <div className="import-assist-empty">
             <div>还没有任务草稿</div>
-            <div>描述一下要做的事，我来填左侧字段</div>
+            <div>先粘贴聊天截图或描述任务，项目可以稍后再选</div>
           </div>
         ) : null}
         {messages.map((message, index) => (
@@ -195,22 +215,48 @@ export function TaskDraftAssistPane({
         </p>
       ) : null}
 
+      {attachments.length > 0 || imageError !== null ? (
+        <div
+          className="assist-attachments"
+          data-testid="task-assist-attachments"
+        >
+          {attachments.map((item) => (
+            <span className="assist-attachment" key={item.id}>
+              <img src={item.previewUrl} alt="截图预览" />
+              <button
+                type="button"
+                aria-label="移除截图"
+                onClick={() => remove(item.id)}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {imageError !== null ? (
+            <span className="assist-attachment-error" role="alert">
+              {imageError}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="import-composer">
         <input
           ref={inputRef}
           aria-label="描述任务"
           value={composer}
           disabled={disabled || busy}
-          placeholder={
-            targetMissing
-              ? "先选择所属项目"
-              : busy
-                ? "正在识别…"
-                : "描述任务，我来整理"
-          }
+          placeholder={busy ? "正在识别…" : "描述任务，或粘贴聊天记录截图"}
           onChange={(event) => {
             setComposer(event.currentTarget.value);
             setError(null);
+          }}
+          onPaste={(event) => {
+            if (imageFilesFromClipboard(event.clipboardData).length === 0) {
+              return;
+            }
+            event.preventDefault();
+            void addFromClipboard(event.clipboardData);
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {

@@ -134,6 +134,7 @@ export interface InpulseApiClient {
   assistDocumentImport(body: DocumentImportAssistRequest, init?: ApiRequestInit): Promise<DocumentImportAssistResponse>;
   assistRecordSummary(body: RecordSummaryAssistRequest, init?: ApiRequestInit): Promise<RecordSummaryAssistResponse>;
   assistTaskDraft(projectId: number, body: TaskDraftAssistRequest, init?: ApiRequestInit): Promise<TaskDraftAssistResponse>;
+  assistTaskDraftStandalone(body: TaskDraftAssistRequest, init?: ApiRequestInit): Promise<TaskDraftAssistResponse>;
   changeProjectStatus(projectId: number, body: ProjectStatusChangeRequest, init?: ApiRequestInit): Promise<ProjectDetailResponse>;
   completeTask(taskId: number, body: TaskCompletionRequest, init?: ApiRequestInit): Promise<TaskCompletionResponse>;
   convertLeftoverToTask(projectId: number, recordId: number, body: LeftoverTaskRequest, init?: ApiRequestInit): Promise<LeftoverTaskResponse>;
@@ -285,6 +286,9 @@ export function createApiClient(
     },
     assistTaskDraft(projectId: number, body: TaskDraftAssistRequest, init?: ApiRequestInit) {
       return send<TaskDraftAssistResponse>(options, "POST", `/projects/${encodeURIComponent(String(projectId))}/task-draft-assist`, "", init, body);
+    },
+    assistTaskDraftStandalone(body: TaskDraftAssistRequest, init?: ApiRequestInit) {
+      return send<TaskDraftAssistResponse>(options, "POST", "/task-draft-assist", "", init, body);
     },
     changeProjectStatus(projectId: number, body: ProjectStatusChangeRequest, init?: ApiRequestInit) {
       return send<ProjectDetailResponse>(options, "PATCH", `/projects/${encodeURIComponent(String(projectId))}/status`, "", init, body);

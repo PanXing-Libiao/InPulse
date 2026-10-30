@@ -5,6 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { InpulseApiClient } from "@generated/api";
 import { GlobalTaskCreateModal } from "./GlobalTaskCreateModal";
+import {
+  clipboardWithChatScreenshot,
+  stubClipboardImagePipeline,
+} from "../common/assist-image.test-support";
 
 const projects = [
   {
@@ -98,6 +102,7 @@ interface Harness {
   readonly createModuleTask: ReturnType<typeof vi.fn>;
   readonly addExternalLink: ReturnType<typeof vi.fn>;
   readonly assistTaskDraft: ReturnType<typeof vi.fn>;
+  readonly assistTaskDraftStandalone: ReturnType<typeof vi.fn>;
   readonly onClose: () => void;
   readonly onCreated: (taskId: number) => void;
 }
@@ -135,6 +140,26 @@ function harness(
       notes: [],
     }),
   );
+  const assistTaskDraftStandalone = vi.fn(() =>
+    Promise.resolve({
+      reply: "已按截图整理草稿；还没选项目，归属和负责人先留空。",
+      draft: {
+        title: "修复登录验证码弱网转圈",
+        description:
+          "定位登录页验证码在弱网下持续转圈、现场作业无法进入的问题。",
+        priority: "HIGH",
+        dueAt: null,
+        assigneeIds: [],
+        assigneeNames: [],
+        moduleId: null,
+        moduleName: null,
+        featureId: null,
+        featureName: null,
+      },
+      confidence: "MEDIUM",
+      notes: ["还没选项目，模块、功能与负责人先留空"],
+    }),
+  );
   const onClose = vi.fn<() => void>(() => undefined);
   const onCreated = vi.fn<(taskId: number) => void>(() => undefined);
 
@@ -157,6 +182,7 @@ function harness(
     addExternalLink: vi.fn(addExternalLink),
     listExternalLinks: vi.fn().mockResolvedValue({ rowVersion: 1, items: [] }),
     assistTaskDraft,
+    assistTaskDraftStandalone,
   } as unknown as InpulseApiClient;
 
   return {
@@ -168,6 +194,7 @@ function harness(
       client as unknown as { addExternalLink: ReturnType<typeof vi.fn> }
     ).addExternalLink,
     assistTaskDraft,
+    assistTaskDraftStandalone,
     onClose,
     onCreated,
   };
@@ -575,4 +602,68 @@ it("AI 不覆盖用户已经手填的标题", async () => {
   await user.click(await screen.findByRole("button", { name: "填入左侧" }));
   expect(screen.getByLabelText("任务标题")).toHaveValue("我自己写的标题");
   expect(screen.getByText(/未覆盖已有内容：标题/)).toBeInTheDocument();
+});
+
+it("AI 助手支持只发聊天截图并把图片带给模型", async () => {
+  const restore = stubClipboardImagePipeline();
+  try {
+    const test = harness();
+    mount(test);
+    const user = userEvent.setup();
+    await pickOption(user, "所属项目", "InPulse 平台");
+
+    fireEvent.paste(screen.getByLabelText("描述任务"), {
+      clipboardData: clipboardWithChatScreenshot(),
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("task-assist-attachments")).toBeInTheDocument(),
+    );
+    expect(screen.getByAltText("截图预览")).toBeInTheDocument();
+
+    const send = screen.getByTestId("task-draft-assist-send");
+    expect(send).toBeEnabled();
+    await user.click(send);
+
+    await waitFor(() => expect(test.assistTaskDraft).toHaveBeenCalledTimes(1));
+    const payload = test.assistTaskDraft.mock.calls[0]?.[1] as
+      | {
+          message: string;
+          images?: readonly { mimeType: string; data: string }[];
+        }
+      | undefined;
+    expect(payload?.message).toBe("");
+    expect(payload?.images).toEqual([{ mimeType: "image/jpeg", data: "AAAA" }]);
+    expect(screen.getByText("（截图） · 1 张截图")).toBeInTheDocument();
+  } finally {
+    restore();
+  }
+});
+
+it("未选项目也能先发描述识别，归属留空等用户补", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+
+  await user.type(
+    screen.getByLabelText("描述任务"),
+    "李工说登录验证码一直转圈，优先处理",
+  );
+  const send = screen.getByTestId("task-draft-assist-send");
+  expect(send).toBeEnabled();
+  await user.click(send);
+
+  await waitFor(() =>
+    expect(test.assistTaskDraftStandalone).toHaveBeenCalledTimes(1),
+  );
+  expect(test.assistTaskDraft).not.toHaveBeenCalled();
+  const payload = test.assistTaskDraftStandalone.mock.calls[0]?.[0] as
+    { message: string } | undefined;
+  expect(payload?.message).toContain("登录验证码");
+
+  await user.click(await screen.findByRole("button", { name: "填入左侧" }));
+  expect(screen.getByLabelText("任务标题")).toHaveValue(
+    "修复登录验证码弱网转圈",
+  );
+  expect(screen.getAllByText(/还没选项目/).length).toBeGreaterThan(0);
 });

@@ -17326,6 +17326,99 @@
         ]
       }
     },
+    "/task-draft-assist": {
+      "post": {
+        "operationId": "assistTaskDraftStandalone",
+        "summary": "未选择项目时先读取用户描述或聊天截图，整理成可预填的任务草稿；只返回文本字段，模块、功能与负责人留空，等用户补充项目后再确认归属。",
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDraftAssistResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求格式或业务参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Session 失效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "字段校验错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "未预期错误，不向客户端泄露堆栈",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务未就绪（就绪探针未通过），或按 ADR-067 可选 AI 服务未启用 / 配置非法 / 上游故障",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-inpulse-policy": {
+          "authPolicy": "session",
+          "csrfPolicy": "none",
+          "idempotencyPolicy": "none",
+          "idempotencyExceptionAdr": "none",
+          "idempotencyContractVersion": "none",
+          "idempotencyFingerprintVersion": "none",
+          "behaviorHeaders": "none",
+          "idempotencyReplayPolicy": "none",
+          "replayAuthorizationPolicy": "none",
+          "securityFlowPolicy": "none",
+          "versionPolicy": "none",
+          "concurrencyPolicy": "none",
+          "auditAction": "none"
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskDraftAssistRequest"
+              }
+            }
+          }
+        }
+      }
+    },
     "/task-groups": {
       "get": {
         "operationId": "listTaskGroups",
@@ -19670,6 +19763,32 @@
         ],
         "additionalProperties": false
       },
+      "AiAssistImage": {
+        "type": "object",
+        "properties": {
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ],
+            "description": "图片 MIME 类型，只接受浏览器截图常见的三种"
+          },
+          "data": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000,
+            "pattern": "^[A-Za-z0-9+/]+={0,2}$",
+            "description": "图片文件的 base64（不含 data: 前缀）"
+          }
+        },
+        "required": [
+          "mimeType",
+          "data"
+        ],
+        "additionalProperties": false
+      },
       "AiAssistSettings": {
         "type": "object",
         "properties": {
@@ -20848,9 +20967,16 @@
           },
           "text": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 200000,
-            "description": "用户原始文档抽取后的纯文本（UTF-8），不要求符合固定模板"
+            "description": "用户原始文档抽取后的纯文本（UTF-8），不要求符合固定模板；只提供截图时可为空"
+          },
+          "images": {
+            "description": "聊天记录等截图（base64，不含 data: 前缀）；只用于本次识别，不落库",
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiAssistImage"
+            }
           },
           "target": {
             "description": "项目内导入时可选的 UI 目标：只带 projectId 表示项目根级；带 moduleId 表示指定模块；再带 featureId 表示指定功能。整项目导入不得携带。",
@@ -29474,9 +29600,16 @@
         "properties": {
           "message": {
             "type": "string",
-            "minLength": 1,
             "maxLength": 2000,
-            "description": "用户这一次说的一句话，可以是模糊描述"
+            "description": "用户这一次说的一句话，可以是模糊描述；只粘贴截图时可为空"
+          },
+          "images": {
+            "description": "聊天记录等截图（base64，不含 data: 前缀）；只用于本次识别，不落库",
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AiAssistImage"
+            }
           },
           "history": {
             "default": [],

@@ -1,6 +1,8 @@
 import { Logger } from "@nestjs/common";
 
 import type { AiAssistConfig } from "./ai-assist.config.js";
+import type { AiAssistImage } from "@inpulse/api-contract";
+
 import type { AiAssistTarget } from "./ai-assist-target.js";
 import {
   buildAiAssistMessages,
@@ -68,6 +70,8 @@ export interface AiAssistDraftRequest {
    * 只进 system 提示词，不写日志、不落库。
    */
   readonly target?: AiAssistTarget | undefined;
+  /** 聊天记录等截图：随 user message 转发给多模态模型，不写日志、不落库。 */
+  readonly images?: readonly AiAssistImage[] | undefined;
 }
 
 const LOGGER_CONTEXT = "DocumentImportAiAssist";
