@@ -675,6 +675,16 @@ it("AI 助手支持只发聊天截图并把图片带给模型", async () => {
     expect(payload?.message).toBe("");
     expect(payload?.images).toEqual([{ mimeType: "image/jpeg", data: "AAAA" }]);
     expect(screen.getByText("（截图） · 1 张截图")).toBeInTheDocument();
+    const sentImage = screen.getByAltText("已发送截图");
+    expect(sentImage).toHaveAttribute("width", "120");
+    expect(sentImage).toHaveAttribute("height", "80");
+    await user.click(screen.getByRole("button", { name: "已发送截图" }));
+    expect(
+      await screen.findByRole("dialog", { name: "已发送截图" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("task-assist-attachments"),
+    ).not.toBeInTheDocument();
   } finally {
     restore();
   }

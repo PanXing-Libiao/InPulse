@@ -8851,6 +8851,28 @@ div.ant-popover.wecom-unbind-popconfirm
   flex-direction: column;
   gap: 3px;
 }
+/* 已发送截图只显示小缩略图，点击后由 Ant Design 打开可缩放预览。 */
+.import-msg-sent-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 6px;
+}
+.import-msg-sent-images .ant-image {
+  flex: none;
+  overflow: hidden;
+  border: 1px solid rgb(36 114 195 / 18%);
+  border-radius: 7px;
+  background: #ffffff;
+  cursor: zoom-in;
+}
+.import-msg-sent-images img {
+  display: block;
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+}
 .task-assist-summary {
   display: flex;
   flex-direction: column;

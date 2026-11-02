@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Button } from "antd";
+import { Button, Image } from "antd";
 import { useMutation } from "@tanstack/react-query";
 import {
   ApiError,
@@ -40,9 +40,16 @@ interface AssignmentDecision {
   readonly dismissedModule?: boolean | undefined;
 }
 
+type AssistImageAttachmentPreview = Pick<
+  AssistImageAttachment,
+  "id" | "previewUrl"
+>;
+
 interface AssistantMessage {
   readonly role: "USER" | "ASSISTANT";
   readonly text: string;
+  /** 已发送截图只保留会话内的 data URL 预览，不进入后续请求历史。 */
+  readonly images?: readonly AssistImageAttachmentPreview[];
   readonly draft?: TaskDraftAssistDraft;
   readonly suggestions?: TaskDraftAssistSuggestions;
   readonly notes?: readonly string[];
@@ -174,7 +181,21 @@ export function TaskDraftAssistPane({
           " · " +
           images.length +
           " 张截图";
-    setMessages((current) => [...current, { role: "USER", text: shownText }]);
+    setMessages((current) => [
+      ...current,
+      {
+        role: "USER",
+        text: shownText,
+        ...(images.length > 0
+          ? {
+              images: images.map(({ id, previewUrl }) => ({
+                id,
+                previewUrl,
+              })),
+            }
+          : {}),
+      },
+    ]);
     setComposer("");
     clear();
     setError(null);
@@ -274,6 +295,9 @@ export function TaskDraftAssistPane({
             key={index}
           >
             <div>{message.text}</div>
+            {message.images !== undefined && message.images.length > 0 ? (
+              <SentImages images={message.images} />
+            ) : null}
             {message.draft ? (
               <TaskDraftSummary
                 draft={message.draft}
@@ -644,6 +668,27 @@ function TaskDraftSummary({
         </div>
       )}
     </>
+  );
+}
+
+function SentImages({
+  images,
+}: {
+  readonly images: readonly AssistImageAttachmentPreview[];
+}) {
+  return (
+    <div className="import-msg-sent-images">
+      {images.map((image, index) => (
+        <Image
+          key={image.id}
+          src={image.previewUrl}
+          alt={images.length > 1 ? "已发送截图 " + (index + 1) : "已发送截图"}
+          width={120}
+          height={80}
+          preview={{ mask: "点击放大" }}
+        />
+      ))}
+    </div>
   );
 }
 
