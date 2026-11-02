@@ -13,6 +13,14 @@ describe("任务草稿助手提示词", () => {
     expect(SYSTEM_PROMPT).toContain("不要重复建议当前模块");
   });
 
+  test("锁定简称拆词、漏字与多候选确认规则", () => {
+    expect(SYSTEM_PROMPT).toContain("拆词、漏字");
+    expect(SYSTEM_PROMPT).toContain("服装管理");
+    expect(SYSTEM_PROMPT).toContain("账号登录");
+    expect(SYSTEM_PROMPT).toContain("交给确认卡");
+    expect(SYSTEM_PROMPT).toContain("不要自造组合名");
+  });
+
   test("带项目上下文时提供成员与模块，不再给项目候选", () => {
     const messages = buildTaskDraftAssistMessages({
       message: "下周五前把离线补传做完，找小邵",

@@ -551,16 +551,65 @@ function trimHintPrefix(value: string): string {
   return next;
 }
 
+const GENERIC_NAME_SUFFIXES = [
+  "管理系统",
+  "管理平台",
+  "项目",
+  "模块",
+  "平台",
+  "系统",
+  "管理",
+  "应用",
+  "工具",
+  "服务",
+  "中台",
+  "后台",
+  "app",
+] as const;
+
+const NON_DISTINCTIVE_HINTS = new Set([
+  "管理",
+  "系统",
+  "平台",
+  "项目",
+  "模块",
+  "应用",
+  "工具",
+  "服务",
+  "中台",
+  "后台",
+  "app",
+]);
+
 function hintVariants(hint: string): string[] {
-  const normalized = normalizeMatchText(trimHintPrefix(hint));
-  if (normalized.length === 0) return [];
-  const variants = new Set([normalized]);
-  for (const suffix of ["项目", "模块", "平台", "系统"]) {
-    if (normalized.endsWith(suffix) && normalized.length > suffix.length + 1) {
-      variants.add(normalized.slice(0, -suffix.length));
+  let current = normalizeMatchText(trimHintPrefix(hint));
+  if (current.length === 0) return [];
+  const variants = new Set<string>([current]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const suffix of GENERIC_NAME_SUFFIXES) {
+      if (current.length > suffix.length + 1 && current.endsWith(suffix)) {
+        current = current.slice(0, -suffix.length);
+        variants.add(current);
+        changed = true;
+        break;
+      }
     }
   }
-  return [...variants].filter((item) => item.length >= 2);
+  return [...variants].filter(
+    (item) => item.length >= 2 && !NON_DISTINCTIVE_HINTS.has(item),
+  );
+}
+
+function extractReferenceHints(message: string): string[] {
+  const hints: string[] = [];
+  const pattern =
+    /(?:那个|这个|就是)([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _-]{0,30}?)(?:那边|这边)/gu;
+  for (const match of message.matchAll(pattern)) {
+    hints.push(...hintVariants(match[1] ?? ""));
+  }
+  return hints;
 }
 
 function extractProjectHints(message: string): string[] {
@@ -570,6 +619,7 @@ function extractProjectHints(message: string): string[] {
   for (const match of message.matchAll(pattern)) {
     hints.push(...hintVariants(match[1] ?? ""));
   }
+  hints.push(...extractReferenceHints(message));
   return [...new Set(hints)];
 }
 
@@ -580,6 +630,7 @@ function extractModuleHints(message: string): string[] {
   for (const match of message.matchAll(pattern)) {
     hints.push(...hintVariants(match[1] ?? ""));
   }
+  hints.push(...extractReferenceHints(message));
   return [...new Set(hints)];
 }
 
@@ -588,6 +639,61 @@ function commonPrefixLength(left: string, right: string): number {
   let index = 0;
   while (index < length && left[index] === right[index]) index += 1;
   return index;
+}
+
+interface FuzzyNameMatch {
+  readonly coverage: number;
+  readonly nameCoverage: number;
+  readonly longestChunk: number;
+}
+
+function fuzzyNameStats(hint: string, name: string): FuzzyNameMatch {
+  const hintChars = [...hint];
+  const nameChars = [...name];
+  let from = 0;
+  let matched = 0;
+  let currentChunk = 0;
+  let longestChunk = 0;
+  for (const char of hintChars) {
+    const index = name.indexOf(char, from);
+    if (index < 0) {
+      currentChunk = 0;
+      continue;
+    }
+    matched += 1;
+    currentChunk = index === from ? currentChunk + 1 : 1;
+    longestChunk = Math.max(longestChunk, currentChunk);
+    from = index + char.length;
+  }
+  return {
+    coverage: hintChars.length === 0 ? 0 : matched / hintChars.length,
+    nameCoverage: nameChars.length === 0 ? 0 : matched / nameChars.length,
+    longestChunk,
+  };
+}
+
+/**
+ * 中文简称经常拆词或漏字（「服装管理」指「服装生产管理系统」）。只接受
+ * 覆盖率足够高的有序命中，并要求至少有一段连续两个字，避免一两个宽泛
+ * 汉字就把无关项目或模块硬拉进候选。
+ */
+function scoreFuzzyNameMatch(hint: string, name: string): number {
+  if ([...hint].length < 3 || [...name].length < 3) return 0;
+  const stats = fuzzyNameStats(hint, name);
+  if (
+    stats.coverage < 0.8 ||
+    stats.nameCoverage < 0.2 ||
+    stats.longestChunk < 2
+  ) {
+    return 0;
+  }
+  const chunkBonus = Math.min(2, Math.max(0, stats.longestChunk - 2));
+  return (
+    82 +
+    Math.round(stats.coverage * 4) +
+    Math.min(2, Math.floor(stats.nameCoverage * 4)) +
+    chunkBonus
+  );
 }
 
 function scoreProjectMatch(
@@ -612,6 +718,8 @@ function scoreProjectMatch(
     ) {
       score = Math.max(score, 84);
     } else {
+      const fuzzy = scoreFuzzyNameMatch(hint, name);
+      if (fuzzy > 0) score = Math.max(score, fuzzy);
       const prefix = commonPrefixLength(hint, name);
       if (prefix >= 2) score = Math.max(score, 62 + prefix);
     }
@@ -633,6 +741,8 @@ function scoreModuleMatch(
     } else if (name.includes(hint) || hint.includes(name)) {
       score = Math.max(score, 84);
     } else {
+      const fuzzy = scoreFuzzyNameMatch(hint, name);
+      if (fuzzy > 0) score = Math.max(score, fuzzy);
       const prefix = commonPrefixLength(hint, name);
       if (prefix >= 2) score = Math.max(score, 60 + prefix);
     }
