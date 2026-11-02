@@ -66,7 +66,7 @@ const distractorTemplates: ReadonlyArray<{
     summary: "结果留档与趋势对比",
     entityType: "CHANGE_RECORD",
   },
-  { title: "链路追踪采样", summary: "跨服务调用链采样", entityType: "FEATURE" },
+  { title: "链路追踪采样", summary: "跨服务调用链采样", entityType: "MODULE" },
   {
     title: "索引优化演练",
     summary: "查询计划与缓冲区观察",
@@ -75,7 +75,7 @@ const distractorTemplates: ReadonlyArray<{
   {
     title: "容器资源水位",
     summary: "运行实例与资源上限观察",
-    entityType: "FEATURE",
+    entityType: "MODULE",
   },
   {
     title: "告警收敛策略",
@@ -85,12 +85,12 @@ const distractorTemplates: ReadonlyArray<{
   {
     title: "接口幂等补偿",
     summary: "重复请求与补偿流程",
-    entityType: "FEATURE",
+    entityType: "MODULE",
   },
   {
     title: "配置中心回滚",
     summary: "配置变更与快速回落",
-    entityType: "FEATURE",
+    entityType: "MODULE",
   },
   {
     title: "备份窗口调度",
@@ -102,23 +102,23 @@ const distractorTemplates: ReadonlyArray<{
   {
     title: "灰度指标看板",
     summary: "分组对比与异常阈值",
-    entityType: "FEATURE",
+    entityType: "MODULE",
   },
   {
     title: "代码扫描门禁",
     summary: "扫描结果与阻断规则",
-    entityType: "FEATURE",
+    entityType: "MODULE",
   },
   {
     title: "构建缓存复用",
     summary: "增量构建与缓存命中",
     entityType: "MODULE",
   },
-  { title: "证书轮换提醒", summary: "有效期与提醒窗口", entityType: "FEATURE" },
+  { title: "证书轮换提醒", summary: "有效期与提醒窗口", entityType: "MODULE" },
   {
     title: "密钥轮换提醒",
     summary: "轮换窗口与合规检查",
-    entityType: "FEATURE",
+    entityType: "MODULE",
   },
   {
     title: "调用链耗时统计",
