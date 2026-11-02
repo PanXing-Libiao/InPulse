@@ -52,6 +52,7 @@ interface SettingsRow {
   readonly enabled: boolean;
   readonly endpoint: string;
   readonly model: string;
+  readonly summaryModel: string | null;
   readonly apiKeyCiphertext: Buffer;
   readonly apiKeyHint: string;
   readonly rowVersion: number;
@@ -288,6 +289,7 @@ async function readSettingsRow(): Promise<SettingsRow | undefined> {
     SELECT enabled,
            endpoint,
            model,
+           summary_model AS "summaryModel",
            api_key_ciphertext AS "apiKeyCiphertext",
            api_key_hint AS "apiKeyHint",
            row_version AS "rowVersion"
@@ -608,6 +610,7 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
         enabled: true,
         endpoint,
         model: "db-model",
+        summaryModel: "db-text-model",
         timeoutMs: 30_000,
         maxTokens: 4_096,
         apiKey: secret,
@@ -622,6 +625,7 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
       disabledReason: null,
       endpoint,
       model: "db-model",
+      summaryModel: "db-text-model",
       timeoutMs: 30_000,
       maxTokens: 4_096,
       keyConfigured: true,
@@ -635,6 +639,7 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
     expect(row!.enabled).toBe(true);
     expect(row!.endpoint).toBe(endpoint);
     expect(row!.model).toBe("db-model");
+    expect(row!.summaryModel).toBe("db-text-model");
     expect(row!.apiKeyHint).toBe("1234");
     expect(row!.rowVersion).toBe(1);
     expect(row!.apiKeyCiphertext.length).toBeGreaterThanOrEqual(29);
@@ -661,6 +666,7 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
       source: "DATABASE",
       endpoint: `${upstreamEndpoint()}?db=1`,
       model: "db-model",
+      summaryModel: "db-text-model",
       keyHint: "1234",
       rowVersion: 1,
     });
@@ -716,10 +722,12 @@ describe("ADR-068 管理员 AI 辅助转换配置（真实 PostgreSQL + stub 上
     expect(response.status).toBe(200);
     const body = (await response.json()) as Record<string, unknown>;
     expect(body["keyHint"]).toBe("1234");
+    expect(body["summaryModel"]).toBeNull();
     expect(body["rowVersion"]).toBe(2);
 
     const second = await readSettingsRow();
     expect(second!.apiKeyHint).toBe("1234");
+    expect(second!.summaryModel).toBeNull();
     expect(second!.rowVersion).toBe(2);
     expect(second!.apiKeyCiphertext.equals(first!.apiKeyCiphertext)).toBe(true);
   });

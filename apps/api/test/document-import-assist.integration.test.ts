@@ -335,7 +335,7 @@ describe("assist（已启用，stub 上游 + 真实 PostgreSQL）", () => {
       stream: boolean;
     };
     expect(upstreamBody.model).toBe("stub-chat-model");
-    expect(upstreamBody.max_tokens).toBe(8192);
+    expect(upstreamBody.max_tokens).toBe(6_000);
     expect(upstreamBody.temperature).toBe(0.2);
     expect(upstreamBody.stream).toBe(false);
     expect(upstreamBody.messages[0]!.role).toBe("system");

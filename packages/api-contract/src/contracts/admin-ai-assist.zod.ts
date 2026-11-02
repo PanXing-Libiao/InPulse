@@ -32,6 +32,14 @@ export const aiAssistSettingsItemSchema = z
     disabledReason: aiAssistSettingsDisabledReasonSchema.nullable(),
     endpoint: z.string().min(1).max(2048).nullable(),
     model: z.string().min(1).max(200).nullable(),
+    summaryModel: z
+      .string()
+      .min(1)
+      .max(200)
+      .nullable()
+      .describe(
+        "迭代总结优先使用的模型；为空时回退到 model；任务助手与文档导入始终使用 model",
+      ),
     timeoutMs: z.number().int().min(1000).max(600000),
     maxTokens: z.number().int().min(1).max(200000),
     keyConfigured: z.boolean(),
@@ -53,6 +61,7 @@ export const aiAssistSettingsUpdateRequestSchema = z
     enabled: z.boolean(),
     endpoint: z.string().trim().min(1).max(2048),
     model: z.string().trim().min(1).max(200),
+    summaryModel: z.string().trim().min(1).max(200).nullable().optional(),
     timeoutMs: z.number().int().min(1000).max(600000),
     maxTokens: z.number().int().min(1).max(200000),
     apiKey: z.string().trim().min(8).max(1024).nullable().optional(),

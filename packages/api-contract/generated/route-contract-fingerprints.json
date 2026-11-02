@@ -533,6 +533,10 @@
     {
       "version": "1.0.0",
       "fingerprint": "931aa072765e2bf364cd9fa8b93bdfdd7f62db5f8f9f2954ad2e0e85c8d53eca"
+    },
+    {
+      "version": "1.1.0",
+      "fingerprint": "15b8511c5bb06ec24a6536043ac322883d58107b9b28216e6e73e977e8cf6d61"
     }
   ],
   "updateIndependentRecordDraft": [

@@ -290,11 +290,11 @@
           "csrfPolicy": "required",
           "idempotencyPolicy": "idempotencyRequired",
           "idempotencyExceptionAdr": "none",
-          "idempotencyContractVersion": "1.0.0",
+          "idempotencyContractVersion": "1.1.0",
           "idempotencyFingerprintVersion": "1.0.0",
           "behaviorHeaders": [],
           "idempotencyReplayPolicy": {
-            "version": "1.0.0",
+            "version": "1.1.0",
             "success": {
               "200": {
                 "body": {
@@ -310,6 +310,7 @@
                     "ready",
                     "rowVersion",
                     "source",
+                    "summaryModel",
                     "timeoutMs",
                     "updatedAt"
                   ]
@@ -17324,6 +17325,19 @@
               }
             ]
           },
+          "summaryModel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "迭代总结优先使用的模型；为空时回退到 model；任务助手与文档导入始终使用 model"
+          },
           "timeoutMs": {
             "type": "integer",
             "minimum": 1000,
@@ -17382,6 +17396,7 @@
           "disabledReason",
           "endpoint",
           "model",
+          "summaryModel",
           "timeoutMs",
           "maxTokens",
           "keyConfigured",
@@ -17488,6 +17503,18 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "summaryModel": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "timeoutMs": {
             "type": "integer",

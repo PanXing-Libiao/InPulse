@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 export interface AiAssistConfig {
   readonly endpoint: string;
   readonly model: string;
+  /** 迭代总结优先使用的模型；缺省时回退 model；任务与文档导入始终用 model。 */
+  readonly summaryModel?: string | undefined;
   readonly apiKey: string;
   readonly timeoutMs: number;
   readonly maxTokens: number;
@@ -59,6 +61,7 @@ export function loadAiAssistConfig(
     if (model.length > 200) {
       throw new Error("AI_ASSIST_MODEL must be at most 200 characters");
     }
+    const summaryModel = optionalText(env, "AI_ASSIST_SUMMARY_MODEL", 200);
     const apiKey = readApiKey(env);
     const timeoutMs = optionalInteger(
       env,
@@ -75,7 +78,14 @@ export function loadAiAssistConfig(
       MAX_TOKENS_MAX,
     );
     return {
-      config: { endpoint, model, apiKey, timeoutMs, maxTokens },
+      config: {
+        endpoint,
+        model,
+        ...(summaryModel === undefined ? {} : { summaryModel }),
+        apiKey,
+        timeoutMs,
+        maxTokens,
+      },
       invalidReason: undefined,
     };
   } catch (error) {
@@ -160,6 +170,21 @@ function required(
   const value = env[name]?.trim();
   if (value === undefined || value.length === 0) {
     throw new Error(`${name} is required when AI assist is enabled`);
+  }
+  return value;
+}
+
+function optionalText(
+  env: Readonly<Record<string, string | undefined>>,
+  name: string,
+  max: number,
+): string | undefined {
+  const value = env[name]?.trim();
+  if (value === undefined || value.length === 0) {
+    return undefined;
+  }
+  if (value.length > max) {
+    throw new Error(`${name} must be at most ${max} characters`);
   }
   return value;
 }

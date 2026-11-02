@@ -7453,3 +7453,22 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | AI-MODELS-BUILD-001 | 类型 / 构建门禁 | 契约与前后端接线 | `pnpm lint`、`pnpm format:check`、`pnpm typecheck`、`pnpm build`（8 workspace）通过；全 workspace `pnpm test:unit` **1869 例通过**（API 617 / Web 1068 / Contract 104 / Database 15 / Canonical JSON 5 / Ops 60）；`contract:validate` 122 条通过 | 本地通过（2026-10-30） |
 
 **边界**：自动化测试全部使用本机回环 stub；用户提供的真实中转站密钥只用于前期手工读取模型列表确认，未写入代码、数据库、日志或仓库，但已出现在对话中，应尽快轮换。此次未修改测试 VM / 正式环境，也未执行完整 Playwright 全量套件或 GitHub Actions。
+
+## 2026-11-02 AI 助手分场景模型选择与输出上限（ADR-110）
+
+按用户要求先实施低风险提速阶段，并用真实上游做 A/B。结论是任务助手与文档导入继续使用主视觉模型，只有迭代总结新增可选 `summaryModel`；否则切换 `qwen3.8-flash` / `gemini-3.8-flash` 会拖慢最常用路径。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| AI-SCENE-MODEL-001 | API 单元 | 分场景模型选择 | `ai-assist.client.test.ts` 覆盖：任务草稿与文档导入始终发送主 `model`；迭代总结发送 `summaryModel`，为空回退主模型；任务 / 文档纯文本 / 总结分别发送 1200 / 6000 / 3000 的 `max_tokens`（取全局上限较小者） | 本地通过（2026-11-02） |
+| AI-SCENE-MODEL-002 | API 集成（真实 PostgreSQL） | 总结模型落库与回退 | `admin-ai-assist-api.integration.test.ts` 保存 `summaryModel` 后 GET 回读一致；后续整体替换请求不传该字段时按 null 保存；AES-256-GCM 密钥、审计与幂等链路不回归 | 本地通过（2026-11-02，`app_ci`） |
+| AI-SCENE-MODEL-003 | Web 单元 | 设置页总结模型字段 | `AiAssistSettingsPanel.test.tsx` 回填、保存、主开关保存与清空 `summaryModel` 均正确；提示文案明确任务助手与文档导入仍用主模型 | 本地通过（2026-11-02） |
+| AI-SCENE-MODEL-004 | 真实上游 A/B | 任务助手 | 同一组 3 条短描述单次调用平均：主视觉模型 3,128 ms；`gemini-3.8-flash` 6,529 ms；`qwen3.8-flash` 13,161 ms | 本地实测（2026-11-02） |
+| AI-SCENE-MODEL-005 | 真实上游 A/B | 文档导入 | 595 字纯文本：主视觉模型 4,763 ms；`gemini-3.8-flash` 7,227 ms | 本地实测（2026-11-02） |
+| AI-SCENE-MODEL-006 | 真实上游 A/B | 迭代总结 | 4,281 字事实正文：主视觉模型 7,421 ms；`gemini-3.8-flash` 5,685 ms。约 1,900 字时主模型 5,968 ms、gemini 8,754 ms、qwen 22,179 ms | 本地实测（2026-11-02） |
+
+**迁移**：`0066_ai_assist_text_model.sql` 新增可空列；A/B 后 `0067_ai_assist_summary_model.sql` 重命名为 `summary_model`，两库均已应用。`pnpm db:migrations:check` 66 个迁移通过。
+
+**门禁**：`pnpm typecheck`、`pnpm lint`、`contract:drift`、`contract:validate`（122 条路由）、`permissions:check`（122 条操作 / 122 条路由）通过；API AI 单元 47 例、真实 PostgreSQL AI 集成 49 例、设置页 Web 单元 15 例通过。
+
+**未执行 / 已知边界**：未跑全量 Playwright 与 GitHub Actions；A/B 是单次真实上游调用，不是长期 SLA；生产部署前仍需人工评审迁移和模型选择。

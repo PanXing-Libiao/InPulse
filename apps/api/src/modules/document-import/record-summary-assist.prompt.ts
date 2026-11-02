@@ -1,5 +1,8 @@
 import type { AiAssistMessage } from "./ai-assist.prompt.js";
 
+/** 迭代总结改写只输出一段摘要，收紧上限以避免长尾生成。 */
+export const RECORD_SUMMARY_ASSIST_MAX_OUTPUT_TOKENS = 3_000;
+
 /**
  * ADR-076 迭代总结 AI 改写的提示词。与 ADR-067 的 `ai-assist.prompt.ts` 并列：
  * 两者共用同一份运行时配置与出站适配器，只有提示词不同。

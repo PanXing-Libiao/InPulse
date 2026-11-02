@@ -6,9 +6,13 @@ import type { AiAssistImage } from "@inpulse/api-contract";
 import type { AiAssistTarget } from "./ai-assist-target.js";
 import {
   buildAiAssistMessages,
+  DOCUMENT_IMPORT_ASSIST_MAX_OUTPUT_TOKENS,
   type DocumentImportAssistMode,
 } from "./ai-assist.prompt.js";
-import { buildRecordSummaryAssistMessages } from "./record-summary-assist.prompt.js";
+import {
+  buildRecordSummaryAssistMessages,
+  RECORD_SUMMARY_ASSIST_MAX_OUTPUT_TOKENS,
+} from "./record-summary-assist.prompt.js";
 import {
   buildTaskDraftAssistMessages,
   TASK_DRAFT_ASSIST_MAX_OUTPUT_TOKENS,
@@ -105,12 +109,18 @@ export class DocumentImportAiAssistClient {
       mode: input.mode,
       inputChars: input.text.length,
     };
+    const hasImages = (input.images?.length ?? 0) > 0;
     const response = await this.callUpstream(
       config,
       {
         model: config.model,
         messages: buildAiAssistMessages(input),
-        max_tokens: config.maxTokens,
+        max_tokens: hasImages
+          ? config.maxTokens
+          : Math.min(
+              config.maxTokens,
+              DOCUMENT_IMPORT_ASSIST_MAX_OUTPUT_TOKENS,
+            ),
         temperature: 0.2,
         stream: false,
       },
@@ -153,12 +163,16 @@ export class DocumentImportAiAssistClient {
       inputChars: input.facts.length + input.requirement.length,
     };
     const startedAt = Date.now();
+    const requestConfig = summaryRequestConfig(config);
     const response = await this.callUpstream(
-      config,
+      requestConfig,
       {
-        model: config.model,
+        model: requestConfig.model,
         messages: buildRecordSummaryAssistMessages(input),
-        max_tokens: config.maxTokens,
+        max_tokens: Math.min(
+          requestConfig.maxTokens,
+          RECORD_SUMMARY_ASSIST_MAX_OUTPUT_TOKENS,
+        ),
         temperature: 0.2,
         stream: false,
       },
@@ -167,12 +181,12 @@ export class DocumentImportAiAssistClient {
     );
     let draft: AiAssistDraft;
     try {
-      draft = await this.parseSuccessResponse(response, config);
+      draft = await this.parseSuccessResponse(response, requestConfig);
     } catch (error) {
       if (error instanceof AiAssistUpstreamError) {
         this.logCall(
           label,
-          config,
+          requestConfig,
           "failed",
           startedAt,
           error.reason,
@@ -181,7 +195,14 @@ export class DocumentImportAiAssistClient {
       }
       throw error;
     }
-    this.logCall(label, config, "ok", startedAt, undefined, response.status);
+    this.logCall(
+      label,
+      requestConfig,
+      "ok",
+      startedAt,
+      undefined,
+      response.status,
+    );
     return draft;
   }
 
@@ -562,6 +583,15 @@ export class DocumentImportAiAssistClient {
       this.logger.warn(line);
     }
   }
+}
+
+/**
+ * 只有迭代总结读取 summaryModel；任务助手与文档导入始终使用视觉 model。
+ * 返回值只影响本次请求的 model 与日志标签，不改变已保存配置。
+ */
+function summaryRequestConfig(config: AiAssistConfig): AiAssistConfig {
+  const model = config.summaryModel ?? config.model;
+  return model === config.model ? config : { ...config, model };
 }
 
 /** 从已规范化的 chat/completions 端点推导同源 models 端点，保留 query。 */

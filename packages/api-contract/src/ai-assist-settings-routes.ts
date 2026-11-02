@@ -42,12 +42,13 @@ const settingsReplayFields = [
   "ready",
   "rowVersion",
   "source",
+  "summaryModel",
   "timeoutMs",
   "updatedAt",
 ] as const;
 
 const settingsReplayPolicy = {
-  version: "1.0.0",
+  version: "1.1.0",
   success: {
     "200": {
       body: {
@@ -125,7 +126,7 @@ export const aiAssistSettingsRoutes: readonly RouteDefinition[] = [
     csrfPolicy: "required",
     idempotencyPolicy: "idempotencyRequired",
     idempotencyExceptionAdr: "none",
-    idempotencyContractVersion: "1.0.0",
+    idempotencyContractVersion: "1.1.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: [],
     idempotencyReplayPolicy: settingsReplayPolicy,
