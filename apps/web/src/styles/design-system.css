@@ -8764,6 +8764,13 @@ div.ant-popover.wecom-unbind-popconfirm
   width: 100%;
 }
 
+.ai-assist-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
 .ai-assist-field-pair {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8785,6 +8792,14 @@ div.ant-popover.wecom-unbind-popconfirm
 }
 
 @media (max-width: 700px) {
+  .ai-assist-model-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ai-assist-model-row > .ant-btn {
+    justify-self: start;
+  }
+
   .ai-assist-field-pair {
     grid-template-columns: minmax(0, 1fr);
   }

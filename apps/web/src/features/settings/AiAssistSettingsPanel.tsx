@@ -320,37 +320,62 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
           </div>
 
           <div className="ai-assist-field">
+            <label htmlFor="ai-assist-api-key">API 密钥</label>
+            <Controller
+              name="apiKey"
+              control={control}
+              render={({ field }) => (
+                <Input.Password
+                  id="ai-assist-api-key"
+                  {...field}
+                  autoComplete="new-password"
+                  placeholder="留空表示保持已保存的密钥（不回显）"
+                />
+              )}
+            />
+            {errors.apiKey ? (
+              <small role="alert">{errors.apiKey.message}</small>
+            ) : null}
+          </div>
+
+          <div className="ai-assist-field">
             <label htmlFor="ai-assist-model">模型</label>
             <Controller
               name="model"
               control={control}
               rules={{ required: "请填写模型名称" }}
               render={({ field }) => (
-                <AutoComplete
-                  id="ai-assist-model"
-                  value={field.value}
-                  onChange={(value) => field.onChange(value)}
-                  options={
-                    discoverModels.data?.ok
-                      ? discoverModels.data.models.map((model) => ({
-                          value: model,
-                        }))
-                      : []
-                  }
-                  filterOption={(inputValue, option) =>
-                    String(option?.value ?? "")
-                      .toLowerCase()
-                      .includes(inputValue.toLowerCase())
-                  }
-                  placeholder="gpt-4o-mini"
-                />
+                <div className="ai-assist-model-row">
+                  <AutoComplete
+                    id="ai-assist-model"
+                    value={field.value}
+                    onChange={(value) => field.onChange(value)}
+                    options={
+                      discoverModels.data?.ok
+                        ? discoverModels.data.models.map((model) => ({
+                            value: model,
+                          }))
+                        : []
+                    }
+                    filterOption={false}
+                    virtual={false}
+                    placeholder="gpt-4o-mini"
+                  />
+                  <Button
+                    htmlType="button"
+                    onClick={discover}
+                    loading={discoverModels.isPending}
+                  >
+                    获取可用模型
+                  </Button>
+                </div>
               )}
             />
             {errors.model ? (
               <small role="alert">{errors.model.message}</small>
             ) : (
               <small className="form-hint">
-                可直接输入；「获取可用模型」使用当前填写的端点、超时与密钥，密钥留空时使用已保存密钥。
+                可直接输入；点击右侧「获取可用模型」使用上方端点与密钥，密钥留空时使用已保存密钥。
               </small>
             )}
           </div>
@@ -395,31 +420,9 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
             </div>
           </div>
 
-          <div className="ai-assist-field">
-            <label htmlFor="ai-assist-api-key">API 密钥</label>
-            <Controller
-              name="apiKey"
-              control={control}
-              render={({ field }) => (
-                <Input.Password
-                  id="ai-assist-api-key"
-                  {...field}
-                  autoComplete="new-password"
-                  placeholder="留空表示保持已保存的密钥（不回显）"
-                />
-              )}
-            />
-            {errors.apiKey ? (
-              <small role="alert">{errors.apiKey.message}</small>
-            ) : null}
-          </div>
-
           <div className="ai-assist-actions">
             <Button type="primary" htmlType="submit" loading={save.isPending}>
               保存配置
-            </Button>
-            <Button onClick={discover} loading={discoverModels.isPending}>
-              获取可用模型
             </Button>
             <Button
               onClick={() => {

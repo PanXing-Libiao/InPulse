@@ -124,6 +124,26 @@ describe("AiAssistSettingsPanel（ADR-068）", () => {
     expect(screen.getByText(/可填根地址/)).toBeInTheDocument();
   });
 
+  it("先展示服务端点与 API 密钥，并在模型输入旁提供获取按钮", async () => {
+    mount();
+    await screen.findByText("当前状态");
+    const endpoint = screen.getByLabelText("服务端点");
+    const apiKey = screen.getByLabelText("API 密钥");
+    const model = screen.getByLabelText("模型");
+    const isBefore = (first: Element, second: Element) =>
+      Boolean(
+        first.compareDocumentPosition(second) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    expect(isBefore(endpoint, apiKey)).toBe(true);
+    expect(isBefore(apiKey, model)).toBe(true);
+    const modelRow = model.closest(".ai-assist-model-row");
+    expect(modelRow).not.toBeNull();
+    expect(
+      modelRow?.contains(screen.getByRole("button", { name: "获取可用模型" })),
+    ).toBe(true);
+  });
+
   it("保存：留空 API 密钥传 null，先签发 CSRF 再携带 Idempotency-Key", async () => {
     const { updateAiAssistSettings, issueCsrfToken } = mount();
     await screen.findByText("当前状态");
@@ -299,7 +319,13 @@ describe("AiAssistSettingsPanel（ADR-068）", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("模型")).toHaveValue("gpt-4o-mini");
-    expect(screen.getByRole("combobox", { name: "模型" })).toBeInTheDocument();
+    const modelInput = screen.getByRole("combobox", { name: "模型" });
+    fireEvent.mouseDown(modelInput);
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "stub-model-one",
+      "stub-model-two",
+    ]);
   });
 
   it("首次配置无需先保存：模型为空时可用表单端点和密钥获取模型", async () => {

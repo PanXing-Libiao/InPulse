@@ -7453,3 +7453,14 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | AI-MODELS-BUILD-001 | 类型 / 构建门禁 | 契约与前后端接线 | `pnpm lint`、`pnpm format:check`、`pnpm typecheck`、`pnpm build`（8 workspace）通过；全 workspace `pnpm test:unit` **1869 例通过**（API 617 / Web 1068 / Contract 104 / Database 15 / Canonical JSON 5 / Ops 60）；`contract:validate` 122 条通过 | 本地通过（2026-10-30） |
 
 **边界**：自动化测试全部使用本机回环 stub；用户提供的真实中转站密钥只用于前期手工读取模型列表确认，未写入代码、数据库、日志或仓库，但已出现在对话中，应尽快轮换。此次未修改测试 VM / 正式环境，也未执行完整 Playwright 全量套件或 GitHub Actions。
+
+## 2026-11-02 AI 辅助转换字段顺序、模型下拉与获取按钮布局
+
+用户指出模型获取成功后下拉只出现当前值同名项，且「获取可用模型」离模型字段较远。现调整表单顺序为服务端点 → API 密钥 → 模型，把「获取可用模型」按钮移到模型输入右侧（窄屏自动换行）；同时把 `filterOption` 固定为 `false` 并关闭下拉虚拟滚动，使发现接口返回的全部模型（服务端上限 1,000）实际渲染到可滚动列表中，输入框继续支持手动填写别名。仅修改 Web 展示，无契约、路由、数据库、鉴权与幂等变化。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| AI-MODELS-LIST-WEB-001 | Web 单元 | 字段顺序、按钮位置与模型下拉 | `AiAssistSettingsPanel.test.tsx` **15 例通过**：断言服务端点位于 API 密钥之前、API 密钥位于模型之前，且「获取可用模型」按钮与模型输入同处 `.ai-assist-model-row`；发现两个 stub 模型后展开下拉，`findAllByRole("option")` 断言候选顺序恰为 `stub-model-one`、`stub-model-two` | 本地通过（2026-11-02） |
+| AI-MODELS-LIST-GATE-001 | 类型 / 格式门禁 | 前端改动可编译且格式一致 | `pnpm --filter @inpulse/web typecheck` 与定向 `prettier --check` 通过 | 本地通过（2026-11-02） |
+
+**未执行 / 已知边界**：本批未重跑 Playwright E2E、完整集成测试或部署；验证范围为定向 Web 单测、typecheck 与格式检查。
