@@ -2,16 +2,22 @@ import { useCallback, useState } from "react";
 
 /**
  * 聊天记录截图粘贴：图片只在浏览器内压缩后随单次 AI 请求转发，不落库。
- * 上限与 `packages/api-contract/src/contracts/ai-assist-image.zod.ts` 保持一致：
- * 单张 base64 ≤ 200,000 字符、最多 2 张，保证 text + images 仍落在 1 MiB JSON 上限内。
+ * 不再按张数限制；单条消息受 1 MiB JSON 传输上限约束，前端按总预算压缩，
+ * 超出时提示先移除部分截图，而不是固定只让附 2 张。
  */
-export const ASSIST_IMAGE_MAX_COUNT = 2;
-const ASSIST_IMAGE_TARGET_BASE64_LENGTH = 180_000;
+export const ASSIST_IMAGE_TOTAL_BASE64_BUDGET = 760_000;
+/** 与服务端 AI_ASSIST_MAX_IMAGES 对齐的保护上限；正常使用远达不到。 */
+const ASSIST_IMAGE_MAX_ATTACHMENTS = 20;
+const ASSIST_IMAGE_MAX_SINGLE_BASE64_LENGTH = 180_000;
+const ASSIST_IMAGE_MIN_BASE64_LENGTH = 24_000;
 const ASSIST_IMAGE_ATTEMPTS: readonly (readonly [number, number])[] = [
   [1_400, 0.72],
   [1_200, 0.6],
   [1_000, 0.5],
-  [800, 0.45],
+  [900, 0.45],
+  [800, 0.4],
+  [700, 0.35],
+  [600, 0.3],
 ];
 
 export interface AssistImageAttachment {
@@ -97,9 +103,13 @@ function scaledBase64(
   return comma === -1 ? null : url.slice(comma + 1);
 }
 
-/** 压缩成可上传的附件；超出上限时给出可读错误。 */
+/**
+ * 压缩成可上传的附件；maxBase64Length 由调用方按剩余传输预算传入。
+ * 单张仍尽量保持清晰，只有附件较多时才逐步降低尺寸与质量。
+ */
 export async function prepareAssistImage(
   file: File,
+  maxBase64Length: number = ASSIST_IMAGE_MAX_SINGLE_BASE64_LENGTH,
 ): Promise<AssistImageAttachment> {
   if (!ASSIST_IMAGE_ACCEPT.includes(file.type)) {
     throw new Error("只支持 PNG / JPEG / WebP 截图。");
@@ -108,7 +118,7 @@ export async function prepareAssistImage(
   for (const [edge, quality] of ASSIST_IMAGE_ATTEMPTS) {
     const data = scaledBase64(image, edge, quality);
     if (data === null) break;
-    if (data.length <= ASSIST_IMAGE_TARGET_BASE64_LENGTH) {
+    if (data.length <= maxBase64Length) {
       return {
         id: "img-" + Math.random().toString(36).slice(2, 10),
         mimeType: "image/jpeg",
@@ -135,8 +145,9 @@ export function useAssistAttachments() {
   const [imageError, setImageError] = useState<string | null>(null);
 
   /**
-   * 返回本次新增的附件：null 表示剪贴板里没有图片；空数组表示是图片但被上限或
-   * 解析失败挡下（错误已写进 imageError）。调用方可直接用返回值发送本轮请求。
+   * 返回本次新增的附件：null 表示剪贴板里没有图片；空数组表示是图片但被
+   * 总量限制或解析失败挡下（错误已写进 imageError）。调用方可直接用返回值
+   * 发送本轮请求。
    */
   const addFromClipboard = useCallback(
     async (
@@ -145,27 +156,52 @@ export function useAssistAttachments() {
       const files = imageFilesFromClipboard(clipboard);
       if (files.length === 0) return null;
       setImageError(null);
-      const room = ASSIST_IMAGE_MAX_COUNT - attachments.length;
-      if (room <= 0) {
-        setImageError("最多附 " + ASSIST_IMAGE_MAX_COUNT + " 张截图。");
+      const used = attachments.reduce(
+        (total, item) => total + item.data.length,
+        0,
+      );
+      let remaining = ASSIST_IMAGE_TOTAL_BASE64_BUDGET - used;
+      if (remaining < ASSIST_IMAGE_MIN_BASE64_LENGTH) {
+        setImageError("本轮截图总量已满，请先移除几张再粘贴。");
         return [];
       }
-      const picked = files.slice(0, room);
-      try {
-        const prepared: AssistImageAttachment[] = [];
-        for (const file of picked) {
-          prepared.push(await prepareAssistImage(file));
+      const prepared: AssistImageAttachment[] = [];
+      for (const file of files) {
+        if (
+          attachments.length + prepared.length >=
+          ASSIST_IMAGE_MAX_ATTACHMENTS
+        ) {
+          setImageError(
+            "其余截图未加入：单次最多 " +
+              ASSIST_IMAGE_MAX_ATTACHMENTS +
+              " 张。",
+          );
+          break;
         }
-        setAttachments((current) => [...current, ...prepared]);
-        return prepared;
-      } catch (error) {
-        setImageError(
-          error instanceof Error ? error.message : "图片处理失败，请重试。",
-        );
-        return [];
+        if (remaining < ASSIST_IMAGE_MIN_BASE64_LENGTH) {
+          setImageError("其余截图未加入：本轮截图总量已满。");
+          break;
+        }
+        try {
+          const item = await prepareAssistImage(
+            file,
+            Math.min(ASSIST_IMAGE_MAX_SINGLE_BASE64_LENGTH, remaining),
+          );
+          prepared.push(item);
+          remaining -= item.data.length;
+        } catch (error) {
+          setImageError(
+            error instanceof Error ? error.message : "图片处理失败，请重试。",
+          );
+          break;
+        }
       }
+      if (prepared.length > 0) {
+        setAttachments((current) => [...current, ...prepared]);
+      }
+      return prepared;
     },
-    [attachments.length],
+    [attachments],
   );
 
   const remove = useCallback((id: string) => {

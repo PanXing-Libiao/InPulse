@@ -1,7 +1,15 @@
+import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { imageFilesFromClipboard, prepareAssistImage } from "./assist-image";
-import { stubClipboardImagePipeline } from "./assist-image.test-support";
+import {
+  imageFilesFromClipboard,
+  prepareAssistImage,
+  useAssistAttachments,
+} from "./assist-image";
+import {
+  clipboardWithChatScreenshots,
+  stubClipboardImagePipeline,
+} from "./assist-image.test-support";
 
 function file(name: string, type: string): File {
   return new File(["stub"], name, { type });
@@ -43,6 +51,25 @@ describe("prepareAssistImage", () => {
       );
       expect(URL.createObjectURL).not.toHaveBeenCalled();
       expect(attachment.previewUrl).toBe("data:image/jpeg;base64,AAAA");
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("useAssistAttachments", () => {
+  it("一次粘贴 3 张截图也不受原来的 2 张限制", async () => {
+    const restore = stubClipboardImagePipeline();
+    try {
+      const { result } = renderHook(() => useAssistAttachments());
+      await act(async () => {
+        const added = await result.current.addFromClipboard(
+          clipboardWithChatScreenshots(3),
+        );
+        expect(added).toHaveLength(3);
+      });
+      expect(result.current.attachments).toHaveLength(3);
+      expect(result.current.imageError).toBeNull();
     } finally {
       restore();
     }
