@@ -142,6 +142,7 @@ export class AiAssistSettingsService {
       enabled: input.enabled,
       endpoint,
       model: input.model,
+      summaryModel: input.summaryModel?.trim() ?? null,
       timeoutMs: input.timeoutMs,
       maxTokens: input.maxTokens,
       apiKeyCiphertext: ciphertext,
@@ -256,6 +257,10 @@ export class AiAssistSettingsService {
       row !== undefined
         ? row.model
         : (env["AI_ASSIST_MODEL"]?.trim() ?? "") || null;
+    const summaryModel =
+      row !== undefined
+        ? row.summaryModel
+        : (env["AI_ASSIST_SUMMARY_MODEL"]?.trim() ?? "") || null;
     const timeoutMs =
       row !== undefined
         ? row.timeoutMs
@@ -272,6 +277,7 @@ export class AiAssistSettingsService {
       disabledReason: resolution.kind === "DISABLED" ? resolution.reason : null,
       endpoint,
       model,
+      summaryModel,
       timeoutMs,
       maxTokens,
       keyConfigured:
@@ -292,6 +298,7 @@ export class AiAssistSettingsService {
       enabled: row.enabled,
       endpoint: row.endpoint,
       model: row.model,
+      summaryModel: row.summaryModel,
       timeoutMs: row.timeoutMs,
       maxTokens: row.maxTokens,
       keyHint: row.apiKeyHint,

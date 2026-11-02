@@ -18,6 +18,7 @@ const readySettings: AiAssistSettings = {
   disabledReason: null,
   endpoint: "https://api.example.com/v1/chat/completions",
   model: "gpt-4o-mini",
+  summaryModel: null,
   timeoutMs: 60_000,
   maxTokens: 8192,
   keyConfigured: true,
@@ -60,6 +61,7 @@ function mount(
         enabled: body.enabled,
         endpoint: body.endpoint,
         model: body.model,
+        summaryModel: body.summaryModel ?? null,
         timeoutMs: body.timeoutMs,
         maxTokens: body.maxTokens,
       }),
@@ -160,6 +162,7 @@ describe("AiAssistSettingsPanel（ADR-068）", () => {
         enabled: true,
         endpoint: "https://api.example.com/v1/chat/completions",
         model: "gpt-4o",
+        summaryModel: null,
         timeoutMs: 60_000,
         maxTokens: 8192,
         apiKey: null,
@@ -194,6 +197,21 @@ describe("AiAssistSettingsPanel（ADR-068）", () => {
     );
   });
 
+  it("保存：迭代总结模型写入请求体，留空按 null 交给服务端", async () => {
+    const { updateAiAssistSettings } = mount();
+    await screen.findByText("当前状态");
+    fireEvent.change(screen.getByLabelText("迭代总结模型（可选）"), {
+      target: { value: "fast-text-model" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+    await waitFor(() =>
+      expect(updateAiAssistSettings).toHaveBeenCalledTimes(1),
+    );
+    expect(updateAiAssistSettings.mock.calls[0]![0]).toMatchObject({
+      summaryModel: "fast-text-model",
+    });
+  });
+
   it("首次配置未提供密钥：本地报错且不调用保存接口", async () => {
     const { updateAiAssistSettings } = mount({
       settings: unconfiguredKeySettings,
@@ -221,6 +239,7 @@ describe("AiAssistSettingsPanel（ADR-068）", () => {
         enabled: false,
         endpoint: "https://api.example.com/v1/chat/completions",
         model: "gpt-4o-mini",
+        summaryModel: null,
         timeoutMs: 60_000,
         maxTokens: 8192,
         apiKey: null,

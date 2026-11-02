@@ -9,6 +9,9 @@ import type { AiAssistTarget } from "./ai-assist-target.js";
 /** ADR-067 的两种模式：与契约 `DocumentImportAssistRequest.mode` 一致。 */
 export type DocumentImportAssistMode = "IN_PROJECT" | "WHOLE_PROJECT";
 
+/** 纯文本文档导入草稿的输出上限；带截图时保留全局上限以容纳视觉提取。 */
+export const DOCUMENT_IMPORT_ASSIST_MAX_OUTPUT_TOKENS = 6_000;
+
 /** OpenAI 兼容多模态内容片段：文本与图片可混排在同一条 user message 里。 */
 export type AiAssistMessageContentPart =
   | { readonly type: "text"; readonly text: string }

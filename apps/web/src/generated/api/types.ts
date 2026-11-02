@@ -211,6 +211,7 @@ export type AiAssistSettings = {
   readonly disabledReason: (("KILL_SWITCH" | "NOT_ENABLED" | "CONFIG_INVALID" | "ENCRYPTION_KEY_UNAVAILABLE") | null);
   readonly endpoint: (string | null);
   readonly model: (string | null);
+  readonly summaryModel: (string | null);
   readonly timeoutMs: number;
   readonly maxTokens: number;
   readonly keyConfigured: boolean;
@@ -238,6 +239,7 @@ export type AiAssistSettingsUpdateRequest = {
   readonly enabled: boolean;
   readonly endpoint: string;
   readonly model: string;
+  readonly summaryModel?: (string | null);
   readonly timeoutMs: number;
   readonly maxTokens: number;
   readonly apiKey?: (string | null);

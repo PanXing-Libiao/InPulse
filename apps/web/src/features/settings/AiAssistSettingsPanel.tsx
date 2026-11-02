@@ -25,6 +25,7 @@ export interface AiAssistSettingsPanelProps {
 interface FormValues {
   readonly endpoint: string;
   readonly model: string;
+  readonly summaryModel: string;
   readonly timeoutMs: number;
   readonly maxTokens: number;
   readonly apiKey: string;
@@ -57,6 +58,7 @@ function editableValues(settings: AiAssistSettings): FormValues {
   return {
     endpoint: settings.endpoint ?? "",
     model: settings.model ?? "",
+    summaryModel: settings.summaryModel ?? "",
     timeoutMs: settings.timeoutMs,
     maxTokens: settings.maxTokens,
     apiKey: "",
@@ -88,6 +90,7 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
     defaultValues: {
       endpoint: "",
       model: "",
+      summaryModel: "",
       timeoutMs: DEFAULT_TIMEOUT_MS,
       maxTokens: DEFAULT_MAX_TOKENS,
       apiKey: "",
@@ -120,6 +123,10 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
         enabled: enabledDraft ?? settings.enabled,
         endpoint: values.endpoint.trim(),
         model: values.model.trim(),
+        summaryModel:
+          values.summaryModel.trim().length === 0
+            ? null
+            : values.summaryModel.trim(),
         timeoutMs: values.timeoutMs,
         maxTokens: values.maxTokens,
         apiKey: apiKey.length === 0 ? null : apiKey,
@@ -147,6 +154,7 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
         enabled: next,
         endpoint: settings.endpoint ?? "",
         model: settings.model ?? "",
+        summaryModel: settings.summaryModel,
         timeoutMs: settings.timeoutMs,
         maxTokens: settings.maxTokens,
         apiKey: null,
@@ -378,6 +386,39 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
                 可直接输入；点击右侧「获取可用模型」使用上方端点与密钥，密钥留空时使用已保存密钥。
               </small>
             )}
+          </div>
+
+          <div className="ai-assist-field">
+            <label htmlFor="ai-assist-summary-model">
+              迭代总结模型（可选）
+            </label>
+            <Controller
+              name="summaryModel"
+              control={control}
+              render={({ field }) => (
+                <AutoComplete
+                  id="ai-assist-summary-model"
+                  value={field.value}
+                  onChange={(value) => field.onChange(value)}
+                  options={
+                    discoverModels.data?.ok
+                      ? discoverModels.data.models.map((model) => ({
+                          value: model,
+                        }))
+                      : []
+                  }
+                  filterOption={(inputValue, option) =>
+                    String(option?.value ?? "")
+                      .toLowerCase()
+                      .includes(inputValue.toLowerCase())
+                  }
+                  placeholder="留空则与上方模型相同"
+                />
+              )}
+            />
+            <small className="form-hint">
+              仅迭代总结改写使用；为空时与上方模型相同。任务助手与文档导入始终使用上方模型。
+            </small>
           </div>
 
           <div className="ai-assist-field-pair">

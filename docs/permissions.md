@@ -259,7 +259,7 @@ listChangeRecords 默认 PUBLISHED，管理员显式 status=VOID 才列出作废
 | operationId | 匿名 | 活跃成员 | 其他项目成员 | 已移除成员 | 停用用户 | 系统管理员 | 约束 |
 |---|---|---|---|---|---|---|---|
 | `getAiAssistSettings` | 401 | 403 | 403 | 403 | 401 | 允许 | 只读、不写任何状态、响应 `no-store`；只返回密钥尾 4 位与是否已配置，永不回显密钥 |
-| `updateAiAssistSettings` | 401 | 403 | 403 | 403 | 401 | 允许 | 同源 / CSRF、数据库级幂等（`Idempotency-Key` 必填，契约版本 1.0.0）；单行整体替换，`apiKey` 缺省表示保持已存密钥；密钥经 AES-256-GCM 加密落库；`SELECT ... FOR UPDATE` 行锁 + `row_version`；写审计 `admin.aiAssistSettings.update`（不含密钥） |
+| `updateAiAssistSettings` | 401 | 403 | 403 | 403 | 401 | 允许 | 同源 / CSRF、数据库级幂等（`Idempotency-Key` 必填，契约版本 1.1.0）；单行整体替换，`summaryModel` 可为空并只用于迭代总结，空值回退 `model`，`apiKey` 缺省表示保持已存密钥；密钥经 AES-256-GCM 加密落库；`SELECT ... FOR UPDATE` 行锁 + `row_version`；写审计 `admin.aiAssistSettings.update`（不含密钥） |
 | `testAiAssistSettings` | 401 | 403 | 403 | 403 | 401 | 允许 | 纯校验（不写任何持久化状态、不写审计、不发送用户数据）：用当前生效配置发一条最小探测请求；加入 [ADR-019](adr/ADR-019.md) 纯校验 allowlist |
 | `listAiAssistModels` | 401 | 403 | 403 | 403 | 401 | 允许 | 纯校验（不写任何持久化状态、不写审计、不发送用户数据）：使用设置页当前填写的端点、超时与一次性密钥向 OpenAI 兼容上游发起 GET `/v1/models`；`apiKey` 留空时只读复用已保存密钥，字段登记为敏感叶子且不落库、不回显、不写日志；只返回当前令牌可用的模型 ID，失败复用测试连接的固定分类，不要求 CSRF 与幂等键 |
 

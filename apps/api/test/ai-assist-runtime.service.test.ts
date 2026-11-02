@@ -64,6 +64,7 @@ function rowOf(
     enabled: true,
     endpoint: "https://api.example.com/v1/chat/completions",
     model: "stub-model",
+    summaryModel: null,
     timeoutMs: 60_000,
     maxTokens: 8_192,
     apiKeyCiphertext: encrypted.ciphertext,
@@ -127,7 +128,23 @@ describe("AiAssistRuntimeService.resolveFromRow（优先级矩阵）", () => {
     }
     expect(resolution.source).toBe("DATABASE");
     expect(resolution.config.model).toBe("stub-model");
+    expect(resolution.config.summaryModel).toBeUndefined();
     expect(resolution.config.apiKey).toBe(PLAINTEXT);
+  });
+
+  test("数据库行的总结模型进入运行时配置；为空时保持缺省", () => {
+    const service = serviceWithRow(undefined).service;
+    const withText = service.resolveFromRow(
+      rowOf({ summaryModel: "fast-model" }),
+      keyringEnv(),
+    );
+    if (withText.kind !== "READY") {
+      throw new Error("expected READY resolution");
+    }
+    expect(withText.config.summaryModel).toBe("fast-model");
+    expect(
+      service.resolveFromRow(rowOf({ summaryModel: null }), keyringEnv()),
+    ).toMatchObject({ kind: "READY", config: { model: "stub-model" } });
   });
 
   test("数据库行 enabled=false → NOT_ENABLED，即使环境变量已配置", () => {
@@ -151,6 +168,12 @@ describe("AiAssistRuntimeService.resolveFromRow（优先级矩阵）", () => {
     ).toMatchObject({ kind: "DISABLED", reason: "CONFIG_INVALID" });
     expect(
       service.resolveFromRow(rowOf({ model: "x".repeat(201) }), keyringEnv()),
+    ).toMatchObject({ kind: "DISABLED", reason: "CONFIG_INVALID" });
+    expect(
+      service.resolveFromRow(
+        rowOf({ summaryModel: "x".repeat(201) }),
+        keyringEnv(),
+      ),
     ).toMatchObject({ kind: "DISABLED", reason: "CONFIG_INVALID" });
   });
 

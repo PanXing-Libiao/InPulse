@@ -71,6 +71,25 @@ describe("loadAiAssistConfig（fail closed）", () => {
     expect(result.config?.maxTokens).toBe(2048);
   });
 
+  test("总结模型可选：未配置时不写入，配置时原样返回", () => {
+    expect(
+      loadAiAssistConfig(enabledEnv()).config?.summaryModel,
+    ).toBeUndefined();
+    expect(
+      loadAiAssistConfig(
+        enabledEnv({ AI_ASSIST_SUMMARY_MODEL: " fast-model " }),
+      ).config?.summaryModel,
+    ).toBe("fast-model");
+  });
+
+  test("总结模型超长时 fail closed", () => {
+    const result = loadAiAssistConfig(
+      enabledEnv({ AI_ASSIST_SUMMARY_MODEL: "x".repeat(201) }),
+    );
+    expect(result.config).toBeUndefined();
+    expect(result.invalidReason).toContain("AI_ASSIST_SUMMARY_MODEL");
+  });
+
   test("启用但缺少端点 / 模型 / 密钥文件时拒绝并给出分类原因", () => {
     expect(
       loadAiAssistConfig(enabledEnv({ AI_ASSIST_ENDPOINT: undefined })).config,

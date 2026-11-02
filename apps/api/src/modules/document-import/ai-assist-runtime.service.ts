@@ -203,7 +203,8 @@ export class AiAssistRuntimeService {
       row.endpoint.length === 0 ||
       row.endpoint.length > 2048 ||
       row.model.length === 0 ||
-      row.model.length > 200
+      row.model.length > 200 ||
+      (row.summaryModel !== null && row.summaryModel.length > 200)
     ) {
       return {
         kind: "DISABLED",
@@ -234,6 +235,9 @@ export class AiAssistRuntimeService {
       config: {
         endpoint,
         model: row.model,
+        ...(row.summaryModel === null
+          ? {}
+          : { summaryModel: row.summaryModel }),
         apiKey: apiKey.apiKey,
         timeoutMs: row.timeoutMs,
         maxTokens: row.maxTokens,

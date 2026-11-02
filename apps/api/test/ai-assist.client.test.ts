@@ -555,7 +555,7 @@ describe("DocumentImportAiAssistClient", () => {
       max_tokens: number;
       temperature: number;
     };
-    expect(body.max_tokens).toBe(4_096);
+    expect(body.max_tokens).toBe(3_000);
     expect(body.temperature).toBe(0.2);
     expect(body.messages[0]!.role).toBe("system");
     expect(body.messages[0]!.content).toContain("是唯一的事实来源");
@@ -589,5 +589,82 @@ describe("DocumentImportAiAssistClient", () => {
     expect(line).toContain('"status":"ok"');
     expect(line).toContain('"inputChars":' + String(expectedChars));
     expect(line).not.toContain("机密正文");
+  });
+
+  test("任务与文档始终使用视觉 model；纯文本按场景收紧输出上限", async () => {
+    const fastConfig: AiAssistConfig = {
+      ...config,
+      maxTokens: 16_384,
+      summaryModel: "fast-text-model",
+    };
+    const text = stubFetch(() => jsonResponse(completion("ok")));
+    await new DocumentImportAiAssistClient(text.fetchImpl).generateDraft(
+      fastConfig,
+      { mode: "IN_PROJECT", text: "仅文本" },
+    );
+    const textBody = JSON.parse(String(text.calls[0]!.init.body)) as {
+      model: string;
+      max_tokens: number;
+    };
+    expect(textBody.model).toBe("test-model");
+    expect(textBody.max_tokens).toBe(6_000);
+
+    const image = stubFetch(() => jsonResponse(completion("ok")));
+    await new DocumentImportAiAssistClient(image.fetchImpl).generateDraft(
+      fastConfig,
+      {
+        mode: "IN_PROJECT",
+        text: "看图",
+        images: [{ mimeType: "image/png", data: "aGVsbG8=" }],
+      },
+    );
+    const imageBody = JSON.parse(String(image.calls[0]!.init.body)) as {
+      model: string;
+      max_tokens: number;
+    };
+    expect(imageBody.model).toBe("test-model");
+    expect(imageBody.max_tokens).toBe(16_384);
+  });
+
+  test("迭代总结使用 summaryModel，任务草稿仍用视觉 model", async () => {
+    const fastConfig: AiAssistConfig = {
+      ...config,
+      maxTokens: 16_384,
+      summaryModel: "fast-text-model",
+    };
+    const summary = stubFetch(() => jsonResponse(completion("总结")));
+    await new DocumentImportAiAssistClient(
+      summary.fetchImpl,
+    ).generateSummaryDraft(fastConfig, {
+      requirement: "给领导看",
+      facts: "事实",
+    });
+    const summaryBody = JSON.parse(String(summary.calls[0]!.init.body)) as {
+      model: string;
+      max_tokens: number;
+    };
+    expect(summaryBody.model).toBe("fast-text-model");
+    expect(summaryBody.max_tokens).toBe(3_000);
+
+    const task = stubFetch(() => jsonResponse(completion("{}")));
+    await new DocumentImportAiAssistClient(task.fetchImpl).generateTaskDraft(
+      fastConfig,
+      {
+        message: "做一个任务",
+        history: [],
+        today: "2026-11-02",
+        weekday: "星期日",
+        members: [],
+        modules: [],
+        projects: [],
+        currentModuleName: null,
+      },
+    );
+    const taskBody = JSON.parse(String(task.calls[0]!.init.body)) as {
+      model: string;
+      max_tokens: number;
+    };
+    expect(taskBody.model).toBe("test-model");
+    expect(taskBody.max_tokens).toBe(1_200);
   });
 });

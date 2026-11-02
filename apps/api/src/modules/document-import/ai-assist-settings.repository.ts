@@ -8,6 +8,7 @@ export interface AiAssistSettingsRecord {
   readonly enabled: boolean;
   readonly endpoint: string;
   readonly model: string;
+  readonly summaryModel: string | null;
   readonly timeoutMs: number;
   readonly maxTokens: number;
   readonly apiKeyCiphertext: Buffer;
@@ -22,6 +23,7 @@ export interface UpsertAiAssistSettingsInput {
   readonly enabled: boolean;
   readonly endpoint: string;
   readonly model: string;
+  readonly summaryModel: string | null;
   readonly timeoutMs: number;
   readonly maxTokens: number;
   readonly apiKeyCiphertext: Buffer;
@@ -35,6 +37,7 @@ interface SettingsRow {
   readonly enabled: boolean;
   readonly endpoint: string;
   readonly model: string;
+  readonly summaryModel: string | null;
   readonly timeoutMs: number;
   readonly maxTokens: number;
   readonly apiKeyCiphertext: Buffer;
@@ -65,6 +68,7 @@ export class AiAssistSettingsRepository {
              enabled,
              endpoint,
              model,
+             summary_model AS "summaryModel",
              timeout_ms AS "timeoutMs",
              max_tokens AS "maxTokens",
              api_key_ciphertext AS "apiKeyCiphertext",
@@ -90,6 +94,7 @@ export class AiAssistSettingsRepository {
         enabled,
         endpoint,
         model,
+        summary_model,
         timeout_ms,
         max_tokens,
         api_key_ciphertext,
@@ -103,6 +108,7 @@ export class AiAssistSettingsRepository {
         ${input.enabled},
         ${input.endpoint},
         ${input.model},
+        ${input.summaryModel},
         ${input.timeoutMs},
         ${input.maxTokens},
         ${input.apiKeyCiphertext},
@@ -116,6 +122,7 @@ export class AiAssistSettingsRepository {
         enabled = EXCLUDED.enabled,
         endpoint = EXCLUDED.endpoint,
         model = EXCLUDED.model,
+        summary_model = EXCLUDED.summary_model,
         timeout_ms = EXCLUDED.timeout_ms,
         max_tokens = EXCLUDED.max_tokens,
         api_key_ciphertext = EXCLUDED.api_key_ciphertext,
@@ -128,6 +135,7 @@ export class AiAssistSettingsRepository {
                 enabled,
                 endpoint,
                 model,
+                summary_model AS "summaryModel",
                 timeout_ms AS "timeoutMs",
                 max_tokens AS "maxTokens",
                 api_key_ciphertext AS "apiKeyCiphertext",
