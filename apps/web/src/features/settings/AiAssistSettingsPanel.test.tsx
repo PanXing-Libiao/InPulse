@@ -197,12 +197,14 @@ describe("AiAssistSettingsPanel（ADR-068）", () => {
     );
   });
 
-  it("保存：迭代总结模型写入请求体，留空按 null 交给服务端", async () => {
-    const { updateAiAssistSettings } = mount();
-    await screen.findByText("当前状态");
-    fireEvent.change(screen.getByLabelText("迭代总结模型（可选）"), {
-      target: { value: "fast-text-model" },
+  it("页面不展示独立总结模型字段，保存时保留服务端已有值", async () => {
+    const { updateAiAssistSettings } = mount({
+      settings: { ...readySettings, summaryModel: "fast-text-model" },
     });
+    await screen.findByText("当前状态");
+    expect(
+      screen.queryByLabelText("迭代总结模型（可选）"),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
     await waitFor(() =>
       expect(updateAiAssistSettings).toHaveBeenCalledTimes(1),

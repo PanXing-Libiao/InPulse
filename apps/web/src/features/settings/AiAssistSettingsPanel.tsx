@@ -388,39 +388,6 @@ export const AiAssistSettingsPanel: React.FC<AiAssistSettingsPanelProps> = ({
             )}
           </div>
 
-          <div className="ai-assist-field">
-            <label htmlFor="ai-assist-summary-model">
-              迭代总结模型（可选）
-            </label>
-            <Controller
-              name="summaryModel"
-              control={control}
-              render={({ field }) => (
-                <AutoComplete
-                  id="ai-assist-summary-model"
-                  value={field.value}
-                  onChange={(value) => field.onChange(value)}
-                  options={
-                    discoverModels.data?.ok
-                      ? discoverModels.data.models.map((model) => ({
-                          value: model,
-                        }))
-                      : []
-                  }
-                  filterOption={(inputValue, option) =>
-                    String(option?.value ?? "")
-                      .toLowerCase()
-                      .includes(inputValue.toLowerCase())
-                  }
-                  placeholder="留空则与上方模型相同"
-                />
-              )}
-            />
-            <small className="form-hint">
-              仅迭代总结改写使用；为空时与上方模型相同。任务助手与文档导入始终使用上方模型。
-            </small>
-          </div>
-
           <div className="ai-assist-field-pair">
             <div className="ai-assist-field">
               <label htmlFor="ai-assist-timeout">超时（毫秒）</label>

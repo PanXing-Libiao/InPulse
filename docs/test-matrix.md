@@ -7474,7 +7474,7 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | --- | --- | --- | --- | --- |
 | AI-SCENE-MODEL-001 | API 单元 | 分场景模型选择 | `ai-assist.client.test.ts` 覆盖：任务草稿与文档导入始终发送主 `model`；迭代总结发送 `summaryModel`，为空回退主模型；任务 / 文档纯文本 / 总结分别发送 1200 / 6000 / 3000 的 `max_tokens`（取全局上限较小者） | 本地通过（2026-11-02） |
 | AI-SCENE-MODEL-002 | API 集成（真实 PostgreSQL） | 总结模型落库与回退 | `admin-ai-assist-api.integration.test.ts` 保存 `summaryModel` 后 GET 回读一致；后续整体替换请求不传该字段时按 null 保存；AES-256-GCM 密钥、审计与幂等链路不回归 | 本地通过（2026-11-02，`app_ci`） |
-| AI-SCENE-MODEL-003 | Web 单元 | 设置页总结模型字段 | `AiAssistSettingsPanel.test.tsx` 回填、保存、主开关保存与清空 `summaryModel` 均正确；提示文案明确任务助手与文档导入仍用主模型 | 本地通过（2026-11-02） |
+| AI-SCENE-MODEL-003 | Web 单元 | 设置页不展示总结模型字段 | `AiAssistSettingsPanel.test.tsx` 断言页面不渲染独立总结模型输入；保存配置时保留服务端已有 `summaryModel`，缺省仍为 null | 本地通过（2026-11-02） |
 | AI-SCENE-MODEL-004 | 真实上游 A/B | 任务助手 | 同一组 3 条短描述单次调用平均：主视觉模型 3,128 ms；`gemini-3.8-flash` 6,529 ms；`qwen3.8-flash` 13,161 ms | 本地实测（2026-11-02） |
 | AI-SCENE-MODEL-005 | 真实上游 A/B | 文档导入 | 595 字纯文本：主视觉模型 4,763 ms；`gemini-3.8-flash` 7,227 ms | 本地实测（2026-11-02） |
 | AI-SCENE-MODEL-006 | 真实上游 A/B | 迭代总结 | 4,281 字事实正文：主视觉模型 7,421 ms；`gemini-3.8-flash` 5,685 ms。约 1,900 字时主模型 5,968 ms、gemini 8,754 ms、qwen 22,179 ms | 本地实测（2026-11-02） |
