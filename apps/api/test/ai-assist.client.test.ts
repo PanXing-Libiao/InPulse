@@ -658,6 +658,7 @@ describe("DocumentImportAiAssistClient", () => {
         modules: [],
         projects: [],
         currentModuleName: null,
+        currentProjectName: null,
       },
     );
     const taskBody = JSON.parse(String(task.calls[0]!.init.body)) as {

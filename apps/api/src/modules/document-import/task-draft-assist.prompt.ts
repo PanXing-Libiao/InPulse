@@ -29,6 +29,7 @@ export interface TaskDraftAssistPromptInput {
   readonly modules: readonly TaskDraftAssistNameItem[];
   /** 尚未选择项目时可供模型判断的项目清单；已选项目时为空。 */
   readonly projects: readonly TaskDraftAssistProjectNameItem[];
+  readonly currentProjectName: string | null;
   readonly currentModuleName: string | null;
   /** 是否带项目上下文；false 时不提供成员/模块清单，负责人必须留空。 */
   readonly hasProjectContext?: boolean | undefined;
@@ -81,7 +82,9 @@ export function buildTaskDraftAssistMessages(
           "（" +
           input.weekday +
           "，Asia/Shanghai）\n" +
-          "【左侧当前已选】模块：" +
+          "【左侧当前已选】项目：" +
+          (input.currentProjectName ?? "未选") +
+          "；模块：" +
           (input.currentModuleName ?? "未选") +
           "\n\n" +
           (hasProjectContext
@@ -112,7 +115,7 @@ export const SYSTEM_PROMPT: string = [
   "- 一条任务对应一个可执行、可交付的动作；不要把一句话拆成清单，也不要写成会议纪要。",
   "- 归属判断顺序：用户明确说出的模块 > 左侧当前模块 > 模块清单语义最接近；负责人只从名单选，不按职责猜。",
   "- 模糊归属：中文简称可以拆词、漏字或只留业务关键词，例如「服装管理」可指「服装生产管理系统」，「账号登录」可指「账号与登录」。必须回到候选清单核对；多个候选都说得通时不要假装确定，交给确认卡。",
-  "- 如果提供了项目成员 / 模块清单（不是「未选择项目」占位），视为项目已确认：projectName 输出 null，reply 不得再让用户确认项目；模块沿用左侧当前模块，除非用户明确说要换。",
+  "- 如果提供了项目成员 / 模块清单（不是「未选择项目」占位），视为项目已确认：projectName 输出 null；reply 和 notes 都不得再让用户确认项目，也不要写「未指定项目」，需要时可直呼【左侧当前已选】里的项目名。模块沿用左侧当前模块，除非用户明确说要换。",
   "",
   "工作方式：",
   "1. 先理解意图，再抽取字段。用户可能只说「把那个登录问题修一下」，你要结合项目、模块清单判断归属，而不是要求用户重写。",

@@ -6,6 +6,8 @@ export interface TaskDraftAssistModuleItem {
 }
 
 export interface TaskDraftAssistCatalog {
+  /** 当前项目名称：只作为提示词上下文，不参与授权判断。 */
+  readonly projectName: string;
   readonly modules: readonly TaskDraftAssistModuleItem[];
 }
 

@@ -21,7 +21,7 @@ describe("任务草稿助手提示词", () => {
     expect(SYSTEM_PROMPT).toContain("不要自造组合名");
   });
 
-  test("带项目上下文时提供成员与模块，不再给项目候选", () => {
+  test("带项目上下文时写明已选项目与模块，不再给项目候选", () => {
     const messages = buildTaskDraftAssistMessages({
       message: "下周五前把离线补传做完，找小邵",
       history: [],
@@ -30,6 +30,7 @@ describe("任务草稿助手提示词", () => {
       members: [{ name: "小邵" }],
       modules: [{ name: "离线与同步" }],
       projects: [],
+      currentProjectName: "移动端现场作业 App",
       currentModuleName: "离线与同步",
       hasProjectContext: true,
     });
@@ -37,6 +38,8 @@ describe("任务草稿助手提示词", () => {
     expect(typeof user).toBe("string");
     expect(String(user)).toContain("项目成员");
     expect(String(user)).toContain("小邵");
+    expect(String(user)).toContain("【左侧当前已选】项目：移动端现场作业 App");
+    expect(String(user)).toContain("；模块：离线与同步");
     expect(String(user)).not.toContain("可选项目（只能从这份名单里选）");
   });
 });
