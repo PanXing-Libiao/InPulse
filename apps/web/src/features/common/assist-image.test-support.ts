@@ -74,11 +74,17 @@ export function stubClipboardImagePipeline(): () => void {
   };
 }
 
-/** 聊天截图粘贴事件里最小可用的 clipboardData。 */
+/** 聊天截图粘贴事件里最小可用的 clipboardData；count 用于一次粘贴多张。 */
+export function clipboardWithChatScreenshots(count = 1): DataTransfer {
+  const items = Array.from({ length: count }, (_unused, index) => {
+    const file = new File(["stub"], "chat-" + index + ".png", {
+      type: "image/png",
+    });
+    return { kind: "file", type: "image/png", getAsFile: () => file };
+  });
+  return { items, getData: () => "" } as unknown as DataTransfer;
+}
+
 export function clipboardWithChatScreenshot(): DataTransfer {
-  const file = new File(["stub"], "chat.png", { type: "image/png" });
-  return {
-    items: [{ kind: "file", type: "image/png", getAsFile: () => file }],
-    getData: () => "",
-  } as unknown as DataTransfer;
+  return clipboardWithChatScreenshots(1);
 }

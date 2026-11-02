@@ -18426,7 +18426,7 @@
           },
           "images": {
             "description": "聊天记录等截图（base64，不含 data: 前缀）；只用于本次识别，不落库",
-            "maxItems": 2,
+            "maxItems": 20,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AiAssistImage"
@@ -25588,7 +25588,7 @@
           },
           "images": {
             "description": "聊天记录等截图（base64，不含 data: 前缀）；只用于本次识别，不落库",
-            "maxItems": 2,
+            "maxItems": 20,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AiAssistImage"
