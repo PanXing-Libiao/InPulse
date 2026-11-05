@@ -20,6 +20,12 @@ export class PostgresTaskDraftAssistCatalog extends TaskDraftAssistCatalogPort {
        ORDER BY id ASC
        LIMIT ${TASK_DRAFT_ASSIST_MAX_MODULES}
     `;
-    return { modules };
+    const projectRows = await tx.sql<{ name: string }[]>`
+      SELECT name
+        FROM app.projects
+       WHERE id = ${projectId}
+       LIMIT 1
+    `;
+    return { projectName: projectRows[0]?.name ?? "", modules };
   }
 }

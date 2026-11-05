@@ -1,7 +1,19 @@
-export const PREAUTH_COOKIE_NAME = "__Host-preauth";
-export const SESSION_COOKIE_NAME = "__Host-session";
+/**
+ * 本地开发（明文 HTTP + 127.0.0.1）专用降级：浏览器会丢弃带 Secure 的
+ * __Host- Cookie，导致 SSO state 与 Session 无法保存。仅在显式设置
+ * INPULSE_DEV_INSECURE_COOKIES=1 且非生产环境时启用；生产始终使用
+ * __Host- + Secure。
+ */
+const insecureDevCookies =
+  process.env["INPULSE_DEV_INSECURE_COOKIES"] === "1" &&
+  process.env["NODE_ENV"] !== "production";
+
+const COOKIE_NAME_PREFIX = insecureDevCookies ? "inpulse-dev-" : "__Host-";
+
+export const PREAUTH_COOKIE_NAME = COOKIE_NAME_PREFIX + "preauth";
+export const SESSION_COOKIE_NAME = COOKIE_NAME_PREFIX + "session";
 /** ADR-032：SSO state 与发起浏览器的绑定 Cookie，只存一次性 state 明文。 */
-export const SSO_STATE_COOKIE_NAME = "__Host-sso-state";
+export const SSO_STATE_COOKIE_NAME = COOKIE_NAME_PREFIX + "sso-state";
 export const PREAUTH_MAX_AGE_SECONDS = 9 * 60;
 export const AUTH_CSRF_MAX_AGE_SECONDS = 8 * 60 * 60;
 export const SESSION_IDLE_MAX_AGE_SECONDS = 8 * 60 * 60;
@@ -80,7 +92,7 @@ export function buildCookie(cookie: CsrfSetCookie): string {
   const segments = [
     `${cookie.name}=${value}`,
     "HttpOnly",
-    "Secure",
+    ...(insecureDevCookies ? [] : ["Secure"]),
     "SameSite=Lax",
     "Path=/",
   ];

@@ -325,9 +325,19 @@ export function TaskDraftAssistPane({
                 onChangeModule={() => changeModule(message)}
               />
             ) : null}
-            {message.notes && message.notes.length > 0 ? (
+            {visibleAssistNotes(
+              message.notes,
+              message.decision,
+              projectId,
+              message.suggestions?.projects,
+            ).length > 0 ? (
               <ul className="task-assist-notes">
-                {message.notes.map((note) => (
+                {visibleAssistNotes(
+                  message.notes,
+                  message.decision,
+                  projectId,
+                  message.suggestions?.projects,
+                ).map((note) => (
                   <li key={note}>{note}</li>
                 ))}
               </ul>
@@ -420,6 +430,38 @@ export function TaskDraftAssistPane({
         </Button>
       </div>
     </aside>
+  );
+}
+
+/** 项目确认后，旧的「未选择项目 / 多候选待确认」提示会和新状态打架，直接隐藏。 */
+const STALE_PROJECT_NOTES = [
+  "未选择项目",
+  "可能是这几个项目",
+  "项目也可能是",
+] as const;
+
+function visibleAssistNotes(
+  notes: readonly string[] | undefined,
+  decision: AssignmentDecision | undefined,
+  projectId: number,
+  projectCandidates: readonly {
+    readonly id: number;
+    readonly name: string;
+  }[] = [],
+): readonly string[] {
+  if (notes === undefined) return [];
+  if ((decision?.projectId ?? projectId) <= 0) return notes;
+  // 项目确认后，旧回复里提到任一候选项目、又带「待确认」口吻的备注都已过期。
+  const candidateProjectNames = projectCandidates
+    .map((item) => item.name)
+    .filter((name) => name.length > 0);
+  const isResolvedProjectNote = (note: string): boolean =>
+    candidateProjectNames.some((name) => note.includes(name)) &&
+    (note.includes("也可能指") || note.includes("待确认"));
+  return notes.filter(
+    (note) =>
+      !STALE_PROJECT_NOTES.some((prefix) => note.startsWith(prefix)) &&
+      !isResolvedProjectNote(note),
   );
 }
 

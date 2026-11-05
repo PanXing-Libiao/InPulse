@@ -539,6 +539,11 @@ function buildApiEnvironment(fileValues, sso, runtime) {
     WECOM_ROBOT_ENCRYPTION_KEY_TEST_PATH: "1",
     WECOM_ROBOT_ENCRYPTION_KEY_VERSION: "1",
   };
+  // 明文 HTTP 本地开发时浏览器会丢弃 Secure 的 __Host- Cookie，SSO 与 Session 无法保存；
+  // 仅本地 HTTP 入口降级，HTTPS（--lan）与生产保持 __Host- + Secure。
+  if (runtime.webOrigin.startsWith("http://")) {
+    env["INPULSE_DEV_INSECURE_COOKIES"] = "1";
+  }
   if (runtime.apiHost !== undefined) {
     env["INPULSE_API_HOST"] = runtime.apiHost;
   }

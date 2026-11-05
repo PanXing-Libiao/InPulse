@@ -644,6 +644,55 @@ it("多个疑似项目时全部列出，点更改不替用户选择", async () =
   expect(screen.getByText("项目归属请在左侧下拉选择")).toBeInTheDocument();
 });
 
+it("确认项目后隐藏已消解的项目歧义备注", async () => {
+  const test = harness();
+  test.assistTaskDraftStandalone.mockResolvedValueOnce({
+    reply: "这个项目名有点模糊，可能是下面两个。",
+    draft: {
+      title: "检查登录验证码",
+      description: "确认登录验证码转圈问题。",
+      priority: "NORMAL",
+      dueAt: null,
+      assigneeIds: [],
+      assigneeNames: [],
+      moduleId: null,
+      moduleName: null,
+    },
+    suggestions: {
+      projects: [
+        { id: 1, code: "INP", name: "InPulse 平台" },
+        { id: 2, code: "ORD", name: "订单中台" },
+      ],
+      modules: [],
+    },
+    confidence: "LOW",
+    notes: [
+      "「那个项目」也可能指订单中台，待确认",
+      "可能是这几个项目，请选一个",
+    ],
+  });
+  mount(test);
+  const user = userEvent.setup();
+
+  await user.type(screen.getByLabelText("描述任务"), "那个项目登录有问题");
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  expect(
+    await screen.findByText("「那个项目」也可能指订单中台，待确认"),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "用「订单中台」" }));
+
+  await waitFor(() =>
+    expect(screen.getByText("已确认项目：订单中台")).toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByText("「那个项目」也可能指订单中台，待确认"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("可能是这几个项目，请选一个"),
+  ).not.toBeInTheDocument();
+});
+
 it("AI 助手支持只发聊天截图并把图片带给模型", async () => {
   const restore = stubClipboardImagePipeline();
   try {

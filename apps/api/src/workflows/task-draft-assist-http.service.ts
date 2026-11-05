@@ -63,7 +63,7 @@ interface ProjectSnapshot {
 const EMPTY_SNAPSHOT: ProjectSnapshot = {
   actorUserId: 0,
   members: [],
-  catalog: { modules: [] },
+  catalog: { projectName: "", modules: [] },
   projects: [],
 };
 
@@ -168,6 +168,7 @@ export class TaskDraftAssistHttpService {
         modules: snapshot.catalog.modules,
         projects: snapshot.projects,
         currentModuleName: currentModule?.name ?? null,
+        currentProjectName: snapshot.catalog.projectName || null,
         hasProjectContext,
         images: input.images,
       });
@@ -225,11 +226,9 @@ export class TaskDraftAssistHttpService {
       output.projectName,
       input.message,
     );
-    if (
-      projects.length !== 1 ||
-      (!output.moduleName?.trim() &&
-        extractModuleHints(input.message).length === 0)
-    ) {
+    // 唯一项目确定后总是取一次模块清单：用户可能只说了「工单」「巡检」这类
+    // 业务词，没有「XX模块」句式，提前返回会让模块候选永远出不来。
+    if (projects.length !== 1) {
       return { projects, modules: [] };
     }
 
@@ -312,23 +311,22 @@ export class TaskDraftAssistHttpService {
       if (dueAt !== null && dueAt.slice(0, 10) < today) {
         pushNote(notes, "截止日期早于今天，请确认");
       }
-      pushNote(notes, "未选择项目：项目归属请用确认卡或左侧下拉手动确定");
-      if (suggestions.projects.length > 1) {
+      if (suggestions.projects.length === 0) {
+        pushNote(notes, "未选择项目：项目归属请用确认卡或左侧下拉手动确定");
+        if (output.projectName?.trim()) {
+          pushNote(
+            notes,
+            "项目「" +
+              output.projectName.trim() +
+              "」不在可访问项目里，请手动选择",
+          );
+        }
+      } else if (suggestions.projects.length > 1) {
         pushNote(
           notes,
           "可能是这几个项目：" +
             suggestions.projects.map((item) => item.name).join("、") +
             "，请选一个",
-        );
-      } else if (
-        suggestions.projects.length === 0 &&
-        output.projectName?.trim()
-      ) {
-        pushNote(
-          notes,
-          "项目「" +
-            output.projectName.trim() +
-            "」不在可访问项目里，请手动选择",
         );
       }
       if (output.assigneeNames.length > 0) {
@@ -604,12 +602,17 @@ function hintVariants(hint: string): string[] {
 
 function extractReferenceHints(message: string): string[] {
   const hints: string[] = [];
-  const pattern =
-    /(?:那个|这个|就是)([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _-]{0,30}?)(?:那边|这边)/gu;
-  for (const match of message.matchAll(pattern)) {
-    hints.push(...hintVariants(match[1] ?? ""));
+  const patterns = [
+    /(?:那个|这个|就是)([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _-]{0,30}?)(?:那边|这边)/gu,
+    // 没带「那个/这个」的「XX那边」同样是在指代项目，交给候选清单核实。
+    /([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _-]{1,30}?)(?:那边|这边)/gu,
+  ];
+  for (const pattern of patterns) {
+    for (const match of message.matchAll(pattern)) {
+      hints.push(...hintVariants(match[1] ?? ""));
+    }
   }
-  return hints;
+  return [...new Set(hints)];
 }
 
 function extractProjectHints(message: string): string[] {
@@ -847,13 +850,71 @@ function resolveModuleCandidates(
     );
 
   const top = scored[0];
-  if (top === undefined) return [];
+  if (top === undefined) {
+    // 用户一口说了两个模块（如「工单和巡检都有问题」）时，模型往往两个都不给。
+    // 只有在常规匹配完全没有结果时才用名称片段兜底，避免抢走已有唯一结论。
+    return resolveModuleTokenCandidates(modules, normalizedMessage);
+  }
   const exact = scored.filter((item) => item.score >= 100);
   const floor = exact.length > 0 ? 100 : Math.max(60, top.score - 8);
   return scored
     .filter((item) => item.score >= floor)
     .slice(0, MAX_MODULE_CANDIDATES)
     .map((item) => ({ id: item.module.id, name: item.module.name }));
+}
+
+const MODULE_TOKEN_SEPARATOR = /[与和及、/＆&-]/u;
+
+/** 从模块名取可用于兜底匹配的业务词：有分隔符按段取，没有则取首尾两字。 */
+function moduleDistinctiveTokens(name: string): string[] {
+  const normalized = normalizeMatchText(name);
+  if (normalized.length < 2) return [];
+  const tokens = new Set<string>();
+  const parts = normalized
+    .split(MODULE_TOKEN_SEPARATOR)
+    .filter((part) => part.length >= 2);
+  for (const part of parts.length > 1 ? parts : []) {
+    let current = part;
+    for (const suffix of GENERIC_NAME_SUFFIXES) {
+      if (current.length > suffix.length + 1 && current.endsWith(suffix)) {
+        current = current.slice(0, -suffix.length);
+      }
+    }
+    if (current.length >= 2) tokens.add(current);
+  }
+  if (tokens.size === 0) {
+    const chars = [...normalized];
+    tokens.add(chars.slice(0, 2).join(""));
+    tokens.add(chars.slice(-2).join(""));
+  }
+  return [...tokens].filter(
+    (token) => token.length >= 2 && !NON_DISTINCTIVE_HINTS.has(token),
+  );
+}
+
+function resolveModuleTokenCandidates(
+  modules: readonly TaskDraftAssistModuleItem[],
+  normalizedMessage: string,
+): TaskDraftAssistModuleCandidate[] {
+  const matched = modules
+    .map((module) => ({
+      module,
+      tokens: moduleDistinctiveTokens(module.name).filter((token) =>
+        normalizedMessage.includes(token),
+      ),
+    }))
+    .filter((item) => item.tokens.length > 0)
+    .sort(
+      (left, right) =>
+        right.tokens.join("").length - left.tokens.join("").length ||
+        left.module.id - right.module.id,
+    );
+  // 只命中一个模块时不替用户拍板，仍交给原有评分与手工选择。
+  if (matched.length < 2) return [];
+  return matched.slice(0, MAX_MODULE_CANDIDATES).map((item) => ({
+    id: item.module.id,
+    name: item.module.name,
+  }));
 }
 
 function trimmedOrNull(

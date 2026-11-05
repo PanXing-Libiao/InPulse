@@ -200,6 +200,7 @@ interface Seed {
   readonly project: ProjectFixture;
   readonly moduleId: number;
   readonly loginAuditModuleId: number;
+  readonly settlementModuleId: number;
   readonly ambiguousProjectIds: readonly number[];
   readonly hiddenProjectName: string;
 }
@@ -267,6 +268,7 @@ async function seedProject(sql: Sql): Promise<Seed> {
     project,
     moduleId: module.id,
     loginAuditModuleId: loginAuditModule.id,
+    settlementModuleId: unrelatedModule.id,
     ambiguousProjectIds: [clothingOne.projectId, clothingTwo.projectId],
     hiddenProjectName,
   };
@@ -651,6 +653,90 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
       broadBody.suggestions.modules.map((item) => item.name),
     ).not.toContain("订单与结算");
     expect(broadBody.draft).toMatchObject({
+      moduleId: null,
+      moduleName: null,
+    });
+  });
+
+  test("省略「那个/这个」的「XX那边」也会展开多个项目候选", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: null, moduleName: null }),
+      ),
+    });
+    const response = await postStandaloneAssist(
+      {
+        message: "服装那边登录有点问题，先记一下",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      suggestions: {
+        projects: readonly { id: number; name: string }[];
+      };
+    };
+    expect(body.suggestions.projects.map((item) => item.name)).toEqual([
+      "服装生产管理系统",
+      "服装供应链平台",
+    ]);
+    expect(body.suggestions.projects.map((item) => item.id)).toEqual(
+      seed.ambiguousProjectIds,
+    );
+  });
+
+  test("未选项目但项目唯一命中时，也带出多模块候选", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({
+          projectName: "移动端现场作业 App",
+          moduleName: null,
+        }),
+      ),
+    });
+    const response = await postStandaloneAssist(
+      { message: "登录和订单都有问题，一起看下", history: [] },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      draft: Readonly<Record<string, unknown>>;
+      suggestions: { modules: readonly { id: number; name: string }[] };
+    };
+    expect(body.suggestions.modules.map((item) => item.name)).toEqual([
+      "账号与登录",
+      "登录审计",
+      "订单与结算",
+    ]);
+    expect(body.draft).toMatchObject({ moduleId: null, moduleName: null });
+  });
+
+  test("一句话点名两个模块时列出全部候选，不硬填模块", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: null, moduleName: null }),
+      ),
+    });
+    const response = await postAssist(
+      seed.project.projectId,
+      { message: "登录和订单都有问题，一起看下", history: [] },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      draft: Readonly<Record<string, unknown>>;
+      suggestions: { modules: readonly { id: number; name: string }[] };
+    };
+    expect(body.suggestions.modules).toEqual([
+      { id: seed.moduleId, name: "账号与登录" },
+      { id: seed.loginAuditModuleId, name: "登录审计" },
+      { id: seed.settlementModuleId, name: "订单与结算" },
+    ]);
+    expect(body.draft).toMatchObject({
       moduleId: null,
       moduleName: null,
     });
