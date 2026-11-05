@@ -594,9 +594,9 @@ describe("CreateProjectModal", () => {
     );
 
     await user.click(
-      within(structureDialog).getAllByRole("button", {
+      within(structureDialog).getByRole("button", {
         name: /返回项目信息/,
-      })[1]!,
+      }),
     );
     expect(
       await screen.findByRole("dialog", { name: "新建项目" }),
