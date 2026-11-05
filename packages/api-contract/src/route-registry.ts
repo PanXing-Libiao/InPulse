@@ -1305,7 +1305,7 @@ export const routeRegistry = [
     path: "/projects",
     operationId: "createProject",
     summary:
-      "任一启用用户创建项目；创建者自动成为活跃成员且不可取消，可选项目成员；单事务内写审计、通知、活动与搜索投影，不创建任何模块（ADR-030 允许新项目零模块）；项目成员无效/停用/重复则整笔回滚。",
+      "任一启用用户创建项目；创建者自动成为活跃成员且不可取消，可选项目成员；可选在同一事务内按顺序创建模块与模块下任务（都非必填，允许空项目），模块/任务写入与项目、审计、通知、活动、搜索投影共同提交；项目成员或负责人无效/停用/重复则整笔回滚。",
     request: {
       path: "none",
       query: "none",
@@ -1373,7 +1373,8 @@ export const routeRegistry = [
     // ADR-033：响应成员摘要新增 role，重放安全字段随之变化，旧 Key 409。
     // 2026-09-17：项目四态改造后新建项目状态由 ACTIVE 改为 NOT_STARTED，响应 Schema 变化，旧 Key 409。
     // 2026-09-22：ADR-039 移除 PROJECT_ADMIN，members[].role 枚举收窄，旧 Key 409。
-    idempotencyContractVersion: "2.3.0",
+    // 2026-11-05：请求新增可选 modules[].tasks[]（同事务创建模块与任务），请求语义变化，旧 Key 409。
+    idempotencyContractVersion: "2.4.0",
     idempotencyFingerprintVersion: "1.0.0",
     behaviorHeaders: [],
     idempotencyReplayPolicy: {

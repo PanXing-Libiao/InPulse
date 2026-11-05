@@ -17,6 +17,8 @@ import {
 } from "./projects-write.port.js";
 import { ProjectNotificationDispatcher } from "./project-notification.dispatcher.js";
 import { resolveProjectCode } from "./project-code.js";
+import { ModuleCreateCommandPort } from "../modules/create.command-port.js";
+import { TaskCreateCommandPort } from "../tasks/create.command-port.js";
 
 const PROJECT_CREATE_ACTIVITY_TYPE = "PROJECT_CREATED";
 const PROJECT_CREATE_NOTIFICATION_TYPE =
@@ -74,6 +76,8 @@ export interface ProjectBootstrapDeps {
   readonly search: SearchProjectionWritePort;
   readonly activity: ActivityWritePort;
   readonly notifications: ProjectNotificationDispatcher;
+  readonly moduleCreate: ModuleCreateCommandPort;
+  readonly taskCreate: TaskCreateCommandPort;
 }
 
 /**
@@ -93,6 +97,10 @@ export class ProjectBootstrapWorkflow {
     @Inject(ActivityWritePort) private readonly activity: ActivityWritePort,
     @Inject(ProjectNotificationDispatcher)
     private readonly notifications: ProjectNotificationDispatcher,
+    @Inject(ModuleCreateCommandPort)
+    private readonly moduleCreate: ModuleCreateCommandPort,
+    @Inject(TaskCreateCommandPort)
+    private readonly taskCreate: TaskCreateCommandPort,
   ) {}
 
   async execute(
@@ -163,8 +171,66 @@ export class ProjectBootstrapWorkflow {
       });
     }
 
-    const occurredAt = new Date();
+    const memberIdSet = new Set(allMemberIds);
+    for (const moduleInput of request.modules ?? []) {
+      for (const taskInput of moduleInput.tasks) {
+        for (const assigneeId of taskInput.assigneeIds) {
+          if (!memberIdSet.has(assigneeId)) {
+            throw new ProjectBootstrapValidationError(
+              "任务负责人必须是本次创建后的项目活跃成员",
+            );
+          }
+        }
+      }
+    }
+
     const requestId = `project-bootstrap:${project.projectId}`;
+
+    // 可选结构：模块与任务都非必填。它们与项目、成员、审计和投影共用同一事务，
+    // 任一模块/任务失败都会整笔回滚，不会留下半建成的项目。
+    const moduleNames = new Set<string>();
+    for (const moduleInput of request.modules ?? []) {
+      const name = moduleInput.name.trim();
+      if (moduleNames.has(name)) {
+        throw new ProjectBootstrapValidationError("模块名称不能重复");
+      }
+      moduleNames.add(name);
+      let moduleId: number;
+      try {
+        const created = await this.moduleCreate.create(
+          tx,
+          actorId,
+          project.projectId,
+          { name, description: moduleInput.description },
+          requestId,
+        );
+        moduleId = created.id;
+      } catch (error) {
+        if (uniqueViolation(error, "modules_name_project_unique")) {
+          throw new ProjectBootstrapConflictError(
+            "模块名称与项目内已有模块重复，请修改后重试",
+          );
+        }
+        throw error;
+      }
+      for (const taskInput of moduleInput.tasks) {
+        await this.taskCreate.create(
+          tx,
+          actorId,
+          { projectId: project.projectId, moduleId },
+          {
+            title: taskInput.title,
+            description: taskInput.description,
+            priority: taskInput.priority,
+            assigneeIds: [...taskInput.assigneeIds],
+            dueAt: taskInput.dueAt,
+          },
+          requestId,
+        );
+      }
+    }
+
+    const occurredAt = new Date();
     const audit = await this.audit.append(tx, {
       projectId: project.projectId,
       actorType: "USER",

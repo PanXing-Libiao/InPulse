@@ -111,6 +111,7 @@ describe("CreateProjectModal", () => {
         code: "SHOP",
         description: "商城项目描述",
         memberIds: [],
+        modules: [],
       },
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -549,6 +550,255 @@ describe("CreateProjectModal", () => {
     await user.type(nameInput, " 三期");
     expect(codeInput).toHaveValue("SHOP2");
   });
+  it("keeps modules and tasks when returning to project info", async () => {
+    const getUserDirectory = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+      ],
+    });
+    const client = { getUserDirectory } as unknown as InpulseApiClient;
+    renderModal(client);
+    const user = userEvent.setup();
+
+    const projectDialog = await screen.findByRole("dialog", {
+      name: "新建项目",
+    });
+    await fillForm(projectDialog);
+    await user.click(
+      within(projectDialog).getByRole("button", { name: /添加模块/ }),
+    );
+
+    const structureDialog = await screen.findByRole("dialog", {
+      name: "添加模块与任务",
+    });
+    await user.type(
+      within(structureDialog).getByLabelText("模块 1 名称"),
+      "扫码巡检",
+    );
+    await user.click(
+      within(structureDialog).getByRole("button", { name: /新建任务/ }),
+    );
+    await user.type(
+      within(structureDialog).getByLabelText("任务 1 标题"),
+      "完成扫码入口",
+    );
+    await user.selectOptions(
+      within(structureDialog).getByLabelText("任务 1 负责人"),
+      "1",
+    );
+
+    await user.click(
+      within(structureDialog).getAllByRole("button", {
+        name: /返回项目信息/,
+      })[1]!,
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "新建项目" }),
+    ).toBeInTheDocument();
+    expect(within(projectDialog).getByLabelText("项目名称")).toHaveValue(
+      "商城系统",
+    );
+
+    await user.click(
+      within(projectDialog).getByRole("button", { name: /添加模块/ }),
+    );
+    const reopened = await screen.findByRole("dialog", {
+      name: "添加模块与任务",
+    });
+    expect(within(reopened).getByLabelText("模块 1 名称")).toHaveValue(
+      "扫码巡检",
+    );
+    expect(within(reopened).getByLabelText("模块 2 名称")).toHaveValue("");
+    expect(within(reopened).getByLabelText("任务 1 标题")).toHaveValue(
+      "完成扫码入口",
+    );
+  });
+
+  it("returns to project info when first-layer validation fails from structure view", async () => {
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    const client = { getUserDirectory } as unknown as InpulseApiClient;
+    renderModal(client);
+    const user = userEvent.setup();
+
+    const projectDialog = await screen.findByRole("dialog", {
+      name: "新建项目",
+    });
+    await fillForm(projectDialog);
+    await user.clear(within(projectDialog).getByLabelText("项目名称"));
+    await user.click(
+      within(projectDialog).getByRole("button", { name: /添加模块/ }),
+    );
+
+    const structureDialog = await screen.findByRole("dialog", {
+      name: "添加模块与任务",
+    });
+    await user.type(
+      within(structureDialog).getByLabelText("模块 1 名称"),
+      "扫码巡检",
+    );
+    await user.click(
+      within(structureDialog).getByRole("button", { name: "创建项目" }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "新建项目" }),
+    ).toBeInTheDocument();
+    expect(
+      await within(projectDialog).findByText("请输入项目名称"),
+    ).toBeInTheDocument();
+  });
+
+  it("submits modules and tasks in the nested request shape", async () => {
+    const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
+    const getUserDirectory = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+        {
+          id: 2,
+          name: "协作者 D",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+      ],
+    });
+    const createProject = vi.fn().mockResolvedValue(createdProject);
+    const client = {
+      issueCsrfToken,
+      getUserDirectory,
+      createProject,
+    } as unknown as InpulseApiClient;
+    renderModal(client);
+    const user = userEvent.setup();
+
+    const projectDialog = await screen.findByRole("dialog", {
+      name: "新建项目",
+    });
+    await fillForm(projectDialog);
+    await user.click(
+      within(projectDialog).getByRole("button", { name: /添加模块/ }),
+    );
+
+    const structureDialog = await screen.findByRole("dialog", {
+      name: "添加模块与任务",
+    });
+    await user.type(
+      within(structureDialog).getByLabelText("模块 1 名称"),
+      "扫码巡检",
+    );
+    await user.type(
+      within(structureDialog).getByLabelText("模块 1 说明"),
+      "扫码与异常上报",
+    );
+    await user.click(
+      within(structureDialog).getByRole("button", { name: /新建任务/ }),
+    );
+    await user.type(
+      within(structureDialog).getByLabelText("任务 1 标题"),
+      "完成扫码入口",
+    );
+    await user.type(
+      within(structureDialog).getByLabelText("任务 1 详情"),
+      "验收：首次扫码后可看到最近记录",
+    );
+    await user.selectOptions(
+      within(structureDialog).getByLabelText("任务 1 负责人"),
+      "1",
+    );
+    await user.selectOptions(
+      within(structureDialog).getByLabelText("任务 1 优先级"),
+      "HIGH",
+    );
+    fireEvent.change(
+      within(structureDialog).getByLabelText("任务 1 截止日期"),
+      { target: { value: "2026-12-01" } },
+    );
+
+    await user.click(
+      within(structureDialog).getByRole("button", { name: "创建项目" }),
+    );
+
+    await waitFor(() => expect(createProject).toHaveBeenCalledTimes(1));
+    expect(createProject).toHaveBeenCalledWith(
+      {
+        name: "商城系统",
+        code: "SHOP",
+        description: "商城项目描述",
+        memberIds: [],
+        modules: [
+          {
+            name: "扫码巡检",
+            description: "扫码与异常上报",
+            tasks: [
+              {
+                title: "完成扫码入口",
+                description: "验收：首次扫码后可看到最近记录",
+                priority: "HIGH",
+                assigneeIds: [1],
+                dueAt: new Date("2026-12-01T00:00:00").toISOString(),
+              },
+            ],
+          },
+        ],
+      },
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-csrf-token": "csrf-1",
+          "Idempotency-Key": expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it("blocks submission until every added task has a title and assignee", async () => {
+    const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    const createProject = vi.fn();
+    const client = {
+      issueCsrfToken,
+      getUserDirectory,
+      createProject,
+    } as unknown as InpulseApiClient;
+    renderModal(client);
+    const user = userEvent.setup();
+
+    const projectDialog = await screen.findByRole("dialog", {
+      name: "新建项目",
+    });
+    await fillForm(projectDialog);
+    await user.click(
+      within(projectDialog).getByRole("button", { name: /添加模块/ }),
+    );
+    const structureDialog = await screen.findByRole("dialog", {
+      name: "添加模块与任务",
+    });
+    await user.click(
+      within(structureDialog).getByRole("button", { name: /新建任务/ }),
+    );
+    await user.click(
+      within(structureDialog).getByRole("button", { name: "创建项目" }),
+    );
+
+    expect(await screen.findByText("请填写模块名称")).toBeInTheDocument();
+    expect(screen.getByText("请填写任务标题")).toBeInTheDocument();
+    expect(
+      within(structureDialog).getByLabelText("任务 1 负责人"),
+    ).toHaveAttribute("aria-invalid", "true");
+    expect(createProject).not.toHaveBeenCalled();
+  });
+
   it("keeps the optional WeCom Webhook compact until it is selected", async () => {
     const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
     const client = { getUserDirectory } as unknown as InpulseApiClient;

@@ -5272,3 +5272,322 @@
     grid-column: 2;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * 新建项目 · 第二层「添加模块与任务」
+ * 与第一层共用同一个弹窗外框：切换视图时不改变宽高，只替换正文。
+ * ------------------------------------------------------------------------- */
+.modal-head-leading {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.project-structure-back {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #edf4ff;
+  color: #2f6ac7;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+.project-structure-back:hover {
+  background: #e2eeff;
+  color: #1f5dbb;
+}
+.project-add-module-button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #cfe0ff;
+  border-radius: 8px;
+  background: #eef4ff;
+  color: #174fbd;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: var(--text-md);
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+.project-add-module-button:hover:not(:disabled) {
+  background: #e5efff;
+  border-color: #b6d0fb;
+}
+.project-add-module-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 第一层与第二层共用同一个外框：切换视图时宽高保持不变，只替换正文。
+ * 高度按第一层完整内容收敛（约 680px）；第二层模块较多时由正文内部滚动，
+ * 避免第一层底部留出大块空白，同时保持两层切换时外框尺寸稳定。 */
+.surface-modal.create-project-modal {
+  height: min(90dvh, 690px);
+}
+.project-structure-form {
+  overflow: hidden;
+}
+.project-structure-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 24px 20px;
+  background: #fbfcfe;
+  scrollbar-gutter: stable;
+}
+.project-structure-body::-webkit-scrollbar {
+  width: 9px;
+}
+.project-structure-body::-webkit-scrollbar-thumb {
+  background: #d4ddea;
+  border: 2px solid #fbfcfe;
+  border-radius: 8px;
+}
+.project-structure-summary {
+  color: #64748b;
+  font-size: var(--text-md);
+  display: flex;
+  align-items: center;
+}
+.project-structure-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.project-module-card {
+  padding: 11px 12px;
+  border: 1px solid #e2e8f2;
+  border-radius: 12px;
+  background: #fff;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.project-module-card:hover {
+  border-color: #cfdaea;
+  box-shadow: 0 5px 18px #1e375f0d;
+}
+.project-module-head {
+  display: grid;
+  grid-template-columns: 26px minmax(140px, 1fr) minmax(160px, 1.2fr) auto 28px;
+  gap: 8px;
+  align-items: center;
+}
+.project-module-index {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: #e9f0fb;
+  color: #3b6198;
+  display: grid;
+  place-items: center;
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+.project-structure-input,
+.project-task-field,
+.project-task-detail {
+  width: 100%;
+  border: 1px solid #dce4ef;
+  border-radius: 8px;
+  background: #fbfcff;
+  color: #172235;
+  font: inherit;
+  font-size: var(--text-base);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+.project-structure-input {
+  height: 34px;
+  padding: 0 9px;
+}
+.project-module-name {
+  font-weight: 600;
+}
+.project-structure-input::placeholder,
+.project-task-field::placeholder,
+.project-task-detail::placeholder {
+  color: #a2adbd;
+  font-weight: 400;
+}
+.project-structure-input:hover,
+.project-task-field:hover,
+.project-task-detail:hover {
+  border-color: #c3cfdf;
+}
+.project-structure-input:focus,
+.project-task-field:focus,
+.project-task-detail:focus {
+  border-color: #7ba4ee;
+  background: #fff;
+  box-shadow: 0 0 0 3px #1f63e814;
+}
+.project-structure-input[aria-invalid="true"],
+.project-task-field[aria-invalid="true"] {
+  border-color: #d05a60;
+  background: #fffafa;
+}
+.project-add-task-button {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #bcd2f5;
+  border-radius: 8px;
+  background: #f2f7ff;
+  color: #2360c8;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--text-sm);
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease;
+}
+.project-add-task-button:hover:not(:disabled) {
+  background: #e7f0ff;
+  border-color: #99bcf3;
+}
+.project-row-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #9aa6b7;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  line-height: 1;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease;
+}
+.project-row-remove:hover:not(:disabled) {
+  background: #fdf0f1;
+  color: #c85761;
+}
+.project-task-empty {
+  margin: 9px 0 0 36px;
+  padding: 8px 10px;
+  border: 1px dashed #dfe6f0;
+  border-radius: 8px;
+  color: #8b97a9;
+  font-size: var(--text-sm);
+}
+.project-task-list {
+  margin: 9px 0 0 36px;
+  padding-left: 10px;
+  border-left: 1px dashed #d5dfec;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.project-task-row {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) 104px 76px 124px 28px;
+  gap: 7px;
+  align-items: center;
+  padding: 6px 7px;
+  border: 1px solid #e4eaf3;
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+.project-task-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9ab6e6;
+}
+.project-task-field {
+  height: 30px;
+  padding: 0 8px;
+  background: #fff;
+  font-size: var(--text-md);
+}
+.project-task-select {
+  color: #536176;
+}
+.project-task-due {
+  color: #536176;
+  padding: 0 5px;
+}
+.project-task-detail {
+  grid-column: 2 / -1;
+  min-height: 40px;
+  padding: 7px 9px;
+  background: #fff;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  resize: vertical;
+}
+.project-structure-error {
+  margin: 6px 0 0;
+  color: #c0453f;
+  font-size: var(--text-sm);
+}
+.project-structure-error.task-row-error {
+  grid-column: 2 / -1;
+  margin: 0;
+}
+.project-task-row:has(.task-row-error) {
+  align-items: start;
+}
+.project-structure-empty {
+  padding: 46px 20px;
+  border: 1px dashed #dbe4f0;
+  border-radius: 12px;
+  background: #fff;
+  text-align: center;
+}
+.project-structure-empty-icon {
+  width: 38px;
+  height: 38px;
+  margin: 0 auto 10px;
+  border-radius: 12px;
+  background: #eef4ff;
+  color: #2f6ac7;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+}
+.project-structure-empty strong {
+  display: block;
+  color: #33415a;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.project-structure-empty p {
+  margin: 6px 0 14px;
+  color: #8b97a9;
+  font-size: var(--text-md);
+}
+@media (max-width: 760px) {
+  .project-module-head {
+    grid-template-columns: 26px minmax(0, 1fr) auto 28px;
+  }
+  .project-module-desc {
+    grid-column: 1 / -1;
+  }
+  .project-task-row {
+    grid-template-columns: minmax(0, 1fr) 96px;
+  }
+  .project-task-dot {
+    display: none;
+  }
+  .project-task-title,
+  .project-task-detail {
+    grid-column: 1 / -1;
+  }
+}

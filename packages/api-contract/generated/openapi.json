@@ -6115,7 +6115,7 @@
       },
       "post": {
         "operationId": "createProject",
-        "summary": "任一启用用户创建项目；创建者自动成为活跃成员且不可取消，可选项目成员；单事务内写审计、通知、活动与搜索投影，不创建任何模块（ADR-030 允许新项目零模块）；项目成员无效/停用/重复则整笔回滚。",
+        "summary": "任一启用用户创建项目；创建者自动成为活跃成员且不可取消，可选项目成员；可选在同一事务内按顺序创建模块与模块下任务（都非必填，允许空项目），模块/任务写入与项目、审计、通知、活动、搜索投影共同提交；项目成员或负责人无效/停用/重复则整笔回滚。",
         "responses": {
           "200": {
             "description": "成功",
@@ -6183,7 +6183,7 @@
           "csrfPolicy": "required",
           "idempotencyPolicy": "idempotencyRequired",
           "idempotencyExceptionAdr": "none",
-          "idempotencyContractVersion": "2.3.0",
+          "idempotencyContractVersion": "2.4.0",
           "idempotencyFingerprintVersion": "1.0.0",
           "behaviorHeaders": [],
           "idempotencyReplayPolicy": {
@@ -18232,6 +18232,13 @@
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
             }
+          },
+          "modules": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectCreateModuleRequest"
+            }
           }
         },
         "required": [
@@ -21367,6 +21374,90 @@
       "ProjectCode": {
         "type": "string",
         "pattern": "^[A-Z][A-Z0-9_]{1,31}$"
+      },
+      "ProjectCreateModuleRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 20000
+          },
+          "tasks": {
+            "default": [],
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectCreateTaskRequest"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "tasks"
+        ],
+        "additionalProperties": false
+      },
+      "ProjectCreateTaskRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 50000
+          },
+          "priority": {
+            "default": "NORMAL",
+            "type": "string",
+            "enum": [
+              "NORMAL",
+              "HIGH",
+              "URGENT"
+            ]
+          },
+          "assigneeIds": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          "dueAt": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "priority",
+          "assigneeIds",
+          "dueAt"
+        ],
+        "additionalProperties": false
       },
       "ProjectDetailResponse": {
         "type": "object",

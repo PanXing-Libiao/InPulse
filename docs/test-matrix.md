@@ -7574,3 +7574,33 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | AI-FIX-1105-004    | 真实页面 + Web 单元 | 确认归属后仍残留「推断…待确认」备注   | 确认项目/模块后，前端按归属状态过滤过期备注：简称推断（「项目由「计费」推断，待确认」）、「待项目确认」以及已确认模块的待确认备注都会隐藏；未确认时保持显示                                                    | 本地实测通过（2026-11-05） |
 
 **门禁**：API 单测 93 文件 629 例、Web 单测 1074 例、两侧 typecheck 与 eslint / prettier 通过；Playwright 全量 85 例在改动前通过，改动后真实验证任务创建与文档导入两条链路。
+
+
+## 2026-11-05 新建项目一次创建模块与任务（统一弹窗）
+
+用户要求新建项目弹窗可一次创建多个模块及模块下属任务，模块和任务均非必填；模块页的「新建任务」入口自动归属当前模块。实现复用现有 ModuleCreateCommandPort 与 TaskCreateCommandPort，全部写入与原项目创建共用同一事务。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| PROJECT-STRUCT-CONTRACT-001 | 契约 / 生成物 | createProject 结构扩展 | `createProject` 新增可选 `modules[].tasks[]`，任务负责人必须是创建后的活跃项目成员；幂等契约版本由 `2.3.0` 升到 `2.4.0`；`contract:generate` 更新 OpenAPI、路由指纹与 Web 生成客户端，`contract:drift`、`contract:validate`（122 条路由）通过 | 本地通过（2026-11-05） |
+| PROJECT-STRUCT-API-INT-001 | API 集成（真实 PostgreSQL） | 项目、模块、任务同事务创建 | `project-bootstrap.integration.test.ts` 7 例通过：空项目、多模块多任务、模块重名整笔回滚、负责人非成员整笔回滚；审计、通知、活动与搜索投影与业务写入同事务 | 本地通过（2026-11-05，`app_ci`） |
+| PROJECT-STRUCT-DOC-INT-001 | API 集成（真实 PostgreSQL） | 文档导入链路回归 | `document-import.integration.test.ts` 与 `document-import-assist.integration.test.ts` 两个文件共 20 例通过，确认 `ProjectBootstrapWorkflow` 扩展未破坏文档导入与 AI 整理 | 本地通过（2026-11-05，`app_ci`） |
+| PROJECT-STRUCT-WEB-001 | Web 单元 | 两层弹窗与结构编辑 | `CreateProjectModal.test.tsx` 覆盖第一层 / 第二层切换、返回后项目信息与结构保留、模块与任务增删、任务必填校验；Web 全量 123 文件 1081 例通过 | 本地通过（2026-11-05） |
+| PROJECT-STRUCT-UI-001 | 真实页面 | 外框稳定与归属正确 | 弹窗固定 `min(90dvh, 690px)`，按第一层完整内容收敛、底部不再留大块空白，两层切换不改变外框尺寸；第二层左上返回、右上「添加模块」，每个模块后「新建任务」自动归属该模块，模块较多时正文内部滚动；关闭重开无残留 | 本地实测通过（2026-11-05） |
+| PROJECT-STRUCT-BUILD-001 | 类型 / 构建门禁 | 前后端接线 | Web / API `typecheck`、改动文件 ESLint 与 Prettier、`pnpm build`（8 workspace）通过；API 单测 93 文件 629 例通过 | 本地通过（2026-11-05） |
+
+**边界**：未运行全量 Playwright、`pnpm check` 或 GitHub Actions；本批未提交、未推送，也未写入持久化测试项目。权限模型未变化，创建者与成员规则沿用 createProject 既有约束。
+
+
+## 2026-11-05 新建项目结构创建实操回归
+
+用户要求对「新建项目弹窗一次创建多个模块与任务」做实操测试。新增 Playwright 用例 `apps/e2e/tests/project-structure-create.spec.ts`，在生产构建 + 真实 PostgreSQL（`app_ci`）上跑完整浏览器链路；测试项目由夹具清理，未留在演示库。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| STRUCT-E2E-001 | 浏览器 E2E（生产构建 + `app_ci`） | 两个模块、三个任务一次创建 | 第一层填项目信息 → 第二层建「扫码巡检」「权限配置」两个模块与三条任务（含负责人、优先级、截止日期、详情）→ 返回第一层修改描述 → 直接提交成功；模块页显示两个模块及 2 / 1 项待办；进入模块可看到对应任务标题与负责人 | 本地通过（2026-11-05，2 例 8.6 秒） |
+| STRUCT-E2E-002 | 浏览器 E2E（生产构建 + `app_ci`） | 必填校验与回退 | 空模块名提交显示「请填写模块名称」；补模块名后空任务标题显示「请填写任务标题」，补标题后显示「请选择负责人」；在结构页提交而项目名称为空时自动回到第一层并显示「请输入项目名称」；取消后弹窗关闭 | 本地通过（2026-11-05） |
+| STRUCT-UI-001 | 浏览器 E2E | 两层外框高度稳定 | 第一层高度小于 760px（不再是大留白），切到第二层后高度差小于 1px | 本地通过（2026-11-05） |
+| STRUCT-FIX-001 | Web 单元 | 结构页项目字段校验反馈 | 表单增加 invalid 回调：第一层字段校验失败时切回项目信息页，错误可见；`CreateProjectModal.test.tsx` 17 例通过 | 本地通过（2026-11-05） |
+
+**门禁**：Web / E2E `typecheck`、改动文件 ESLint 与 Prettier 通过；本次只跑新增的 2 例 E2E，未跑 Playwright 全量、`pnpm check` 或 GitHub Actions。测试过程中发现并修复「在结构页提交、项目名称为空时无任何反馈」的问题。

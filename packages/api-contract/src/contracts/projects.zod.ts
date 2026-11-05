@@ -356,6 +356,46 @@ export type SetProjectMemberRoleResponse = z.infer<
 >;
 
 /**
+ * 新建项目时一并创建的任务草稿。字段与任务编辑契约同源同口径：
+ * 负责人至少一人，且必须是本次创建后项目里的活跃成员。
+ */
+export const createProjectTaskRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).max(500),
+    description: z.string().max(50000).default(""),
+    priority: z.enum(["NORMAL", "HIGH", "URGENT"]).default("NORMAL"),
+    assigneeIds: z
+      .array(projectPositiveId)
+      .min(1)
+      .max(20)
+      .overwrite((values) => [...new Set(values)].sort((a, b) => a - b)),
+    dueAt: z.iso.datetime().nullable().default(null),
+  })
+  .strict()
+  .meta({ id: "ProjectCreateTaskRequest" });
+
+export type ProjectCreateTaskRequest = z.infer<
+  typeof createProjectTaskRequestSchema
+>;
+
+/**
+ * 新建项目时一并创建的模块草稿。模块与任务都可选：
+ * 不传 `modules`（或传空数组）就只建一个空项目。
+ */
+export const createProjectModuleRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    description: z.string().max(20000).default(""),
+    tasks: z.array(createProjectTaskRequestSchema).max(200).default([]),
+  })
+  .strict()
+  .meta({ id: "ProjectCreateModuleRequest" });
+
+export type ProjectCreateModuleRequest = z.infer<
+  typeof createProjectModuleRequestSchema
+>;
+
+/**
  * 创建项目请求。创建者由服务端从认证 Session 解析，不接收客户端提交的
  * createdBy；memberIds 为可选项目成员（不含创建者），服务端校验其 ACTIVE 状态。
  */
@@ -365,6 +405,7 @@ export const createProjectRequestSchema = z
     code: projectCodeSchema.optional(),
     description: z.string().max(20000).default(""),
     memberIds: z.array(z.number().int().positive()).max(1000).default([]),
+    modules: z.array(createProjectModuleRequestSchema).max(100).optional(),
   })
   .strict()
   .meta({ id: "CreateProjectRequest" });
