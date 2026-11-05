@@ -300,7 +300,9 @@ export function ModuleEditorModal({
         >
           <div className="dialog-form">
             <div className="calm-field">
-              <label htmlFor="module-name">模块名称</label>
+              <label className="required-field" htmlFor="module-name">
+                模块名称
+              </label>
               <Controller
                 name="name"
                 control={control}

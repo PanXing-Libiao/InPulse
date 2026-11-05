@@ -76,6 +76,12 @@ describe("F-12 forms", () => {
     } as unknown as InpulseApiClient;
     mount(client);
     fireEvent.click(await screen.findByRole("button", { name: "编辑模块" }));
+    expect(
+      screen.getByText("模块名称", { selector: "label.required-field" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("模块说明", { selector: "label" })).not.toHaveClass(
+      "required-field",
+    );
     fireEvent.change(screen.getByLabelText("模块名称"), {
       target: { value: "我的新名称" },
     });

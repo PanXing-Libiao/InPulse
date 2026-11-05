@@ -358,6 +358,8 @@ export interface TaskCenterPageViewProps {
   readonly filters: MyTaskFilters;
   readonly onFiltersChange: (next: MyTaskFilters) => void;
   readonly viewerId: number | null;
+  /** 任务中心新建任务内联创建项目时用于固定创建者成员；测试与旧调用可省略。 */
+  readonly viewerName?: string | null;
   readonly projects: readonly ProjectItem[];
   readonly advancedOpen: boolean;
   readonly onToggleAdvanced: () => void;
@@ -390,6 +392,7 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
   filters,
   onFiltersChange,
   viewerId,
+  viewerName,
   projects,
   advancedOpen,
   onToggleAdvanced,
@@ -1555,6 +1558,8 @@ export const TaskCenterPageView: React.FC<TaskCenterPageViewProps> = ({
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         client={client}
+        creatorName={viewerName ?? undefined}
+        creatorUserId={viewerId ?? undefined}
         preset={
           filters.projectId !== null
             ? { projectId: filters.projectId }

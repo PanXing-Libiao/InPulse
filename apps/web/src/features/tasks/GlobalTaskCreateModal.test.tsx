@@ -1,6 +1,12 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError, type InpulseApiClient } from "@generated/api";
@@ -70,6 +76,28 @@ const members = [
   { id: 2, name: "李雷", avatarUrl: null },
 ] as const;
 
+const createdProject = {
+  project: {
+    id: 7,
+    code: "PULSE",
+    name: "Pulse 新项目",
+    description: "内联创建的项目",
+    status: "NOT_STARTED",
+    rowVersion: 1,
+    createdBy: 1,
+    createdAt: "2026-11-05T00:00:00.000Z",
+    updatedAt: "2026-11-05T00:00:00.000Z",
+  },
+  members: [
+    {
+      userId: 1,
+      status: "ACTIVE",
+      role: "LEADER",
+      joinedAt: "2026-11-05T00:00:00.000Z",
+    },
+  ],
+} as const;
+
 const createdModuleTask = {
   id: 902,
   projectId: 1,
@@ -93,6 +121,8 @@ interface Harness {
   readonly client: InpulseApiClient;
   readonly createModuleTask: ReturnType<typeof vi.fn>;
   readonly createTaskWithScope: ReturnType<typeof vi.fn>;
+  readonly createProject: ReturnType<typeof vi.fn>;
+  readonly getUserDirectory: ReturnType<typeof vi.fn>;
   readonly addExternalLink: ReturnType<typeof vi.fn>;
   readonly assistTaskDraft: ReturnType<typeof vi.fn>;
   readonly assistTaskDraftStandalone: ReturnType<typeof vi.fn>;
@@ -110,8 +140,36 @@ function harness(
   const createModuleTask = vi.fn(
     overrides.createModuleTask ?? (() => Promise.resolve(createdModuleTask)),
   );
-  const createTaskWithScope = vi.fn(() =>
-    Promise.resolve({ projectId: 1, moduleId: 21, taskId: 903 }),
+  const createTaskWithScope = vi.fn((projectId: number) =>
+    Promise.resolve({ projectId, moduleId: 21, taskId: 903 }),
+  );
+  const createProject = vi.fn(() => Promise.resolve(createdProject));
+  const getUserDirectory = vi.fn(() =>
+    Promise.resolve({
+      items: [
+        {
+          id: 1,
+          name: "陈晓",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+        {
+          id: 2,
+          name: "李雷",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [
+            {
+              id: 10,
+              name: "研发部",
+              source: "CASDOOR",
+              groupPath: "/研发部",
+            },
+          ],
+        },
+      ],
+    }),
   );
   const addExternalLink =
     overrides.addExternalLink ?? (() => Promise.resolve({ linkId: 1 }));
@@ -168,8 +226,10 @@ function harness(
     listActiveProjectMembers: vi.fn(() =>
       Promise.resolve({ items: [...members] }),
     ),
+    getUserDirectory,
     createModuleTask,
     createTaskWithScope,
+    createProject,
     addExternalLink: vi.fn(addExternalLink),
     listExternalLinks: vi.fn().mockResolvedValue({ rowVersion: 1, items: [] }),
     assistTaskDraft,
@@ -180,6 +240,8 @@ function harness(
     client,
     createModuleTask,
     createTaskWithScope,
+    createProject,
+    getUserDirectory,
     addExternalLink: (
       client as unknown as { addExternalLink: ReturnType<typeof vi.fn> }
     ).addExternalLink,
@@ -204,6 +266,8 @@ function mount(
       <GlobalTaskCreateModal
         open
         client={test.client}
+        creatorName="陈晓"
+        creatorUserId={1}
         onClose={
           test.onClose as unknown as GlobalTaskCreateModalProps["onClose"]
         }
@@ -274,6 +338,23 @@ describe("GlobalTaskCreateModal", () => {
     await user.click(assigneeTrigger());
     expect(await screen.findByTitle("李雷")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建任务" })).toBeEnabled();
+  });
+
+  it("marks required task fields with a visible marker", async () => {
+    const test = harness();
+    mount(test);
+
+    await screen.findByLabelText("指派给");
+    for (const name of ["所属项目", "所属模块", "任务标题", "指派给"]) {
+      expect(
+        screen.getByText(name, { selector: "label.required-field" }),
+      ).toBeInTheDocument();
+    }
+    for (const name of ["优先级", "截止时间", "任务说明", "GitHub 链接"]) {
+      expect(screen.getByText(name, { selector: "label" })).not.toHaveClass(
+        "required-field",
+      );
+    }
   });
 
   it("shows the member loading hint only while the request is in flight", async () => {
@@ -382,6 +463,12 @@ describe("GlobalTaskCreateModal", () => {
       ).toEqual(["InPulse 平台", "访问控制"]),
     );
     expect(screen.queryByLabelText("所属项目")).toBeNull();
+    expect(
+      screen.getByText("所属项目", { selector: ".field-label.required-field" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("所属模块", { selector: ".field-label.required-field" }),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("所属模块")).toBeNull();
     expect(screen.queryAllByText("任务范围")).toHaveLength(0);
     expect(screen.queryByLabelText("所属功能")).toBeNull();
@@ -459,6 +546,9 @@ it("creates a custom module and task in one submission and returns the real loca
   mount(test, { projectId: 1 });
   const user = userEvent.setup();
   await pickOption(user, "所属模块", "自定义 · 创建新模块");
+  expect(
+    screen.getByText("新模块名称", { selector: "label.required-field" }),
+  ).toBeInTheDocument();
   await user.type(screen.getByLabelText("新模块名称"), "新业务模块");
   await user.type(screen.getByLabelText("任务标题"), "一起创建");
   await waitFor(() => expect(screen.getByLabelText("指派给")).toBeEnabled());
@@ -492,6 +582,148 @@ it("creates a custom module and task in one submission and returns the real loca
     moduleId: 21,
     taskId: 903,
   });
+});
+
+it("creates a custom project from the task modal, then locks it while keeping the task form", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+
+  expect(screen.getByRole("dialog", { name: "新建任务" })).toHaveClass(
+    "task-create-modal",
+    "task-create-ai",
+  );
+  await pickOption(user, "所属项目", "自定义 · 创建新项目");
+  const projectDialog = await screen.findByRole("dialog", {
+    name: "新建项目",
+  });
+  expect(projectDialog).toHaveClass(
+    "catalog-modal",
+    "task-create-modal",
+    "task-create-project",
+  );
+  expect(projectDialog).not.toHaveClass("task-create-ai");
+  expect(
+    within(projectDialog).getByText("任务中心", { selector: ".detail-label" }),
+  ).toBeInTheDocument();
+  expect(within(projectDialog).getByText("创建规则")).toBeInTheDocument();
+  expect(
+    within(projectDialog).getByRole("checkbox", {
+      name: /创建后添加企业微信群 Webhook/,
+    }),
+  ).toBeInTheDocument();
+  expect(
+    await within(projectDialog).findByRole("button", {
+      name: /全选组织 研发部/,
+    }),
+  ).toBeInTheDocument();
+
+  const projectNameInput = within(projectDialog).getByLabelText("项目名称");
+  const memberLegend = within(projectDialog).getByText("项目成员", {
+    selector: "legend",
+  });
+  const projectDescription = within(projectDialog).getByLabelText("项目描述");
+  const webhookToggle = within(projectDialog).getByRole("checkbox", {
+    name: /创建后添加企业微信群 Webhook/,
+  });
+  expect(
+    projectNameInput.compareDocumentPosition(memberLegend) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    memberLegend.compareDocumentPosition(projectDescription) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(
+    projectDescription.compareDocumentPosition(webhookToggle) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+
+  expect(screen.queryByLabelText("任务标题")).toBeNull();
+  expect(screen.getByRole("button", { name: "下一步" })).toBeInTheDocument();
+
+  await user.type(screen.getByLabelText("项目名称"), "Pulse 新项目");
+  await user.type(screen.getByLabelText("项目描述"), "内联创建的项目");
+  await waitFor(() =>
+    expect(screen.getByLabelText("选择项目成员")).toBeEnabled(),
+  );
+  const memberTrigger = screen
+    .getByLabelText("选择项目成员")
+    .closest(".ant-select");
+  if (!memberTrigger) throw new Error("project member select not found");
+  await user.click(memberTrigger as HTMLElement);
+  await user.click(await screen.findByTitle("李雷"));
+  expect(screen.getByLabelText("项目编码")).toHaveValue("PULSE");
+
+  await user.click(screen.getByRole("button", { name: "下一步" }));
+
+  await waitFor(() => expect(test.createProject).toHaveBeenCalledTimes(1));
+  expect(screen.getByRole("dialog", { name: "新建任务" })).toHaveClass(
+    "task-create-modal",
+    "task-create-ai",
+  );
+  expect(
+    screen.getByText("所属项目", { selector: ".field-label.required-field" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("所属模块名称", { selector: "label.required-field" }),
+  ).toBeInTheDocument();
+  expect(test.createProject).toHaveBeenCalledWith(
+    {
+      name: "Pulse 新项目",
+      code: "PULSE",
+      description: "内联创建的项目",
+      memberIds: [2],
+    },
+    {
+      headers: {
+        "x-csrf-token": "csrf-token",
+        "Idempotency-Key": expect.stringMatching(/^create-project-/),
+      },
+    },
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("任务标题")).toBeInTheDocument(),
+  );
+  expect(screen.queryByLabelText("所属项目")).toBeNull();
+  expect(
+    [...document.querySelectorAll(".task-fixed-project")].map((row) =>
+      row.textContent?.trim(),
+    ),
+  ).toContain("Pulse 新项目");
+
+  expect(screen.queryByLabelText("所属模块")).toBeNull();
+  expect(screen.getAllByLabelText("所属模块名称")).toHaveLength(1);
+  await user.type(screen.getByLabelText("所属模块名称"), "首个模块");
+  await user.type(screen.getByLabelText("任务标题"), "首个任务");
+  await waitFor(() => expect(screen.getByLabelText("指派给")).toBeEnabled());
+  await pickAssignee(user, "陈晓");
+  await user.click(screen.getByRole("button", { name: "创建任务" }));
+
+  await waitFor(() =>
+    expect(test.createTaskWithScope).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({
+        module: {
+          kind: "new",
+          input: { name: "首个模块", description: "" },
+        },
+        task: expect.objectContaining({ title: "首个任务" }),
+      }),
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "Idempotency-Key": expect.stringMatching(/^task-/),
+        }),
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(test.onCreatedLocation).toHaveBeenCalledWith({
+      projectId: 7,
+      moduleId: 21,
+      taskId: 903,
+    }),
+  );
 });
 
 it("AI 助手把识别结果填入左侧空字段", async () => {

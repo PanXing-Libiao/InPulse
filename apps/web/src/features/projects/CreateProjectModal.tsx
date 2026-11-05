@@ -43,6 +43,12 @@ export interface CreateProjectModalProps {
   readonly creatorName: string;
   readonly creatorUserId?: number | undefined;
   readonly client?: InpulseApiClient | undefined;
+  /** 内嵌到其他弹层时只渲染原表单，不创建第二层 AppModal。 */
+  readonly inline?: boolean;
+  /** 内嵌模式由外层底部按钮通过该表单 ID 提交。 */
+  readonly formId?: string;
+  /** 把项目创建与 Webhook 的进行中状态同步给外层弹层。 */
+  readonly onBusyChange?: (busy: boolean) => void;
   readonly onClose: () => void;
   readonly onCreated: (
     response: CreateProjectResponse,
@@ -61,6 +67,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   creatorName,
   creatorUserId,
   client,
+  inline = false,
+  formId: externalFormId,
+  onBusyChange,
   onClose,
   onCreated,
 }) => {
@@ -80,7 +89,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const mutation = useCreateProject({ client });
   const webhookMutation = useCreateProjectWecomWebhook(client);
   const submitting = mutation.isPending || webhookMutation.isPending;
-  const formId = React.useId();
+  const generatedFormId = React.useId();
+  const formId = externalFormId ?? generatedFormId;
   const directory = useUserDirectoryQuery({ client, enabled: open });
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
   const [manualMemberIds, setManualMemberIds] = useState<number[]>([]);
@@ -186,6 +196,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     selectedMemberIds.length + (creatorUserId === undefined ? 0 : 1);
 
   useEffect(() => {
+    onBusyChange?.(submitting);
+  }, [onBusyChange, submitting]);
+
+  useEffect(() => {
     if (open) {
       reset(defaultValues);
       setManualMemberIds([]);
@@ -249,7 +263,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       } else {
         onCreated(response, notice);
       }
-      onClose();
+      if (!inline) {
+        onClose();
+      }
     } catch {
       // 错误由 mutation.error 展示，服务器内部消息不下发到界面。
     }
@@ -268,6 +284,321 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       onClose();
     }
   };
+
+  const formContent = (
+    <form
+      id={formId}
+      className="catalog-form catalog-form-create calm-form"
+      onSubmit={handleSubmit((values) => void handleSubmitForm(values))}
+      noValidate
+    >
+      <Form component={false} layout="vertical" requiredMark={false}>
+        <div className="dialog-form">
+          <Controller
+            name="name"
+            control={control}
+            render={({ field }) => (
+              <Form.Item
+                label={<span className="required-field">项目名称</span>}
+                required
+                validateStatus={errors.name ? "error" : ""}
+                help={errors.name?.message ?? ""}
+              >
+                <Input
+                  {...field}
+                  id="project-name"
+                  aria-label="项目名称"
+                  maxLength={PROJECT_NAME_MAX_LENGTH}
+                  placeholder="例如：商城系统"
+                  disabled={submitting}
+                  onChange={(event) => {
+                    const nextName = event.currentTarget.value;
+                    field.onChange(nextName);
+                    clearErrors("name");
+                    if (!codeManuallyEditedRef.current) {
+                      setValue("code", deriveProjectCodeFromName(nextName));
+                      clearErrors("code");
+                    }
+                  }}
+                />
+              </Form.Item>
+            )}
+          />
+          <div className="form-row">
+            <Controller
+              name="code"
+              control={control}
+              render={({ field }) => (
+                <Form.Item
+                  label={<span className="required-field">项目编码</span>}
+                  required
+                  style={{ flex: 1 }}
+                  validateStatus={errors.code ? "error" : ""}
+                  help={errors.code?.message ?? ""}
+                >
+                  <Input
+                    {...field}
+                    id="project-code"
+                    aria-label="项目编码"
+                    maxLength={PROJECT_CODE_MAX_LENGTH}
+                    placeholder="SHOP"
+                    disabled={submitting}
+                    onChange={(event) => {
+                      const nextCode = normalizeProjectCode(
+                        event.currentTarget.value,
+                      );
+                      field.onChange(nextCode);
+                      clearErrors("code");
+                      codeManuallyEditedRef.current = nextCode.length > 0;
+                    }}
+                  />
+                </Form.Item>
+              )}
+            />
+            <Form.Item label="卡片简称" style={{ flex: 1 }}>
+              <Input
+                id="project-card-shortname"
+                aria-label="卡片简称"
+                value={cardShortname}
+                disabled
+              />
+            </Form.Item>
+          </div>
+          <fieldset className="impact-fieldset">
+            <legend>项目成员</legend>
+            {!directory.isPending && !directory.isError ? (
+              <>
+                {hasOrganizationGroups ? (
+                  <div
+                    className="member-org-picks"
+                    role="group"
+                    aria-label="按组织选择"
+                  >
+                    {assignedOrganizationGroups.map((group) => {
+                      const selectedCount = group.memberIds.filter((id) =>
+                        selectedMemberIds.includes(id),
+                      ).length;
+                      const allSelected =
+                        group.memberIds.length > 0 &&
+                        selectedCount === group.memberIds.length;
+                      const active = selectedGroupKeys.includes(group.key);
+                      const action = active
+                        ? "取消全选组织 "
+                        : allSelected
+                          ? "组织已全选 "
+                          : "全选组织 ";
+                      return (
+                        <button
+                          key={group.key}
+                          type="button"
+                          className={
+                            "member-org-pick" +
+                            (allSelected
+                              ? " is-selected"
+                              : selectedCount > 0
+                                ? " is-partial"
+                                : "")
+                          }
+                          aria-pressed={active}
+                          aria-label={
+                            action +
+                            group.name +
+                            "（已选 " +
+                            selectedCount +
+                            "/" +
+                            group.memberIds.length +
+                            " 人）"
+                          }
+                          title={group.fullPath}
+                          disabled={submitting}
+                          onClick={() => toggleOrganization(group.key)}
+                        >
+                          <span className="member-org-pick-name">
+                            {group.name}
+                          </span>
+                          <span className="member-org-pick-count">
+                            {selectedCount}/{group.memberIds.length}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <div className="calm-field">
+                  <label htmlFor="project-member-candidates">
+                    选择成员
+                    <span className="member-count">共 {memberCount} 人</span>
+                  </label>
+                  <CalmSelect
+                    id="project-member-candidates"
+                    ariaLabel="选择项目成员"
+                    appearance="member"
+                    multiple
+                    maxTagCount="responsive"
+                    value={memberSelectValues}
+                    onChange={(next) => {
+                      setManualMemberIds(
+                        next.map(Number).filter((id) => id !== creatorUserId),
+                      );
+                      // 直接编辑成员即把整组选择降级为手工快照，避免隐藏的组织开关
+                      // 在之后覆盖用户刚刚取消的成员。
+                      setSelectedGroupKeys([]);
+                    }}
+                    placeholder="输入姓名或组织搜索，可一次选择多位启用用户"
+                    disabled={submitting}
+                    options={memberOptions}
+                    animated
+                    forcePopupBelow
+                  />
+                </div>
+                {candidates.length === 0 ? (
+                  <Text type="secondary" className="member-hint">
+                    暂无其他启用用户，创建者已自动加入。
+                  </Text>
+                ) : null}
+              </>
+            ) : directory.isPending ? (
+              /* 占位沿用真字段的 .calm-field + label 结构，控件占位与 CalmSelect 同为 32px；
+                   原先的 compact 骨架是 100px，数据到达后掉到 54px，弹层会先大后小地闪一下。 */
+              <div className="calm-field">
+                <label htmlFor="project-member-candidates">选择成员</label>
+                <span className="calm-sk calm-sk-control" aria-hidden="true" />
+                <span className="sr-only" role="status">
+                  正在加载成员...
+                </span>
+              </div>
+            ) : (
+              <Alert
+                showIcon
+                type="error"
+                message={describeUserDirectoryError(directory.error)}
+              />
+            )}
+          </fieldset>
+          <Controller
+            name="description"
+            control={control}
+            render={({ field }) => (
+              <Form.Item
+                label="项目描述"
+                validateStatus={errors.description ? "error" : ""}
+                help={errors.description?.message ?? ""}
+              >
+                <Input.TextArea
+                  {...field}
+                  id="project-description"
+                  aria-label="项目描述"
+                  rows={3}
+                  maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
+                  placeholder="描述项目目标、交付范围与现场背景"
+                  disabled={submitting}
+                  onChange={(event) => {
+                    field.onChange(event.currentTarget.value);
+                    clearErrors("description");
+                  }}
+                />
+              </Form.Item>
+            )}
+          />
+          <div
+            className={
+              "create-project-webhook" + (webhookEnabled ? " is-open" : "")
+            }
+            role="group"
+            aria-label="创建后添加企业微信群 Webhook"
+          >
+            <Checkbox
+              checked={webhookEnabled}
+              disabled={submitting}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setWebhookEnabled(next);
+                setWebhookError(null);
+                if (!next) {
+                  setWebhookLabel("");
+                  setWebhookUrl("");
+                }
+              }}
+            >
+              <span className="create-project-webhook-title">
+                <InpulseIcon name="wecom" size={15} />
+                <span>创建后添加企业微信群 Webhook</span>
+                <span className="create-project-webhook-badge">可选</span>
+              </span>
+            </Checkbox>
+            {webhookEnabled ? (
+              <>
+                <div className="create-project-webhook-fields">
+                  <Input
+                    id="project-webhook-label"
+                    aria-label="Webhook 目标群名称"
+                    placeholder="目标群名称（可选）"
+                    maxLength={PROJECT_WECOM_WEBHOOK_LABEL_MAX_LENGTH}
+                    value={webhookLabel}
+                    disabled={submitting}
+                    onChange={(event) => {
+                      setWebhookLabel(event.currentTarget.value);
+                      setWebhookError(null);
+                    }}
+                  />
+                  <Input
+                    id="project-webhook-url"
+                    aria-label="企业微信 Webhook 地址"
+                    placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+                    maxLength={PROJECT_WECOM_WEBHOOK_URL_MAX_LENGTH}
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={webhookUrl}
+                    disabled={submitting}
+                    onChange={(event) => {
+                      setWebhookUrl(event.currentTarget.value);
+                      setWebhookError(null);
+                    }}
+                  />
+                </div>
+                <p className="create-project-webhook-note">
+                  项目先完成创建；Webhook 添加失败不会回滚项目。
+                </p>
+              </>
+            ) : null}
+            {webhookError ? (
+              <p className="create-project-webhook-error" role="alert">
+                {webhookError}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <aside className="writing-context">
+          <strong>创建规则</strong>
+          <dl>
+            <dt>创建者</dt>
+            <dd>自动成为活跃成员，创建流程中不可取消</dd>
+            <dt>编码</dt>
+            <dd>创建后不可修改，仅用于溯源</dd>
+            <dt>模块</dt>
+            <dd>按需手动创建，项目也可以没有模块</dd>
+            <dt>系统管理员</dt>
+            <dd>自动拥有项目访问权，即使不在成员列表</dd>
+          </dl>
+          <p className="permission-hint">
+            项目创建与成员初始化在同一事务中完成，成员创建成功后收到加入通知。
+          </p>
+        </aside>
+        {mutation.error ? (
+          <Alert
+            showIcon
+            type="error"
+            title={describeCreateProjectError(mutation.error)}
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
+      </Form>
+    </form>
+  );
+
+  if (inline) {
+    return formContent;
+  }
 
   return (
     <Modal
@@ -294,317 +625,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         </>
       }
     >
-      <form
-        id={formId}
-        className="catalog-form catalog-form-create calm-form"
-        onSubmit={handleSubmit((values) => void handleSubmitForm(values))}
-        noValidate
-      >
-        <Form component={false} layout="vertical" requiredMark={false}>
-          <div className="dialog-form">
-            <Controller
-              name="name"
-              control={control}
-              render={({ field }) => (
-                <Form.Item
-                  label="项目名称"
-                  required
-                  validateStatus={errors.name ? "error" : ""}
-                  help={errors.name?.message ?? ""}
-                >
-                  <Input
-                    {...field}
-                    id="project-name"
-                    aria-label="项目名称"
-                    maxLength={PROJECT_NAME_MAX_LENGTH}
-                    placeholder="例如：商城系统"
-                    disabled={submitting}
-                    onChange={(event) => {
-                      const nextName = event.currentTarget.value;
-                      field.onChange(nextName);
-                      clearErrors("name");
-                      if (!codeManuallyEditedRef.current) {
-                        setValue("code", deriveProjectCodeFromName(nextName));
-                        clearErrors("code");
-                      }
-                    }}
-                  />
-                </Form.Item>
-              )}
-            />
-            <div className="form-row">
-              <Controller
-                name="code"
-                control={control}
-                render={({ field }) => (
-                  <Form.Item
-                    label="项目编码"
-                    required
-                    style={{ flex: 1 }}
-                    validateStatus={errors.code ? "error" : ""}
-                    help={errors.code?.message ?? ""}
-                  >
-                    <Input
-                      {...field}
-                      id="project-code"
-                      aria-label="项目编码"
-                      maxLength={PROJECT_CODE_MAX_LENGTH}
-                      placeholder="SHOP"
-                      disabled={submitting}
-                      onChange={(event) => {
-                        const nextCode = normalizeProjectCode(
-                          event.currentTarget.value,
-                        );
-                        field.onChange(nextCode);
-                        clearErrors("code");
-                        codeManuallyEditedRef.current = nextCode.length > 0;
-                      }}
-                    />
-                  </Form.Item>
-                )}
-              />
-              <Form.Item label="卡片简称" style={{ flex: 1 }}>
-                <Input
-                  id="project-card-shortname"
-                  aria-label="卡片简称"
-                  value={cardShortname}
-                  disabled
-                />
-              </Form.Item>
-            </div>
-            <fieldset className="impact-fieldset">
-              <legend>项目成员</legend>
-              {!directory.isPending && !directory.isError ? (
-                <>
-                  {hasOrganizationGroups ? (
-                    <div
-                      className="member-org-picks"
-                      role="group"
-                      aria-label="按组织选择"
-                    >
-                      {assignedOrganizationGroups.map((group) => {
-                        const selectedCount = group.memberIds.filter((id) =>
-                          selectedMemberIds.includes(id),
-                        ).length;
-                        const allSelected =
-                          group.memberIds.length > 0 &&
-                          selectedCount === group.memberIds.length;
-                        const active = selectedGroupKeys.includes(group.key);
-                        const action = active
-                          ? "取消全选组织 "
-                          : allSelected
-                            ? "组织已全选 "
-                            : "全选组织 ";
-                        return (
-                          <button
-                            key={group.key}
-                            type="button"
-                            className={
-                              "member-org-pick" +
-                              (allSelected
-                                ? " is-selected"
-                                : selectedCount > 0
-                                  ? " is-partial"
-                                  : "")
-                            }
-                            aria-pressed={active}
-                            aria-label={
-                              action +
-                              group.name +
-                              "（已选 " +
-                              selectedCount +
-                              "/" +
-                              group.memberIds.length +
-                              " 人）"
-                            }
-                            title={group.fullPath}
-                            disabled={submitting}
-                            onClick={() => toggleOrganization(group.key)}
-                          >
-                            <span className="member-org-pick-name">
-                              {group.name}
-                            </span>
-                            <span className="member-org-pick-count">
-                              {selectedCount}/{group.memberIds.length}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  <div className="calm-field">
-                    <label htmlFor="project-member-candidates">
-                      选择成员
-                      <span className="member-count">共 {memberCount} 人</span>
-                    </label>
-                    <CalmSelect
-                      id="project-member-candidates"
-                      ariaLabel="选择项目成员"
-                      appearance="member"
-                      multiple
-                      maxTagCount="responsive"
-                      value={memberSelectValues}
-                      onChange={(next) => {
-                        setManualMemberIds(
-                          next.map(Number).filter((id) => id !== creatorUserId),
-                        );
-                        // 直接编辑成员即把整组选择降级为手工快照，避免隐藏的组织开关
-                        // 在之后覆盖用户刚刚取消的成员。
-                        setSelectedGroupKeys([]);
-                      }}
-                      placeholder="输入姓名或组织搜索，可一次选择多位启用用户"
-                      disabled={submitting}
-                      options={memberOptions}
-                      animated
-                      forcePopupBelow
-                    />
-                  </div>
-                  {candidates.length === 0 ? (
-                    <Text type="secondary" className="member-hint">
-                      暂无其他启用用户，创建者已自动加入。
-                    </Text>
-                  ) : null}
-                </>
-              ) : directory.isPending ? (
-                /* 占位沿用真字段的 .calm-field + label 结构，控件占位与 CalmSelect 同为 32px；
-                   原先的 compact 骨架是 100px，数据到达后掉到 54px，弹层会先大后小地闪一下。 */
-                <div className="calm-field">
-                  <label htmlFor="project-member-candidates">选择成员</label>
-                  <span
-                    className="calm-sk calm-sk-control"
-                    aria-hidden="true"
-                  />
-                  <span className="sr-only" role="status">
-                    正在加载成员...
-                  </span>
-                </div>
-              ) : (
-                <Alert
-                  showIcon
-                  type="error"
-                  message={describeUserDirectoryError(directory.error)}
-                />
-              )}
-            </fieldset>
-            <Controller
-              name="description"
-              control={control}
-              render={({ field }) => (
-                <Form.Item
-                  label="项目描述"
-                  validateStatus={errors.description ? "error" : ""}
-                  help={errors.description?.message ?? ""}
-                >
-                  <Input.TextArea
-                    {...field}
-                    id="project-description"
-                    aria-label="项目描述"
-                    rows={3}
-                    maxLength={PROJECT_DESCRIPTION_MAX_LENGTH}
-                    placeholder="描述项目目标、交付范围与现场背景"
-                    disabled={submitting}
-                    onChange={(event) => {
-                      field.onChange(event.currentTarget.value);
-                      clearErrors("description");
-                    }}
-                  />
-                </Form.Item>
-              )}
-            />
-            <div
-              className={
-                "create-project-webhook" + (webhookEnabled ? " is-open" : "")
-              }
-              role="group"
-              aria-label="创建后添加企业微信群 Webhook"
-            >
-              <Checkbox
-                checked={webhookEnabled}
-                disabled={submitting}
-                onChange={(event) => {
-                  const next = event.target.checked;
-                  setWebhookEnabled(next);
-                  setWebhookError(null);
-                  if (!next) {
-                    setWebhookLabel("");
-                    setWebhookUrl("");
-                  }
-                }}
-              >
-                <span className="create-project-webhook-title">
-                  <InpulseIcon name="wecom" size={15} />
-                  <span>创建后添加企业微信群 Webhook</span>
-                  <span className="create-project-webhook-badge">可选</span>
-                </span>
-              </Checkbox>
-              {webhookEnabled ? (
-                <>
-                  <div className="create-project-webhook-fields">
-                    <Input
-                      id="project-webhook-label"
-                      aria-label="Webhook 目标群名称"
-                      placeholder="目标群名称（可选）"
-                      maxLength={PROJECT_WECOM_WEBHOOK_LABEL_MAX_LENGTH}
-                      value={webhookLabel}
-                      disabled={submitting}
-                      onChange={(event) => {
-                        setWebhookLabel(event.currentTarget.value);
-                        setWebhookError(null);
-                      }}
-                    />
-                    <Input
-                      id="project-webhook-url"
-                      aria-label="企业微信 Webhook 地址"
-                      placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
-                      maxLength={PROJECT_WECOM_WEBHOOK_URL_MAX_LENGTH}
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={webhookUrl}
-                      disabled={submitting}
-                      onChange={(event) => {
-                        setWebhookUrl(event.currentTarget.value);
-                        setWebhookError(null);
-                      }}
-                    />
-                  </div>
-                  <p className="create-project-webhook-note">
-                    项目先完成创建；Webhook 添加失败不会回滚项目。
-                  </p>
-                </>
-              ) : null}
-              {webhookError ? (
-                <p className="create-project-webhook-error" role="alert">
-                  {webhookError}
-                </p>
-              ) : null}
-            </div>
-          </div>
-          <aside className="writing-context">
-            <strong>创建规则</strong>
-            <dl>
-              <dt>创建者</dt>
-              <dd>自动成为活跃成员，创建流程中不可取消</dd>
-              <dt>编码</dt>
-              <dd>创建后不可修改，仅用于溯源</dd>
-              <dt>模块</dt>
-              <dd>按需手动创建，项目也可以没有模块</dd>
-              <dt>系统管理员</dt>
-              <dd>自动拥有项目访问权，即使不在成员列表</dd>
-            </dl>
-            <p className="permission-hint">
-              项目创建与成员初始化在同一事务中完成，成员创建成功后收到加入通知。
-            </p>
-          </aside>
-          {mutation.error ? (
-            <Alert
-              showIcon
-              type="error"
-              title={describeCreateProjectError(mutation.error)}
-              style={{ marginBottom: 16 }}
-            />
-          ) : null}
-        </Form>
-      </form>
+      {formContent}
     </Modal>
   );
 };

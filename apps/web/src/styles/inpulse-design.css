@@ -1703,6 +1703,14 @@
   font-weight: 600;
 }
 
+/* 必填星号用伪元素显示，不改变标签的 DOM 文本，保留既有精确标签查询。 */
+.required-field::after {
+  content: "*";
+  margin-left: 3px;
+  color: #b42318;
+  font-weight: 600;
+}
+
 .calm-field {
   display: flex;
   flex-direction: column;

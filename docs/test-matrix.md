@@ -7561,3 +7561,32 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | SIDEBAR-PROJECT-HEIGHT-DOCS-001 | 文档门禁 | 文档链接与空白 | pnpm check:docs 通过（162 个 Markdown） | 本地通过（2026-11-05） |
 
 **未执行 / 已知边界**：未跑全量 Web 单测、全量 Playwright、完整 check 链与 GitHub Actions；视觉用例只验证桌面视口，窄屏高度仍由 60dvh 约束，需人工确认。
+
+
+## 2026-11-05 新建任务内联创建项目
+
+任务中心「新建任务」的所属项目下拉新增「自定义 · 创建新项目」。选择后，同一弹窗直接切换为项目页复用的完整新建项目表单：项目名称、编码、卡片简称、按组织整组选择、创建者固定成员、项目描述、右侧创建规则与可选企业微信群 Webhook 均与项目页一致；普通项目页仍使用原模态框和「取消 / 创建项目」，行为不变。任务流程底部改为「返回任务 / 下一步」，「下一步」通过表单 ID 提交同一张表单。创建成功后不关闭任务弹窗，切换回任务表单并把新项目固定为所属项目；由于新项目还没有模块，模块下拉与“新模块名称”合并为单个「所属模块名称」输入框，提交任务时一并创建模块。任务弹窗使用独立的外框类 `task-create-modal`，任务步骤叠加 `task-create-ai`、项目步骤叠加 `task-create-project`，切换时继续使用 980px 宽、750px 高的同一弹窗外框，不再缩回普通 `catalog-modal` 的 790px。Webhook 失败时项目保留，回到任务表单展示警告。实现复用 `CreateProjectModal` 的内嵌模式，不再维护简化副本；无新增路由、迁移、权限矩阵或生成物变化。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| TASK-CREATE-PROJECT-WEB-001 | Web 单元 | 自定义项目 → 下一步 → 锁定项目后继续建任务 | GlobalTaskCreateModal.test.tsx：项目下拉显示「自定义 · 创建新项目」；切换到项目步骤后外层标题为「新建项目」且不含任务弹窗 `task-create-ai` 布局；项目编码、卡片简称、按组织整组选择、创建者成员、项目描述、创建规则和 Webhook 选项均存在且顺序正确；提交携带 CSRF、幂等 Key 与选定成员；创建成功后恢复任务表单、隐藏项目下拉并显示刚创建项目名；模块下拉消失且只保留一个「所属模块名称」输入框；填写模块名后创建任务使用新项目 ID 并一并创建模块 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-INLINE-001 | Web 单元 | 项目表单内嵌与外部底部操作 | CreateProjectModal.test.tsx：`inline` 模式不渲染第二层 dialog，直接渲染完整原表单并由外部「下一步」按 `form` 提交；创建过程中同步 `onBusyChange(true)`；成功后不调用内嵌步骤的 `onClose`，避免关闭外层任务弹窗 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-SIZE-001 | Web 单元 | 切换自定义项目步骤时弹窗不缩小 | GlobalTaskCreateModal.test.tsx 断言任务步骤同时带 `task-create-modal` 与 `task-create-ai`；项目步骤带 `task-create-modal`、`task-create-project` 且不带 `task-create-ai`；创建成功后恢复任务步骤仍复用同一外框。`design-system.css` 的 `.catalog-modal.task-create-modal` 固定 `width: min(980px, calc(100vw - 48px))` 与 `height: min(750px, calc(100dvh - 40px))`，窄屏 900px 以下仅放开高度 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-WEB-REG-001 | Web 单元回归 | 任务弹窗、任务中心与页面接线 | 全量 `pnpm test:web` 122 个测试文件、1076 例通过；定向 GlobalTaskCreateModal 19 例通过，GlobalTaskCreateModal、CreateProjectModal、ModulesPageView 合计 55 例通过 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-GATE-001 | 静态门禁 | 类型、Lint、格式、前端边界与构建 | `pnpm --filter @inpulse/web typecheck`、定向 ESLint、定向 Prettier、`pnpm --filter @inpulse/web check:boundaries`、`pnpm --filter @inpulse/web build`、`git diff --check` 全部通过 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-DOCS-001 | 文档门禁 | 文档链接与空白 | `pnpm check:docs` 通过 | 本地通过（2026-11-05） |
+
+**未执行 / 已知边界**：未运行真实浏览器 Playwright 与 GitHub Actions；本次以完整表单复用、DOM 结构和外层提交行为断言覆盖主要回归，最终宽屏 / 窄屏观感仍需人工确认。
+
+## 2026-11-05 新建表单必填字段星号标记
+
+新建项目、新建任务与新建/编辑模块共用表单的必填字段统一显示红色星号：项目名称、项目编码；所属项目、所属模块（含新模块名称）、任务标题、指派给；模块名称。星号由 `.required-field::after` 绘制，不改变标签的 DOM 文本，因此既有精确标签查询保持不变；卡片简称、项目描述、优先级、截止时间、任务说明、GitHub 链接与模块说明等可选字段不显示星号。仅修改 Web 标签、样式与测试，无契约、路由、数据库、权限或生成物变化。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| FORM-REQUIRED-MARK-WEB-001 | Web 单元 | 三个新建入口只标记必填字段 | CreateProjectModal.test.tsx 断言项目名称、项目编码标签带 `.required-field`，卡片简称、项目描述不带；GlobalTaskCreateModal.test.tsx 断言所属项目、所属模块、任务标题、指派给带标记，新模块名称、新项目锁定后的所属项目与所属模块名称同样带标记，优先级、截止时间、任务说明、GitHub 链接不带；ModulesPageView.test.tsx 断言模块名称带标记而模块说明不带 | 本地通过（2026-11-05） |
+| FORM-REQUIRED-MARK-WEB-REG-001 | Web 单元回归 | 既有标签查询与表单行为不回归 | 定向 CreateProjectModal、GlobalTaskCreateModal、ModulesPageView 共 55 例通过；全量 `pnpm --filter @inpulse/web test` 122 个测试文件、1076 例通过 | 本地通过（2026-11-05） |
+| FORM-REQUIRED-MARK-GATE-001 | 静态门禁 | 类型、Lint、格式、边界与构建 | `pnpm --filter @inpulse/web typecheck`、定向 ESLint、定向 Prettier、`pnpm --filter @inpulse/web check:boundaries`、`pnpm --filter @inpulse/web build`、`git diff --check` 全部通过 | 本地通过（2026-11-05） |
+| FORM-REQUIRED-MARK-DOCS-001 | 文档门禁 | 文档链接与空白 | `pnpm check:docs` 通过 | 本地通过（2026-11-05） |
+
+**未执行 / 已知边界**：未运行真实浏览器 Playwright 与 GitHub Actions；星号视觉由 CSS 伪元素承载，自动化断言覆盖标记类、可选字段边界和表单交互，窄屏换行后的最终观感仍需人工确认。

@@ -123,6 +123,78 @@ describe("CreateProjectModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("renders the complete form inline and submits it from an external footer", async () => {
+    const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
+    const getUserDirectory = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: "开发者 C",
+          avatarUrl: null,
+          isAdmin: false,
+          organizations: [],
+        },
+      ],
+    });
+    let resolveCreateProject:
+      ((value: CreateProjectResponse) => void) | undefined;
+    const createProject = vi.fn(
+      () =>
+        new Promise<CreateProjectResponse>((resolve) => {
+          resolveCreateProject = resolve;
+        }),
+    );
+    const client = {
+      issueCsrfToken,
+      getUserDirectory,
+      createProject,
+    } as unknown as InpulseApiClient;
+    const onCreated = vi.fn();
+    const onClose = vi.fn();
+    const onBusyChange = vi.fn();
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: { queries: { retry: false } },
+          })
+        }
+      >
+        <CreateProjectModal
+          inline
+          open
+          formId="inline-project-form"
+          creatorName="开发者 C"
+          creatorUserId={1}
+          client={client}
+          onCreated={onCreated}
+          onClose={onClose}
+          onBusyChange={onBusyChange}
+        />
+        <button type="submit" form="inline-project-form">
+          下一步
+        </button>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("创建规则")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", {
+        name: /创建后添加企业微信群 Webhook/,
+      }),
+    ).toBeInTheDocument();
+    await fillForm(document.body);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "下一步" }));
+
+    await waitFor(() => expect(createProject).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onBusyChange).toHaveBeenCalledWith(true));
+    resolveCreateProject?.(createdProject);
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(createdProject));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("shows a 409 message without calling the success callback", async () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
     const getUserDirectory = vi.fn().mockResolvedValue({
@@ -549,6 +621,26 @@ describe("CreateProjectModal", () => {
     await user.type(nameInput, " 三期");
     expect(codeInput).toHaveValue("SHOP2");
   });
+  it("marks required project fields with a visible marker", async () => {
+    const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
+    const client = { getUserDirectory } as unknown as InpulseApiClient;
+    renderModal(client);
+
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    expect(
+      within(dialog).getByText("项目名称", { selector: ".required-field" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("项目编码", { selector: ".required-field" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("卡片简称", { selector: "label" }),
+    ).not.toHaveClass("required-field");
+    expect(
+      within(dialog).getByText("项目描述", { selector: "label" }),
+    ).not.toHaveClass("required-field");
+  });
+
   it("keeps the optional WeCom Webhook compact until it is selected", async () => {
     const getUserDirectory = vi.fn().mockResolvedValue({ items: [] });
     const client = { getUserDirectory } as unknown as InpulseApiClient;

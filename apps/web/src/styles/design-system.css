@@ -8782,10 +8782,81 @@ div.ant-popover.wecom-unbind-popconfirm
  * 左侧沿用原表单字段顺序，右侧直接复用文档导入的 .import-assist 视觉：
  * 浅蓝底卡片、AI 助手 + 配置、空态灰字、底部输入 + 发送。
  * 弹窗固定外框高度，切换空态 / 对话 / 识别结果时不再忽大忽小。
+ * 外框宽度独立于 AI 双栏布局：切到内联新建项目步骤时继续沿用 980px 宽度，
+ * 只把 `task-create-ai` 换成 `task-create-project`。两个步骤沿用同一固定高度，
+ * 避免 AI 状态或步骤切换时弹窗跳高；项目步骤在内部铺满，消除底部大片留白。
  * ------------------------------------------------------------------------- */
-.catalog-modal.task-create-ai {
+.catalog-modal.task-create-modal {
   width: min(980px, calc(100vw - 48px));
   height: min(750px, calc(100dvh - 40px));
+}
+/* 任务中心的自定义项目步骤：整张规则卡比表单内容区略低，避免两列顶边过于齐平。 */
+.catalog-modal.task-create-project .writing-context {
+  margin-top: 32px;
+  padding-top: 28px;
+}
+/* 项目步骤与任务步骤共用固定外框。宽屏下让项目描述区吃掉正文剩余高度，
+   右侧规则卡保持内容高度，避免切换步骤时弹窗跳高或底部成片留白。 */
+@media (min-width: 1001px) {
+  .catalog-modal.task-create-project .catalog-form:has(> .writing-context) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .catalog-modal.task-create-project
+    .catalog-form:has(> .writing-context)
+    > .dialog-form {
+    height: 100%;
+    grid-template-rows:
+      max-content max-content max-content minmax(101px, 1fr)
+      max-content;
+  }
+  .catalog-modal.task-create-project
+    .dialog-form
+    > .ant-form-item:has(#project-description) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    align-self: stretch;
+  }
+  .catalog-modal.task-create-project
+    .dialog-form
+    > .ant-form-item:has(#project-description)
+    .ant-form-item-row,
+  .catalog-modal.task-create-project
+    .dialog-form
+    > .ant-form-item:has(#project-description)
+    .ant-form-item-control {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .catalog-modal.task-create-project
+    .dialog-form
+    > .ant-form-item:has(#project-description)
+    .ant-form-item-row {
+    flex-wrap: nowrap;
+  }
+  .catalog-modal.task-create-project
+    .dialog-form
+    > .ant-form-item:has(#project-description)
+    .ant-form-item-control-input {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .catalog-modal.task-create-project
+    .dialog-form
+    > .ant-form-item:has(#project-description)
+    .ant-form-item-control-input-content {
+    height: 100%;
+  }
+  .catalog-modal.task-create-project
+    .dialog-form
+    > .ant-form-item:has(#project-description)
+    textarea {
+    height: 100%;
+    min-height: 75px;
+    resize: none;
+  }
 }
 .catalog-modal.task-create-ai .dialog-form {
   display: flex;
@@ -8958,7 +9029,7 @@ div.ant-popover.wecom-unbind-popconfirm
   font-size: var(--text-md);
 }
 @media (max-width: 900px) {
-  .catalog-modal.task-create-ai {
+  .catalog-modal.task-create-modal {
     height: auto;
     max-height: calc(100dvh - 32px);
   }
