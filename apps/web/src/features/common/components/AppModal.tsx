@@ -69,6 +69,11 @@ export interface AppModalProps extends Omit<
    */
   readonly headerActions?: ReactNode;
   /**
+   * 标题左侧、标题前的操作位（如「返回上一级」）。不传时不占位；
+   * 传入的节点自己负责样式与无障碍标签。
+   */
+  readonly leadingAction?: ReactNode;
+  /**
    * 弹层底部的操作区。设计稿里它是盒子的直接子级 `.calm-action-footer`，
    * 所以不接受 antd 的函数式 `footer`，也不再走 antd 的原生 footer。
    */
@@ -185,6 +190,7 @@ export function AppModal({
   closeLabel = "关闭",
   body = false,
   headerActions,
+  leadingAction,
   footer,
   focusToken,
   title,
@@ -336,8 +342,15 @@ export function AppModal({
             <div className="drawer-header">
               {/* 图标片是可选装饰：只有确认类弹层传 `icon`，此时标题块整体右移一格。 */}
               <div
-                className={icon === undefined ? undefined : "modal-head-main"}
+                className={
+                  icon === undefined && leadingAction === undefined
+                    ? undefined
+                    : "modal-head-main"
+                }
               >
+                {leadingAction === undefined ? null : (
+                  <span className="modal-head-leading">{leadingAction}</span>
+                )}
                 {icon === undefined ? null : (
                   <span className="modal-chip" aria-hidden="true">
                     <InpulseIcon name={icon} size={19} />

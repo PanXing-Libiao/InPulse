@@ -1,6 +1,7 @@
 import React from "react";
 import { Button, Result } from "antd";
 import { useNavigate } from "react-router-dom";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 
 /**
  * 未匹配路由的兜底页。
@@ -18,7 +19,10 @@ export const NotFoundPage: React.FC = () => {
         subTitle="地址可能已失效或输入有误。你也可以回到任务中心继续工作。"
         extra={
           <>
-            <Button type="primary" onClick={() => navigate("/tasks")}>
+            <Button
+              type="primary"
+              onClick={() => void navigatePrepared(navigate, "/tasks")}
+            >
               回到任务中心
             </Button>
             <Button onClick={() => navigate(-1)}>返回上一页</Button>

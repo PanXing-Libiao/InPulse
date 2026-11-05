@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { CreateProjectRequest } from "@generated/api";
+import type {
+  CreateProjectRequest,
+  ProjectCreateModuleRequest,
+} from "@generated/api";
 
 export const PROJECT_NAME_MAX_LENGTH = 200;
 export const PROJECT_CODE_MAX_LENGTH = 32;
@@ -110,6 +113,7 @@ export function deriveProjectCardShortname(code: string): string {
 export function toCreateProjectRequest(
   values: ProjectFormValues,
   selectedMemberIds: readonly number[] = [],
+  modules: readonly ProjectCreateModuleRequest[] = [],
 ): CreateProjectRequest {
   return {
     name: values.name,
@@ -122,5 +126,6 @@ export function toCreateProjectRequest(
         ),
       ),
     ).sort((left, right) => left - right),
+    modules: [...modules],
   };
 }

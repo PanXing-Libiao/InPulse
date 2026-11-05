@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { InpulseApiClient } from "@generated/api";
 import { SearchPageView } from "@features/search/SearchPageView";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 
 export interface SearchPageProps {
   readonly client?: InpulseApiClient;
@@ -22,7 +23,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({ client }) => {
 
   const handleOpenResult = useCallback(
     (path: string) => {
-      navigate(path);
+      void navigatePrepared(navigate, path);
     },
     [navigate],
   );

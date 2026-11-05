@@ -13,6 +13,7 @@ import type {
   TaskBoardAdapter,
   TaskBoardFilters,
 } from "@features/task-board/task-board-types";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 
 /**
  * R-8 项目任务看板页面。筛选状态由 URL 承载（与任务中心同一约定），
@@ -49,7 +50,9 @@ const TaskBoardContainer: React.FC<TaskBoardContainerProps> = ({
       onFiltersChange={handleFiltersChange}
       adapter={activeAdapter}
       client={client}
-      onOpenModules={() => navigate("/projects/" + projectId + "/modules")}
+      onOpenModules={() =>
+        void navigatePrepared(navigate, "/projects/" + projectId + "/modules")
+      }
     />
   );
 };

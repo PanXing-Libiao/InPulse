@@ -223,6 +223,10 @@
     {
       "version": "2.3.0",
       "fingerprint": "9fc9587ed7cdf331dbc2d96dd080a6a5db52d6e3d02a7ae9d6c5749a5ffffe47"
+    },
+    {
+      "version": "2.4.0",
+      "fingerprint": "c41a7d8e4b7e0264dea1086c76a594ebd4022062c91e2023fb68a89af26b213c"
     }
   ],
   "createProjectWecomWebhook": [

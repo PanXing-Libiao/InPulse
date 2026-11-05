@@ -11,6 +11,7 @@ import {
   useProjects,
 } from "@features/projects/project-query";
 import { ProjectsPageView } from "@features/projects/ProjectsPageView";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 
 export interface ProjectsPageProps {
   readonly client?: InpulseApiClient;
@@ -37,7 +38,10 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
   /** 整项目导入成功后直接进入新项目模块页，导入的模块/任务立即可见。 */
   const handleImportedProject = useCallback(
     (result: ProjectDocumentImportResult) => {
-      navigate("/projects/" + result.projectId + "/modules");
+      void navigatePrepared(
+        navigate,
+        "/projects/" + result.projectId + "/modules",
+      );
     },
     [navigate],
   );
@@ -55,7 +59,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
 
   const handleOpenActivity = useCallback(
     (projectId: number) => {
-      navigate(`/projects/${projectId}/activity`);
+      void navigatePrepared(navigate, `/projects/${projectId}/activity`);
     },
     [navigate],
   );
@@ -66,7 +70,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
    */
   const handleAddModule = useCallback(
     (projectId: number) => {
-      navigate("/projects/" + projectId + "/modules", {
+      void navigatePrepared(navigate, "/projects/" + projectId + "/modules", {
         state: { createModule: true },
       });
     },
@@ -75,7 +79,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
 
   const handleSearch = useCallback(
     (query: string) => {
-      navigate(`/search?q=${encodeURIComponent(query)}`);
+      void navigatePrepared(navigate, `/search?q=${encodeURIComponent(query)}`);
     },
     [navigate],
   );
@@ -93,8 +97,12 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({ client }) => {
       onDismissCreatedProject={handleDismissCreatedProject}
       onOpenActivity={handleOpenActivity}
       onAddModule={handleAddModule}
-      onOpenModules={(projectId) => navigate(`/projects/${projectId}/modules`)}
-      onOpenMembers={(projectId) => navigate(`/projects/${projectId}/members`)}
+      onOpenModules={(projectId) =>
+        void navigatePrepared(navigate, `/projects/${projectId}/modules`)
+      }
+      onOpenMembers={(projectId) =>
+        void navigatePrepared(navigate, `/projects/${projectId}/members`)
+      }
       onSearch={handleSearch}
       projects={projectList.data?.items ?? []}
       projectsLoading={projectList.isPending}

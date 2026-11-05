@@ -10,6 +10,8 @@ import {
 } from "@generated/api";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { invalidateShellCounters } from "@shared/api/shell-counters";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
+import { prefetchRecordPath } from "@features/records/records-route-prefetch";
 export function PublishRecordButton({
   item,
   api,
@@ -67,7 +69,9 @@ export function PublishRecordButton({
       // 发布会把正文里的剩余问题变成待处理遗留项，侧栏计数随即变化。
       await invalidateShellCounters(cache);
       setOpen(false);
-      navigate(target);
+      void navigatePrepared(navigate, target, {
+        prepare: () => prefetchRecordPath(cache, target, api) ?? undefined,
+      });
     } catch (e) {
       setError(e);
     } finally {

@@ -47,6 +47,7 @@ import {
   useProjectDetail,
 } from "@features/projects/project-query";
 import { moduleErrorMessage, useModules } from "./module-query";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import { preloadRoutePath } from "@shared/routing/route-preload";
 import {
   ModuleEditorModal,
@@ -96,7 +97,10 @@ export function ModulesPageView({
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, navigate]);
   const onOpenModule = (moduleId: number) =>
-    navigate("/projects/" + projectId + "/modules/" + moduleId + "/tasks");
+    void navigatePrepared(
+      navigate,
+      "/projects/" + projectId + "/modules/" + moduleId + "/tasks",
+    );
   const prefetchModule = (moduleId: number) => {
     void preloadRoutePath(
       "/projects/" + projectId + "/modules/" + moduleId + "/tasks",
@@ -164,7 +168,7 @@ export function ModulesPageView({
           project={projectQuery.data?.project ?? null}
           projectLoading={projectQuery.isPending}
           onRetryProject={() => void projectQuery.refetch()}
-          onBack={() => navigate("/projects")}
+          onBack={() => void navigatePrepared(navigate, "/projects")}
           onOpenMembers={() => setWorkspaceModal("members")}
           onOpenWecom={() => setWorkspaceModal("wecom")}
           onOpenRecords={() => setWorkspaceModal("records")}
@@ -400,7 +404,7 @@ export function ModulesPageView({
             // 项目已从读取路径消失，详情查询会变 404，先回到项目列表。
             setProjectEditOpen(false);
             void queryClient.invalidateQueries({ queryKey: ["projects"] });
-            navigate("/projects");
+            void navigatePrepared(navigate, "/projects");
           }}
         />
       ) : null}

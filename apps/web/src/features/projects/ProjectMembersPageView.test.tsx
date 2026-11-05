@@ -220,8 +220,10 @@ describe("ProjectMembersPageView", () => {
     expect(api.getProjectWecomGroup).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "返回项目主页" }));
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/projects/7/modules",
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/projects/7/modules",
+      ),
     );
   });
 

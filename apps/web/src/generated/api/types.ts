@@ -371,6 +371,7 @@ export type CreateProjectRequest = {
   readonly code?: ProjectCode;
   readonly description: string;
   readonly memberIds: readonly number[];
+  readonly modules?: readonly ProjectCreateModuleRequest[];
 };
 
 export type CreateProjectResponse = {
@@ -1000,6 +1001,20 @@ export type OrganizationVersionHeaders = {
 };
 
 export type ProjectCode = string;
+
+export type ProjectCreateModuleRequest = {
+  readonly name: string;
+  readonly description: string;
+  readonly tasks: readonly ProjectCreateTaskRequest[];
+};
+
+export type ProjectCreateTaskRequest = {
+  readonly title: string;
+  readonly description: string;
+  readonly priority: ("NORMAL" | "HIGH" | "URGENT");
+  readonly assigneeIds: readonly number[];
+  readonly dueAt: (string | null);
+};
 
 export type ProjectDetailResponse = {
   readonly project: ProjectItem;

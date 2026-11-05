@@ -330,6 +330,8 @@ export function TaskDraftAssistPane({
               message.decision,
               projectId,
               message.suggestions?.projects,
+              moduleId,
+              message.suggestions?.modules,
             ).length > 0 ? (
               <ul className="task-assist-notes">
                 {visibleAssistNotes(
@@ -337,6 +339,8 @@ export function TaskDraftAssistPane({
                   message.decision,
                   projectId,
                   message.suggestions?.projects,
+                  moduleId,
+                  message.suggestions?.modules,
                 ).map((note) => (
                   <li key={note}>{note}</li>
                 ))}
@@ -440,6 +444,9 @@ const STALE_PROJECT_NOTES = [
   "项目也可能是",
 ] as const;
 
+/** 归属类备注里带这些口吻，说明仍在请用户确认。 */
+const PENDING_ASSIGNMENT_TONE = ["待确认", "也可能指", "推断"] as const;
+
 function visibleAssistNotes(
   notes: readonly string[] | undefined,
   decision: AssignmentDecision | undefined,
@@ -448,20 +455,45 @@ function visibleAssistNotes(
     readonly id: number;
     readonly name: string;
   }[] = [],
+  moduleId = 0,
+  moduleCandidates: readonly {
+    readonly id: number;
+    readonly name: string;
+  }[] = [],
 ): readonly string[] {
   if (notes === undefined) return [];
-  if ((decision?.projectId ?? projectId) <= 0) return notes;
+  const projectResolved = (decision?.projectId ?? projectId) > 0;
+  const moduleResolved = (decision?.moduleId ?? moduleId) > 0;
+  if (!projectResolved && !moduleResolved) return notes;
   // 项目确认后，旧回复里提到任一候选项目、又带「待确认」口吻的备注都已过期。
   const candidateProjectNames = projectCandidates
     .map((item) => item.name)
     .filter((name) => name.length > 0);
+  const candidateModuleNames = moduleCandidates
+    .map((item) => item.name)
+    .filter((name) => name.length > 0);
+  const hasTone = (note: string): boolean =>
+    PENDING_ASSIGNMENT_TONE.some((tone) => note.includes(tone));
   const isResolvedProjectNote = (note: string): boolean =>
-    candidateProjectNames.some((name) => note.includes(name)) &&
-    (note.includes("也可能指") || note.includes("待确认"));
+    projectResolved &&
+    (note.includes("待项目确认") ||
+      (note.includes("项目") &&
+        (hasTone(note) ||
+          candidateProjectNames.some((name) => note.includes(name)))));
+  const isResolvedModuleNote = (note: string): boolean =>
+    moduleResolved &&
+    note.includes("模块") &&
+    (hasTone(note) ||
+      note.includes("暂未匹配") ||
+      candidateModuleNames.some((name) => note.includes(name)));
   return notes.filter(
     (note) =>
-      !STALE_PROJECT_NOTES.some((prefix) => note.startsWith(prefix)) &&
-      !isResolvedProjectNote(note),
+      !(
+        projectResolved &&
+        STALE_PROJECT_NOTES.some((prefix) => note.startsWith(prefix))
+      ) &&
+      !isResolvedProjectNote(note) &&
+      !isResolvedModuleNote(note),
   );
 }
 

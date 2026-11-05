@@ -345,7 +345,7 @@ export function GlobalTaskCreateModal({
         new Date(dueAt).getTime() === new Date(draft.dueAt).getTime();
       if (!sameDue) {
         if (dueAt === null) {
-          setDueAt(draft.dueAt);
+          setDueAt(new Date(draft.dueAt).toISOString());
           applied += 1;
         } else {
           conflicts.push("截止时间");
@@ -577,6 +577,7 @@ export function GlobalTaskCreateModal({
                       ariaLabel="所属项目"
                       value={projectId}
                       appearance="rich"
+                      loading={projects.isPending}
                       onChange={handleProjectSelect}
                       options={[
                         { value: 0, label: "请选择项目", disabled: true },
@@ -633,6 +634,7 @@ export function GlobalTaskCreateModal({
                         ariaLabel="所属模块"
                         value={moduleId}
                         disabled={projectId === 0}
+                        loading={projectId > 0 && modules.query.isPending}
                         appearance="menu"
                         onChange={(next) => {
                           setModuleId(Number(next));

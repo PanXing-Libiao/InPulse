@@ -17,6 +17,7 @@ import {
   AiAssistUpstreamError,
   DocumentImportAiAssistClient,
 } from "../modules/document-import/ai-assist.client.js";
+import { alignReplyWithModuleCandidates } from "../modules/document-import/task-draft-assist.reply.js";
 import { ProjectMembersQueryPort } from "../modules/projects/project-members-query.port.js";
 import {
   TaskDraftAssistCatalogPort,
@@ -192,16 +193,21 @@ export class TaskDraftAssistHttpService {
       snapshot,
       hasProjectContext,
     );
-    return taskDraftAssistResponseSchema.parse(
-      this.toResponse(
-        parsed,
-        snapshot,
-        input,
-        today.date,
-        hasProjectContext,
-        suggestions,
-      ),
+    const response = this.toResponse(
+      parsed,
+      snapshot,
+      input,
+      today.date,
+      hasProjectContext,
+      suggestions,
     );
+    return taskDraftAssistResponseSchema.parse({
+      ...response,
+      reply: alignReplyWithModuleCandidates(
+        response.reply,
+        suggestions.modules,
+      ),
+    });
   }
 
   private async resolveSuggestions(

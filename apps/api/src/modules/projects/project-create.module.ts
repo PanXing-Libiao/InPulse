@@ -9,6 +9,8 @@ import { NotificationProjectionModule } from "../notifications/index.js";
 import { ProjectBootstrapController } from "./project-bootstrap.controller.js";
 import { ProjectBootstrapWorkflow } from "./project-bootstrap.workflow.js";
 import { ProjectsModule } from "./projects.module.js";
+import { ModulesManagementModule } from "../modules/modules-management.module.js";
+import { TasksManagementModule } from "../tasks/tasks-management.module.js";
 
 /**
  * F-04 创建项目模块。依赖认证/审计/幂等与三个投影写端口，只在
@@ -17,6 +19,8 @@ import { ProjectsModule } from "./projects.module.js";
 @Module({
   imports: [
     ProjectsModule,
+    ModulesManagementModule,
+    TasksManagementModule,
     AuthModule,
     AuditModule,
     IdempotencyModule,

@@ -32,6 +32,7 @@ import { orderMembersLeaderFirst } from "./project-member-order";
 import { useProjects } from "./project-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
 import { prefetchModulesRoute } from "@features/modules/module-query";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import { routePreloadHandlers } from "@shared/routing/route-preload";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -311,7 +312,7 @@ export const ProjectMembersPageView: React.FC<ProjectMembersPageViewProps> = ({
                   modulesPreload.onFocus();
                   prefetchModulesRoute(cache, projectId);
                 }}
-                onClick={() => navigate(modulesPath)}
+                onClick={() => void navigatePrepared(navigate, modulesPath)}
               >
                 <InpulseIcon name="chevronLeft" size={20} />
               </button>

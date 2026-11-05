@@ -21,6 +21,7 @@ import { prefetchTaskCenterRoute } from "@features/my-tasks/my-tasks-query";
 import { prefetchRecordsRoute } from "@features/records/records-route-prefetch";
 import { prefetchModulesRoute } from "@features/modules/module-query";
 import { prefetchProjectMembersRoute } from "@features/projects/project-member-query";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import { preloadRoutePath } from "@shared/routing/route-preload";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
@@ -129,7 +130,7 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
    * 先取列表与草稿，项目内页面先取项目目录与成员。点击后等数据就绪再切页，
    * 旧页面保留到新内容可渲染，避免中间冒出一帧骨架。
    */
-  const prepareTarget = useCallback(
+  const prepareTargetData = useCallback(
     (path: string): Promise<void> => {
       const url = new URL(path, "http://inpulse.local");
       let data: Promise<void> = Promise.resolve();
@@ -155,9 +156,17 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
           }
         }
       }
-      return Promise.all([preloadRoutePath(path), data]).then(() => undefined);
+      return data;
     },
     [cache, client, isAdmin, user?.id],
+  );
+
+  const prepareTarget = useCallback(
+    (path: string): Promise<void> =>
+      Promise.all([preloadRoutePath(path), prepareTargetData(path)]).then(
+        () => undefined,
+      ),
+    [prepareTargetData],
   );
 
   /** 全局态：项目筛选写回 URL（replace，避免每次点选都压一条历史）。 */
@@ -502,9 +511,9 @@ export const ActivityWorkspace: React.FC<ActivityWorkspaceProps> = ({
                                 const path = activityTargetPath(item, {
                                   isAdmin,
                                 });
-                                void prepareTarget(path).finally(() =>
-                                  navigate(path),
-                                );
+                                void navigatePrepared(navigate, path, {
+                                  prepare: () => prepareTargetData(path),
+                                });
                               }}
                             >
                               <InpulseIcon name="chevronRight" size={16} />

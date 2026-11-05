@@ -23,6 +23,7 @@ import {
   CalmSelect,
 } from "@features/common/components/CalmSelect";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import { useUserDirectoryQuery } from "@features/users/user-directory-query";
 import {
   buildDocumentDraftView,
@@ -2145,7 +2146,9 @@ export const DocumentImportModal: React.FC<DocumentImportModalProps> = ({
               type="link"
               size="small"
               data-testid="document-import-assist-settings"
-              onClick={() => navigate("/settings?tab=aiAssist")}
+              onClick={() =>
+                void navigatePrepared(navigate, "/settings?tab=aiAssist")
+              }
             >
               配置
             </Button>

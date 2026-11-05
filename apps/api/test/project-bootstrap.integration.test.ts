@@ -22,6 +22,18 @@ import {
   ProjectCodeConflictError,
 } from "../src/modules/projects/project-bootstrap.workflow.js";
 import { PostgresSearchProjectionWritePort } from "../src/modules/search/postgres-search-projection-write-port.js";
+import { ModuleCreateCommandPort } from "../src/modules/modules/create.command-port.js";
+import { ModuleManagementRepository } from "../src/modules/modules/module-management.repository.js";
+import { ModulesManagementService } from "../src/modules/modules/modules-management.service.js";
+import { PostgresModuleQueryPort } from "../src/modules/modules/postgres-module-query-port.js";
+import { PostgresModuleReadPort } from "../src/modules/modules/postgres-module-read-port.js";
+import { TaskCreateCommandPort } from "../src/modules/tasks/create.command-port.js";
+import { TaskManagementRepository } from "../src/modules/tasks/task-management.repository.js";
+import { TasksManagementService } from "../src/modules/tasks/tasks-management.service.js";
+import { PostgresProjectCodePort } from "../src/modules/projects/postgres-project-code-port.js";
+import { PostgresProjectMembersQueryPort } from "../src/modules/projects/postgres-project-members-query-port.js";
+import { ProjectMemberPermissionPolicyService } from "../src/modules/projects/project-member-permission-policy.service.js";
+import { ProjectMemberPermissionRepository } from "../src/modules/projects/project-member-permission.repository.js";
 import { createUser, testUrls } from "./database.helpers.js";
 
 let client: DatabaseClient | undefined;
@@ -39,19 +51,54 @@ beforeAll(async () => {
     applicationName: "inpulse-project-bootstrap-audit-test",
   });
   uow = new PostgresUnitOfWork(client);
+  const access = new PostgresProjectAccessQueryPort(client);
+  const audit = new PostgresAuditWritePort({
+    currentVersion: 1,
+    keyFor: () => auditKey,
+  });
+  const search = new PostgresSearchProjectionWritePort();
+  const activity = new PostgresActivityWritePort();
+  const notifications = new ProjectNotificationDispatcher(
+    access,
+    new PostgresNotificationWritePort(),
+  );
+  const projects = new PostgresProjectsWritePort();
+  const permissions = new ProjectMemberPermissionPolicyService(
+    new ProjectMemberPermissionRepository(),
+  );
+  const modulesService = new ModulesManagementService(
+    access,
+    uow,
+    new ModuleManagementRepository(),
+    audit,
+    activity,
+    search,
+    permissions,
+  );
+  const tasksService = new TasksManagementService(
+    access,
+    new PostgresModuleQueryPort(),
+    new PostgresProjectCodePort(),
+    new PostgresProjectMembersQueryPort(),
+    uow,
+    new TaskManagementRepository(),
+    audit,
+    activity,
+    search,
+    notifications,
+    new PostgresModuleReadPort(),
+    projects,
+    permissions,
+  );
   workflow = new ProjectBootstrapWorkflow(
-    new PostgresProjectsWritePort(),
+    projects,
     new PostgresActiveUsersQueryPort(),
-    new PostgresAuditWritePort({
-      currentVersion: 1,
-      keyFor: () => auditKey,
-    }),
-    new PostgresSearchProjectionWritePort(),
-    new PostgresActivityWritePort(),
-    new ProjectNotificationDispatcher(
-      new PostgresProjectAccessQueryPort(client!),
-      new PostgresNotificationWritePort(),
-    ),
+    audit,
+    search,
+    activity,
+    notifications,
+    new ModuleCreateCommandPort(modulesService),
+    new TaskCreateCommandPort(tasksService),
   );
 });
 
@@ -196,6 +243,126 @@ describe("ProjectBootstrapWorkflow (real PostgreSQL)", () => {
          WHERE project_id = ${projectId}
     `) as unknown as readonly MemberRow[];
     expect(memberRows).toEqual([{ user_id: creatorId, status: "ACTIVE" }]);
+  });
+
+  test("可在同一事务内创建模块与任务，并保留负责人归属", async () => {
+    const creatorId = await createUser(client!.sql);
+    const memberId = await createUser(client!.sql);
+    const name = `带结构 ${randomUUID()}`;
+
+    const result = await uow!.run((tx) =>
+      workflow!.execute(tx, creatorId, {
+        name,
+        description: "一次建好模块与任务",
+        memberIds: [memberId],
+        modules: [
+          {
+            name: "扫码巡检",
+            description: "扫码与异常上报",
+            tasks: [
+              {
+                title: "完成扫码入口",
+                description: "验收：首次扫码后可看到最近记录",
+                priority: "HIGH",
+                assigneeIds: [memberId],
+                dueAt: "2026-12-01T00:00:00.000Z",
+              },
+            ],
+          },
+          {
+            name: "离线补传",
+            description: "",
+            tasks: [],
+          },
+        ],
+      }),
+    );
+
+    const projectId = result.body.project.id;
+    const modules = (await client!.sql`
+        SELECT id, name
+          FROM app.modules
+         WHERE project_id = ${projectId}
+         ORDER BY sort_order ASC, id ASC
+    `) as unknown as readonly { id: number; name: string }[];
+    expect(modules.map((row) => row.name)).toEqual(["扫码巡检", "离线补传"]);
+
+    const tasks = (await client!.sql`
+        SELECT id, module_id, title, priority, due_at
+          FROM app.tasks
+         WHERE project_id = ${projectId}
+    `) as unknown as readonly {
+      id: number;
+      module_id: number;
+      title: string;
+      priority: string;
+      due_at: string | null;
+    }[];
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]!.module_id).toBe(modules[0]!.id);
+    expect(tasks[0]!.title).toBe("完成扫码入口");
+    expect(tasks[0]!.priority).toBe("HIGH");
+    expect(new Date(String(tasks[0]!.due_at)).toISOString()).toBe(
+      "2026-12-01T00:00:00.000Z",
+    );
+
+    const assignees = (await client!.sql`
+        SELECT task_id, user_id
+          FROM app.task_assignees
+         WHERE project_id = ${projectId}
+    `) as unknown as readonly { task_id: number; user_id: number }[];
+    expect(assignees).toEqual([{ task_id: tasks[0]!.id, user_id: memberId }]);
+
+    const audits = (await auditClient!.sql`
+        SELECT action FROM app.audit_logs WHERE project_id = ${projectId}
+    `) as unknown as readonly { action: string }[];
+    const actions = audits.map((row) => row.action);
+    expect(actions).toContain("project.create");
+    expect(actions).toContain("module.create");
+    expect(actions).toContain("task.create");
+
+    const searchRows = (await client!.sql`
+        SELECT entity_type FROM app.search_projection WHERE project_id = ${projectId}
+    `) as unknown as readonly { entity_type: string }[];
+    expect(new Set(searchRows.map((row) => row.entity_type))).toEqual(
+      new Set(["PROJECT", "MODULE", "TASK"]),
+    );
+  });
+
+  test("任务负责人不在项目成员内时整笔回滚", async () => {
+    const creatorId = await createUser(client!.sql);
+    const outsiderId = await createUser(client!.sql);
+    const name = `越权负责人 ${randomUUID()}`;
+
+    await expect(
+      uow!.run((tx) =>
+        workflow!.execute(tx, creatorId, {
+          name,
+          description: "",
+          memberIds: [],
+          modules: [
+            {
+              name: "巡检",
+              description: "",
+              tasks: [
+                {
+                  title: "越权任务",
+                  description: "",
+                  priority: "NORMAL",
+                  assigneeIds: [outsiderId],
+                  dueAt: null,
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ProjectBootstrapValidationError);
+
+    const leftover = (await client!.sql`
+        SELECT id FROM app.projects WHERE name = ${name}
+    `) as unknown as readonly { id: number }[];
+    expect(leftover).toHaveLength(0);
   });
 
   test("项目成员为停用用户时整笔回滚", async () => {

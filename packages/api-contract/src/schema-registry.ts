@@ -122,8 +122,10 @@ import {
   activeProjectMembersResponseSchema,
   createProjectHeadersSchema,
   createProjectReplayContextSchema,
+  createProjectModuleRequestSchema,
   createProjectRequestSchema,
   createProjectResponseSchema,
+  createProjectTaskRequestSchema,
   projectMemberItemSchema,
   projectMemberCollectionPathSchema,
   projectMemberPathSchema,
@@ -603,6 +605,16 @@ export const schemaRegistry = {
     schema: createProjectRequestSchema,
     summary:
       "创建项目请求；创建者由服务端 Session 解析，memberIds 为可选项目成员",
+    sensitiveFieldPaths: [],
+  },
+  ProjectCreateTaskRequest: {
+    schema: createProjectTaskRequestSchema,
+    summary: "新建项目时一并创建的任务草稿；负责人必须是项目活跃成员",
+    sensitiveFieldPaths: [],
+  },
+  ProjectCreateModuleRequest: {
+    schema: createProjectModuleRequestSchema,
+    summary: "新建项目时一并创建的模块草稿；任务可为空",
     sensitiveFieldPaths: [],
   },
   CreateProjectHeaders: {

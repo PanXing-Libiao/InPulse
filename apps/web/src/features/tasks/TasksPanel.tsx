@@ -29,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Input } from "antd";
 import { createIdempotencyKey } from "@shared/api/idempotency-key";
 import { invalidateShellCounters } from "@shared/api/shell-counters";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import {
   preloadRoutePath,
   routePreloadHandlers,
@@ -908,7 +909,7 @@ export function TasksPanel({
                   openDetail(task.taskId);
                   return;
                 }
-                navigate(taskDetailPath(task));
+                void navigatePrepared(navigate, taskDetailPath(task));
               }}
             />
           )}

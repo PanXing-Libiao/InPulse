@@ -1,4 +1,11 @@
-import React, { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import type { InpulseApiClient } from "@generated/api";
 import { useAuth } from "@features/auth/auth-context";
@@ -21,6 +28,7 @@ import { TaskCenterPageView } from "@features/my-tasks/TaskCenterPageView";
 import {
   loadIssuesPageView,
   loadTaskDetailOverlay,
+  preloadTaskDetailOverlayChunk,
 } from "@features/project-overview/project-workspace-chunks";
 
 /**
@@ -50,6 +58,9 @@ export const TasksPage: React.FC<TasksPageProps> = ({ client, adapter }) => {
   const [detailTarget, setDetailTarget] = useState<TaskLocation | null>(null);
   /** 遗留问题就地弹窗：false 表示关闭，打开时按当前项目筛选初始化视图作用域。 */
   const [issuesOpen, setIssuesOpen] = useState(false);
+  useEffect(() => {
+    void preloadTaskDetailOverlayChunk();
+  }, []);
   const { user } = useAuth();
   const projectList = useProjects({ client });
   /**

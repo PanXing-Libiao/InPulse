@@ -674,6 +674,7 @@ it("creates a custom project from the task modal, then locks it while keeping th
       code: "PULSE",
       description: "内联创建的项目",
       memberIds: [2],
+      modules: [],
     },
     {
       headers: {
@@ -764,6 +765,30 @@ it("AI 助手把识别结果填入左侧空字段", async () => {
     screen.getByLabelText("所属模块").closest(".ant-select"),
   ).toHaveTextContent("访问控制");
   expect(screen.getByText("已确认模块：访问控制")).toBeInTheDocument();
+});
+
+it("AI 填入的截止时间按 UTC ISO 提交（契约只接受 Z）", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+  await pickOption(user, "所属项目", "InPulse 平台");
+
+  await user.type(
+    screen.getByLabelText("描述任务"),
+    "周五前让陈晓修 MFA 登录超时",
+  );
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+  await user.click(await screen.findByRole("button", { name: "填入其余字段" }));
+  await user.click(await screen.findByRole("button", { name: "是，用这个" }));
+
+  await waitFor(() => expect(screen.getByLabelText("指派给")).toBeEnabled());
+  await pickAssignee(user, "李雷");
+  await user.click(screen.getByRole("button", { name: "创建任务" }));
+
+  await waitFor(() => expect(test.createModuleTask).toHaveBeenCalledTimes(1));
+  const body = test.createModuleTask.mock.calls[0]?.[2] as
+    { dueAt: string | null } | undefined;
+  expect(body?.dueAt).toBe("2026-11-06T10:00:00.000Z");
 });
 
 it("AI 不覆盖用户已经手填的标题", async () => {
@@ -922,6 +947,66 @@ it("确认项目后隐藏已消解的项目歧义备注", async () => {
   ).not.toBeInTheDocument();
   expect(
     screen.queryByText("可能是这几个项目，请选一个"),
+  ).not.toBeInTheDocument();
+});
+
+it("确认项目/模块后，简称推断类备注一并隐藏", async () => {
+  const test = harness();
+  test.assistTaskDraftStandalone.mockResolvedValueOnce({
+    reply: "我按「计费」这个项目建了核对任务，模块倾向账单生成。",
+    draft: {
+      title: "核对9月账单导出金额",
+      description: "核对 9 月账单导出金额与财务台账。",
+      priority: "NORMAL",
+      dueAt: null,
+      assigneeIds: [],
+      assigneeNames: [],
+      moduleId: null,
+      moduleName: null,
+    },
+    suggestions: {
+      projects: [{ id: 9, code: "BILLING", name: "计费对账与出账平台" }],
+      modules: [{ id: 25, name: "账单生成" }],
+    },
+    confidence: "MEDIUM",
+    notes: [
+      "项目由「计费」推断，待确认",
+      "模块待项目确认后再对应「账单生成」",
+      "模块由「账单生成」推断，待确认",
+    ],
+  });
+  mount(test);
+  const user = userEvent.setup();
+
+  await user.type(screen.getByLabelText("描述任务"), "计费那边核对9月账单");
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  expect(
+    await screen.findByText("项目由「计费」推断，待确认"),
+  ).toBeInTheDocument();
+  await user.click(screen.getByTestId("task-assist-confirm-project"));
+
+  await waitFor(() =>
+    expect(
+      screen.getByText("已确认项目：计费对账与出账平台"),
+    ).toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByText("项目由「计费」推断，待确认"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("模块待项目确认后再对应「账单生成」"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByText("模块由「账单生成」推断，待确认"),
+  ).toBeInTheDocument();
+
+  await user.click(screen.getByTestId("task-assist-confirm-module"));
+  await waitFor(() =>
+    expect(screen.getByText("已确认模块：账单生成")).toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByText("模块由「账单生成」推断，待确认"),
   ).not.toBeInTheDocument();
 });
 

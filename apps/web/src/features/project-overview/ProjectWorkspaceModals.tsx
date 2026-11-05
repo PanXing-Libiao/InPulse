@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from "react";
+import React, { Suspense, lazy, useEffect, useState } from "react";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import { SearchParamsScope } from "@features/common/search-params-scope";
 import { useAuth } from "@features/auth/auth-context";
@@ -15,6 +15,7 @@ import {
   loadProjectWecomGroupCard,
   loadRecordsWorkspace,
   loadTaskDetailOverlay,
+  preloadTaskDetailOverlayChunk,
   type ProjectWorkspaceModalKind,
 } from "./project-workspace-chunks";
 
@@ -87,6 +88,9 @@ export const ProjectWorkspaceModals: React.FC<ProjectWorkspaceModalsProps> = ({
     isSystemAdmin || detail.data?.currentUserRole === "LEADER";
   /** 遗留问题弹窗里点来源/跟进任务：再叠一层任务详情弹窗。 */
   const [taskTarget, setTaskTarget] = useState<TaskLocation | null>(null);
+  useEffect(() => {
+    void preloadTaskDetailOverlayChunk();
+  }, []);
 
   if (open === null) return null;
   const meta = MODAL_META[open];

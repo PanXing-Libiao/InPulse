@@ -4,8 +4,12 @@ import type { InpulseApiClient } from "@generated/api";
 import type { NotificationFilter } from "@features/notifications/notification-query";
 import { NotificationsPageView } from "@features/notifications/NotificationsPageView";
 import { readNotificationTaskOpenState } from "@features/notifications/notification-task-state";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import { preloadRoutePath } from "@shared/routing/route-preload";
-import { loadTaskDetailOverlay } from "@features/project-overview/project-workspace-chunks";
+import {
+  loadTaskDetailOverlay,
+  preloadTaskDetailOverlayChunk,
+} from "@features/project-overview/project-workspace-chunks";
 import {
   parseTaskDetailPath,
   type TaskLocation,
@@ -33,6 +37,9 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [detailTarget, setDetailTarget] = useState<TaskLocation | null>(null);
+  useEffect(() => {
+    void preloadTaskDetailOverlayChunk();
+  }, []);
   const filter = searchParams.get("filter") === "unread" ? "unread" : "all";
 
   // 顶部铃铛点击任务通知时先导航到本页并把目标深链放进路由状态；
@@ -82,9 +89,12 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
         return;
       }
       // 非任务通知等页面 chunk 与目标数据都就绪后再切页，避免列表先闪骨架。
-      void prepareTarget(targetPath).finally(() => navigate(targetPath));
+      void navigatePrepared(navigate, targetPath, {
+        prepare: () =>
+          prefetchRecordPath(cache, targetPath, client) ?? undefined,
+      });
     },
-    [navigate, prepareTarget],
+    [cache, client, navigate],
   );
 
   return (

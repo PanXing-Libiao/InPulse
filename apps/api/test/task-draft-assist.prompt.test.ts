@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { buildSystemPrompt } from "../src/modules/document-import/ai-assist.prompt.js";
 import {
   SYSTEM_PROMPT,
   buildTaskDraftAssistMessages,
@@ -19,6 +20,17 @@ describe("任务草稿助手提示词", () => {
     expect(SYSTEM_PROMPT).toContain("账号登录");
     expect(SYSTEM_PROMPT).toContain("交给确认卡");
     expect(SYSTEM_PROMPT).toContain("不要自造组合名");
+  });
+
+  test("文档导入提示词带上今天日期与内联字段规则", () => {
+    const prompt = buildSystemPrompt("IN_PROJECT", undefined, undefined, {
+      date: "2026-11-05",
+      weekday: "星期四",
+    });
+    expect(prompt).toContain("今天是 2026-11-05（星期四）");
+    expect(prompt).toContain("材料写「10月31日」就写 2026-10-31");
+    expect(prompt).toContain("「负责人：X」「截止：X」「优先级：X」");
+    expect(prompt).toContain("「X 前完成」");
   });
 
   test("带项目上下文时写明已选项目与模块，不再给项目候选", () => {
