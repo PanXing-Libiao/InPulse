@@ -307,7 +307,7 @@ export function GlobalTaskCreateModal({
         new Date(dueAt).getTime() === new Date(draft.dueAt).getTime();
       if (!sameDue) {
         if (dueAt === null) {
-          setDueAt(draft.dueAt);
+          setDueAt(new Date(draft.dueAt).toISOString());
           applied += 1;
         } else {
           conflicts.push("截止时间");

@@ -77,10 +77,34 @@ export function buildAiAssistMessages(input: {
   ];
 }
 
+export interface PromptDateContext {
+  readonly date: string;
+  readonly weekday: string;
+}
+
+/** 服务端按 Asia/Shanghai 取今天，供模型换算相对日期与省略年份的日期。 */
+export function promptDateContext(now: Date = new Date()): PromptDateContext {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  const weekday = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    weekday: "long",
+  }).format(now);
+  return { date: year + "-" + month + "-" + day, weekday };
+}
+
 export function buildSystemPrompt(
   mode: DocumentImportAssistMode,
   creatorName?: string | undefined,
   target?: AiAssistTarget | undefined,
+  today: PromptDateContext = promptDateContext(),
 ): string {
   return [
     "你是 InPulse 项目的结构分析助手。用户会提供项目材料：可能是需求文档、方案、排期，也可能是聊天记录、会议纪要或零散想法；内容可能结构混乱、描述模糊。",
@@ -88,6 +112,15 @@ export function buildSystemPrompt(
       DOCUMENT_IMPORT_TEMPLATE_VERSION +
       "）格式的草稿正文。",
     "",
+    "今天是 " +
+      today.date +
+      "（" +
+      today.weekday +
+      "）。材料里省略年份的日期按今天所在年份补齐（今天在 " +
+      today.date.slice(0, 4) +
+      " 年），例如材料写「10月31日」就写 " +
+      today.date.slice(0, 4) +
+      "-10-31；「周五前」「下周五」「本月底」这类相对时间按今天换算成 YYYY-MM-DD。",
     "必须遵守的规则：",
     "1. 只输出模板正文本身：不要输出判断过程、解释、前言或结尾总结，不要使用 Markdown 代码围栏。",
     "2. 字段名与模板逐字一致（例如「负责人」「优先级」「描述」），不要自创、不要改名、不要翻译。",
@@ -96,7 +129,7 @@ export function buildSystemPrompt(
     "5. 对话很模糊时，先抓住反复出现的业务对象、使用角色、场景和痛点，判断整体项目方向，并把结论写进「- 项目说明：」；没有明确的项目名、模块名或任务，也要给出有依据的概括，不要只输出空模板。",
     "6. 推断要分层：项目 / 模块层的整体目标可以合理归纳；具体任务、负责人、截止时间、数量、技术形态（如二维码、条形码、App、Web）必须逐项有依据，不能为了填满模板硬造。",
     "7. 多轮对话前后不一致时，以最后一次明确决定为准；被否决、已放弃或只是举例的方案不要写进草稿。",
-    "8. 「负责人」写材料中出现的姓名或登录名原文；材料确实没有任何负责人信息时跳过该字段，不要编造。",
+    "8. 「负责人」写材料中出现的姓名或登录名原文；材料确实没有任何负责人信息时跳过该字段，不要编造。材料里出现「负责人：X」「截止：X」「优先级：X」这类标注，或「X 负责」「X 前完成」的句式时，必须落到对应任务的「- 负责人：」「- 截止：」「- 优先级：」字段，不要只写进「- 描述：」。",
     "9. 文本末尾可能跟着若干行以「补充说明：」开头的补充，那是提供材料的人本人对这份材料的后续交代，不是原文之外的杂音：必须把它们落实到草稿里——点名的人写进「- 项目成员：」（整项目导入）或对应任务的「- 负责人：」，要求改哪条说明 / 验收标准 / 时间就改哪条；补充说明只覆盖它明确提到的内容，其余内容照原文保持。",
     "10. 「说明」「描述」等字段只写业务事实和实际做法，不要写关于材料本身的元信息：禁止填写「原文档仅列出…」「未展开说明」「待补充」「本文档没有…」这类占位话；没有真实内容时省略该字段，不要用解释缺口的句子凑数。原文明确说「还没想细」「后面再补」「先做基础」时，不要把这类过程性说明写进字段；只保留已经确定的业务约束，未确定部分省略。",
     "11. 补充说明要求补写、优化或统一改写某类字段时，只改该类字段；未被明确提到的字段、事实、措辞与顺序保持原样，不要顺手润色整份草稿。",
