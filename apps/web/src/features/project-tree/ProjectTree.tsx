@@ -326,15 +326,13 @@ const ProjectBranch: React.FC<ProjectBranchProps> = ({
                   onClick={onPageClick}
                 />
               ))}
-              {/* 模块列表单独放进滚动区：展开某个项目时其它项目仍然完整露出，滚动条只
-              属于这个项目，且滚动条槽常驻，长短变化不再挤动行宽（限高与槽位见
-              design-system.css 的 .tree-modules-scroll）。 */}
+              {/* 模块列表跟随项目抽屉统一滚动，外层项目抽屉是唯一滚动容器。 */}
               <div
                 className="tree-modules"
                 data-open={modulesExpanded ? "true" : "false"}
                 aria-hidden={modulesExpanded ? undefined : true}
               >
-                <div className="tree-modules-scroll">
+                <div className="tree-modules-content">
                   {modulesRendered ? (
                     <ModuleList
                       projectId={item.id}
@@ -470,11 +468,12 @@ export const ProjectTree: React.FC<ProjectTreeProps> = ({
     toggle(`project:${projectId}`);
   };
   const handlePageClick = (segment: string, projectId: number) => {
-    onNavigate(`/projects/${projectId}/${segment}`);
-    // 只有「项目与模块」行控制模块列表开合；其余子页行只导航，不收起项目子级。
+    // 「项目与模块」只是模块列表的开合控制，不再跳转项目页；其余子页行保持导航。
     if (segment === "modules") {
       toggle(`project:${projectId}:pages:modules`);
+      return;
     }
+    onNavigate(`/projects/${projectId}/${segment}`);
   };
   const handleModuleClick = (
     _key: string,

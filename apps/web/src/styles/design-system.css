@@ -82,7 +82,7 @@ html {
    （不再被系统默认的 15px 挤窄），thumb 默认透明，只有正在滚动（或指针停在滚动条上）的容器
    才用颜色浮现；[data-scrolling] 由 apps/web/src/app/auto-hide-scrollbars.ts 在 scroll 事件里
    打上，停手 1 秒后摘掉 —— 纯 :hover 做不到这件事：指针停在窗口里就算悬停，常显的根滚动条会
-   一直亮着。深色侧栏内的 .nav-group / .tree-modules-scroll / .sidebar 另有更亮的配色覆盖。
+   一直亮着。深色侧栏内的 .nav-group / .sidebar 另有更亮的配色覆盖。
    Chromium 走 ::-webkit-scrollbar，Firefox 走标准属性，两者不要同时声明，否则 Chromium
    会忽略自定义滚动条。 */
 *::-webkit-scrollbar {
@@ -441,7 +441,8 @@ button {
 .nav-project-menu > .nav-item {
   margin-bottom: 0;
 }
-/* 展开区留在导航流内，但自身限高并滚动：项目再多也不会把下方功能入口挤出视野。 */
+/* 展开区留在导航流内，但自身限高并滚动。高度上限放宽到 420px / 60dvh 以提升
+   单屏项目数；导航区独立滚动，底部工具栏固定，项目再多也不会无限推走页面结构。 */
 .nav-tree-panel {
   margin: 2px 0 10px;
   padding: 6px;
@@ -450,7 +451,7 @@ button {
 }
 .project-menu-panel {
   width: 100%;
-  max-height: min(260px, 42dvh);
+  max-height: min(420px, 60dvh);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -485,8 +486,8 @@ button {
   margin: 0;
 }
 /* 罗列区间不再整块限高：所有项目行始终完整展示，展开某个项目也不会把其它项目
-   挤出可视区（产品要求 2026-09-21，取代原先 264px 的整块限高）。滚动收进被展开
-   项目的模块列表，见下面的 `.tree-modules-scroll`。 */
+   挤出可视区（产品要求 2026-09-21，取代原先 264px 的整块限高）。模块列表也不再
+   单独限高，统一由外层项目抽屉滚动。 */
 .project-tree-scroll {
   overflow: visible;
 }
@@ -519,49 +520,18 @@ button {
   margin: 0;
   padding: 0;
 }
-/* 滚动条只属于被展开的这个项目，且只包住它的模块列表：子页行（任务看板 / 模块与
-   功能）留在滚动区之外，翻模块时不会被一起滚走；限高按产品复核由 260px 收到 200px
-   （2026-09-21）。滚动条槽常驻（scrollbar-gutter）并换成 6px 细条：模块多少都不再
-   挤动行宽，也不会出现带箭头的系统滚动条（2026-09-23）。 */
-.tree-modules-scroll {
-  max-height: 200px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scroll-behavior: smooth;
-  scrollbar-gutter: stable;
+/* 模块列表跟随项目抽屉统一滚动：模块区不再限高，也不创建第二个滚动条。
+   右侧内缩 10px，并用边框和深色底区分层级（2026-11-05 用户反馈）。 */
+.tree-modules {
+  margin-right: 10px;
 }
-/* 细滚动条：Chromium 走 ::-webkit-scrollbar（6px、圆角、无系统箭头），Firefox 走
-   标准属性；两者不要同时声明，否则 Chromium 会忽略自定义条。 */
-.tree-modules-scroll::-webkit-scrollbar {
-  width: 6px;
+.tree-modules-content {
+  border: 1px solid #2a5a86;
+  border-radius: 6px;
+  background: #0b1f33;
 }
-.tree-modules-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-/* thumb 默认透明、滚动中才显形（2026-09-24）：侧栏是深色底，全局那个浅灰 thumb 在这里看不见，
-   所以这一族保留设计系统的蓝色。 */
-.tree-modules-scroll::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 999px;
-}
-.tree-modules-scroll[data-scrolling]::-webkit-scrollbar-thumb {
-  background: #3f6d94;
-}
-.tree-modules-scroll::-webkit-scrollbar-thumb:hover {
-  background: #5b90bb;
-}
-@supports not selector(::-webkit-scrollbar) {
-  .tree-modules-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-  }
-  .tree-modules-scroll[data-scrolling] {
-    scrollbar-color: #3f6d94 transparent;
-  }
-}
-/* 模块分支不参与收缩：滚动区再矮也按内容高度排版，超出部分交给滚动条。 */
-.tree-modules-scroll > .tree-project {
+/* 模块分支不参与收缩：内容始终按自然高度排版，滚动统一交给外层项目抽屉。 */
+.tree-modules-content > .tree-project {
   flex: none;
 }
 /* Firefox 不支持 ::-webkit-scrollbar，只能走标准属性（同时声明会让 Chromium 忽略
@@ -579,7 +549,7 @@ button {
   .tree-children,
   .tree-modules,
   .tree-children > .tree-children-clip,
-  .tree-modules > .tree-modules-scroll,
+  .tree-modules > .tree-modules-content,
   .tree-row,
   .nav-item {
     transition: none;
@@ -642,7 +612,7 @@ button {
   grid-template-rows: 1fr;
 }
 .tree-children > .tree-children-clip,
-.tree-modules > .tree-modules-scroll {
+.tree-modules > .tree-modules-content {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -653,7 +623,7 @@ button {
     visibility 0s linear 0.24s;
 }
 .tree-children[data-open="true"] > .tree-children-clip,
-.tree-modules[data-open="true"] > .tree-modules-scroll {
+.tree-modules[data-open="true"] > .tree-modules-content {
   opacity: 1;
   visibility: visible;
   transition-delay: 0s;

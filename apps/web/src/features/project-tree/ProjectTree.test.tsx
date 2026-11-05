@@ -161,27 +161,35 @@ describe("ProjectTree", () => {
     ).toBeTruthy();
   });
 
-  it("keeps the module list in its own scroll area so other projects stay visible", async () => {
-    const { container } = mountRouted(createClient());
-
-    fireEvent.click(
-      await screen.findByRole("button", { name: /AGV 智能搬运平台/ }),
+  it("toggles the module list without navigating and keeps it inside the project drawer", async () => {
+    const onNavigate = vi.fn();
+    const { container } = mount(
+      createClient(),
+      onNavigate,
+      scopeOf({ kind: "project" }),
+      "task-board",
     );
+
+    const modulesRow = await screen.findByRole("button", {
+      name: "项目与模块",
+    });
+    expect(modulesRow).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(modulesRow);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(modulesRow).toHaveAttribute("aria-expanded", "true");
+
     const moduleButton = await screen.findByRole("button", {
       name: /调度模块/,
     });
+    const moduleContent = container.querySelector(".tree-modules-content");
+    expect(moduleContent?.contains(moduleButton)).toBe(true);
+    expect(moduleContent?.contains(modulesRow)).toBe(false);
+    expect(container.querySelector(".tree-modules-scroll")).toBeNull();
 
-    // 回归防线：模块列表必须落在自己的滚动区（.tree-modules-scroll，CSS 限高
-    // 200px 且滚动条槽常驻）里，侧栏不再让所有项目共用一条滚动条；子页行留在
-    // 滚动区之外，始终可见。折叠动画在 .tree-children / .tree-modules 两层上，
-    // 中间多一层 .tree-children-clip 负责裁剪，故这里用后代选择器定位。
-    const scrollArea = container.querySelector(
-      ".project-tree-scroll > .tree-project > .tree-children .tree-modules-scroll",
-    );
-    expect(scrollArea?.contains(moduleButton)).toBe(true);
-    expect(
-      scrollArea?.contains(screen.getByRole("button", { name: "项目与模块" })),
-    ).toBe(false);
+    fireEvent.click(modulesRow);
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(modulesRow).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: /调度模块/ })).toBeNull();
   });
 
   it("marks collapsed branches as hidden while the fold animation runs", async () => {

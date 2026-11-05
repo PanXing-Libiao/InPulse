@@ -73,10 +73,13 @@ test("captures the migrated command palette, notification popover and activity p
       throw new Error("侧栏项目下拉未渲染");
     }
     const rect = panel.getBoundingClientRect();
+    const style = getComputedStyle(panel);
     return {
-      position: getComputedStyle(panel).position,
-      overflowY: getComputedStyle(panel).overflowY,
+      position: style.position,
+      overflowY: style.overflowY,
       height: Math.round(rect.height),
+      maxHeight: Number.parseFloat(style.maxHeight),
+      expectedMaxHeight: Math.min(420, window.innerHeight * 0.6),
       viewportHeight: window.innerHeight,
       bottom: Math.round(rect.bottom),
       rows: document.querySelectorAll(
@@ -87,7 +90,11 @@ test("captures the migrated command palette, notification popover and activity p
   });
   expect(treeLayout.position).toBe("static");
   expect(treeLayout.overflowY).toBe("auto");
-  expect(treeLayout.height).toBeLessThanOrEqual(281);
+  expect(treeLayout.maxHeight).toBeGreaterThan(281);
+  expect(
+    Math.abs(treeLayout.maxHeight - treeLayout.expectedMaxHeight),
+  ).toBeLessThanOrEqual(1);
+  expect(treeLayout.height).toBeLessThanOrEqual(treeLayout.maxHeight + 1);
   expect(treeLayout.bottom).toBeLessThan(treeLayout.viewportHeight);
   expect(treeLayout.rows).toBeGreaterThan(1);
   // 项目行右侧的编码小字已删除。

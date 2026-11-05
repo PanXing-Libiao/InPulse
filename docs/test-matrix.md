@@ -7498,3 +7498,35 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 **门禁**：`pnpm typecheck`、`pnpm lint`、`contract:drift`、`contract:validate`（122 条路由）、`permissions:check`（122 条操作 / 122 条路由）通过；API AI 单元 47 例、真实 PostgreSQL AI 集成 49 例、设置页 Web 单元 15 例通过。
 
 **未执行 / 已知边界**：未跑全量 Playwright 与 GitHub Actions；A/B 是单次真实上游调用，不是长期 SLA；生产部署前仍需人工评审迁移和模型选择。
+
+## 2026-11-05 侧栏项目抽屉改为单滚动容器与模块列表不跳转
+
+用户先后反馈模块列表与外层项目列表的双滚动问题。最终要求改回单个滚动条，并让点击「项目与模块」只展开或收起模块列表，不再跳转到项目页面。
+
+最终删除 .tree-modules-scroll 的独立限高、overflow、scrollbar-gutter 和非 passive wheel 接力，模块内容改名为 .tree-modules-content，只保留右侧 10px 内缩、1px 边框、6px 圆角与深色底作为层级区分；整个项目抽屉由 .project-menu-panel 统一滚动，模块再多也只有一条滚动条。ProjectTree 的 handlePageClick 对 segment === "modules" 只调用 toggle 并直接返回，不再调用 onNavigate；任务看板仍保持原导航，模块节点仍进入模块任务页。
+
+修复涉及 Web 样式、ProjectTree 交互、单测、E2E 与测试矩阵，无契约、路由、数据库、权限、鉴权与生成物变化。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| SIDEBAR-PROJECT-SINGLE-SCROLL-E2E-001 | Playwright + Chromium | 项目抽屉只保留外层单一滚动条 | apps/e2e/tests/sidebar-project-scroll.spec.ts：断言 .project-menu-panel 的 overflowY 为 auto，.tree-modules-content 的 overflowY 非 auto/scroll 且 maxHeight 为 none；复制模块行制造长内容后，在模块区滚轮 240px，仅外层 scrollTop 增大，模块内容 scrollTop 保持 0；同时断言模块区右侧内缩至少 10px 且边框存在。命令：pnpm test:e2e:local --skip-migrate tests/sidebar-project-scroll.spec.ts | 本地通过（2026-11-05，1 passed） |
+| SIDEBAR-PROJECT-MODULES-TOGGLE-E2E-001 | Playwright + Chromium | 项目与模块只开合、不跳转项目页面 | 同一 E2E 从项目列表进入项目后切到任务看板，再连续点击两次「项目与模块」：URL 始终保持 /projects/:id/task-board，data-open 在 true / false 之间切换，模块行在外层抽屉内正常显示 | 本地通过（2026-11-05） |
+| SIDEBAR-PROJECT-MODULES-TOGGLE-WEB-001 | Web 单元 | 点击项目与模块不触发导航 | apps/web/src/features/project-tree/ProjectTree.test.tsx：在 task-board 上下文点击「项目与模块」，断言 onNavigate 未被调用、aria-expanded 正确切换、模块按钮位于 .tree-modules-content 内，旧 .tree-modules-scroll 不再渲染 | 本地通过（18 例，2026-11-05） |
+| SIDEBAR-PROJECT-SINGLE-SCROLL-GATE-001 | 静态与视觉门禁 | 前端、E2E 与侧栏布局 | pnpm --filter @inpulse/web typecheck、pnpm --filter @inpulse/e2e typecheck、项目树单测 18 例、定向 ESLint、定向 Prettier、git diff --check，以及 tests/visual-migration.spec.ts 1 例通过 | 本地通过（2026-11-05） |
+| SIDEBAR-PROJECT-SINGLE-SCROLL-DOCS-001 | 文档门禁 | 文档链接与空白 | pnpm check:docs 通过（162 个 Markdown） | 本地通过（2026-11-05） |
+
+**未执行 / 已知边界**：未跑全量 Web 单测、全量 Playwright、完整 check 链与 GitHub Actions；E2E 复制的模块行仅是页面 DOM，不落库。
+
+## 2026-11-05 侧栏项目列表容器高度优化
+
+用户要求调大项目列表容器高度，提升单屏信息展示量并减少滚动。将 .project-menu-panel 的最大高度由 min(260px, 42dvh) 调整为 min(420px, 60dvh)：默认 720px 高视口下上限增加 160px，约多展示 4–5 个项目行；宽度、边框、滚动链和项目树结构不变。导航区仍独立滚动，底部工具栏固定，因此项目再多也不会无限推走页面结构。
+
+本次仅修改 Web 样式与侧栏视觉 E2E 断言，无契约、路由、数据库、权限、鉴权与生成物变化。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| SIDEBAR-PROJECT-HEIGHT-001 | Playwright + Chromium | 项目抽屉高度上限提升且布局仍完整 | apps/e2e/tests/visual-migration.spec.ts 读取 .project-menu-panel 的计算样式，断言 max-height 等于 min(420px, 60dvh)、实际高度不超过上限、底部仍低于视口，并确认任务中心 / 迭代记录 / 遗留问题 / 项目动态 / 成员与设置入口可见。命令：pnpm test:e2e:local --skip-migrate tests/visual-migration.spec.ts | 本地通过（2026-11-05，1 passed） |
+| SIDEBAR-PROJECT-HEIGHT-GATE-001 | 静态检查 | E2E 类型与格式 | pnpm --filter @inpulse/e2e typecheck、定向 ESLint 与定向 Prettier 通过 | 本地通过（2026-11-05） |
+| SIDEBAR-PROJECT-HEIGHT-DOCS-001 | 文档门禁 | 文档链接与空白 | pnpm check:docs 通过（162 个 Markdown） | 本地通过（2026-11-05） |
+
+**未执行 / 已知边界**：未跑全量 Web 单测、全量 Playwright、完整 check 链与 GitHub Actions；视觉用例只验证桌面视口，窄屏高度仍由 60dvh 约束，需人工确认。
