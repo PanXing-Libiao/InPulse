@@ -111,7 +111,6 @@ describe("CreateProjectModal", () => {
         code: "SHOP",
         description: "商城项目描述",
         memberIds: [],
-        modules: [],
       },
       expect.objectContaining({
         headers: expect.objectContaining({
@@ -122,6 +121,25 @@ describe("CreateProjectModal", () => {
     );
     expect(onCreated).toHaveBeenCalledWith(createdProject);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the caret while inserting characters before the existing project code", async () => {
+    const client = {
+      getUserDirectory: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as InpulseApiClient;
+    renderModal(client);
+    const dialog = await screen.findByRole("dialog", { name: "新建项目" });
+    const codeInput = within(dialog).getByLabelText(
+      "项目编码",
+    ) as HTMLInputElement;
+    const user = userEvent.setup();
+    await user.type(codeInput, "ddddjj");
+    codeInput.focus();
+    codeInput.setSelectionRange(0, 0);
+    await user.keyboard("ab");
+    expect(codeInput).toHaveValue("ABDDDDJJ");
+    expect(codeInput.selectionStart).toBe(2);
+    expect(codeInput.selectionEnd).toBe(2);
   });
 
   it("renders the complete form inline and submits it from an external footer", async () => {

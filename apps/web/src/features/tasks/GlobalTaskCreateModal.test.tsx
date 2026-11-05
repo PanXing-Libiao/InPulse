@@ -134,14 +134,17 @@ interface Harness {
 function harness(
   overrides: {
     readonly createModuleTask?: () => Promise<unknown>;
+    readonly createTaskWithScope?: (projectId: number) => Promise<unknown>;
     readonly addExternalLink?: () => Promise<unknown>;
   } = {},
 ): Harness {
   const createModuleTask = vi.fn(
     overrides.createModuleTask ?? (() => Promise.resolve(createdModuleTask)),
   );
-  const createTaskWithScope = vi.fn((projectId: number) =>
-    Promise.resolve({ projectId, moduleId: 21, taskId: 903 }),
+  const createTaskWithScope = vi.fn(
+    overrides.createTaskWithScope ??
+      ((projectId: number) =>
+        Promise.resolve({ projectId, moduleId: 21, taskId: 903 })),
   );
   const createProject = vi.fn(() => Promise.resolve(createdProject));
   const getUserDirectory = vi.fn(() =>
@@ -584,7 +587,7 @@ it("creates a custom module and task in one submission and returns the real loca
   });
 });
 
-it("creates a custom project from the task modal, then locks it while keeping the task form", async () => {
+it("keeps the project as a draft until the task is submitted, then creates both", async () => {
   const test = harness();
   mount(test);
   const user = userEvent.setup();
@@ -657,7 +660,13 @@ it("creates a custom project from the task modal, then locks it while keeping th
 
   await user.click(screen.getByRole("button", { name: "下一步" }));
 
-  await waitFor(() => expect(test.createProject).toHaveBeenCalledTimes(1));
+  await waitFor(() =>
+    expect(screen.getByLabelText("任务标题")).toBeInTheDocument(),
+  );
+  expect(test.createProject).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "返回修改项目" }),
+  ).toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: "新建任务" })).toHaveClass(
     "task-create-modal",
     "task-create-ai",
@@ -668,24 +677,6 @@ it("creates a custom project from the task modal, then locks it while keeping th
   expect(
     screen.getByText("所属模块名称", { selector: "label.required-field" }),
   ).toBeInTheDocument();
-  expect(test.createProject).toHaveBeenCalledWith(
-    {
-      name: "Pulse 新项目",
-      code: "PULSE",
-      description: "内联创建的项目",
-      memberIds: [2],
-      modules: [],
-    },
-    {
-      headers: {
-        "x-csrf-token": "csrf-token",
-        "Idempotency-Key": expect.stringMatching(/^create-project-/),
-      },
-    },
-  );
-  await waitFor(() =>
-    expect(screen.getByLabelText("任务标题")).toBeInTheDocument(),
-  );
   expect(screen.queryByLabelText("所属项目")).toBeNull();
   expect(
     [...document.querySelectorAll(".task-fixed-project")].map((row) =>
@@ -701,6 +692,21 @@ it("creates a custom project from the task modal, then locks it while keeping th
   await pickAssignee(user, "陈晓");
   await user.click(screen.getByRole("button", { name: "创建任务" }));
 
+  await waitFor(() => expect(test.createProject).toHaveBeenCalledTimes(1));
+  expect(test.createProject).toHaveBeenCalledWith(
+    {
+      name: "Pulse 新项目",
+      code: "PULSE",
+      description: "内联创建的项目",
+      memberIds: [2],
+    },
+    {
+      headers: {
+        "x-csrf-token": "csrf-token",
+        "Idempotency-Key": expect.stringMatching(/^create-project-/),
+      },
+    },
+  );
   await waitFor(() =>
     expect(test.createTaskWithScope).toHaveBeenCalledWith(
       7,
@@ -725,6 +731,114 @@ it("creates a custom project from the task modal, then locks it while keeping th
       taskId: 903,
     }),
   );
+});
+
+it("returns from the task form to edit the project draft without losing task fields", async () => {
+  const test = harness();
+  mount(test);
+  const user = userEvent.setup();
+
+  await pickOption(user, "所属项目", "自定义 · 创建新项目");
+  await screen.findByRole("dialog", { name: "新建项目" });
+  await user.type(screen.getByLabelText("项目名称"), "Pulse 新项目");
+  await user.type(screen.getByLabelText("项目描述"), "第一版说明");
+  await waitFor(() =>
+    expect(screen.getByLabelText("选择项目成员")).toBeEnabled(),
+  );
+  const memberTrigger = screen
+    .getByLabelText("选择项目成员")
+    .closest(".ant-select");
+  if (!memberTrigger) throw new Error("project member select not found");
+  await user.click(memberTrigger as HTMLElement);
+  await user.click(await screen.findByTitle("李雷"));
+  await user.click(screen.getByRole("button", { name: "下一步" }));
+
+  await user.type(await screen.findByLabelText("所属模块名称"), "首个模块");
+  await user.type(screen.getByLabelText("任务标题"), "保留的任务标题");
+  await waitFor(() => expect(screen.getByLabelText("指派给")).toBeEnabled());
+  await pickAssignee(user, "陈晓");
+
+  await user.click(screen.getByRole("button", { name: "返回修改项目" }));
+  expect(
+    await screen.findByRole("dialog", { name: "新建项目" }),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("项目名称")).toHaveValue("Pulse 新项目");
+  expect(screen.getByLabelText("项目描述")).toHaveValue("第一版说明");
+  expect(screen.getByLabelText("项目编码")).toHaveValue("PULSE");
+
+  await user.clear(screen.getByLabelText("项目名称"));
+  await user.type(screen.getByLabelText("项目名称"), "Pulse 改版");
+  await user.clear(screen.getByLabelText("项目描述"));
+  await user.type(screen.getByLabelText("项目描述"), "返回后修改的说明");
+  await user.click(screen.getByRole("button", { name: "下一步" }));
+
+  await waitFor(() =>
+    expect(screen.getByLabelText("任务标题")).toHaveValue("保留的任务标题"),
+  );
+  expect(screen.getByLabelText("所属模块名称")).toHaveValue("首个模块");
+  expect(
+    [...document.querySelectorAll(".task-fixed-project")].map((row) =>
+      row.textContent?.trim(),
+    ),
+  ).toContain("Pulse 改版");
+
+  await user.click(screen.getByRole("button", { name: "创建任务" }));
+  await waitFor(() => expect(test.createProject).toHaveBeenCalledTimes(1));
+  expect(test.createProject).toHaveBeenCalledWith(
+    expect.objectContaining({
+      name: "Pulse 改版",
+      code: "PULSE",
+      description: "返回后修改的说明",
+      memberIds: [2],
+    }),
+    expect.any(Object),
+  );
+});
+
+it("does not recreate a materialized project when task creation is retried", async () => {
+  let taskAttempts = 0;
+  const test = harness({
+    createTaskWithScope: (projectId) => {
+      taskAttempts += 1;
+      if (taskAttempts === 1) {
+        return Promise.reject(new Error("temporary failure"));
+      }
+      return Promise.resolve({ projectId, moduleId: 21, taskId: 903 });
+    },
+  });
+  mount(test);
+  const user = userEvent.setup();
+
+  await pickOption(user, "所属项目", "自定义 · 创建新项目");
+  await screen.findByRole("dialog", { name: "新建项目" });
+  await user.type(screen.getByLabelText("项目名称"), "Pulse 新项目");
+  await user.type(screen.getByLabelText("项目描述"), "内联创建的项目");
+  await user.click(screen.getByRole("button", { name: "下一步" }));
+  await user.type(await screen.findByLabelText("所属模块名称"), "首个模块");
+  await user.type(screen.getByLabelText("任务标题"), "首个任务");
+  await waitFor(() => expect(screen.getByLabelText("指派给")).toBeEnabled());
+  await pickAssignee(user, "陈晓");
+
+  await user.click(screen.getByRole("button", { name: "创建任务" }));
+  expect(
+    await screen.findByText(/项目已创建，但任务创建失败/),
+  ).toBeInTheDocument();
+  expect(test.createProject).toHaveBeenCalledTimes(1);
+  expect(test.createTaskWithScope).toHaveBeenCalledTimes(1);
+  expect(
+    screen.queryByRole("button", { name: "返回修改项目" }),
+  ).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "创建任务" }));
+  await waitFor(() =>
+    expect(test.onCreatedLocation).toHaveBeenCalledWith({
+      projectId: 7,
+      moduleId: 21,
+      taskId: 903,
+    }),
+  );
+  expect(test.createProject).toHaveBeenCalledTimes(1);
+  expect(test.createTaskWithScope).toHaveBeenCalledTimes(2);
 });
 
 it("AI 助手把识别结果填入左侧空字段", async () => {

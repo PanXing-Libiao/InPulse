@@ -1,7 +1,17 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Alert, Button, Checkbox, Form, Input, Typography } from "antd";
 import { Controller, useForm } from "react-hook-form";
-import type { CreateProjectResponse, InpulseApiClient } from "@generated/api";
+import type {
+  CreateProjectRequest,
+  CreateProjectResponse,
+  InpulseApiClient,
+} from "@generated/api";
 import { AppModal as Modal } from "@features/common/components/AppModal";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import {
@@ -63,6 +73,26 @@ export interface CreateProjectModalProps {
     response: CreateProjectResponse,
     notice?: string,
   ) => void;
+  /** 只校验并返回项目草稿，不在这里创建项目。 */
+  readonly deferCreation?: boolean;
+  readonly initialDraft?: ProjectCreationDraft | null;
+  readonly onDraftReady?: (draft: ProjectCreationDraft) => void;
+}
+
+/** 新建项目表单的暂存结果，供任务中心最终提交时一并创建。 */
+export interface ProjectCreationDraft {
+  readonly request: CreateProjectRequest;
+  readonly assignees: readonly {
+    readonly id: number;
+    readonly name: string;
+  }[];
+  readonly webhook: {
+    readonly label: string;
+    readonly webhookUrl: string;
+  } | null;
+  readonly manualMemberIds: readonly number[];
+  readonly selectedGroupKeys: readonly string[];
+  readonly codeManuallyEdited: boolean;
 }
 
 const defaultValues: ProjectFormValues = {
@@ -81,6 +111,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onBusyChange,
   onClose,
   onCreated,
+  deferCreation = false,
+  initialDraft = null,
+  onDraftReady,
 }) => {
   const {
     control,
@@ -116,7 +149,20 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   >([]);
   // 用户手动填过编码就不再被名称推导覆盖；清空编码视为交回自动推导。
   const codeManuallyEditedRef = useRef(false);
+  const codeInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingCodeCaretRef = useRef<number | null>(null);
   const code = watch("code") ?? "";
+
+  useLayoutEffect(() => {
+    const caret = pendingCodeCaretRef.current;
+    if (caret === null) return;
+    pendingCodeCaretRef.current = null;
+    const input = codeInputRef.current;
+    if (input === null || document.activeElement !== input) return;
+    const nextCaret = Math.min(caret, input.value.length);
+    input.setSelectionRange(nextCaret, nextCaret);
+  }, [code]);
+
   const cardShortname = deriveProjectCardShortname(code);
   const candidates = useMemo(
     () => (directory.data ?? []).filter((user) => user.id !== creatorUserId),
@@ -232,21 +278,31 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
   useEffect(() => {
     if (open) {
-      reset(defaultValues);
-      setManualMemberIds([]);
-      setSelectedGroupKeys([]);
-      setWebhookEnabled(false);
-      setWebhookLabel("");
-      setWebhookUrl("");
+      const draft = initialDraft;
+      const hasWebhook = draft !== null && draft.webhook !== null;
+      reset(
+        draft === null
+          ? defaultValues
+          : {
+              name: draft.request.name,
+              code: draft.request.code ?? "",
+              description: draft.request.description,
+            },
+      );
+      setManualMemberIds(draft === null ? [] : [...draft.manualMemberIds]);
+      setSelectedGroupKeys(draft === null ? [] : [...draft.selectedGroupKeys]);
+      setWebhookEnabled(hasWebhook);
+      setWebhookLabel(draft?.webhook?.label ?? "");
+      setWebhookUrl(draft?.webhook?.webhookUrl ?? "");
       setWebhookError(null);
       setView("project");
       setStructureModules([]);
       setStructureIssues([]);
-      codeManuallyEditedRef.current = false;
+      codeManuallyEditedRef.current = draft?.codeManuallyEdited ?? false;
       mutation.reset();
       webhookMutation.reset();
     }
-  }, [open]);
+  }, [open, initialDraft]);
 
   // 取消勾选成员后，已填的负责人可能不再合法；直接清空，交给用户重新选择。
   useEffect(() => {
@@ -301,6 +357,25 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       return;
     }
     setStructureIssues([]);
+    if (deferCreation) {
+      onDraftReady?.({
+        request: toCreateProjectRequest(parsed.data, selectedMemberIds),
+        assignees: assigneeOptions,
+        webhook: webhookEnabled
+          ? {
+              label:
+                webhookLabel
+                  .trim()
+                  .slice(0, PROJECT_WECOM_WEBHOOK_LABEL_MAX_LENGTH) || "项目群",
+              webhookUrl: webhookUrl.trim(),
+            }
+          : null,
+        manualMemberIds,
+        selectedGroupKeys,
+        codeManuallyEdited: codeManuallyEditedRef.current,
+      });
+      return;
+    }
     try {
       const response = await mutation.mutateAsync(
         toCreateProjectRequest(
@@ -429,14 +504,26 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   >
                     <Input
                       {...field}
+                      ref={(instance) => {
+                        field.ref(instance);
+                        codeInputRef.current = instance?.input ?? null;
+                      }}
                       id="project-code"
                       aria-label="项目编码"
                       maxLength={PROJECT_CODE_MAX_LENGTH}
                       placeholder="SHOP"
                       disabled={submitting}
                       onChange={(event) => {
-                        const nextCode = normalizeProjectCode(
-                          event.currentTarget.value,
+                        const rawCode = event.currentTarget.value;
+                        const selectionStart =
+                          event.currentTarget.selectionStart ?? rawCode.length;
+                        const leadingTrimmedLength =
+                          rawCode.length - rawCode.trimStart().length;
+                        const nextCode = normalizeProjectCode(rawCode);
+                        pendingCodeCaretRef.current = Math.max(
+                          0,
+                          selectionStart -
+                            Math.min(leadingTrimmedLength, selectionStart),
                         );
                         field.onChange(nextCode);
                         clearErrors("code");
@@ -651,7 +738,9 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                     />
                   </div>
                   <p className="create-project-webhook-note">
-                    项目先完成创建；Webhook 添加失败不会回滚项目。
+                    {deferCreation
+                      ? "项目与任务最终提交时一起创建；Webhook 添加失败不会回滚已创建项目。"
+                      : "项目先完成创建；Webhook 添加失败不会回滚项目。"}
                   </p>
                 </>
               ) : null}

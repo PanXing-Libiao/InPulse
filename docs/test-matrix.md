@@ -7633,3 +7633,39 @@ ADR-068 的代码、契约与迁移随同日的提交 `c4ec412` 落库，但当�
 | STRUCT-FIX-001 | Web 单元 | 结构页项目字段校验反馈 | 表单增加 invalid 回调：第一层字段校验失败时切回项目信息页，错误可见；`CreateProjectModal.test.tsx` 17 例通过 | 本地通过（2026-11-05） |
 
 **门禁**：Web / E2E `typecheck`、改动文件 ESLint 与 Prettier 通过；本次只跑新增的 2 例 E2E，未跑 Playwright 全量、`pnpm check` 或 GitHub Actions。测试过程中发现并修复「在结构页提交、项目名称为空时无任何反馈」的问题。
+
+## 2026-11-05 新建项目空模块请求兼容修复
+
+任务中心「自定义 · 创建新项目」在未添加模块时提交会收到 422。根因是 `toCreateProjectRequest` 始终发送 `modules: []`，而当时本地 API 运行的契约产物早于 `modules` 字段上线，严格的 `CreateProjectRequest` 将空数组视为未知字段。修复后仅当模块列表非空时才携带 `modules`；已有模块与任务仍按原嵌套结构提交，同时兼容新旧 API。重新构建 workspace 契约与 API，并重启本地 API / Web；健康检查 `/api/v1/health/ready` 返回 `status=ok`。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| PROJECT-CREATE-EMPTY-MODULES-WEB-001 | Web 单元 | 无模块新建项目 | `CreateProjectModal.test.tsx` 与 `GlobalTaskCreateModal.test.tsx` 断言普通新建项目和任务中心内联新建项目请求体不包含 `modules` 属性，避免旧 API 因严格校验返回 422 | 本地通过（2026-11-05，定向 2 文件 40 例） |
+| PROJECT-CREATE-MODULES-WEB-002 | Web 单元 | 有模块时保持嵌套结构 | `CreateProjectModal.test.tsx` 断言选择模块与任务后请求仍包含完整 `modules[].tasks[]` 结构，未误删一次创建能力 | 本地通过（2026-11-05） |
+| PROJECT-CREATE-EMPTY-MODULES-REG-001 | Web 回归 / 构建 | 全量回归与运行产物 | `pnpm --filter @inpulse/web test` 123 文件 1086 例、Web typecheck、API 与契约构建通过；`packages/api-contract/dist/contracts/projects.zod.js` 已包含可选 `modules`，本地 API 3000 与 Web 5173 重启并健康检查通过 | 本地通过（2026-11-05） |
+
+## 2026-11-05 任务中心自定义项目延后统一创建
+
+任务中心「自定义 · 创建新项目」改为两阶段前端草稿：点击「下一步」只校验项目表单并保存草稿，不调用创建项目接口；进入任务步骤后所属项目锁定为草稿项目，填写模块名称与任务内容时可点击「返回修改项目」回到项目页，项目字段和已填任务字段均保留。最终点击「创建任务」时按顺序创建项目、创建模块与任务，再关联 GitHub 链接并按需添加项目群 Webhook。若项目已创建而任务失败，界面明确提示且隐藏项目返回入口；使用同一任务幂等 Key 重试时不会重复创建项目。普通项目页的新建项目流程不变。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| TASK-CREATE-PROJECT-DEFER-001 | Web 单元 | 下一步只保存项目草稿 | `GlobalTaskCreateModal.test.tsx` 断言进入项目步骤并点击「下一步」后 `createProject` 尚未调用；任务页显示草稿项目名和必填的「所属模块名称」，最终点击「创建任务」才先创建项目、再调用 `createTaskWithScope` 创建模块与任务 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-RETURN-EDIT-001 | Web 单元 | 任务页返回修改项目 | 点击「返回修改项目」后恢复项目名称、描述、编码与成员选择；再次进入任务页时模块名称、任务标题与负责人仍在；修改后的项目名称和描述用于最终创建请求 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-RETRY-001 | Web 单元 | 项目已创建但任务失败后的重试 | 首次任务创建失败后展示「项目已创建，但任务创建失败」并隐藏「返回修改项目」；再次提交沿用已物化项目 ID，`createProject` 仍只调用一次，任务重试成功 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-DEFER-REG-001 | Web 回归 / 静态门禁 | 全量回归、类型、Lint、格式、依赖边界与构建 | 定向 2 个测试文件 42 例、全量 Web 123 个文件 1088 例、Web `typecheck`、定向 ESLint、定向 Prettier、`check:boundaries`、`build`、`git diff --check` 全部通过 | 本地通过（2026-11-05） |
+| TASK-CREATE-PROJECT-DEFER-DOCS-001 | 文档门禁 | 文档链接与差异空白 | `pnpm check:docs` 与 `git diff --check` 通过 | 本地通过（2026-11-05） |
+
+**已知边界**：当前为前端顺序提交，项目创建与模块/任务创建仍调用两条既有接口，不由同一数据库事务保证原子回滚。任务创建失败时项目可能已经存在，界面会提示并支持安全重试；本次未新增或修改路由、契约、数据库迁移与生成物。
+
+## 2026-11-05 项目编码输入光标位置修复
+
+项目编码输入原先在每次按键后立即 `trim().toUpperCase()` 并回写 React Hook Form 受控值。当用户在已有编码前方插入字符时，受控值更新会重置浏览器选区，导致光标跳到末尾，后续输入被追加而不是连续插入。修复在归一化前记录原生输入框的 `selectionStart`，按前导空白裁剪量映射新位置，并在表单值渲染后的 `useLayoutEffect` 中恢复选区；即时大写、编码校验和卡片简称推导保持不变。新建项目页与任务中心「自定义 · 创建新项目」共用该组件，因此两处同时生效。仅修改 Web 输入交互与测试，无 API、契约、路由、数据库或权限变化。
+
+| ID | 层级 | 场景 | 通过标准 | 状态 |
+| --- | --- | --- | --- | --- |
+| PROJECT-CODE-CARET-WEB-001 | Web 单元 | 在编码开头连续补充字符 | `CreateProjectModal.test.tsx` 先输入 `ddddjj` 得到 `DDDDJJ`，将选区移到开头后连续输入 `ab`；最终值应为 `ABDDDDJJ`，且 `selectionStart` / `selectionEnd` 均为 2，证明第二个字符插入在原位置而不是追加到末尾 | 本地通过（2026-11-05） |
+| PROJECT-CODE-CARET-REG-001 | Web 回归 | 项目表单与任务中心内联项目流程 | 定向 `CreateProjectModal.test.tsx` 与 `GlobalTaskCreateModal.test.tsx` 43 例通过；全量 Web 123 个文件 1089 例通过 | 本地通过（2026-11-05） |
+| PROJECT-CODE-CARET-GATE-001 | 静态门禁 | 类型、Lint、格式、依赖边界、构建与文档 | Web `typecheck`、定向 ESLint、定向 Prettier、`check:boundaries`、`build`、`git diff --check` 与 `pnpm check:docs` 通过 | 本地通过（2026-11-05） |
+
+**边界**：本次只修复浏览器输入选区，不改变项目编码的字符规则、长度限制或提交值。

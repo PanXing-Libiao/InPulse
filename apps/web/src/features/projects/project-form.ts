@@ -126,6 +126,6 @@ export function toCreateProjectRequest(
         ),
       ),
     ).sort((left, right) => left - right),
-    modules: [...modules],
+    ...(modules.length === 0 ? {} : { modules: [...modules] }),
   };
 }

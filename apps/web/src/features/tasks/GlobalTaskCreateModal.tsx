@@ -12,7 +12,6 @@ import { Alert, Button } from "antd";
 import {
   ApiError,
   createApiClient,
-  type CreateProjectResponse,
   type InpulseApiClient,
   type TaskDraftAssistDraft,
   type TaskEditRequest,
@@ -26,8 +25,12 @@ import {
 } from "@features/common/components/CalmDateTimeInput";
 import { priorityDotColor } from "@features/common/priority-select-option";
 import { projectSelectOption } from "@features/common/project-select-option";
-import { CreateProjectModal } from "@features/projects/CreateProjectModal";
+import {
+  CreateProjectModal,
+  type ProjectCreationDraft,
+} from "@features/projects/CreateProjectModal";
 import { useProjects } from "@features/projects/project-query";
+import { projectWecomGroupErrorMessage } from "@features/projects/project-wecom-group-query";
 import { useModules } from "@features/modules/module-query";
 import { isFirstLoad, taskError } from "./task-query";
 import { CalmSkeleton } from "@features/common/components/CalmSkeleton";
@@ -112,9 +115,12 @@ export function GlobalTaskCreateModal({
   const [invalid, setInvalid] = useState<string | null>(null);
   const [failedLinks, setFailedLinks] = useState<string[]>([]);
   const [creatingProject, setCreatingProject] = useState(false);
-  const [createdProjectName, setCreatedProjectName] = useState<string | null>(
+  const [projectDraft, setProjectDraft] = useState<ProjectCreationDraft | null>(
     null,
   );
+  const [materializedProjectId, setMaterializedProjectId] = useState<
+    number | null
+  >(null);
   const [createdProjectNotice, setCreatedProjectNotice] = useState<
     string | null
   >(null);
@@ -126,18 +132,21 @@ export function GlobalTaskCreateModal({
   const presetProjectId = preset?.projectId ?? 0;
   const presetModuleId = preset?.moduleId ?? 0;
   const lockedModule = presetModuleId > 0;
-  /** 新建成功后才锁左侧项目；从项目页预置但未锁模块时仍保留原可切换行为。 */
-  const projectFieldLocked = lockedModule || createdProjectName !== null;
-  const creatingModuleForNewProject = createdProjectName !== null;
+  const pendingProject = projectDraft !== null;
+  /** 项目草稿或已预置模块时锁左侧项目；仅从项目页预置项目仍可切换。 */
+  const projectFieldLocked = lockedModule || pendingProject;
+  const creatingModuleForNewProject = pendingProject;
   const moduleAssistLocked = lockedModule || creatingModuleForNewProject;
   const projectAssistLocked = presetProjectId > 0 || projectFieldLocked;
+  const canReturnToProject = pendingProject && materializedProjectId === null;
 
   useEffect(() => {
     if (!open) return;
     setAssistResetToken((token) => token + 1);
     setCreatedLocation(null);
     setCreatingProject(false);
-    setCreatedProjectName(null);
+    setProjectDraft(null);
+    setMaterializedProjectId(null);
     setCreatedProjectNotice(null);
     setProjectStepBusy(false);
     setProjectId(presetProjectId);
@@ -162,22 +171,35 @@ export function GlobalTaskCreateModal({
         ?.name ?? null)
     : null;
 
-  const targetReady =
-    projectId > 0 &&
-    (moduleId > 0 || (moduleId === -1 && newModule.trim().length > 0));
+  const targetReady = pendingProject
+    ? newModule.trim().length > 0
+    : projectId > 0 &&
+      (moduleId > 0 || (moduleId === -1 && newModule.trim().length > 0));
 
   const assignees = useQuery({
     queryKey: ["task-assignees", projectId],
     queryFn: ({ signal }) =>
       api.listActiveProjectMembers(projectId, { signal }),
     retry: false,
-    enabled: open && projectId > 0,
+    enabled: open && projectId > 0 && !pendingProject,
   });
 
-  function keyFor(signature: string): string {
+  const taskAssigneeOptions =
+    projectDraft === null
+      ? (assignees.data?.items ?? []).map((member) => ({
+          value: member.id,
+          label: member.name,
+          avatarUrl: member.avatarUrl ?? null,
+        }))
+      : projectDraft.assignees.map((member) => ({
+          value: member.id,
+          label: member.name,
+        }));
+
+  function keyFor(signature: string, prefix = "task"): string {
     const existing = retryKeys.current.get(signature);
     if (existing) return existing;
-    const created = createIdempotencyKey("task");
+    const created = createIdempotencyKey(prefix);
     retryKeys.current.set(signature, created);
     return created;
   }
@@ -192,18 +214,38 @@ export function GlobalTaskCreateModal({
         assigneeIds,
         dueAt,
       };
+      const csrfToken = (await api.issueCsrfToken()).csrfToken;
+      let resolvedProjectId = materializedProjectId ?? projectId;
+      if (projectDraft !== null && resolvedProjectId <= 0) {
+        const createdProject = await api.createProject(projectDraft.request, {
+          headers: {
+            "x-csrf-token": csrfToken,
+            "Idempotency-Key": keyFor(
+              JSON.stringify(["create-project", projectDraft.request]),
+              "create-project",
+            ),
+          },
+        });
+        resolvedProjectId = createdProject.project.id;
+        setMaterializedProjectId(resolvedProjectId);
+        void cache.invalidateQueries({ queryKey: ["projects"] });
+      }
+      if (resolvedProjectId <= 0) {
+        throw new Error("missing-project");
+      }
       const init = {
         headers: {
-          "x-csrf-token": (await api.issueCsrfToken()).csrfToken,
+          "x-csrf-token": csrfToken,
           "Idempotency-Key": keyFor(
-            JSON.stringify([projectId, moduleId, body, newModule]),
+            JSON.stringify([resolvedProjectId, moduleId, body, newModule]),
           ),
         },
       };
+      const targetModuleId = projectDraft === null ? moduleId : -1;
       const created =
-        moduleId === -1
+        targetModuleId === -1
           ? await api.createTaskWithScope(
-              projectId,
+              resolvedProjectId,
               {
                 module: {
                   kind: "new",
@@ -213,7 +255,12 @@ export function GlobalTaskCreateModal({
               },
               init,
             )
-          : await api.createModuleTask(projectId, moduleId, body, init);
+          : await api.createModuleTask(
+              resolvedProjectId,
+              targetModuleId,
+              body,
+              init,
+            );
       const taskId = "taskId" in created ? created.taskId : created.id;
       const resolvedModuleId =
         "taskId" in created ? created.moduleId : created.moduleId;
@@ -227,8 +274,8 @@ export function GlobalTaskCreateModal({
             { url },
             {
               headers: {
-                "x-csrf-token": init.headers["x-csrf-token"],
-                "If-Match": `"${currentLinks.rowVersion}"`,
+                "x-csrf-token": csrfToken,
+                "If-Match": JSON.stringify(String(currentLinks.rowVersion)),
                 "Idempotency-Key": keyFor(
                   JSON.stringify(["link", taskId, url]),
                 ),
@@ -239,19 +286,40 @@ export function GlobalTaskCreateModal({
           rejected.push(url);
         }
       }
+      let notice: string | null = null;
+      if (projectDraft !== null && projectDraft.webhook !== null) {
+        const webhook = projectDraft.webhook;
+        try {
+          await api.createProjectWecomWebhook(resolvedProjectId, webhook, {
+            headers: {
+              "x-csrf-token": csrfToken,
+              "Idempotency-Key": keyFor(
+                JSON.stringify(["create-project-webhook", resolvedProjectId]),
+              ),
+            },
+          });
+        } catch (error) {
+          notice =
+            "项目与任务已创建，但企业微信群 Webhook 未添加：" +
+            projectWecomGroupErrorMessage(error) +
+            "可稍后在项目「消息通知」中重试。";
+        }
+      }
       return {
         taskId,
         rejected,
+        notice,
         location: {
-          projectId,
+          projectId: resolvedProjectId,
           moduleId: resolvedModuleId,
           taskId,
         } satisfies TaskLocation,
       };
     },
-    onSuccess: async ({ taskId, rejected, location }) => {
+    onSuccess: async ({ taskId, rejected, notice, location }) => {
       retryKeys.current.clear();
       setFailedLinks(rejected);
+      setCreatedProjectNotice(notice);
       setCreatedLocation(location);
       await Promise.all(
         [
@@ -265,10 +333,11 @@ export function GlobalTaskCreateModal({
           "my-task-groups",
           "project-overview",
           "task-groups",
+          "projects",
         ].map((key) => cache.invalidateQueries({ queryKey: [key] })),
       );
       onCreated?.(taskId);
-      if (rejected.length === 0) {
+      if (rejected.length === 0 && notice === null) {
         reset();
         onClose();
         onCreatedLocation?.(location);
@@ -279,7 +348,8 @@ export function GlobalTaskCreateModal({
   function reset(): void {
     setCreatedLocation(null);
     setCreatingProject(false);
-    setCreatedProjectName(null);
+    setProjectDraft(null);
+    setMaterializedProjectId(null);
     setCreatedProjectNotice(null);
     setProjectStepBusy(false);
     setNewModule("");
@@ -419,6 +489,13 @@ export function GlobalTaskCreateModal({
     const next = Number(nextValue);
     if (next === CREATE_PROJECT_OPTION) {
       setCreatingProject(true);
+      setProjectDraft(null);
+      setMaterializedProjectId(null);
+      setProjectId(0);
+      setModuleId(0);
+      setNewModule("");
+      setAssigneeIds([]);
+      setCreatedProjectNotice(null);
       setInvalid(null);
       return;
     }
@@ -428,18 +505,18 @@ export function GlobalTaskCreateModal({
     setAssigneeIds([]);
   }
 
-  function handleProjectCreated(
-    response: CreateProjectResponse,
-    notice?: string,
-  ): void {
-    setProjectId(response.project.id);
-    setCreatedProjectName(response.project.name);
-    setCreatedProjectNotice(notice ?? null);
+  function handleProjectDraft(draft: ProjectCreationDraft): void {
+    const allowedAssigneeIds = new Set(draft.assignees.map((item) => item.id));
+    setProjectDraft(draft);
+    setProjectId(0);
+    setModuleId(0);
+    setMaterializedProjectId(null);
     setCreatingProject(false);
     setProjectStepBusy(false);
-    setModuleId(-1);
-    setNewModule("");
-    setAssigneeIds([]);
+    setAssigneeIds((current) =>
+      current.filter((assigneeId) => allowedAssigneeIds.has(assigneeId)),
+    );
+    setCreatedProjectNotice(null);
     setInvalid(null);
   }
 
@@ -449,11 +526,21 @@ export function GlobalTaskCreateModal({
     setInvalid(null);
   }
 
+  function returnToProjectForm(): void {
+    if (mutation.isPending || projectStepBusy || !canReturnToProject) return;
+    setCreatingProject(true);
+    setInvalid(null);
+  }
+
   function submit(event: FormEvent): void {
     event.preventDefault();
     if (createdLocation || mutation.isPending) return;
     if (!targetReady) {
-      setInvalid("请选择任务归属，或填写模块名称。");
+      setInvalid(
+        pendingProject
+          ? "请填写所属模块名称。"
+          : "请选择任务归属，或填写模块名称。",
+      );
       return;
     }
     if (title.trim().length === 0) {
@@ -477,16 +564,21 @@ export function GlobalTaskCreateModal({
   }
 
   const projectName =
-    createdProjectName ??
+    projectDraft?.request.name ??
     projects.data?.items.find((project) => project.id === projectId)?.name;
 
   const busy = mutation.isPending || projectStepBusy;
-  const createError =
+  const baseCreateError =
     mutation.isError && !(mutation.error instanceof ApiError)
       ? "任务服务暂时不可用，输入已保留，可重试。"
       : mutation.isError
         ? taskError(mutation.error)
         : null;
+  const createError = mutation.isError
+    ? materializedProjectId !== null
+      ? "项目已创建，但任务创建失败。" + (baseCreateError ?? "")
+      : baseCreateError
+    : null;
 
   return (
     <Modal
@@ -528,7 +620,10 @@ export function GlobalTaskCreateModal({
           client={api}
           creatorName={creatorName ?? "创建者"}
           creatorUserId={creatorUserId}
-          onCreated={handleProjectCreated}
+          deferCreation
+          initialDraft={projectDraft}
+          onDraftReady={handleProjectDraft}
+          onCreated={() => undefined}
           onClose={returnToTaskForm}
           onBusyChange={setProjectStepBusy}
         />
@@ -543,11 +638,10 @@ export function GlobalTaskCreateModal({
                   title={`任务已创建，但 ${failedLinks.length} 个 GitHub 链接未能关联：${failedLinks.join("、")}`}
                 />
               )}
-              {createdLocation && failedLinks.length > 0 && (
-                <a href={taskDetailPath(createdLocation)}>
-                  查看已创建任务并管理 GitHub 链接
-                </a>
-              )}
+              {createdLocation &&
+                (failedLinks.length > 0 || createdProjectNotice !== null) && (
+                  <a href={taskDetailPath(createdLocation)}>查看已创建任务</a>
+                )}
               {createdProjectNotice && (
                 <Alert type="warning" title={createdProjectNotice} />
               )}
@@ -585,7 +679,7 @@ export function GlobalTaskCreateModal({
                           value: CREATE_PROJECT_OPTION,
                           label: "自定义 · 创建新项目",
                           iconText: "＋",
-                          description: "先创建项目，再继续填写任务",
+                          description: "先填写项目，再继续任务，最后一起创建",
                         },
                         ...(projects.data?.items ?? []).map(
                           projectSelectOption,
@@ -704,11 +798,7 @@ export function GlobalTaskCreateModal({
                     id="global-task-assignee"
                     value={assigneeIds}
                     onChange={(next) => setAssigneeIds(next.map(Number))}
-                    options={(assignees.data?.items ?? []).map((member) => ({
-                      value: member.id,
-                      label: member.name,
-                      avatarUrl: member.avatarUrl ?? null,
-                    }))}
+                    options={taskAssigneeOptions}
                     appearance="member"
                     multiple
                     maxTagCount={2}
@@ -721,7 +811,7 @@ export function GlobalTaskCreateModal({
                     ariaLabel="负责人"
                     animated
                   />
-                  {targetReady && isFirstLoad(assignees) && (
+                  {!pendingProject && targetReady && isFirstLoad(assignees) && (
                     <CalmSkeleton
                       variant="list"
                       rows={2}
@@ -729,7 +819,7 @@ export function GlobalTaskCreateModal({
                       label="正在加载项目成员…"
                     />
                   )}
-                  {assignees.isError && (
+                  {!pendingProject && assignees.isError && (
                     <Alert
                       type="error"
                       title={taskError(assignees.error)}
@@ -817,6 +907,15 @@ export function GlobalTaskCreateModal({
             />
           </div>
           <div className="calm-action-footer">
+            {canReturnToProject && (
+              <Button
+                className="secondary-button"
+                onClick={returnToProjectForm}
+                disabled={busy}
+              >
+                返回修改项目
+              </Button>
+            )}
             <Button
               className="secondary-button"
               onClick={close}
