@@ -762,9 +762,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               )}{" "}
               个任务
             </div>
-            <Button disabled={submitting} onClick={() => setView("project")}>
-              ← 返回项目信息
-            </Button>
             <Button
               type="primary"
               htmlType="submit"

@@ -74,10 +74,7 @@ test("新建项目一次创建多个模块与任务，并在模块页可见", as
     .selectOption({ label: runtime.user.name });
   await structureDialog.getByLabel("任务 3 优先级").selectOption("HIGH");
 
-  await structureDialog
-    .getByRole("button", { name: /返回项目信息/ })
-    .first()
-    .click();
+  await structureDialog.getByRole("button", { name: /返回项目信息/ }).click();
   await expect(page.getByRole("dialog", { name: "新建项目" })).toBeVisible();
   await expect(projectDialog.getByLabel("项目名称")).toHaveValue(name);
   await expect(projectDialog.getByLabel("项目描述")).toHaveValue(
@@ -158,10 +155,7 @@ test("结构页必填校验阻止创建，项目字段错误会退回第一层",
     .getByLabel("任务 1 负责人")
     .selectOption({ label: runtime.user.name });
 
-  await structureDialog
-    .getByRole("button", { name: /返回项目信息/ })
-    .first()
-    .click();
+  await structureDialog.getByRole("button", { name: /返回项目信息/ }).click();
   await projectDialog.getByLabel("项目名称").fill("");
   await projectDialog.getByRole("button", { name: /添加模块/ }).click();
   await structureDialog.getByLabel("模块 2 名称").fill("校验模块二");
