@@ -523,6 +523,7 @@ button {
 /* 模块列表跟随项目抽屉统一滚动：模块区不再限高，也不创建第二个滚动条。
    右侧内缩 10px，并用边框和深色底区分层级（2026-11-05 用户反馈）。 */
 .tree-modules {
+  min-width: 0;
   margin-right: 10px;
 }
 .tree-modules-content {
@@ -615,6 +616,7 @@ button {
 .tree-modules > .tree-modules-content {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   opacity: 0;
   visibility: hidden;

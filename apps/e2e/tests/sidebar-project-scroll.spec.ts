@@ -78,6 +78,27 @@ test("侧栏项目抽屉使用单滚动条且项目与模块不跳转", async ({
     expect(layout.contentBorderStyle).not.toBe("none");
     expect(Number.parseFloat(layout.contentBorderWidth)).toBeGreaterThan(0);
 
+    const horizontalOverflow = await panel.evaluate((outer) => {
+      const moduleName = outer.querySelector(".module-node .tree-label strong");
+      const content = outer.querySelector(".tree-modules-content");
+      if (!moduleName || !content) {
+        throw new Error("侧栏模块名称未渲染");
+      }
+      moduleName.textContent = "应用组件【角色与权限】超长名称回归";
+      return {
+        clientWidth: outer.clientWidth,
+        scrollWidth: outer.scrollWidth,
+        contentRight: content.getBoundingClientRect().right,
+        panelRight: outer.getBoundingClientRect().right,
+      };
+    });
+    expect(horizontalOverflow.scrollWidth).toBeLessThanOrEqual(
+      horizontalOverflow.clientWidth + 1,
+    );
+    expect(horizontalOverflow.contentRight).toBeLessThanOrEqual(
+      horizontalOverflow.panelRight + 1,
+    );
+
     const overflow = await panel.evaluate((outer) => {
       const content = outer.querySelector<HTMLElement>(".tree-modules-content");
       const moduleRow = content?.querySelector<HTMLElement>(".module-node");
