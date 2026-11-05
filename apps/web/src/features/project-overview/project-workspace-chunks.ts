@@ -1,3 +1,10 @@
+import {
+  loadTaskDetailOverlay,
+  preloadTaskDetailOverlayChunk,
+} from "@features/tasks/task-detail-chunk";
+
+export { loadTaskDetailOverlay, preloadTaskDetailOverlayChunk };
+
 /**
  * 项目主页四个就地弹窗（成员与设置 / 企业微信项目群 / 迭代记录 / 遗留问题）的内容 chunk 装载点。
  *
@@ -43,9 +50,6 @@ export const loadRecordsWorkspace = () =>
 
 export const loadIssuesPageView = () =>
   import("@features/issues/IssuesPageView");
-
-export const loadTaskDetailOverlay = () =>
-  import("@features/tasks/TaskDetailOverlay");
 
 /** 每个入口需要预热的模块：成员入口按权限落到两个视图之一，两个都预热。 */
 const WORKSPACE_CHUNKS: Record<

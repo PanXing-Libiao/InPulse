@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { NotFoundPage } from "./NotFoundPage";
@@ -35,6 +35,8 @@ describe("NotFoundPage", () => {
     expect(screen.queryByText(/Hey developer/u)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "回到任务中心" }));
-    expect(screen.getByTestId("probe-path")).toHaveTextContent("/tasks");
+    await waitFor(() =>
+      expect(screen.getByTestId("probe-path")).toHaveTextContent("/tasks"),
+    );
   });
 });

@@ -31,6 +31,8 @@ import {
   ProjectSetupGuide,
   type ProjectSetupGuideInput,
 } from "./ProjectSetupGuide";
+import { preloadTaskDetailOverlayChunk } from "@features/tasks/task-detail-chunk";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import { projectWorkspacePreloadHandlers } from "./project-workspace-chunks";
 
 /** 迭代发布日期按北京时间渲染（服务端下发 UTC ISO 串）。 */
@@ -408,7 +410,11 @@ export const ProjectOverviewPageView: React.FC<
       {children}
 
       <GlobalTaskCreateModal
-        onCreatedLocation={(task) => navigate(taskDetailPath(task))}
+        onCreatedLocation={(task) =>
+          void navigatePrepared(navigate, taskDetailPath(task), {
+            prepare: preloadTaskDetailOverlayChunk,
+          })
+        }
         open={createTaskOpen}
         onClose={() => setCreateTaskOpen(false)}
         client={client}

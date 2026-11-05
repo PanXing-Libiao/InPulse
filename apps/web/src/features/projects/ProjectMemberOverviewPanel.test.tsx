@@ -265,8 +265,10 @@ describe("ProjectMemberOverviewPanel", () => {
       within(wms).getByRole("button", { name: "管理成员：WMS 仓储管理" }),
     );
 
-    expect(screen.getByTestId("location")).toHaveTextContent(
-      "/projects/8/members",
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/projects/8/members",
+      ),
     );
     expect(projectSummary(projectB.name)).toHaveAttribute(
       "aria-expanded",

@@ -1,6 +1,7 @@
 import React, {
   Suspense,
   useEffect,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -30,6 +31,10 @@ import { WecomBindingModal } from "@features/settings/WecomBindingModal";
 import { WecomBindingPromptModal } from "@features/settings/WecomBindingPromptModal";
 import { ProjectTree } from "@features/project-tree/ProjectTree";
 import { useProjects } from "@features/projects/project-query";
+import { preloadTaskDetailOverlayChunk } from "@features/tasks/task-detail-chunk";
+import { parseTaskDetailPath } from "@features/tasks/task-links";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
+import { useGlobalAnchorNavigation } from "./use-global-anchor-navigation";
 import { preloadRoutePath } from "../router/route-preload";
 import { treeScopeOf } from "@features/project-tree/tree-selection";
 import { useShellCounters } from "./shell-data";
@@ -176,6 +181,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const prepareAnchorPath = useCallback(
+    (path: string) => {
+      if (parseTaskDetailPath(path) !== null) {
+        return preloadTaskDetailOverlayChunk();
+      }
+      return prefetchRecordPath(queryClient, path, projectClient) ?? undefined;
+    },
+    [projectClient, queryClient],
+  );
+  useGlobalAnchorNavigation(navigate, prepareAnchorPath);
   const navigationPreparationRef = useRef<Map<string, Promise<void>>>(
     new Map(),
   );
@@ -339,7 +354,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const handleNavigation = (path: string) => {
     setMobileNavOpen(false);
     if (path !== location.pathname) {
-      navigate(path);
+      void navigatePrepared(navigate, path);
     }
   };
 
@@ -363,19 +378,24 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const handleOpenTarget = (targetPath: string) => {
     const taskState = createNotificationTaskOpenState(targetPath);
     if (taskState !== null) {
-      navigate("/notifications", { state: taskState });
+      void navigatePrepared(navigate, "/notifications", {
+        state: taskState,
+        prepare: preloadTaskDetailOverlayChunk,
+      });
       return;
     }
     // 目标页 chunk 与记录详情都就绪后再切换，避免铃铛弹层关闭后先露出骨架。
-    const records = prefetchRecordPath(queryClient, targetPath, projectClient);
-    void Promise.all([
-      preloadRoutePath(targetPath),
-      records ?? Promise.resolve(),
-    ]).finally(() => navigate(targetPath));
+    void navigatePrepared(navigate, targetPath, {
+      prepare: () =>
+        prefetchRecordPath(queryClient, targetPath, projectClient) ?? undefined,
+    });
   };
 
   const handleOpenSearch = (query: string) => {
-    navigate(`/search?${new URLSearchParams({ q: query.trim() }).toString()}`);
+    void navigatePrepared(
+      navigate,
+      `/search?${new URLSearchParams({ q: query.trim() }).toString()}`,
+    );
   };
 
   const handleAccountAction = async () => {

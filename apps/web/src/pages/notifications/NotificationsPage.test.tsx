@@ -39,6 +39,7 @@ vi.mock("@features/notifications/NotificationsPageView", () => ({
 }));
 
 vi.mock("@features/project-overview/project-workspace-chunks", () => ({
+  preloadTaskDetailOverlayChunk: () => Promise.resolve(),
   loadTaskDetailOverlay: () =>
     Promise.resolve({
       default: (props: {

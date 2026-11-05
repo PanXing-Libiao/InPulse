@@ -1,11 +1,12 @@
-import React, { lazy, Suspense, useCallback, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { InpulseApiClient } from "@generated/api";
 import { IssuesPageView } from "@features/issues/IssuesPageView";
 import type { TaskLocation } from "@features/tasks/task-links";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchRecordsRoute } from "@features/records/records-route-prefetch";
-import { preloadRoutePath } from "@shared/routing/route-preload";
+import { preloadTaskDetailOverlayChunk } from "@features/tasks/task-detail-chunk";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 
 /**
  * 任务详情弹窗按需加载：与任务中心 / 项目主页共用同一就地宿主，
@@ -29,12 +30,14 @@ export const IssuesPage: React.FC<IssuesPageProps> = ({ client }) => {
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [detailTarget, setDetailTarget] = useState<TaskLocation | null>(null);
+  useEffect(() => {
+    void preloadTaskDetailOverlayChunk();
+  }, []);
 
   const handleBackToRecords = useCallback(() => {
-    void Promise.all([
-      preloadRoutePath("/records"),
-      prefetchRecordsRoute(cache, client),
-    ]).finally(() => navigate("/records"));
+    void navigatePrepared(navigate, "/records", {
+      prepare: () => prefetchRecordsRoute(cache, client),
+    });
   }, [cache, client, navigate]);
 
   const handleOpenTask = useCallback((task: TaskLocation) => {

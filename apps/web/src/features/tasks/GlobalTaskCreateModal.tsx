@@ -466,6 +466,7 @@ export function GlobalTaskCreateModal({
                       setNewModule("");
                       setAssigneeIds([]);
                     }}
+                    loading={projects.isPending}
                     options={[
                       { value: 0, label: "请选择项目", disabled: true },
                       ...(projects.data?.items ?? []).map(projectSelectOption),
@@ -494,6 +495,7 @@ export function GlobalTaskCreateModal({
                       ariaLabel="所属模块"
                       value={moduleId}
                       disabled={projectId === 0}
+                      loading={projectId > 0 && modules.query.isPending}
                       appearance="menu"
                       onChange={(next) => {
                         setModuleId(Number(next));

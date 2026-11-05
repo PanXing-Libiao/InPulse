@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { Alert, Button } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { useModules } from "@features/modules/module-query";
@@ -7,7 +7,12 @@ import {
   type ModuleEditorRequest,
 } from "@features/modules/ModuleEditorModal";
 import { useProjectDetail } from "@features/projects/project-query";
+import {
+  loadTaskDetailOverlay,
+  preloadTaskDetailOverlayChunk,
+} from "@features/tasks/task-detail-chunk";
 import { TasksPanel } from "@features/tasks/TasksPanel";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import type { TaskLocation } from "@features/tasks/task-links";
 import { InpulseIcon } from "@features/common/components/InpulseIcon";
 import { CalmBadge } from "@features/common/components/Calm";
@@ -23,9 +28,7 @@ import {
  * 迭代记录、合并与外部链接等写入口全在同一处）。按需加载，模块任务页的初始包
  * 不引入任务详情的完整实现。
  */
-const TaskDetailOverlay = lazy(
-  () => import("@features/tasks/TaskDetailOverlay"),
-);
+const TaskDetailOverlay = lazy(loadTaskDetailOverlay);
 
 export default function ModuleTasksPage() {
   const navigate = useNavigate();
@@ -41,6 +44,9 @@ export default function ModuleTasksPage() {
   const [moduleRequest, setModuleRequest] =
     useState<ModuleEditorRequest | null>(null);
   const [search, setSearch] = useState("");
+  useEffect(() => {
+    void preloadTaskDetailOverlayChunk();
+  }, []);
   if (!validScope) return <Alert type="error" title="模块地址无效" />;
   if (query.isPending)
     return <CalmSkeleton variant="list" rows={4} label="正在加载模块任务" />;
@@ -75,7 +81,12 @@ export default function ModuleTasksPage() {
                 className="title-back-button"
                 aria-label="返回模块列表"
                 title="返回模块列表"
-                onClick={() => navigate("/projects/" + projectId + "/modules")}
+                onClick={() =>
+                  void navigatePrepared(
+                    navigate,
+                    "/projects/" + projectId + "/modules",
+                  )
+                }
               >
                 <InpulseIcon name="chevronLeft" size={20} />
               </button>
@@ -150,7 +161,9 @@ export default function ModuleTasksPage() {
         projectName={projectQuery.data?.project?.name ?? null}
         request={moduleRequest}
         onClose={() => setModuleRequest(null)}
-        onDeleted={() => navigate("/projects/" + projectId + "/modules")}
+        onDeleted={() =>
+          void navigatePrepared(navigate, "/projects/" + projectId + "/modules")
+        }
       />
       <Suspense fallback={null}>
         {taskTarget === null ? null : (

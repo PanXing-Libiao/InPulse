@@ -28,6 +28,7 @@ import { useTaskBoardQuery } from "@features/task-board/task-board-query";
 import { useProjectWecomGroup } from "./project-wecom-group-query";
 import { orderMembersLeaderFirst } from "./project-member-order";
 import { projectMemberErrorMessage } from "./project-member-query";
+import { navigatePrepared } from "@shared/routing/navigate-prepared";
 import { describeProjectListError, useProjects } from "./project-query";
 
 type ProjectStatusFilter = "all" | ProjectStatus;
@@ -116,7 +117,7 @@ function ProjectMemberSummary({
     event: React.MouseEvent<HTMLButtonElement>,
   ): void => {
     event.stopPropagation();
-    navigate("/projects/" + project.id + "/members");
+    void navigatePrepared(navigate, "/projects/" + project.id + "/members");
   };
 
   return (

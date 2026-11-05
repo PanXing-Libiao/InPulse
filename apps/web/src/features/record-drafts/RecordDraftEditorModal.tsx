@@ -714,6 +714,7 @@ export function RecordDraftEditorModal({
                     ariaLabel="所属项目"
                     value={createProjectId || ""}
                     appearance="rich"
+                    loading={projects.isPending}
                     placeholder="请选择项目"
                     onChange={(next) => {
                       setCreateProjectId(Number(next));
@@ -733,6 +734,7 @@ export function RecordDraftEditorModal({
                   ariaLabel="所属模块"
                   value={moduleId || ""}
                   appearance="rich"
+                  loading={formProjectId > 0 && modules.isPending}
                   searchable
                   width="100%"
                   placeholder={
