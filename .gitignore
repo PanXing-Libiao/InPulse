@@ -85,3 +85,6 @@ Desktop.ini
 # - database/migrations/**
 # - generated OpenAPI and TypeScript client artifacts
 # - safe .env.example files
+
+# 企微联动本地参数（含私密 webhook），不入库
+.github/hooks/WechatNotify.local.psd1
