@@ -49,6 +49,7 @@ const priorityLabels: Record<Priority, string> = {
 };
 
 const CREATE_PROJECT_OPTION = -2;
+const CUSTOM_MODULE_OPTION = "自定义 · 创建新模块";
 
 function linksOf(text: string): string[] {
   return [
@@ -105,6 +106,7 @@ export function GlobalTaskCreateModal({
   );
   const [projectId, setProjectId] = useState(preset?.projectId ?? 0);
   const [moduleId, setModuleId] = useState(preset?.moduleId ?? 0);
+  const [creatingModule, setCreatingModule] = useState(false);
   const [newModule, setNewModule] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -151,6 +153,7 @@ export function GlobalTaskCreateModal({
     setProjectStepBusy(false);
     setProjectId(presetProjectId);
     setModuleId(presetModuleId);
+    setCreatingModule(false);
     setNewModule("");
     setTitle("");
     setDescription("");
@@ -174,7 +177,7 @@ export function GlobalTaskCreateModal({
   const targetReady = pendingProject
     ? newModule.trim().length > 0
     : projectId > 0 &&
-      (moduleId > 0 || (moduleId === -1 && newModule.trim().length > 0));
+      (moduleId > 0 || (creatingModule && newModule.trim().length > 0));
 
   const assignees = useQuery({
     queryKey: ["task-assignees", projectId],
@@ -237,30 +240,30 @@ export function GlobalTaskCreateModal({
         headers: {
           "x-csrf-token": csrfToken,
           "Idempotency-Key": keyFor(
-            JSON.stringify([resolvedProjectId, moduleId, body, newModule]),
+            JSON.stringify([
+              resolvedProjectId,
+              moduleId,
+              creatingModule,
+              body,
+              newModule,
+            ]),
           ),
         },
       };
-      const targetModuleId = projectDraft === null ? moduleId : -1;
-      const created =
-        targetModuleId === -1
-          ? await api.createTaskWithScope(
-              resolvedProjectId,
-              {
-                module: {
-                  kind: "new",
-                  input: { name: newModule.trim(), description: "" },
-                },
-                task: body,
+      const createNewModule = projectDraft !== null || creatingModule;
+      const created = createNewModule
+        ? await api.createTaskWithScope(
+            resolvedProjectId,
+            {
+              module: {
+                kind: "new",
+                input: { name: newModule.trim(), description: "" },
               },
-              init,
-            )
-          : await api.createModuleTask(
-              resolvedProjectId,
-              targetModuleId,
-              body,
-              init,
-            );
+              task: body,
+            },
+            init,
+          )
+        : await api.createModuleTask(resolvedProjectId, moduleId, body, init);
       const taskId = "taskId" in created ? created.taskId : created.id;
       const resolvedModuleId =
         "taskId" in created ? created.moduleId : created.moduleId;
@@ -352,6 +355,7 @@ export function GlobalTaskCreateModal({
     setMaterializedProjectId(null);
     setCreatedProjectNotice(null);
     setProjectStepBusy(false);
+    setCreatingModule(false);
     setNewModule("");
     setTitle("");
     setDescription("");
@@ -426,6 +430,7 @@ export function GlobalTaskCreateModal({
     if (options.applyModule && draft.moduleId !== null) {
       if (
         moduleAssistLocked ||
+        creatingModule ||
         (moduleId !== 0 && moduleId !== draft.moduleId)
       ) {
         conflicts.push("所属模块");
@@ -457,6 +462,7 @@ export function GlobalTaskCreateModal({
     if (projectAssistLocked || nextProjectId === projectId) return;
     setProjectId(nextProjectId);
     setModuleId(0);
+    setCreatingModule(false);
     setNewModule("");
     setAssigneeIds([]);
     setInvalid(null);
@@ -466,6 +472,7 @@ export function GlobalTaskCreateModal({
   function confirmAssistModule(nextModuleId: number): void {
     if (moduleAssistLocked || nextModuleId === moduleId) return;
     setModuleId(nextModuleId);
+    setCreatingModule(false);
     setNewModule("");
     setAssigneeIds([]);
     setInvalid(null);
@@ -493,6 +500,7 @@ export function GlobalTaskCreateModal({
       setMaterializedProjectId(null);
       setProjectId(0);
       setModuleId(0);
+      setCreatingModule(false);
       setNewModule("");
       setAssigneeIds([]);
       setCreatedProjectNotice(null);
@@ -501,6 +509,7 @@ export function GlobalTaskCreateModal({
     }
     setProjectId(next);
     setModuleId(0);
+    setCreatingModule(false);
     setNewModule("");
     setAssigneeIds([]);
   }
@@ -510,6 +519,7 @@ export function GlobalTaskCreateModal({
     setProjectDraft(draft);
     setProjectId(0);
     setModuleId(0);
+    setCreatingModule(false);
     setMaterializedProjectId(null);
     setCreatingProject(false);
     setProjectStepBusy(false);
@@ -726,12 +736,18 @@ export function GlobalTaskCreateModal({
                       <CalmSelect
                         id="global-task-module"
                         ariaLabel="所属模块"
-                        value={moduleId}
+                        value={creatingModule ? CUSTOM_MODULE_OPTION : moduleId}
                         disabled={projectId === 0}
                         loading={projectId > 0 && modules.query.isPending}
                         appearance="menu"
                         onChange={(next) => {
-                          setModuleId(Number(next));
+                          if (next === CUSTOM_MODULE_OPTION) {
+                            setModuleId(0);
+                            setCreatingModule(true);
+                          } else {
+                            setModuleId(Number(next));
+                            setCreatingModule(false);
+                          }
                           setAssigneeIds([]);
                         }}
                         options={[
@@ -741,7 +757,10 @@ export function GlobalTaskCreateModal({
                               projectId === 0 ? "请先选择项目" : "请选择模块",
                             disabled: true,
                           },
-                          { value: -1, label: "自定义 · 创建新模块" },
+                          {
+                            value: CUSTOM_MODULE_OPTION,
+                            label: CUSTOM_MODULE_OPTION,
+                          },
                           ...(modules.query.data?.items ?? []).map(
                             (module) => ({
                               value: module.id,
@@ -755,7 +774,7 @@ export function GlobalTaskCreateModal({
                     {modules.query.isError && (
                       <p role="alert">模块加载失败，请重试。</p>
                     )}
-                    {moduleId === -1 && (
+                    {creatingModule && (
                       <div className="calm-field">
                         <label
                           className="required-field"

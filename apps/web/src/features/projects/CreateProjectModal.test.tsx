@@ -69,6 +69,25 @@ async function fillForm(dialog: HTMLElement) {
   await user.type(within(dialog).getByLabelText("项目描述"), "商城项目描述");
 }
 
+async function enterStructure(
+  projectDialog: HTMLElement,
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(
+    within(projectDialog).getByRole("button", { name: /添加模块/ }),
+  );
+  return screen.findByRole("dialog", { name: "添加模块与任务" });
+}
+
+async function addModuleInStructure(
+  structureDialog: HTMLElement,
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(
+    within(structureDialog).getByRole("button", { name: /添加模块/ }),
+  );
+}
+
 describe("CreateProjectModal", () => {
   it("submits normalized values with CSRF and idempotency headers", async () => {
     const issueCsrfToken = vi.fn().mockResolvedValue({ csrfToken: "csrf-1" });
@@ -680,13 +699,14 @@ describe("CreateProjectModal", () => {
       name: "新建项目",
     });
     await fillForm(projectDialog);
-    await user.click(
-      within(projectDialog).getByRole("button", { name: /添加模块/ }),
-    );
-
-    const structureDialog = await screen.findByRole("dialog", {
-      name: "添加模块与任务",
-    });
+    const structureDialog = await enterStructure(projectDialog, user);
+    expect(
+      within(structureDialog).getByText(/已添加 0 个模块/),
+    ).toBeInTheDocument();
+    expect(
+      within(structureDialog).queryByLabelText("模块 1 名称"),
+    ).not.toBeInTheDocument();
+    await addModuleInStructure(structureDialog, user);
     await user.type(
       within(structureDialog).getByLabelText("模块 1 名称"),
       "扫码巡检",
@@ -715,16 +735,14 @@ describe("CreateProjectModal", () => {
       "商城系统",
     );
 
-    await user.click(
-      within(projectDialog).getByRole("button", { name: /添加模块/ }),
-    );
-    const reopened = await screen.findByRole("dialog", {
-      name: "添加模块与任务",
-    });
+    const reopened = await enterStructure(projectDialog, user);
     expect(within(reopened).getByLabelText("模块 1 名称")).toHaveValue(
       "扫码巡检",
     );
-    expect(within(reopened).getByLabelText("模块 2 名称")).toHaveValue("");
+    expect(
+      within(reopened).queryByLabelText("模块 2 名称"),
+    ).not.toBeInTheDocument();
+    expect(within(reopened).getByText(/已添加 1 个模块/)).toBeInTheDocument();
     expect(within(reopened).getByLabelText("任务 1 标题")).toHaveValue(
       "完成扫码入口",
     );
@@ -741,13 +759,8 @@ describe("CreateProjectModal", () => {
     });
     await fillForm(projectDialog);
     await user.clear(within(projectDialog).getByLabelText("项目名称"));
-    await user.click(
-      within(projectDialog).getByRole("button", { name: /添加模块/ }),
-    );
-
-    const structureDialog = await screen.findByRole("dialog", {
-      name: "添加模块与任务",
-    });
+    const structureDialog = await enterStructure(projectDialog, user);
+    await addModuleInStructure(structureDialog, user);
     await user.type(
       within(structureDialog).getByLabelText("模块 1 名称"),
       "扫码巡检",
@@ -797,13 +810,8 @@ describe("CreateProjectModal", () => {
       name: "新建项目",
     });
     await fillForm(projectDialog);
-    await user.click(
-      within(projectDialog).getByRole("button", { name: /添加模块/ }),
-    );
-
-    const structureDialog = await screen.findByRole("dialog", {
-      name: "添加模块与任务",
-    });
+    const structureDialog = await enterStructure(projectDialog, user);
+    await addModuleInStructure(structureDialog, user);
     await user.type(
       within(structureDialog).getByLabelText("模块 1 名称"),
       "扫码巡检",
@@ -888,12 +896,8 @@ describe("CreateProjectModal", () => {
       name: "新建项目",
     });
     await fillForm(projectDialog);
-    await user.click(
-      within(projectDialog).getByRole("button", { name: /添加模块/ }),
-    );
-    const structureDialog = await screen.findByRole("dialog", {
-      name: "添加模块与任务",
-    });
+    const structureDialog = await enterStructure(projectDialog, user);
+    await addModuleInStructure(structureDialog, user);
     await user.click(
       within(structureDialog).getByRole("button", { name: /新建任务/ }),
     );

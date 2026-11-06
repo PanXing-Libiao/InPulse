@@ -549,6 +549,13 @@ it("creates a custom module and task in one submission and returns the real loca
   mount(test, { projectId: 1 });
   const user = userEvent.setup();
   await pickOption(user, "所属模块", "自定义 · 创建新模块");
+  const moduleField = screen.getByLabelText("所属模块").closest(".calm-field");
+  expect(moduleField?.querySelector('[aria-live="polite"]')).toHaveTextContent(
+    "自定义 · 创建新模块",
+  );
+  expect(
+    moduleField?.querySelector('[aria-live="polite"]'),
+  ).not.toHaveTextContent("-1");
   expect(
     screen.getByText("新模块名称", { selector: "label.required-field" }),
   ).toBeInTheDocument();

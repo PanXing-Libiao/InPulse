@@ -433,7 +433,6 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   };
 
   const openStructure = () => {
-    addModule();
     setView("structure");
   };
 
