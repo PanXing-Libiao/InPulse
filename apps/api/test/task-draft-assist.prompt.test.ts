@@ -18,6 +18,10 @@ describe("任务草稿助手提示词", () => {
     expect(SYSTEM_PROMPT).toContain("拆词、漏字");
     expect(SYSTEM_PROMPT).toContain("服装管理");
     expect(SYSTEM_PROMPT).toContain("账号登录");
+    expect(SYSTEM_PROMPT).toContain("去掉项目名和「的」等修饰");
+    expect(SYSTEM_PROMPT).toContain(
+      "「市场项目管理系统的文件上传模块」输出「文件上传」",
+    );
     expect(SYSTEM_PROMPT).toContain("交给确认卡");
     expect(SYSTEM_PROMPT).toContain("不要自造组合名");
   });

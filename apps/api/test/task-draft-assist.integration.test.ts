@@ -201,6 +201,8 @@ interface Seed {
   readonly moduleId: number;
   readonly loginAuditModuleId: number;
   readonly settlementModuleId: number;
+  readonly fileUploadModuleId: number;
+  readonly marketProjectId: number;
   readonly ambiguousProjectIds: readonly number[];
   readonly hiddenProjectName: string;
 }
@@ -254,6 +256,29 @@ async function seedProject(sql: Sql): Promise<Seed> {
      WHERE id = ${clothingTwo.projectId}
   `;
 
+  const marketName = "市场项目管理系统";
+  const market = await createProject(sql, leaderId);
+  await sql`
+    UPDATE app.projects
+       SET name = ${marketName}, row_version = row_version + 1
+     WHERE id = ${market.projectId}
+  `;
+  const marketMarketingName = "市场营销管理系统";
+  const marketMarketing = await createProject(sql, leaderId);
+  await sql`
+    UPDATE app.projects
+       SET name = ${marketMarketingName}, row_version = row_version + 1
+     WHERE id = ${marketMarketing.projectId}
+  `;
+  const [fileUploadModule] = await sql<{ id: number }[]>`
+    INSERT INTO app.modules (project_id, name, created_by)
+    VALUES (${market.projectId}, ${"文件上传与变更管理"}, ${leaderId})
+    RETURNING id
+  `;
+  if (fileUploadModule === undefined) {
+    throw new Error("file upload module fixture insert failed");
+  }
+
   const outsiderId = await createUser(sql);
   const hiddenProject = await createProject(sql, outsiderId);
   const hiddenProjectName = "隐藏项目";
@@ -269,6 +294,8 @@ async function seedProject(sql: Sql): Promise<Seed> {
     moduleId: module.id,
     loginAuditModuleId: loginAuditModule.id,
     settlementModuleId: unrelatedModule.id,
+    fileUploadModuleId: fileUploadModule.id,
+    marketProjectId: market.projectId,
     ambiguousProjectIds: [clothingOne.projectId, clothingTwo.projectId],
     hiddenProjectName,
   };
@@ -546,6 +573,36 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
     ]);
   });
 
+  test("完整项目名含「项目」且存在同前缀项目时，仍唯一命中并带出模块候选", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: null, moduleName: "文件上传模块" }),
+      ),
+    });
+    const response = await postStandaloneAssist(
+      {
+        message:
+          "市场项目管理系统的文件上传模块需要添加一个cad文件预览的功能，方便使用者预览",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      suggestions: {
+        projects: readonly { id: number; name: string }[];
+        modules: readonly { id: number; name: string }[];
+      };
+    };
+    expect(body.suggestions.projects.map((item) => item.name)).toEqual([
+      "市场项目管理系统",
+    ]);
+    expect(body.suggestions.modules).toEqual([
+      { id: seed.fileUploadModuleId, name: "文件上传与变更管理" },
+    ]);
+  });
+
   test("项目简称拆词命中多个候选时全部返回，不武断选择", async () => {
     stubResponder = () => ({
       status: 200,
@@ -656,6 +713,53 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
       moduleId: null,
       moduleName: null,
     });
+  });
+
+  test("只提前半段「文件上传」时，也能命中复合模块名", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: null, moduleName: null }),
+      ),
+    });
+    const response = await postAssist(
+      seed.marketProjectId,
+      { message: "文件上传加个CAD文件预览，方便使用者预览", history: [] },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      draft: Readonly<Record<string, unknown>>;
+      suggestions: { modules: readonly { id: number; name: string }[] };
+    };
+    expect(body.suggestions.modules).toEqual([
+      { id: seed.fileUploadModuleId, name: "文件上传与变更管理" },
+    ]);
+    expect(body.draft).toMatchObject({
+      moduleId: seed.fileUploadModuleId,
+      moduleName: "文件上传与变更管理",
+    });
+  });
+
+  test("只有宽泛的「管理」时不会硬拉复合模块", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({ projectName: null, moduleName: null }),
+      ),
+    });
+    const response = await postAssist(
+      seed.marketProjectId,
+      { message: "管理模块这块优化一下", history: [] },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      draft: Readonly<Record<string, unknown>>;
+      suggestions: { modules: readonly { id: number; name: string }[] };
+    };
+    expect(body.suggestions.modules).toEqual([]);
+    expect(body.draft).toMatchObject({ moduleId: null, moduleName: null });
   });
 
   test("省略「那个/这个」的「XX那边」也会展开多个项目候选", async () => {

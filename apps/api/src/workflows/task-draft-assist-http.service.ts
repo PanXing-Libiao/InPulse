@@ -632,12 +632,22 @@ function extractProjectHints(message: string): string[] {
   return [...new Set(hints)];
 }
 
+/** 「市场项目管理系统的文件上传模块」里，模块说法是最后一个「的」之后的「文件上传」。 */
+function moduleHintText(value: string): string {
+  const separator = value.lastIndexOf("的");
+  if (separator >= 0) {
+    const suffix = value.slice(separator + 1).trim();
+    if (suffix.length >= 2) return suffix;
+  }
+  return value;
+}
+
 function extractModuleHints(message: string): string[] {
   const hints: string[] = [];
   const pattern =
     /([\p{Script=Han}A-Za-z0-9][\p{Script=Han}A-Za-z0-9 _-]{1,30})模块/gu;
   for (const match of message.matchAll(pattern)) {
-    hints.push(...hintVariants(match[1] ?? ""));
+    hints.push(...hintVariants(moduleHintText(match[1] ?? "")));
   }
   hints.push(...extractReferenceHints(message));
   return [...new Set(hints)];
@@ -756,6 +766,13 @@ function scoreModuleMatch(
       if (prefix >= 2) score = Math.max(score, 60 + prefix);
     }
   }
+  const tokens = moduleDistinctiveTokens(module.name);
+  for (const token of tokens) {
+    if (normalizedMessage.includes(token)) score = Math.max(score, 78);
+    for (const hint of hints) {
+      if (hint === token) score = Math.max(score, 84);
+    }
+  }
   return score;
 }
 
@@ -769,6 +786,43 @@ function resolveProjectCandidates(
   const hints = [...new Set([...modelHints, ...messageHints])];
   const normalizedMessage = normalizeMatchText(message);
   if (hints.length === 0 && normalizedMessage.length === 0) return [];
+
+  // 用户完整写出项目名或编号时直接认定；项目名自身含「项目」时，
+  // extractProjectHints 只能截到「市场」，不能让同前缀项目把候选撑成多个。
+  const explicitMatches = projects
+    .map((project) => ({
+      project,
+      name: normalizeMatchText(project.name),
+      code: normalizeMatchText(project.code),
+    }))
+    .filter(
+      (item) =>
+        (item.name.length >= 2 && normalizedMessage.includes(item.name)) ||
+        (item.code.length >= 2 && normalizedMessage.includes(item.code)),
+    )
+    .sort(
+      (left, right) =>
+        right.name.length - left.name.length ||
+        left.project.id - right.project.id,
+    );
+  if (explicitMatches.length > 0) {
+    return explicitMatches
+      .filter(
+        (item) =>
+          !explicitMatches.some(
+            (other) =>
+              other.project.id !== item.project.id &&
+              other.name.length > item.name.length &&
+              other.name.includes(item.name),
+          ),
+      )
+      .slice(0, MAX_PROJECT_CANDIDATES)
+      .map((item) => ({
+        id: item.project.id,
+        code: item.project.code,
+        name: item.project.name,
+      }));
+  }
 
   // 用户自己的说法同时命中多个项目时，模型挑的单个名字不能把候选收窄：
   // 确认卡必须把可疑项目都列出来，由用户点选。
