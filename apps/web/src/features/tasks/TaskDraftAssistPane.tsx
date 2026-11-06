@@ -477,8 +477,9 @@ function visibleAssistNotes(
   const isResolvedProjectNote = (note: string): boolean =>
     projectResolved &&
     (note.includes("待项目确认") ||
-      (note.includes("项目") &&
-        (hasTone(note) ||
+      (hasTone(note) &&
+        (note.includes("项目") ||
+          note.includes("归属") ||
           candidateProjectNames.some((name) => note.includes(name)))));
   const isResolvedModuleNote = (note: string): boolean =>
     moduleResolved &&
@@ -536,16 +537,20 @@ function AssignmentSuggestion({
   );
   const manualProjectChoice = projectId > 0 && confirmedProject === undefined;
   const manualModuleChoice = moduleId > 0 && confirmedModule === undefined;
+  // 已选项目也在候选里且仍有其他候选时，不把歧义藏起来，继续让用户一起选。
+  const projectHasAlternatives =
+    confirmedProject !== undefined &&
+    projects.length > 1 &&
+    decision?.projectId === undefined;
   const showProjectCard =
     !projectLocked &&
     projects.length > 0 &&
-    confirmedProject === undefined &&
+    (confirmedProject === undefined || projectHasAlternatives) &&
     !manualProjectChoice &&
     decision?.dismissedProject !== true;
   const showProjectDismissed =
     !projectLocked &&
     projects.length > 0 &&
-    confirmedProject === undefined &&
     !manualProjectChoice &&
     decision?.dismissedProject === true;
   const showModuleCard =
@@ -575,7 +580,9 @@ function AssignmentSuggestion({
       className="task-assist-suggestion"
       data-testid="task-assist-suggestion"
     >
-      {confirmedProject !== undefined ? (
+      {confirmedProject !== undefined &&
+      !showProjectCard &&
+      !showProjectDismissed ? (
         <div className="task-assist-suggestion-confirmed">
           已确认项目：{confirmedProject.name}
         </div>
@@ -587,9 +594,11 @@ function AssignmentSuggestion({
       ) : showProjectCard ? (
         <div className="task-assist-suggestion-block">
           <div className="task-assist-suggestion-title">
-            {projects.length === 1
-              ? "像是「" + projects[0]?.name + "」这个项目，是这个吗？"
-              : "可能是这几个项目，选一个："}
+            {projectHasAlternatives
+              ? "当前是「" + confirmedProject?.name + "」，也可能指这几个项目："
+              : projects.length === 1
+                ? "像是「" + projects[0]?.name + "」这个项目，是这个吗？"
+                : "可能是这几个项目，选一个："}
           </div>
           <div className="task-assist-suggestion-actions">
             {projects.map((project, index) => (
@@ -605,9 +614,11 @@ function AssignmentSuggestion({
                 disabled={disabled}
                 onClick={() => onConfirmProject(project.id)}
               >
-                {projects.length === 1
-                  ? "是，用这个"
-                  : "用「" + project.name + "」"}
+                {confirmedProject?.id === project.id
+                  ? "保持「" + project.name + "」"
+                  : projects.length === 1
+                    ? "是，用这个"
+                    : "用「" + project.name + "」"}
               </Button>
             ))}
             <Button

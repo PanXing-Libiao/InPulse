@@ -201,7 +201,9 @@ interface Seed {
   readonly moduleId: number;
   readonly loginAuditModuleId: number;
   readonly settlementModuleId: number;
+  readonly importExportModuleId: number;
   readonly fileUploadModuleId: number;
+  readonly exportArchiveModuleId: number;
   readonly marketProjectId: number;
   readonly ambiguousProjectIds: readonly number[];
   readonly hiddenProjectName: string;
@@ -242,6 +244,14 @@ async function seedProject(sql: Sql): Promise<Seed> {
   if (unrelatedModule === undefined) {
     throw new Error("unrelated module fixture insert failed");
   }
+  const [importExportModule] = await sql<{ id: number }[]>`
+    INSERT INTO app.modules (project_id, name, created_by)
+    VALUES (${project.projectId}, ${"导入导出模块"}, ${leaderId})
+    RETURNING id
+  `;
+  if (importExportModule === undefined) {
+    throw new Error("import export module fixture insert failed");
+  }
 
   const clothingOne = await createProject(sql, leaderId);
   await sql`
@@ -278,6 +288,14 @@ async function seedProject(sql: Sql): Promise<Seed> {
   if (fileUploadModule === undefined) {
     throw new Error("file upload module fixture insert failed");
   }
+  const [exportArchiveModule] = await sql<{ id: number }[]>`
+    INSERT INTO app.modules (project_id, name, created_by)
+    VALUES (${market.projectId}, ${"归档与导出"}, ${leaderId})
+    RETURNING id
+  `;
+  if (exportArchiveModule === undefined) {
+    throw new Error("export archive module fixture insert failed");
+  }
 
   const outsiderId = await createUser(sql);
   const hiddenProject = await createProject(sql, outsiderId);
@@ -294,7 +312,9 @@ async function seedProject(sql: Sql): Promise<Seed> {
     moduleId: module.id,
     loginAuditModuleId: loginAuditModule.id,
     settlementModuleId: unrelatedModule.id,
+    importExportModuleId: importExportModule.id,
     fileUploadModuleId: fileUploadModule.id,
+    exportArchiveModuleId: exportArchiveModule.id,
     marketProjectId: market.projectId,
     ambiguousProjectIds: [clothingOne.projectId, clothingTwo.projectId],
     hiddenProjectName,
@@ -739,6 +759,204 @@ describe("POST /projects/{projectId}/task-draft-assist", () => {
       moduleId: seed.fileUploadModuleId,
       moduleName: "文件上传与变更管理",
     });
+  });
+
+  test("已选项目时，截图备注里的相近项目也展开为候选", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({
+          projectName: null,
+          moduleName: null,
+          title: "修复登录验证码转圈",
+          description: "确认登录验证码持续转圈的问题。",
+          reply: "截图里提到两个相近项目，需要确认归属。",
+          notes: [
+            "「市场项目管理系统」与「移动端现场作业 App」也相近，归属待确认",
+          ],
+        }),
+      ),
+    });
+    const imageBase64 = Buffer.from(
+      "fake-selected-project-screenshot",
+    ).toString("base64");
+    const response = await postAssist(
+      seed.marketProjectId,
+      {
+        message: "",
+        history: [],
+        images: [{ mimeType: "image/png", data: imageBase64 }],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      suggestions: { projects: readonly { id: number; name: string }[] };
+    };
+    expect(
+      body.suggestions.projects.map((item) => ({
+        id: item.id,
+        name: item.name,
+      })),
+    ).toEqual([
+      { id: seed.marketProjectId, name: "市场项目管理系统" },
+      { id: seed.project.projectId, name: "移动端现场作业 App" },
+    ]);
+  });
+
+  test("模块名自带通用后缀时，导出语义也能命中导入导出模块", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({
+          projectName: null,
+          moduleName: null,
+          title: "支持导出图片和 Excel",
+          description: "支持导出图片与 Excel 报表，便于离线归档。",
+          reply: "已识别为新增导出能力。截图中未明确负责人和截止时间。",
+        }),
+      ),
+    });
+    const imageBase64 = Buffer.from("fake-import-export-screenshot").toString(
+      "base64",
+    );
+    const response = await postAssist(
+      seed.project.projectId,
+      {
+        message: "",
+        history: [],
+        images: [{ mimeType: "image/png", data: imageBase64 }],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      draft: Readonly<Record<string, unknown>>;
+      suggestions: { modules: readonly { id: number; name: string }[] };
+    };
+    expect(body.suggestions.modules).toEqual([
+      { id: seed.importExportModuleId, name: "导入导出模块" },
+    ]);
+    expect(body.draft).toMatchObject({
+      moduleId: seed.importExportModuleId,
+      moduleName: "导入导出模块",
+    });
+  });
+
+  test("截图备注指出相近项目时，全部真实候选交给用户点选", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({
+          projectName: null,
+          moduleName: null,
+          title: "修复登录验证码转圈",
+          description: "确认登录验证码持续转圈的问题。",
+          reply: "截图里提到两个相近项目，需要确认归属。",
+          notes: [
+            "「市场项目管理系统」与「移动端现场作业 App」也相近，归属待确认",
+          ],
+        }),
+      ),
+    });
+    const imageBase64 = Buffer.from("fake-project-screenshot").toString(
+      "base64",
+    );
+    const response = await postStandaloneAssist(
+      {
+        message: "",
+        history: [],
+        images: [{ mimeType: "image/png", data: imageBase64 }],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      suggestions: { projects: readonly { id: number; name: string }[] };
+    };
+    expect(body.suggestions.projects.map((item) => item.name).sort()).toEqual(
+      ["市场项目管理系统", "移动端现场作业 App"].sort(),
+    );
+  });
+
+  test("只有截图线索时，用模型识别出的导出语义回填归档导出模块", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({
+          projectName: null,
+          moduleName: null,
+          title: "新增问题清单导出功能，支持勾选内容并打包归档",
+          description: "支持导出图片、Excel/PDF，支持勾选导出内容并打包归档。",
+          reply:
+            "已识别为新增问题清单导出功能。截图中未明确负责人和截止时间，需要你补充确认。",
+        }),
+      ),
+    });
+    const imageBase64 = Buffer.from("fake-export-screenshot").toString(
+      "base64",
+    );
+    const response = await postAssist(
+      seed.marketProjectId,
+      {
+        message: "",
+        history: [],
+        images: [{ mimeType: "image/png", data: imageBase64 }],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      draft: Readonly<Record<string, unknown>>;
+      suggestions: { modules: readonly { id: number; name: string }[] };
+    };
+    expect(body.suggestions.modules).toEqual([
+      { id: seed.exportArchiveModuleId, name: "归档与导出" },
+    ]);
+    expect(body.draft).toMatchObject({
+      moduleId: seed.exportArchiveModuleId,
+      moduleName: "归档与导出",
+    });
+  });
+
+  test("标题、说明与回复不重复项目和模块归属", async () => {
+    stubResponder = () => ({
+      status: 200,
+      payload: completionPayload(
+        modelJson({
+          projectName: null,
+          moduleName: "文件上传模块",
+          title: "为文件上传模块新增 CAD 文件预览功能",
+          description:
+            "在【市场项目管理系统】的文件上传模块新增 CAD 文件预览功能，方便使用者直接预览。",
+          reply:
+            "已识别为在【市场项目管理系统】里给文件上传模块新增 CAD 文件预览功能，方便使用者直接预览。截图里没有提到负责人和截止时间，如有需要可以补充。",
+        }),
+      ),
+    });
+    const response = await postAssist(
+      seed.marketProjectId,
+      {
+        message:
+          "市场项目管理系统的文件上传模块需要添加一个cad文件预览的功能，方便使用者预览",
+        history: [],
+      },
+      leaderSession,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      reply: string;
+      draft: { title: string; description: string };
+    };
+    expect(body.draft).toMatchObject({
+      title: "CAD文件预览",
+      description: "新增CAD文件预览功能，方便使用者直接预览。",
+    });
+    expect(body.reply).toBe(
+      "已识别为新增CAD文件预览功能，方便使用者直接预览。截图里没有提到负责人和截止时间，如有需要可以补充。",
+    );
+    expect(body.reply).not.toContain("模块");
+    expect(body.reply).not.toContain("市场项目管理系统");
   });
 
   test("只有宽泛的「管理」时不会硬拉复合模块", async () => {

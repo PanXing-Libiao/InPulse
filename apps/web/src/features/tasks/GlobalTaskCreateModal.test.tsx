@@ -974,6 +974,56 @@ it("项目简称只弹确认卡，确认后才切换左侧项目", async () => {
   expect(screen.getByLabelText("所属模块")).toBeEnabled();
 });
 
+it("从项目页预置项目时，相近项目一起展示并可切换", async () => {
+  const test = harness();
+  test.assistTaskDraft.mockResolvedValueOnce({
+    reply: "截图里提到两个相近项目，需要确认归属。",
+    draft: {
+      title: "修复登录验证码转圈",
+      description: "确认登录验证码持续转圈的问题。",
+      priority: "NORMAL",
+      dueAt: null,
+      assigneeIds: [],
+      assigneeNames: [],
+      moduleId: null,
+      moduleName: null,
+    },
+    suggestions: {
+      projects: [
+        { id: 1, code: "INP", name: "InPulse 平台" },
+        { id: 2, code: "ORD", name: "订单中台" },
+      ],
+      modules: [],
+    },
+    confidence: "MEDIUM",
+    notes: ["「InPulse 平台」与「订单中台」也相近，归属待确认"],
+  });
+  mount(test, { projectId: 1 });
+  const user = userEvent.setup();
+
+  await user.type(screen.getByLabelText("描述任务"), "先看截图");
+  await user.click(screen.getByTestId("task-draft-assist-send"));
+
+  expect(
+    await screen.findByText("当前是「InPulse 平台」，也可能指这几个项目："),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "保持「InPulse 平台」" }),
+  ).toBeInTheDocument();
+  const projectTrigger = screen
+    .getByLabelText("所属项目")
+    .closest(".ant-select");
+  expect(projectTrigger).toHaveTextContent("InPulse 平台");
+
+  await user.click(screen.getByRole("button", { name: "用「订单中台」" }));
+
+  await waitFor(() => expect(projectTrigger).toHaveTextContent("订单中台"));
+  expect(screen.getByText("已确认项目：订单中台")).toBeInTheDocument();
+  expect(
+    screen.queryByText("「InPulse 平台」与「订单中台」也相近，归属待确认"),
+  ).not.toBeInTheDocument();
+});
+
 it("多个疑似项目时全部列出，点更改不替用户选择", async () => {
   const test = harness();
   test.assistTaskDraftStandalone.mockResolvedValueOnce({

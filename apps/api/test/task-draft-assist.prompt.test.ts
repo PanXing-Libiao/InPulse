@@ -9,7 +9,12 @@ import {
 describe("任务草稿助手提示词", () => {
   test("锁定专业写作与已选上下文规则", () => {
     expect(SYSTEM_PROMPT).toContain("专业标准");
-    expect(SYSTEM_PROMPT).toContain("动作 + 对象 + 结果或范围");
+    expect(SYSTEM_PROMPT).toContain("不要写项目名、模块名");
+    expect(SYSTEM_PROMPT).toContain("为XX模块新增");
+    expect(SYSTEM_PROMPT).toContain("项目与模块由独立字段承载");
+    expect(SYSTEM_PROMPT).toContain("归属由确认卡展示");
+    expect(SYSTEM_PROMPT).toContain("按需求语义匹配清单");
+    expect(SYSTEM_PROMPT).toContain("不要只在 notes 里写名称");
     expect(SYSTEM_PROMPT).toContain("视为项目已确认");
     expect(SYSTEM_PROMPT).toContain("不要重复建议当前模块");
   });

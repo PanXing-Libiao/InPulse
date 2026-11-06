@@ -139,7 +139,8 @@ export function GlobalTaskCreateModal({
   const projectFieldLocked = lockedModule || pendingProject;
   const creatingModuleForNewProject = pendingProject;
   const moduleAssistLocked = lockedModule || creatingModuleForNewProject;
-  const projectAssistLocked = presetProjectId > 0 || projectFieldLocked;
+  // 仅预置项目时仍允许用户通过 AI 候选卡切换；预置模块或内联新建项目才锁定。
+  const projectAssistLocked = projectFieldLocked;
   const canReturnToProject = pendingProject && materializedProjectId === null;
 
   useEffect(() => {

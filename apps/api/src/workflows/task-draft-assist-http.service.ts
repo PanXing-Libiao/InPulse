@@ -55,6 +55,7 @@ interface ModelOutput {
 
 interface ProjectSnapshot {
   readonly actorUserId: number;
+  readonly projectId: number | null;
   readonly members: readonly { readonly id: number; readonly name: string }[];
   readonly catalog: TaskDraftAssistCatalog;
   /** 未选项目时的授权项目候选；项目内识别固定为空。 */
@@ -63,6 +64,7 @@ interface ProjectSnapshot {
 
 const EMPTY_SNAPSHOT: ProjectSnapshot = {
   actorUserId: 0,
+  projectId: null,
   members: [],
   catalog: { projectName: "", modules: [] },
   projects: [],
@@ -203,9 +205,8 @@ export class TaskDraftAssistHttpService {
     );
     return taskDraftAssistResponseSchema.parse({
       ...response,
-      reply: alignReplyWithModuleCandidates(
-        response.reply,
-        suggestions.modules,
+      reply: taskDraftReply(
+        alignReplyWithModuleCandidates(response.reply, suggestions.modules),
       ),
     });
   }
@@ -216,13 +217,16 @@ export class TaskDraftAssistHttpService {
     snapshot: ProjectSnapshot,
     hasProjectContext: boolean,
   ): Promise<TaskDraftAssistSuggestions> {
+    const inferredProjectText = projectSemanticContext(output);
+    const inferredModuleText = moduleSemanticContext(output);
     if (hasProjectContext) {
       return {
-        projects: [],
+        projects: await this.resolveContextProjectCandidates(output, snapshot),
         modules: resolveModuleCandidates(
           snapshot.catalog.modules,
           output.moduleName,
           input.message,
+          inferredModuleText,
         ),
       };
     }
@@ -231,6 +235,7 @@ export class TaskDraftAssistHttpService {
       snapshot.projects,
       output.projectName,
       input.message,
+      inferredProjectText,
     );
     // 唯一项目确定后总是取一次模块清单：用户可能只说了「工单」「巡检」这类
     // 业务词，没有「XX模块」句式，提前返回会让模块候选永远出不来。
@@ -250,8 +255,31 @@ export class TaskDraftAssistHttpService {
         modules,
         output.moduleName,
         input.message,
+        inferredModuleText,
       ),
     };
+  }
+
+  private async resolveContextProjectCandidates(
+    output: ModelOutput,
+    snapshot: ProjectSnapshot,
+  ): Promise<TaskDraftAssistProjectCandidate[]> {
+    if (snapshot.projectId === null || !hasProjectAmbiguity(output)) return [];
+    const projects = await this.projectCatalog.load(snapshot.actorUserId);
+    const matched = rankProjectCandidates(
+      projects,
+      null,
+      projectSemanticContext(output),
+    );
+    const current = projects.find((item) => item.id === snapshot.projectId);
+    const alternatives = matched.filter(
+      (item) => item.id !== snapshot.projectId,
+    );
+    if (current === undefined || alternatives.length === 0) return [];
+    return [
+      { id: current.id, code: current.code, name: current.name },
+      ...alternatives.slice(0, MAX_PROJECT_CANDIDATES - 1),
+    ];
   }
 
   private async loadProjectSnapshot(
@@ -285,6 +313,7 @@ export class TaskDraftAssistHttpService {
       const catalog = await this.catalog.load(tx, projectId);
       return {
         actorUserId: actor.userId,
+        projectId,
         members,
         catalog,
         projects: [],
@@ -344,8 +373,8 @@ export class TaskDraftAssistHttpService {
       return {
         reply: output.reply,
         draft: {
-          title: trimmedOrNull(output.title, MAX_TITLE),
-          description: trimmedOrNull(output.description, MAX_DESCRIPTION),
+          title: taskDraftTitle(output.title),
+          description: taskDraftDescription(output.description),
           priority: output.priority ?? null,
           dueAt,
           assigneeIds: [],
@@ -398,8 +427,8 @@ export class TaskDraftAssistHttpService {
     }
 
     const confidence = output.confidence ?? "MEDIUM";
-    const title = trimmedOrNull(output.title, MAX_TITLE);
-    const description = trimmedOrNull(output.description, MAX_DESCRIPTION);
+    const title = taskDraftTitle(output.title);
+    const description = taskDraftDescription(output.description);
     const priority = output.priority ?? null;
     if (confidence === "LOW") {
       // 低置信度不猜：归属与负责人必须由用户手动确认，文本字段仍可参考。
@@ -776,7 +805,49 @@ function scoreModuleMatch(
   return score;
 }
 
+/** 截图可能没有文字；模型回复与备注里的项目名同样可以作为候选线索。 */
+function projectSemanticContext(output: ModelOutput): string {
+  return [
+    output.projectName,
+    output.title,
+    output.description,
+    output.reply,
+    ...(output.notes ?? []),
+  ]
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    )
+    .map((value) => value.trim())
+    .join("\n");
+}
+
+/** 只有模型明确表达项目歧义时才扩展候选，避免已选项目时无端打扰。 */
+function hasProjectAmbiguity(output: ModelOutput): boolean {
+  if ((output.projectName?.trim().length ?? 0) > 0) return true;
+  const text = projectSemanticContext(output);
+  return /项目/u.test(text) && /相近|也可能|待确认|可能是|归属/u.test(text);
+}
+
+/** 先按用户原话匹配；纯截图或原话没有项目线索时，再用模型识别文本兜底。 */
 function resolveProjectCandidates(
+  projects: readonly TaskDraftAssistProjectItem[],
+  projectName: string | null,
+  message: string,
+  inferredContext: string,
+): TaskDraftAssistProjectCandidate[] {
+  const direct = rankProjectCandidates(projects, projectName, message);
+  if (
+    direct.length > 0 ||
+    (projectName?.trim().length ?? 0) > 0 ||
+    inferredContext.trim().length === 0
+  ) {
+    return direct;
+  }
+  return rankProjectCandidates(projects, projectName, inferredContext);
+}
+
+function rankProjectCandidates(
   projects: readonly TaskDraftAssistProjectItem[],
   projectName: string | null,
   message: string,
@@ -869,7 +940,39 @@ function resolveProjectCandidates(
     }));
 }
 
+/** 截图输入可能没有文字；模型识别出的标题、说明和回复同样是归属线索。 */
+function moduleSemanticContext(output: ModelOutput): string {
+  return [output.title, output.description, output.reply]
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    )
+    .map((value) => value.trim())
+    .join("\n");
+}
+
+/**
+ * 先按用户原话匹配；纯截图或原话没有模块线索时，再用模型识别的需求语义
+ * 在真实模块清单里兜底。模型仍然只能给出名称，ID 与归属由服务端决定。
+ */
 function resolveModuleCandidates(
+  modules: readonly TaskDraftAssistModuleItem[],
+  moduleName: string | null,
+  message: string,
+  inferredContext: string,
+): TaskDraftAssistModuleCandidate[] {
+  const direct = rankModuleCandidates(modules, moduleName, message);
+  if (
+    direct.length > 0 ||
+    (moduleName?.trim().length ?? 0) > 0 ||
+    inferredContext.trim().length === 0
+  ) {
+    return direct;
+  }
+  return rankModuleCandidates(modules, moduleName, inferredContext);
+}
+
+function rankModuleCandidates(
   modules: readonly TaskDraftAssistModuleItem[],
   moduleName: string | null,
   message: string,
@@ -930,7 +1033,13 @@ function moduleDistinctiveTokens(name: string): string[] {
   const normalized = normalizeMatchText(name);
   if (normalized.length < 2) return [];
   const tokens = new Set<string>();
-  const parts = normalized
+  let base = normalized;
+  for (const suffix of GENERIC_NAME_SUFFIXES) {
+    if (base.length > suffix.length + 1 && base.endsWith(suffix)) {
+      base = base.slice(0, -suffix.length);
+    }
+  }
+  const parts = base
     .split(MODULE_TOKEN_SEPARATOR)
     .filter((part) => part.length >= 2);
   for (const part of parts.length > 1 ? parts : []) {
@@ -943,7 +1052,7 @@ function moduleDistinctiveTokens(name: string): string[] {
     if (current.length >= 2) tokens.add(current);
   }
   if (tokens.size === 0) {
-    const chars = [...normalized];
+    const chars = [...base];
     tokens.add(chars.slice(0, 2).join(""));
     tokens.add(chars.slice(-2).join(""));
   }
@@ -985,6 +1094,106 @@ function trimmedOrNull(
   const trimmed = value.trim();
   if (trimmed.length === 0) return null;
   return trimmed.slice(0, max);
+}
+
+const TASK_CONTEXT_PATTERN =
+  "新增|添加|增加|实现|开发|支持|优化|修复|调整|排查|补齐|上线|完善|改造";
+const TASK_CREATION_PREFIXES = [
+  "新增",
+  "添加",
+  "增加",
+  "实现",
+  "开发",
+] as const;
+const TASK_GENERIC_SUFFIXES = ["功能", "能力", "特性"] as const;
+
+const TITLE_MODULE_CONTEXT = new RegExp(
+  "^(?:为|给|在)?[^，。；\\n]{0,40}?模块(?:中|里|上)?(?=\\s|$|，|。|；|(?:" +
+    TASK_CONTEXT_PATTERN +
+    "))\\s*",
+  "u",
+);
+const DESCRIPTION_PROJECT_CONTEXT =
+  /^(?:已识别为)?(?:在)?【[^】]+】(?:的|里|中|内)?\s*/u;
+const DESCRIPTION_MODULE_CONTEXT = new RegExp(
+  "^(?:已识别为)?(?:在)?[^，。；\\n]{0,40}?模块(?:中|里|上)?(?=\\s|$|，|。|；|(?:" +
+    TASK_CONTEXT_PATTERN +
+    "))\\s*",
+  "u",
+);
+const REPLY_PROJECT_CONTEXT = /(?:在)?【[^】]+】(?:的|里|中|内)?/gu;
+const REPLY_MODULE_CONTEXT = new RegExp(
+  "(?:在)?【[^】]+】的?[^，。；\\n]{0,40}?模块(?:中|里|上)?(?=(?:" +
+    TASK_CONTEXT_PATTERN +
+    "))\\s*",
+  "gu",
+);
+const REPLY_BARE_MODULE_CONTEXT = new RegExp(
+  "(?:给|为|在)[^，。；\\n]{0,40}?模块(?:中|里|上)?(?=(?:" +
+    TASK_CONTEXT_PATTERN +
+    "))\\s*",
+  "gu",
+);
+
+/** 去掉中英文之间多余的空格，保留英文单词之间的原始空格。 */
+function tightenTaskText(value: string): string {
+  return value
+    .replace(/(?<=[\p{Script=Han}])\s+|\s+(?=[\p{Script=Han}])/gu, "")
+    .trim();
+}
+
+/**
+ * 项目与模块是任务的独立归属字段，标题只写要做的事。模型偶尔仍会输出
+ * 「为文件上传模块新增 CAD 文件预览功能」，这里去掉归属前缀和空泛包装。
+ */
+function taskDraftTitle(value: string | null | undefined): string | null {
+  const title = trimmedOrNull(value, MAX_TITLE);
+  if (title === null) return null;
+  let next = title
+    .replace(/[。！？；]+$/u, "")
+    .replace(TITLE_MODULE_CONTEXT, "")
+    .trim();
+  for (const suffix of TASK_GENERIC_SUFFIXES) {
+    if (next.length > suffix.length + 2 && next.endsWith(suffix)) {
+      next = next.slice(0, -suffix.length).trim();
+      break;
+    }
+  }
+  for (const prefix of TASK_CREATION_PREFIXES) {
+    if (next.startsWith(prefix) && next.length > prefix.length + 3) {
+      next = next.slice(prefix.length).trim();
+      break;
+    }
+  }
+  next = tightenTaskText(next);
+  return next.length >= 2 ? next.slice(0, MAX_TITLE) : title;
+}
+
+/** 说明只保留任务本身的背景与范围，不重复已由字段承载的项目 / 模块归属。 */
+function taskDraftDescription(value: string | null | undefined): string | null {
+  const description = trimmedOrNull(value, MAX_DESCRIPTION);
+  if (description === null) return null;
+  const next = tightenTaskText(
+    description
+      .replace(DESCRIPTION_PROJECT_CONTEXT, "")
+      .replace(DESCRIPTION_MODULE_CONTEXT, "")
+      .trim(),
+  );
+  return next.length > 0 ? next.slice(0, MAX_DESCRIPTION) : description;
+}
+
+/** 回复不复述项目 / 模块名；确认卡已经展示了归属，回复只概括任务与缺失字段。 */
+function taskDraftReply(value: string): string {
+  if (value.trim().length === 0) return value;
+  const next = tightenTaskText(
+    value
+      .replace(REPLY_MODULE_CONTEXT, "")
+      .replace(REPLY_BARE_MODULE_CONTEXT, "")
+      .replace(REPLY_PROJECT_CONTEXT, "")
+      .replace(/\s{2,}/gu, " ")
+      .trim(),
+  );
+  return next.length > 0 ? next : value;
 }
 
 function pushNote(notes: string[], note: string): void {
